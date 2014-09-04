@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
       double startr = obs.rlo, lastr = 0, nextr = 0;
       ffdotpows *fundamental;
 
-      if ( cmd->cpuP ) 
+      if ( cmd->cpuP )
       {
         
 
