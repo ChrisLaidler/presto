@@ -20,31 +20,8 @@
 char *Program;
 
 /*@-null*/
-static int gpuDefault[] = {0};
-static int nplainsDefault[] = {2};
-static int nstepsDefault[] = {4};
 
 static Cmdline cmd = {
-  /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
-  /* gpuP = */ 1,
-  /* gpu = */ gpuDefault,
-  /* gpuC = */ 1,
-  /***** -nplains: A list of the number of plains to process on each CUDA device, listed in the same order as -gpu. If only one claue is specifyed it will be used for all GPUs */
-  /* nplainsP = */ 1,
-  /* nplains = */ nplainsDefault,
-  /* nplainsC = */ 1,
-  /***** -nsteps: A list of the number of steps all the thread on each CUDA device is to process, listed in the same order as -gpu. If only one claue is specifyed it will be used for all threads */
-  /* nstepsP = */ 1,
-  /* nsteps = */ nstepsDefault,
-  /* nstepsC = */ 1,
-  /***** -width: The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ... */
-  /* widthP = */ 1,
-  /* width = */ 8,
-  /* widthC = */ 1,
-  /***** -lsgpu: List all available CUDA GPU's and exit */
-  /* lsgpuP = */ 0,
-  /***** -cpu: Do a CPU search */
-  /* cpuP = */ 0,
   /***** -ncpus: Number of processors to use with OpenMP */
   /* ncpusP = */ 1,
   /* ncpus = */ 1,
@@ -806,80 +783,6 @@ showOptionValues(void)
 
   printf("Full command line is:\n`%s'\n", cmd.full_cmd_line);
 
-  /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
-  if( !cmd.gpuP ) {
-    printf("-gpu not found.\n");
-  } else {
-    printf("-gpu found:\n");
-    if( !cmd.gpuC ) {
-      printf("  no values\n");
-    } else {
-      printf("  values =");
-      for(i=0; i<cmd.gpuC; i++) {
-        printf(" `%d'", cmd.gpu[i]);
-      }
-      printf("\n");
-    }
-  }
-
-  /***** -nplains: A list of the number of plains to process on each CUDA device, listed in the same order as -gpu. If only one claue is specifyed it will be used for all GPUs */
-  if( !cmd.nplainsP ) {
-    printf("-nplains not found.\n");
-  } else {
-    printf("-nplains found:\n");
-    if( !cmd.nplainsC ) {
-      printf("  no values\n");
-    } else {
-      printf("  values =");
-      for(i=0; i<cmd.nplainsC; i++) {
-        printf(" `%d'", cmd.nplains[i]);
-      }
-      printf("\n");
-    }
-  }
-
-  /***** -nsteps: A list of the number of steps all the thread on each CUDA device is to process, listed in the same order as -gpu. If only one claue is specifyed it will be used for all threads */
-  if( !cmd.nstepsP ) {
-    printf("-nsteps not found.\n");
-  } else {
-    printf("-nsteps found:\n");
-    if( !cmd.nstepsC ) {
-      printf("  no values\n");
-    } else {
-      printf("  values =");
-      for(i=0; i<cmd.nstepsC; i++) {
-        printf(" `%d'", cmd.nsteps[i]);
-      }
-      printf("\n");
-    }
-  }
-
-  /***** -width: The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ... */
-  if( !cmd.widthP ) {
-    printf("-width not found.\n");
-  } else {
-    printf("-width found:\n");
-    if( !cmd.widthC ) {
-      printf("  no values\n");
-    } else {
-      printf("  value = `%d'\n", cmd.width);
-    }
-  }
-
-  /***** -lsgpu: List all available CUDA GPU's and exit */
-  if( !cmd.lsgpuP ) {
-    printf("-lsgpu not found.\n");
-  } else {
-    printf("-lsgpu found:\n");
-  }
-
-  /***** -cpu: Do a CPU search */
-  if( !cmd.cpuP ) {
-    printf("-cpu not found.\n");
-  } else {
-    printf("-cpu found:\n");
-  }
-
   /***** -ncpus: Number of processors to use with OpenMP */
   if( !cmd.ncpusP ) {
     printf("-ncpus not found.\n");
@@ -1075,22 +978,8 @@ showOptionValues(void)
 void
 usage(void)
 {
-  fprintf(stderr,"%s","   [-gpu [gpu]] [-nplains [nplains]] [-nsteps [nsteps]] [-width width] [-lsgpu] [-cpu] [-ncpus ncpus] [-lobin lobin] [-numharm numharm] [-zmax zmax] [-sigma sigma] [-rlo rlo] [-rhi rhi] [-flo flo] [-fhi fhi] [-inmem] [-photon] [-median] [-locpow] [-zaplist zaplist] [-baryv baryv] [-otheropt] [-noharmpolish] [-noharmremove] [--] infile\n");
+  fprintf(stderr,"%s","   [-ncpus ncpus] [-lobin lobin] [-numharm numharm] [-zmax zmax] [-sigma sigma] [-rlo rlo] [-rhi rhi] [-flo flo] [-fhi fhi] [-inmem] [-photon] [-median] [-locpow] [-zaplist zaplist] [-baryv baryv] [-otheropt] [-noharmpolish] [-noharmremove] [--] infile\n");
   fprintf(stderr,"%s","      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
-  fprintf(stderr,"%s","             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
-  fprintf(stderr,"%s","                   0...32 int values between 0 and 32\n");
-  fprintf(stderr,"%s","                   default: `0'\n");
-  fprintf(stderr,"%s","         -nplains: A list of the number of plains to process on each CUDA device, listed in the same order as -gpu. If only one claue is specifyed it will be used for all GPUs\n");
-  fprintf(stderr,"%s","                   0...32 int values between 1 and 5\n");
-  fprintf(stderr,"%s","                   default: `2'\n");
-  fprintf(stderr,"%s","          -nsteps: A list of the number of steps all the thread on each CUDA device is to process, listed in the same order as -gpu. If only one claue is specifyed it will be used for all threads\n");
-  fprintf(stderr,"%s","                   0...32 int values between 1 and 8\n");
-  fprintf(stderr,"%s","                   default: `4'\n");
-  fprintf(stderr,"%s","           -width: The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ...\n");
-  fprintf(stderr,"%s","                   1 int value between 2 and 32\n");
-  fprintf(stderr,"%s","                   default: `8'\n");
-  fprintf(stderr,"%s","           -lsgpu: List all available CUDA GPU's and exit\n");
-  fprintf(stderr,"%s","             -cpu: Do a CPU search\n");
   fprintf(stderr,"%s","           -ncpus: Number of processors to use with OpenMP\n");
   fprintf(stderr,"%s","                   1 int value between 1 and oo\n");
   fprintf(stderr,"%s","                   default: `1'\n");
@@ -1130,7 +1019,7 @@ usage(void)
   fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 03Sep14\n");
+  fprintf(stderr,"%s","  version: 04Sep14\n");
   fprintf(stderr,"%s","  ");
   exit(EXIT_FAILURE);
 }
@@ -1145,56 +1034,6 @@ parseCmdline(int argc, char **argv)
   for(i=1, cmd.argc=1; i<argc; i++) {
     if( 0==strcmp("--", argv[i]) ) {
       while( ++i<argc ) argv[cmd.argc++] = argv[i];
-      continue;
-    }
-
-    if( 0==strcmp("-gpu", argv[i]) ) {
-      int keep = i;
-      cmd.gpuP = 1;
-      i = getIntOpts(argc, argv, i, &cmd.gpu, 0, 32);
-      cmd.gpuC = i-keep;
-      checkIntLower("-gpu", cmd.gpu, cmd.gpuC, 32);
-      checkIntHigher("-gpu", cmd.gpu, cmd.gpuC, 0);
-      continue;
-    }
-
-    if( 0==strcmp("-nplains", argv[i]) ) {
-      int keep = i;
-      cmd.nplainsP = 1;
-      i = getIntOpts(argc, argv, i, &cmd.nplains, 0, 32);
-      cmd.nplainsC = i-keep;
-      checkIntLower("-nplains", cmd.nplains, cmd.nplainsC, 5);
-      checkIntHigher("-nplains", cmd.nplains, cmd.nplainsC, 1);
-      continue;
-    }
-
-    if( 0==strcmp("-nsteps", argv[i]) ) {
-      int keep = i;
-      cmd.nstepsP = 1;
-      i = getIntOpts(argc, argv, i, &cmd.nsteps, 0, 32);
-      cmd.nstepsC = i-keep;
-      checkIntLower("-nsteps", cmd.nsteps, cmd.nstepsC, 8);
-      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 1);
-      continue;
-    }
-
-    if( 0==strcmp("-width", argv[i]) ) {
-      int keep = i;
-      cmd.widthP = 1;
-      i = getIntOpt(argc, argv, i, &cmd.width, 1);
-      cmd.widthC = i-keep;
-      checkIntLower("-width", &cmd.width, cmd.widthC, 32);
-      checkIntHigher("-width", &cmd.width, cmd.widthC, 2);
-      continue;
-    }
-
-    if( 0==strcmp("-lsgpu", argv[i]) ) {
-      cmd.lsgpuP = 1;
-      continue;
-    }
-
-    if( 0==strcmp("-cpu", argv[i]) ) {
-      cmd.cpuP = 1;
       continue;
     }
 
