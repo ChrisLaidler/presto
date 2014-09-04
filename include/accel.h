@@ -1,3 +1,6 @@
+#ifndef _ACECEL_H
+#define _ACECEL_H
+
 #include <glib.h>
 #include "presto.h"
 #include "accelsearch_cmd.h"
@@ -145,3 +148,8 @@ void add_ffdotpows(ffdotpows *fundamental, ffdotpows *subharmonic,
 GSList *search_ffdotpows(ffdotpows *ffdot, int numharm, 
                          accelobs *obs, GSList *cands);
 void free_accelobs(accelobs *obs);
+
+//static
+GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
+
+#endif // _ACECEL_H

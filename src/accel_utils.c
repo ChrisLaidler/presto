@@ -23,7 +23,8 @@
 #define index_to_twon(n) (1<<n)
 
 /* Return x such that 2**x = n */
-static inline int twon_to_index(int n)
+//static
+inline int twon_to_index(int n)
 {
    int x = 0;
 
@@ -282,7 +283,8 @@ GSList *sort_accelcands(GSList * list)
 }
 
 
-static GSList *insert_new_accelcand(GSList * list, float power, float sigma,
+// static Taken out by Chris Laidler for GPU accel search
+GSList *insert_new_accelcand(GSList * list, float power, float sigma,
                                     int numharm, double rr, double zz, int *added)
 /* Checks the current list to see if there is already */
 /* a candidate within ACCEL_CLOSEST_R bins.  If not,  */
@@ -1162,7 +1164,7 @@ GSList *search_ffdotpows(ffdotpows * ffdot, int numharm,
             rr = (ffdot->rlo + jj * (double) ACCEL_DR) / (double) numharm;
             zz = (ffdot->zlo + ii * (double) ACCEL_DZ) / (double) numharm;
             cands = insert_new_accelcand(cands, pow, sig, numharm, rr, zz, &added);
-            if (added && !obs->dat_input)
+             if (added && !obs->dat_input)
                fprintf(obs->workfile,
                        "%-7.2f  %-7.4f  %-2d  %-14.4f  %-14.9f  %-10.4f\n",
                        pow, sig, numharm, rr, rr / obs->T, zz);

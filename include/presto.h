@@ -1,3 +1,6 @@
+#ifndef _PRESTO_H
+#define _PRESTO_H
+
 #include <sys/times.h>
 #include "chkio.h"
 #include <math.h>
@@ -1476,5 +1479,5 @@ fcomplex *atwood_search(double *events, double *weights,
 /*    Nwin:  number of bins that make up a "window" (the FFT len)  */
 /*    dt:  the time duration to use for the binning                */
 
-
+#endif // _PRESTO_H
 

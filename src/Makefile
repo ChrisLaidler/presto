@@ -5,6 +5,10 @@
 OS = Linux
 #OS = OSX
 
+# yes / no
+WITH_CUDA = yes
+WITHOMP = yes
+
 # Linux is the first choice
 ifeq ($(OS),Linux)
 	LIBSUFFIX = .so
@@ -42,11 +46,41 @@ PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto $(FFTLINK)
 CC = gcc
 FC = gfortran
 #FC = g77
+NVCC = nvcc
+
+
+# DEBUG flags make with mode=debug
+ifeq ($(mode),release)
+  DEBUG=0
+endif
+ifeq ($(mode),RELEASE)
+  DEBUG=0
+endif
+ifeq ($(mode),r)
+  DEBUG=0
+endif
+ifeq ($(mode),R)
+  DEBUG=0
+endif
+
+ifeq ($(mode),DEBUG)
+  DEBUG=1
+endif
+ifeq ($(mode),debug)
+  DEBUG=1
+endif
+ifeq ($(mode),d)
+  DEBUG=1
+endif
+ifeq ($(mode),D)
+  DEBUG=1
+endif
+
 # Very recent Intel CPUs might see a few percent speedup using -mavx
 CFLAGS = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) \
 	-DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 \
-	-g -O3 -ffast-math -Wall -W -fPIC
-#	-g -Wall -W -fPIC
+	-g -Wall -W -fPIC -march=native
+#       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds done with mode=debug
 CLINKFLAGS = $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
 #        FFLAGs.  Certain compilers (i.e. on Intel Macs) will
@@ -55,6 +89,59 @@ FFLAGS = -g -fPIC
 FLINKFLAGS = $(FFLAGS)
 LINKCOMMAND1 = $(CC) $(LIBCMD) -o
 LINKCOMMAND2 = ar rcs
+
+
+# CUDA flags
+# -gencode arch=compute_20,code=sm_21
+# -gencode arch=compute_30,code=sm_30
+# -gencode arch=compute_35,code=sm_35
+# -gencode arch=compute_50,code=sm_50
+ARCH=-gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35 -gencode arch=compute_50,code=sm_50
+NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m64 -I/usr/local/cuda/include  -I$(HOME)/local/include
+NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lcufft -lnvToolsExt -Xcompiler -fopenmp -lndarray_debug -lpngwriter -lcblutil_debug -lpng -lfreetype -lglut $(ARCH) \
+-L$(HOME)/local/lib
+NVCCFLAGS += `freetype-config --cflags` `freetype-config --libs`
+
+
+#Settings dependent on release or debug build
+ifeq ($(DEBUG),1)
+
+  CFLAGS += -O0 -g -ggdb  -DDEBUG
+  LFLAGS += -O0 -g -ggdb
+  
+  NVCCFLAGS +=-g -G -O0
+  NVCLFLAGS += -g -G -O0
+
+  DEBUG_TARGET=debug
+  POSTFIX=_debug
+  export DEBUG=1
+  
+else
+
+  # CPU optimisations
+  CFLAGS+=-O3 -ffast-math -DNDBUG -DCUDA
+  # Additional CPU optimisations
+  CFLAGS+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
+  # could use -mpc32  
+  
+  # vectorisation output
+  # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
+  
+  NVCCFLAGS +=-O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -DCUDA
+  NVCLFLAGS +=-O3
+  
+  DEBUG_TARGET=release
+  POSTFIX=
+  export DEBUG=0
+endif
+
+# With open MP
+ifeq ($(WITHOMP),yes)
+	CFLAGS += -fopenmp -DWITHOMP
+	FFLAGS += -fopenmp -DWITHOMP
+	FFTLINK +=
+	NVCCFLAGS += -Xcompiler -fopenmp -DWITHOMP
+endif
 
 # Add to the search path for the executables
 VPATH = ../lib:../bin
@@ -81,6 +168,16 @@ PRESTOOBJS = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 	twopass_real_inv.o vectors.o multifiles.o mask.o\
 	fitsfile.o hget.o hput.o imio.o djcl.o
 
+ifeq ($(WITH_CUDA),yes)
+$(info Compile with CUDA)
+CUDA_OBS = cuda_accel_utils.cu.o cuda_accel_SumAndSearch.cu.o cuda_accel_Convolve.cu.o cuda_utils.cu.o
+CFLAGS += -I/usr/local/cuda/include/
+else
+NVCC      = $(CC)
+CUDA_OBS  = 
+NVCLFLAGS = $(CLINKFLAGS)
+endif
+	
 INSTRUMENTOBJS = backend_common.o zerodm.o sigproc_fb.o psrfits.o
 
 # Use old header reading stuff for readfile
@@ -140,6 +237,10 @@ binaries: $(BINARIES)
 
 mpi: mpiprepsubband
 
+# Compile CUDA objects
+%.cu.o: %.cu
+	$(NVCC) $(NVCCFLAGS) -o $@ -c $<
+
 mpiprepsubband_utils.o: mpiprepsubband_utils.c
 	mpicc $(CLINKFLAGS) -c mpiprepsubband_utils.c
 
@@ -149,8 +250,8 @@ mpiprepsubband.o: mpiprepsubband.c
 mpiprepsubband: mpiprepsubband_cmd.c mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS)
 	mpicc $(CLINKFLAGS) -o $(PRESTO)/bin/$@ mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-accelsearch: accelsearch_cmd.c accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
+accelsearch: accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o
+	$(NVCC) $(NVCLFLAGS) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
 
 bary: bary.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bary.o $(PRESTOLINK) -lm
