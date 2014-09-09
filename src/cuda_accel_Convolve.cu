@@ -30,8 +30,6 @@ extern "C"
 #include "accel.h"
 }
 
-#include "arrayDsp.h"
-
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 

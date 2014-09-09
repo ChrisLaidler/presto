@@ -9,6 +9,35 @@
 
 #include "cuda_utils.h"
  
+#if _WIN32
+#include <windows.h>
+size_t getFreeRam()
+{
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    return status.ullTotalPhys;
+}
+#elif __linux
+#include <sys/sysinfo.h>
+size_t getFreeRam()
+{
+  struct sysinfo sys_info;
+  if(sysinfo(&sys_info) != 0)
+  {
+    fprintf(stderr, "ERROR: Reading memory info.");
+    return 0;
+  }
+  else
+    return sys_info.freeram + sys_info.bufferram;
+}
+#else
+size_t getFreeRam()
+{
+  fprintf(stderr, "ERROR: getFreeRam not enablend on this system.");
+}
+#endif
+
 // 32-bit floating-point add, multiply, multiply-add Operations per Clock Cycle per Multiprocessor
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions__throughput-native-arithmetic-instructions
 static SMVal opsF32_A_M_MAD_perMPperCC[] =

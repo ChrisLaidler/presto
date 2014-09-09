@@ -2,14 +2,16 @@
 
 #include <cufft.h>
 #include <algorithm>
+#include <omp.h>
+
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 //#include <cub/cub.cuh>
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
- 
-#include "arrayDsp.h"
+
+
 
 extern "C"
 {
@@ -3062,7 +3064,7 @@ int drawPlainPowers(cuFfdot* ffdotPlain, char* name)
   for (il = 0; il< 10; il++)
     printf("%02i %10.5f\n", il, tmpp[il]);
 
-  draw2DArray6(name, tmpp, ffdotPlain->ffPowWidth, ffdotPlain->ffPowHeight, 4096, 1602);
+  //draw2DArray6(name, tmpp, ffdotPlain->ffPowWidth, ffdotPlain->ffPowHeight, 4096, 1602);
   free(tmpp);
 }
 
@@ -3073,7 +3075,7 @@ int drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
   //float SourceS = ffdotPlain->ffPowStride;
   CUDA_SAFE_CALL(cudaMemcpy2D(tmpp, stride * sizeof(fcomplexcu), ffdotPlain, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
 
-  draw2DArray(name, tmpp, stride*2, height);
+  //draw2DArray(name, tmpp, stride*2, height);
   free(tmpp);
 }
 
@@ -3091,7 +3093,7 @@ int drawPlainCmlx(cuFfdot* ffdotPlain, char* name)
   //float SourceS = ffdotPlain->ffdotStride;
   CUDA_SAFE_CALL(cudaMemcpy2D(tmpp, DestS, ffdotPlain->ffdot, ffdotPlain->ffdotStride* sizeof(fcomplexcu), DestS, ffdotPlain->ffdotHeight, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
 
-  draw2DArray6(name, tmpp, ffdotPlain->ffdotWidth* 2, ffdotPlain->ffdotHeight, 500, 500);
+  //draw2DArray6(name, tmpp, ffdotPlain->ffdotWidth* 2, ffdotPlain->ffdotHeight, 500, 500);
   free(tmpp);
 
   return 0;

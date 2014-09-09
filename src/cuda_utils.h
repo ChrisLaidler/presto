@@ -94,6 +94,13 @@ typedef struct
 
 inline int getValFromSMVer(int major, int minor, SMVal* vals);
 
+/**
+ * @brief get free ram in bytes
+ *
+ * @return number of bytes of free RAM
+ **/
+size_t getFreeRam();
+
 //__host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
