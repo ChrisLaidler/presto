@@ -119,7 +119,7 @@ ifeq ($(DEBUG),1)
 else
 
   # CPU optimisations
-  CFLAGS+=-O3 -ffast-math -DNDBUG -DCUDA
+  CFLAGS+=-O3 -ffast-math -DNDBUG
   # Additional CPU optimisations
   CFLAGS+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32  
@@ -127,7 +127,7 @@ else
   # vectorisation output
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
   
-  NVCCFLAGS +=-O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -DCUDA
+  NVCCFLAGS +=-O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
   NVCLFLAGS +=-O3
   
   DEBUG_TARGET=release
@@ -170,8 +170,9 @@ PRESTOOBJS = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 
 ifeq ($(WITH_CUDA),yes)
 $(info Compile with CUDA)
+NVCCFLAGS+=-DCUDA
 CUDA_OBS = cuda_accel_utils.cu.o cuda_accel_SumAndSearch.cu.o cuda_accel_Convolve.cu.o cuda_utils.cu.o
-CFLAGS += -I/usr/local/cuda/include/
+CFLAGS += -I/usr/local/cuda/include/ -DCUDA
 else
 NVCC      = $(CC)
 CUDA_OBS  = 

@@ -359,19 +359,25 @@ __global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *dat
 
     int pHeight = 0;
 
+    for (int plnNo = 0; plnNo < noPlns; plnNo++)          // Loop through the plains
+    {
+      kerDat.val[plnNo] += tid;
+    }
+
     // Read the input data
 #pragma unroll
     for (int n = 0; n < noPlns*noSteps; n++)
     {
-      dat[n]          = datas[ n * stride ] ;
+      dat[n]           = datas[ n * stride ] ;
       dat[n].r        /= (float) width ;
       dat[n].i        /= (float) width ;
     }
 
+#ifndef DEBUG
 #pragma unroll
+#endif
     for (int plnNo = 0; plnNo < noPlns; plnNo++)          // Loop through the plains
     {
-      //for (; iy < pHeight + heights.val[plnNo]; iy++)     // Loop over the plain
       for (iy = 0; iy < heights.val[plnNo]; iy++)     // Loop over the plain
       {
         idx = (iy) * stride ;
@@ -383,11 +389,12 @@ __global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *dat
         }
         else
         {
-          //ker   = kernels[idx];
           ker   = kerDat.val[plnNo][idx];
         }
 
+#ifndef DEBUG
 #pragma unroll
+#endif
         for ( int step = 0; step < noSteps; step++)   // Loop over steps
         {
           // Calculate indices

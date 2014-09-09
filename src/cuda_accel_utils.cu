@@ -1798,88 +1798,101 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
 
   // Set up the basic details of all the harmonics
   // Calculate the stride of all the stacks (by allocating temporary memory)
-  if ( master == NULL )
+  FOLD
   {
-    FOLD // Set up the basic details of all the harmonics 
+    if ( master == NULL )
     {
-      // Calculate the stage order of the harmonics
-      int harmtosum;
-      int i = 0;
-      for (int stage = 0; stage < numharmstages; stage++)
+      FOLD // Set up the basic details of all the harmonics
       {
-        harmtosum = 1 << stage;
-        for (int harm = 1; harm <= harmtosum; harm += 2, i++)
+        // Calculate the stage order of the harmonics
+        int harmtosum;
+        int i = 0;
+        for (int stage = 0; stage < numharmstages; stage++)
         {
-          float harmFrac                  = 1-harm/ float(harmtosum);
-          int idx                         = round(harmFrac*noHarms);
-          stkLst->hInfos[idx].stageOrder  = i;
-          stkLst->pIdx[i]                 = idx;
+          harmtosum = 1 << stage;
+          for (int harm = 1; harm <= harmtosum; harm += 2, i++)
+          {
+            float harmFrac                  = 1-harm/ float(harmtosum);
+            int idx                         = round(harmFrac*noHarms);
+            stkLst->hInfos[idx].stageOrder  = i;
+            stkLst->pIdx[i]                 = idx;
+          }
         }
+
+
+        // Multi-step data layout method
+        stkLst->flag |= FLAG_STP_ROW ;    //   FLAG_STP_ROW   or    FLAG_STP_PLN
+
+        // Convolution flags
+        //stkLst->flag |= FLAG_CNV_TEX;     // Use texture memory to access the kernel for convolution - May give advantge on pre-Fermi generation which we dont really care about
+        stkLst->flag |= FLAG_CNV_1KER;    // Create a minimal kernel (exploit overlap in stacks)
+        stkLst->flag |= FLAG_CNV_STK;     // FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
+
+        // Sum and Search Flags
+        //stkLst->flag |= FLAG_PLN_TEX;     // Use texture memory to access the d-∂d plains during sum and search (non interpolation methoud) - May give advantge on pre-Fermi generation which we dont really care about
+        //stkLst->flag |= FLAG_SAS_SIG;     // Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+
+        // How to handle input and output
+        stkLst->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
+        stkLst->flag    |= CU_CAND_SINGLE_G;    // Only get candidates from the current plain - This seams to be best in most cases
       }
 
-
-      // Multi-step data layout method
-      stkLst->flag |= FLAG_STP_ROW ;    //   FLAG_STP_ROW   or    FLAG_STP_PLN
-
-      // Convolution flags
-      //stkLst->flag |= FLAG_CNV_TEX;     // Use texture memory to access the kernel for convolution - May give advantge on pre-Fermi generation which we dont really care about
-      stkLst->flag |= FLAG_CNV_1KER;    // Create a minimal kernel (exploit overlap in stacks)
-      stkLst->flag |= FLAG_CNV_STK;     // FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
-
-      // Sum and Search Flags
-      //stkLst->flag |= FLAG_PLN_TEX;     // Use texture memory to access the d-∂d plains during sum and search (non interpolation methoud) - May give advantge on pre-Fermi generation which we dont really care about
-      //stkLst->flag |= FLAG_SAS_SIG;     // Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
-
-      // How to handle input and output
-      stkLst->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
-      stkLst->flag    |= CU_CAND_SINGLE_G;    // Only get candidates from the current plain - This seams to be best in most cases
-    } 
-  
-    FOLD // Calculate the stride of all the stacks (by allocating temporary memory)
-    {
-      int prev                = 0; 
-      stkLst->plnDataSize     = 0;
-      stkLst->inpDataSize     = 0;
-      stkLst->kerDataSize     = 0;
-      for (int i = 0; i< stkLst->noStacks; i++)           // Loop through Stacks
+      FOLD // Calculate the stride of all the stacks (by allocating temporary memory)
       {
-        cuFfdotStack* cStack  = &stkLst->stacks[i];
-        cStack->height        = 0;
-        cStack->noInStack     = noInStack[i];
-        cStack->startIdx      = prev;
-        cStack->harmInf       = &stkLst->hInfos[cStack->startIdx];
-        cStack->kernels       = &stkLst->kernels[cStack->startIdx];
-        cStack->width         = cStack->harmInf->width;
-
-        for (int j = 0; j< cStack->noInStack; j++)
+        int prev                = 0;
+        stkLst->plnDataSize     = 0;
+        stkLst->inpDataSize     = 0;
+        stkLst->kerDataSize     = 0;
+        for (int i = 0; i< stkLst->noStacks; i++)           // Loop through Stacks
         {
-          cStack->startR[j]   =  cStack->height;
-          cStack->height      += cStack->harmInf[j].height;
-          cStack->zUp[j]      =  (cStack->harmInf[0].height - cStack->harmInf[j].height) / 2.0 ;
+          cuFfdotStack* cStack  = &stkLst->stacks[i];
+          cStack->height        = 0;
+          cStack->noInStack     = noInStack[i];
+          cStack->startIdx      = prev;
+          cStack->harmInf       = &stkLst->hInfos[cStack->startIdx];
+          cStack->kernels       = &stkLst->kernels[cStack->startIdx];
+          cStack->width         = cStack->harmInf->width;
+
+          for (int j = 0; j< cStack->noInStack; j++)
+          {
+            cStack->startR[j]   =  cStack->height;
+            cStack->height      += cStack->harmInf[j].height;
+            cStack->zUp[j]      =  (cStack->harmInf[0].height - cStack->harmInf[j].height) / 2.0 ;
+          }
+
+          for (int j = 0; j< cStack->noInStack; j++)
+          {
+            cStack->zDn[j]      = ( cStack->harmInf[0].height ) - cStack->zUp[cStack->noInStack - 1 - j ];
+          }
+
+          // Allocate temporary device memory to asses stride
+          CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_kerData, &cStack->stride, cStack->width * sizeof(cufftComplex), cStack->height), "Failed to allocate device memory for kernel stack.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses kernel stride.");
+
+          stkLst->plnDataSize   += cStack->stride * cStack->height;             // At this point stride is still in bytes
+          stkLst->inpDataSize   += cStack->stride * cStack->noInStack;          // At this point stride is still in bytes
+          if ( stkLst->flag & FLAG_CNV_1KER )
+            stkLst->kerDataSize += cStack->stride * cStack->harmInf[0].height;  // At this point stride is still in bytes
+          else
+            stkLst->kerDataSize += cStack->stride * cStack->height;             // At this point stride is still in bytes
+          cStack->stride        /= sizeof(cufftComplex);                        // Set stride to number of complex numbers rather that bytes
+
+          CUDA_SAFE_CALL(cudaFree(cStack->d_kerData), "Failed to free CUDA memory.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
+
+          prev                  += cStack->noInStack;
         }
-        
-        for (int j = 0; j< cStack->noInStack; j++)
-        {
-          cStack->zDn[j]      = ( cStack->harmInf[0].height ) - cStack->zUp[cStack->noInStack - 1 - j ];
-        }
-
-        // Allocate temporary device memory to asses stride
-        CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_kerData, &cStack->stride, cStack->width * sizeof(cufftComplex), cStack->height), "Failed to allocate device memory for kernel stack.");
-        CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses kernel stride.");
-
-        stkLst->plnDataSize   += cStack->stride * cStack->height;             // At this point stride is still in bytes
-        stkLst->inpDataSize   += cStack->stride * cStack->noInStack;          // At this point stride is still in bytes
-        if ( stkLst->flag & FLAG_CNV_1KER )
-          stkLst->kerDataSize += cStack->stride * cStack->harmInf[0].height;  // At this point stride is still in bytes
-        else
-          stkLst->kerDataSize += cStack->stride * cStack->height;             // At this point stride is still in bytes
-        cStack->stride        /= sizeof(cufftComplex);                        // Set stride to number of complex numbers rather that bytes
-
-        CUDA_SAFE_CALL(cudaFree(cStack->d_kerData), "Failed to free CUDA memory.");
-        CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
-
-        prev                  += cStack->noInStack;
-      }      
+      }
+    }
+    else
+    {
+      // Set up the pointers of each stack
+      for (int i = 0; i< stkLst->noStacks; i++)
+      {
+        cuFfdotStack* cStack              = &stkLst->stacks[i];
+        cStack->kernels                   = &stkLst->kernels[cStack->startIdx];
+        cStack->harmInf                   = &stkLst->hInfos[cStack->startIdx];
+      }
     }
   }
   
@@ -1922,7 +1935,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
           cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->stride*(int)fDiff];
         }
         else
-          cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->startR[j]* cStack->stride];
+          cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->startR[j]*cStack->stride];
 
         cStack->kernels[j].harmInf      = &cStack->harmInf[j];
       }   
@@ -1936,7 +1949,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
 
   FOLD // Initialise the convolution kernels
   {
-    if (master == NULL )
+    if (master == NULL )  // Create the kernrls
     {
       // Run message
       CUDA_SAFE_CALL(cudaGetLastError(), "Error before creating GPU kernels");
@@ -2101,7 +2114,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         }
       }
     }
-    else
+    else                  // Copy kernrls from master device
     {
       CUDA_SAFE_CALL(cudaMemcpyPeer(stkLst->d_kerData, stkLst->device, master->d_kerData, master->device, master->kerDataSize ), "Copying convolution kernels between devices.");
     }
@@ -2397,7 +2410,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
           memset(stkLst->h_candidates, 0, fullCands*sizeof(cand) );
         }
       }
-      else if ( stkLst->flag & CU_CAND_SINGLE_C )
+      else if ( stkLst->flag & CU_CAND_SINGLE_C == CU_CAND_SINGLE_C )
       {
       }
       else

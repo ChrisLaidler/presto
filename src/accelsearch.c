@@ -132,23 +132,7 @@ int main(int argc, char *argv[])
    printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
    printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
-   
-   subharminfo **subharminfs;
-   
-   /* Generate the correlation kernels */
-   
-   printf("Generating correlation kernels:\n");
-   subharminfs = create_subharminfos(&obs);
-   printf("Done generating kernels.\n\n");
-   printf("Starting the search.\n");
-   /* Don't use the *.txtcand files on short in-memory searches */
-   if (!obs.dat_input) {
-     printf("  Working candidates in a test format are in '%s'.\n\n",
-            obs.workfilenm);
-   }
-   
-   
-   
+
    /* Start the main search loop */
 
    FOLD // the main loop
@@ -158,15 +142,25 @@ int main(int argc, char *argv[])
 
       if ( cmd->cpuP )
       {
-        
+        subharminfo **subharminfs;
 
 #ifdef CUDA
         nvtxRangePush("CPU");
         gettimeofday(&start, NULL); // Note could start the timer after kernel init
 #endif
-        
-        
 
+        /* Generate the correlation kernels */
+        
+        printf("Generating correlation kernels:\n");
+        subharminfs = create_subharminfos(&obs);
+        printf("Done generating kernels.\n\n");
+        printf("Starting the search.\n");
+        /* Don't use the *.txtcand files on short in-memory searches */
+        if (!obs.dat_input) {
+          printf("  Working candidates in a test format are in '%s'.\n\n",
+                 obs.workfilenm);
+        }
+        
         printf("\n------------------------\nDoing CPU Search\n------------------------\n");
         
         print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
@@ -234,20 +228,18 @@ int main(int argc, char *argv[])
 #endif
       } 
       
-#ifdef CUDA
+//#ifdef CUDA
       if ( cmd->gpuP >= 0)
       {
         candsGPU = NULL; 
         
         int noHarms = (1 << (obs.numharmstages - 1));
         
-        if ( 1 )
+        FOLD
         {
-          //cuS = createStacks(obs.numharmstages, obs.zhi, &obs);
-          
-          //CUDA_SAFE_CALL(cudaDeviceReset(),"Resetting device");
-          //cudaDeviceReset();
-          //cudaSetDevice(1);
+          cudaDeviceSynchronize();          // This is only necessary for timing
+          gettimeofday(&start, NULL);       // Profiling
+          cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
           
           printf("\n------------------------\nDoing GPU Search 2\n------------------------\n"); 
           
@@ -257,7 +249,7 @@ int main(int argc, char *argv[])
           
           if ( cmd->gpuP ) // Determine the index and number of devices
           { 
-            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == requires
+            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a chage in accelsearch_cmd every time clig is run!!!!
             {
               // Make a list of all devices
               cmd->gpuC = getGPUCount();
@@ -287,7 +279,7 @@ int main(int argc, char *argv[])
                 no = cmd->nplains[dev];
               
               if ( dev >= cmd->nplainsC )
-                noSteps = cmd->nsteps[cmd->nstepsC-1];
+                noSteps = cmd->nsteps[cmd->nplainsC-1];
               else
                 noSteps = cmd->nsteps[dev];
               
@@ -348,11 +340,6 @@ int main(int argc, char *argv[])
           
           omp_set_num_threads(nPlains);
           
-          cudaDeviceSynchronize();          // This is only necessary for timing
-          gettimeofday(&start, NULL);       // Profiling
-          cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
-
-
           int harmtosum, harm;
           startr = obs.rlo, lastr = 0, nextr = 0;
           
@@ -367,7 +354,7 @@ int main(int argc, char *argv[])
           if ( maxxx < 0 )
             maxxx = 0;
           
-          #pragma omp parallel
+          //#pragma omp parallel
           {
             int tid = omp_get_thread_num();
             
@@ -497,10 +484,8 @@ int main(int argc, char *argv[])
           //printCands("GPU_Cands.csv", candsGPU);
         }
       }
-      
-      
 
-#endif
+//#endif
    }
 
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
