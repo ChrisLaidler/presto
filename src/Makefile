@@ -98,7 +98,7 @@ LINKCOMMAND2 = ar rcs
 # -gencode arch=compute_50,code=sm_50
 ARCH=-gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35 -gencode arch=compute_50,code=sm_50
 NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m64 -I/usr/local/cuda/include  -I$(HOME)/local/include
-NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lcufft -lnvToolsExt -Xcompiler -fopenmp -lpngwritermake -lpng -lfreetype -lglut $(ARCH) \
+NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lcufft -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) \
 -L$(HOME)/local/lib
 NVCCFLAGS += `freetype-config --cflags` `freetype-config --libs`
 
