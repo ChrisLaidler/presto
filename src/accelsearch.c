@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 #endif
       } 
       
-//#ifdef CUDA
+#ifdef CUDA
       if ( cmd->gpuP >= 0)
       {
         candsGPU = NULL; 
@@ -354,7 +354,7 @@ int main(int argc, char *argv[])
           if ( maxxx < 0 )
             maxxx = 0;
           
-          //#pragma omp parallel
+          #pragma omp parallel
           {
             int tid = omp_get_thread_num();
             
@@ -485,7 +485,7 @@ int main(int argc, char *argv[])
         }
       }
 
-//#endif
+#endif
    }
 
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
