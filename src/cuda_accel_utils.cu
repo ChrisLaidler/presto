@@ -1468,7 +1468,8 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
   cy = blockDim.y * blockIdx.y + threadIdx.y;// use BLOCKSIZE rather (its constant)
 
   float z = maxZ - cy * ACCEL_DZ;   /// The Fourier Frequency derivative
-  if (z < -maxZ || (cx < fftlen && cx >= 0) )
+
+  if (z < -maxZ || cx >= fftlen || cx < 0 )
   {
     // Out of bounds
     return;
@@ -1529,7 +1530,7 @@ __global__ void init_kernels_stack(float2* response, const int stack, const int 
   cx = blockDim.x * blockIdx.x + threadIdx.x;// use BLOCKSIZE rather (its constant)
   cy = blockDim.y * blockIdx.y + threadIdx.y;// use BLOCKSIZE rather (its constant)
 
-  if (cy >= maxZa.height || (cx < fftlen && cx >= 0) )
+  if ( cy >= maxZa.height || cx >= fftlen || cx < 0 )
   {
     // Out of bounds
     return;

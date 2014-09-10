@@ -220,7 +220,9 @@ int main(int argc, char *argv[])
         printf("cupTime %f", cupTime/1000.0);
         cands = candsCPU;
         
+//#ifndef DEBUG
         //printCands("CPU_Cands.csv", candsCPU);
+//#endif
         
         nvtxRangePop();
 
@@ -481,7 +483,9 @@ int main(int argc, char *argv[])
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
           cands = candsGPU;
           
+//#ifndef DEBUG
           //printCands("GPU_Cands.csv", candsGPU);
+//#endif
         }
       }
 

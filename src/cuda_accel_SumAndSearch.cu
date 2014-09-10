@@ -1848,7 +1848,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 #if TEMPLATE_SEARCH == 1
     accelcandBasic candLists[noStages*noSteps ];
 #else
-    accelcandBasic candLists[noStages*10 ];
+    accelcandBasic candLists[noStages*MAX_STEPS ];
 #endif
 
     int start   = 0;
@@ -1879,20 +1879,21 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
           candLists[i*noSteps + step ].sigma = 0;
 
           if ( FLAGS_STORE & CU_CAND_SINGLE_G )
+          {
             d_cands[i*noSteps*width + step*width + tid ].sigma = 0;
+          }
         }
       }
     }
 
-    if  ( noStages >= 1 )
+    FOLD
     {
       const int nPowers = (noStages)*2;   // The number of powers to batch calculate together, *2 is a "random choice it would be this or noHarms
 #if TEMPLATE_SEARCH == 1
-      float powers[noSteps][nPowers];              // registers to hold values to increase mem cache hits
+      float powers[noSteps][nPowers];          // registers to hold values to increase mem cache hits
 #else
-      float powers[10][nPowers];              // registers to hold values to increase mem cache hits
+      float powers[MAX_STEPS][nPowers];        // registers to hold values to increase mem cache hits
 #endif
-
       int y;
       for( y = 0; y < searchList.heights.val[0] - nPowers ; y+= nPowers )
       {
@@ -1955,7 +1956,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
               {
 
                 // Calculate y indice
-                if ( FLAGS & FLAG_STP_ROW )
+                if      ( FLAGS & FLAG_STP_ROW )
                 {
                   iy  = ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step);
                 }
@@ -1963,7 +1964,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
                 {
                   iy  = ( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step) ;
                 }
-
 
                 if  ( (FLAGS & FLAG_PLN_TEX ) )
                 {
@@ -1975,60 +1975,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
                   const fcomplexcu cmpc  = searchList.datas.val[harm][iy*searchList.strides.val[harm]+inds[harm]];
                   powers[step][i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                 }
-
-                /*
-                if  ( (FLAGS & FLAG_PLN_TEX ) )
-                {
-                  // Calculate y indice
-                   if ( FLAGS & FLAG_STP_ROW )
-                   {
-                     //iy  = ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step);
-                     const float2 cmpf = tex2D < float2 > (searchList.texs.val[harm], inds[harm], ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step) );
-                     powers[step][i] += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
-
-                   }
-                   else if ( FLAGS & FLAG_STP_PLN )
-                   {
-                     //iy  = ( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step) ;
-                     const float2 cmpf = tex2D < float2 > (searchList.texs.val[harm], inds[harm], ( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step)  );
-                     powers[step][i] += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
-                   }
-                }
-                else
-                {
-                  // Calculate y indice
-                   if ( FLAGS & FLAG_STP_ROW )
-                   {
-                     //iy  = ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step);
-                     const fcomplexcu cmpc  = searchList.datas.val[harm][( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step)*searchList.strides.val[harm]+inds[harm]];
-                     powers[step][i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-
-                   }
-                   else if ( FLAGS & FLAG_STP_PLN )
-                   {
-                     //iy  = ( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step) ;
-                     const fcomplexcu cmpc  = searchList.datas.val[harm][( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step)*searchList.strides.val[harm]+inds[harm]];
-                     powers[step][i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                   }
-
-                  //const fcomplexcu cmpc  = searchList.datas.val[harm][iy*searchList.strides.val[harm]+inds[harm]];
-                  //powers[step][i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                }
-                */
-
-                /*
-
-              if  ( (FLAGS_TEX & FLAG_PLN_TEX ) )
-              {
-                const float2 cmpf = tex2D < float2 > (searchList.texs.val[harm], inds[harm], YINDS[searchList.yInds.val[harm]+y+i]);
-                powers[i] += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
-              }
-              else
-              {
-                const fcomplexcu cmpc  = searchList.datas.val[harm][YINDS[searchList.yInds.val[harm]+y+i]*searchList.strides.val[harm]+inds[harm]];
-                powers[i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-              }
-                 */
               }
             }
           }
@@ -2044,11 +1990,10 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             {
               if  (  powers[step][i] >  POWERCUT[stage] )
               {
-                //if ( lPwer > candLists[stage].sigma )
                 if ( powers[step][i] > candLists[stage*noSteps + step].sigma )
                 {
                   candLists[stage*noSteps + step].sigma  = powers[step][i];
-                  candLists[stage*noSteps + step].z      = y;
+                  candLists[stage*noSteps + step].z      = y+i;
                 }
               }
             }
@@ -2118,7 +2063,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
                 if ( i + y < searchList.heights.val[0])
                 {
                   // Calculate y indice
-                  if ( FLAGS & FLAG_STP_ROW )
+                  if      ( FLAGS & FLAG_STP_ROW )
                   {
                     iy  = ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step);
                   }
@@ -2137,19 +2082,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
                     const fcomplexcu cmpc  = searchList.datas.val[harm][iy*searchList.strides.val[harm]+inds[harm]];
                     powers[step][i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                   }
-
-                  /*
-                if  ( ( FLAGS_TEX & FLAG_PLN_TEX ) )
-                {
-                  const float2 cmpf = tex2D < float2 > (searchList.texs.val[harm], inds[harm], YINDS[searchList.yInds.val[harm]+y+i]);
-                  powers[i] += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
-                }
-                else
-                {
-                  const fcomplexcu cmpc  = searchList.datas.val[harm][YINDS[searchList.yInds.val[harm]+y+i]*searchList.strides.val[harm]+inds[harm]];
-                  powers[i] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                }
-                   */
                 }
               }
 
@@ -2168,11 +2100,10 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             {
               if  (  powers[step][i] >  POWERCUT[stage] )
               {
-                //if ( lPwer > candLists[stage].sigma )
                 if ( powers[step][i] > candLists[stage*noSteps + step].sigma )
                 {
                   candLists[stage*noSteps + step].sigma  = powers[step][i];
-                  candLists[stage*noSteps + step].z      = y;
+                  candLists[stage*noSteps + step].z      = y+i;
                 }
               }
             }
@@ -2181,110 +2112,9 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
         }
       }
     }
-    else
-    {
-/*
-#if TEMPLATE_SEARCH == 1
-      float lPwer[noSteps];
-#else
-      float lPwer[10];
-#endif
-      int y;
-      for( y = 0; y < searchList.heights.val[0] ; y++ )       // Loop over column
-      {
-        // Initialise powers to 0
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
-        for ( int step = 0; step < noSteps; step++)           // Loop over steps
-          lPwer[step] = 0;
-
-#pragma unroll
-        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over Stages
-        {
-          if      ( stage == 0 )
-          {
-            start = 0;
-            end = 1;
-          }
-          else if ( stage == 1 )
-          {
-            start = 1;
-            end = 2;
-          }
-          else if ( stage == 2 )
-          {
-            start = 2;
-            end = 4;
-          }
-          else if ( stage == 3 )
-          {
-            start = 4;
-            end = 8;
-          }
-          else if ( stage == 4 )
-          {
-            start = 8;
-            end = 16;
-          }
-
-          // Sum all parts of this stage
-#pragma unroll
-          for ( int harm = start; harm < end; harm++ )
-          {
-
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
-            for ( int step = 0; step < noSteps; step++)         // Loop over steps
-            {
-              //iy            = getY<FLAGS_LAYOUT>(YINDS[searchList.yInds.val[harm]+y], noSteps, step, searchList.heights.val[harm] );
-              //lPwer[step]   += getPower<FLAGS_TEX>( inds[harm], iy, searchList.texs.val[harm], searchList.datas.val[harm], searchList.strides.val[harm]);
-
-              // Calculate y indice
-              if ( FLAGS & FLAG_STP_ROW )
-              {
-                iy  = ( YINDS[searchList.yInds.val[harm]+y] * noSteps + step);
-              }
-              else if ( FLAGS & FLAG_STP_PLN )
-              {
-                iy  = ( YINDS[searchList.yInds.val[harm]+y] + searchList.heights.val[harm]*step) ;
-              }
 
 
-              if  ( (FLAGS & FLAG_PLN_TEX ) )
-              {
-                const float2 cmpf = tex2D < float2 > (searchList.texs.val[harm], inds[harm], iy);
-                lPwer[step] += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
-              }
-              else
-              {
-                const fcomplexcu cmpc  = searchList.datas.val[harm][iy*searchList.strides.val[harm]+inds[harm]];
-                lPwer[step] += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-              }
-
-            }
-          }
-
-          // Store if greater than the current maximum for this stage
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
-          for ( int step = 0; step < noSteps; step++)         // Loop over steps
-          {
-            if  ( lPwer[step] >  POWERCUT[stage] )
-            {
-              if ( lPwer[step] > candLists[stage*noSteps + step].sigma )
-              {
-                candLists[stage*noSteps + step].sigma  = lPwer[step];
-                candLists[stage*noSteps + step].z      = y;
-              }
-            }
-          }
-        }
-      }
-*/
-    }
+    //printf("Found caidate stage 0 power %f \n", candLists[0*noSteps + 0].sigma );
 
     // Write results back to DRAM and calculate sigma if needed
     if      ( FLAGS_STORE & CU_CAND_DEVICE   )
@@ -2335,8 +2165,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 #endif
         for ( int step = 0; step < noSteps; step++)         // Loop over steps
         {
-
-          //if ( candLists[stage].sigma > 0 )
           if  ( candLists[stage*noSteps + step].sigma >  POWERCUT[stage] )
           {
             const short numharm = ( 1 << stage );
