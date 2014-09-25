@@ -21,6 +21,7 @@
 #define   MAX_IN_STACK  10              /// NOTE: this is 1 to big to handle the init problem
 #define   MAX_HARM_NO   16              /// The maximum number of harmonics handled by a accel search
 #define   MAX_YINDS     16000           /// The maximum number of y indices to store in constant memory
+#define   MAX_STEPS     8               /// The maximum number of steps
 
 //======================================== Debug Defines  ================================================\\
 
@@ -159,19 +160,19 @@ typedef struct cuKernel
 
 typedef struct cuFFdot
 {
-    cuHarmInfo* harmInf;        /// A pointer to the harmonic information for this plains
-    cuKernel* kernel;           /// A pointer to the kernel for this plain
+    cuHarmInfo* harmInf;            /// A pointer to the harmonic information for this plains
+    cuKernel* kernel;               /// A pointer to the kernel for this plain
 
-    fcomplexcu* d_plainData;    /// A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
-    fCplxTex datTex;            /// A texture holding the kernel data
+    fcomplexcu* d_plainData;        /// A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
+    fCplxTex datTex;                /// A texture holding the kernel data
 
-    fcomplexcu* d_iData;        /// A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
-    size_t numInpData;          /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
+    fcomplexcu* d_iData;            /// A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
-    int fullRLow;               /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    int rLow;                   /// The low r value of the plain at input fft
-    int searchRlow;             /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    int ffdotPowWidth;          /// The width of the final f-∂f plain
+    size_t numInpData[MAX_STEPS];   /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
+    float fullRLow[MAX_STEPS];      /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
+    float rLow[MAX_STEPS];          /// The low r value of the plain at input fft
+    float searchRlow[MAX_STEPS];    /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
+    int ffdotPowWidth[MAX_STEPS];   /// The width of the final f-∂f plain
 
 } cuFFdot;
 
