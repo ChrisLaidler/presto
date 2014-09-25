@@ -1820,7 +1820,6 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
           }
         }
 
-
         // Multi-step data layout method
         stkLst->flag |= FLAG_STP_ROW ;    //   FLAG_STP_ROW   or    FLAG_STP_PLN
 
@@ -3268,36 +3267,36 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
   FOLD // Copy raw input fft data to device
   {
     // Write data to page locked memory
-    for (int ss = 0; ss< plains->noStacks; ss++)
+    for (int ss = 0; ss < plains->noStacks; ss++)
     {
       cuFfdotStack* cStack = &plains->stacks[ss];
 
-      for (int si = 0; si< cStack->noInStack; si++)
+      for (int si = 0; si < cStack->noInStack; si++)
       {
         cuHarmInfo* cHInfo  = &plains->hInfos[harm];      // The current harmonic we are working on
 
-        for (int step = 0; step< plains->noSteps; step++)
+        for (int step = 0; step < plains->noSteps; step++)
         {
-          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[step]);
-          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[step] );
+          drlo      = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[step]);
+          drhi      = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[step] );
 
           binoffset = cHInfo->halfWidth;
-          lobin = (int) floor(drlo) - binoffset;
-          hibin = (int) ceil(drhi)  + binoffset;
-          numdata = hibin - lobin + 1;
+          lobin     = (int) floor(drlo) - binoffset;
+          hibin     = (int) ceil(drhi)  + binoffset;
+          numdata   = hibin - lobin + 1;
 
-          numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+          numrs     = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
           if (harm == 0)
-            numrs = plains->accelLen;
+            numrs   = plains->accelLen;
           else if (numrs % ACCEL_RDR)
-            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+            numrs   = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
           int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
           if (numrs < numtocopy)
             numtocopy = numrs;
 
           int start = 0;
           if (lobin < 0 )
-            start = -lobin;
+            start   = -lobin;
 
           nice_numdata = next2_to_n(numdata);  // for FFTs
 
@@ -3400,35 +3399,36 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
   nvtxRangePop();
 }
 
-void setStackRVals(cuStackList* plains, double searchRLow, double searchRHi)
+void setStackRVals(cuStackList* plains, double* searchRLow, double* searchRHi)
 {
   int       lobin, hibin, binoffset, numdata, numrs;
   double    drlo, drhi;
   int harm = 0;
 
-  plains->searchRLow = searchRLow;
+  for (int step = 0; step< plains->noSteps; step++)
+  {
+    //plains->searchRLow[step] = searchRLow[step];
+  }
 
   FOLD // Copy raw input fft data to device
   {
-    // Write data to page locked memory
-    for (int ss = 0; ss< plains->noStacks; ss++)
+    for (int harm = 0; harm < plains->noHarms; harm++)
     {
-      cuFfdotStack* cStack = &plains->stacks[ss];
+      cuHarmInfo* cHInfo    = &plains->hInfos[harm];      // The current harmonic we are working on
+      cuFFdot* cPlain       = &plains->plains[harm];      //
 
-      for (int si = 0; si< cStack->noInStack; si++)
+      binoffset             = cHInfo->halfWidth;
+
+      for (int step = 0; step< plains->noSteps; step++)
       {
-        cuHarmInfo* cHInfo      = &plains->hInfos[harm];    // The current harmonic we are working on
-        cuFFdot* cPlain         = &plains->plains[harm];    //
+        drlo                = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[step]);
+        drhi                = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[step] );
 
-        drlo                    = calc_required_r_gpu(cHInfo->harmFrac, searchRLow);
-        drhi                    = calc_required_r_gpu(cHInfo->harmFrac, searchRHi);
+        lobin               = (int) floor(drlo) - binoffset;
+        hibin               = (int) ceil(drhi)  + binoffset;
 
-        binoffset               = cHInfo->halfWidth;
-        lobin                   = (int) floor(drlo) - binoffset;
-        hibin                   = (int) ceil(drhi)  + binoffset;
-
-        numdata                 = hibin - lobin + 1;
-        numrs                   = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+        numdata             = hibin - lobin + 1;
+        numrs               = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
 
         if (harm == 0)
           numrs = plains->accelLen;
@@ -3438,12 +3438,10 @@ void setStackRVals(cuStackList* plains, double searchRLow, double searchRHi)
         if (numrs < numtocopy)
           numtocopy = numrs;
 
-        cPlain->ffdotPowWidth   = numtocopy;
-        cPlain->fullRLow        = lobin;
-        cPlain->rLow            = drlo;
-        cPlain->numInpData      = numdata;
-
-        harm++;
+        cPlain->ffdotPowWidth[step]   = numtocopy;
+        cPlain->fullRLow[step]        = lobin;
+        cPlain->rLow[step]            = drlo;
+        cPlain->numInpData[step]      = numdata;
       }
     }
   }
@@ -3860,7 +3858,7 @@ int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, i
   //printfData<<<1,1,0,0>>>((float*)plains->kernels[0].data,15,3,plains->hInfos[0].stride*2);
 
   // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
-  setStackRVals(plains, searchRLow[0], searchRHi[0]);
+  setStackRVals(plains, searchRLow, searchRHi);
 
   //return cands;
 }

@@ -14,13 +14,8 @@
 #include "accel.h"
 
 
-#define   MAX_STEPS         8
-
-#define   TEMPLATE_CONVOLVE 1
-#define   TEMPLATE_SEARCH   1
-
-
-
+#define   TEMPLATE_CONVOLVE 0
+#define   TEMPLATE_SEARCH   0
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
@@ -192,6 +187,102 @@ typedef struct cuSearchList
 
     double     searchRLow;      /// The value of the r bin to start the search at
 } cuSearchList;
+
+typedef struct cuSearchItem
+{
+    fCplxTex tex;         ///
+    fcomplexcu* data;     ///
+    int yInd;             ///
+    float frac;           ///
+    int height;           ///
+    int width;            ///
+    int stride;           ///
+    int ffdBuffre;        ///
+    int zMax;             ///
+
+    //int fullRLow;       ///
+    //int rLow;           ///
+
+    //float idxSum;
+
+    //double     searchRLow;      /// The value of the r bin to start the search at
+} cuSearchItem;
+
+
+//typedef  cuSearchItem[2]  schb;
+//typedef  cuSearchItem[4]  sch4;
+//typedef  cuSearchItem[8]  sch8;
+//typedef  cuSearchItem[16] sch16;
+
+typedef struct sch1
+{
+    cuSearchItem arry[1];
+} sch1;
+
+typedef struct sch2
+{
+    cuSearchItem arry[2];
+} sch2;
+
+typedef struct sch4
+{
+    cuSearchItem arry[4];
+} sch4;
+
+typedef struct sch8
+{
+    cuSearchItem arry[8];
+} sch8;
+
+typedef struct sch16
+{
+    cuSearchItem arry[16];
+} sch16;
+
+typedef struct f01
+{
+     float arry[1];
+} f01;
+
+typedef struct f02
+{
+     float arry[2];
+} f02;
+
+typedef struct f03
+{
+     float arry[3];
+} f03;
+
+typedef struct f04
+{
+     float arry[4];
+} f04;
+
+typedef struct f05
+{
+     float arry[5];
+} f05;
+
+typedef struct f06
+{
+     float arry[6];
+} f06;
+
+typedef struct f07
+{
+     float arry[7];
+} f07;
+
+typedef struct f08
+{
+     float arry[8];
+} f08;
+
+typedef struct fMax
+{
+     float arry[MAX_STEPS];
+} fMax;
 
 typedef struct cuFfdot10
 {

@@ -221,7 +221,7 @@ int main(int argc, char *argv[])
         cands = candsCPU;
         
 //#ifndef DEBUG
-        //printCands("CPU_Cands.csv", candsCPU);
+        printCands("CPU_Cands.csv", candsCPU);
 //#endif
         
         nvtxRangePop();
@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
 #endif
       } 
       
-#ifdef CUDA
+//#ifdef CUDA
       if ( cmd->gpuP >= 0)
       {
         candsGPU = NULL; 
@@ -284,10 +284,9 @@ int main(int argc, char *argv[])
                 noSteps = cmd->nsteps[cmd->nplainsC-1];
               else
                 noSteps = cmd->nsteps[dev];
-              
-              
+
               added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
-              if ( added && master == NULL )
+              if ( added && (master == NULL) )
               {
                 master = &kernels[0];
               }       
@@ -336,7 +335,7 @@ int main(int argc, char *argv[])
                 }
               }
             }
-          } 
+          }
           
           printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", noSteps, noKers);
           
@@ -348,7 +347,6 @@ int main(int argc, char *argv[])
           print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
           
           int ss = 0;
-          //while (startr + harms->accelLen * ACCEL_DR < obs.highestbin)
           int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
           
           float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
@@ -356,7 +354,7 @@ int main(int argc, char *argv[])
           if ( maxxx < 0 )
             maxxx = 0;
           
-          #pragma omp parallel
+          //#pragma omp parallel
           {
             int tid = omp_get_thread_num();
             
@@ -396,11 +394,18 @@ int main(int argc, char *argv[])
               print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
             }
             
+            int si;
+            for ( si = 0; si < trdStack->noSteps ; si ++)
+            {
+              startrs[si] = 0;
+              lastrs[si]  = 0;
+            }
+
             // Finish searching the plains, this is required because of the out of order asynchronous calls
             int pln;
             for ( pln = 0 ; pln < 2; pln++ )
             {
-              //ffdot_planeCU3(trdStack, 0, 0, obs.norm_type, search, obs.fft, &obs, &candsGPU);
+              ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
             }
           }
           
@@ -484,12 +489,12 @@ int main(int argc, char *argv[])
           cands = candsGPU;
           
 //#ifndef DEBUG
-          //printCands("GPU_Cands.csv", candsGPU);
+          printCands("GPU_Cands.csv", candsGPU);
 //#endif
         }
       }
 
-#endif
+//#endif
    }
 
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");

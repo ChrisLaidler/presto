@@ -1171,9 +1171,9 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
         {
           // NOTE convolveffdot41 seams fatser and has been adapted for multi-step so now using it
           // Will have to put in some flag to call convolveffdot41 if desired
-          convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->stride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
+          //convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->stride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
 
-          //convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->stride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
+          convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->stride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
         }
         else
         {
