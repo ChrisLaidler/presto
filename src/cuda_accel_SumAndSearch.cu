@@ -1857,8 +1857,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
     int end     = 0;
     int iy;
 
-
-
     FOLD // Prep
     {
       // Initialise the x indices of this thread
