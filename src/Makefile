@@ -251,7 +251,7 @@ mpiprepsubband.o: mpiprepsubband.c
 mpiprepsubband: mpiprepsubband_cmd.c mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS)
 	mpicc $(CLINKFLAGS) -o $(PRESTO)/bin/$@ mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-accelsearch: accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o
+accelsearch: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o
 	$(NVCC) $(NVCLFLAGS) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
 
 bary: bary.o

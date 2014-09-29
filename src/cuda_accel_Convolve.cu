@@ -440,37 +440,37 @@ __host__ void convolveffdot41_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_
   switch (noSteps)
   {
   case 1:
-    convolveffdot41<FLAGS,noPlns,1><<<dimBlock,  dimGrid, i1, cnvlStream >>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,1><<<dimGrid,  dimBlock, i1, cnvlStream >>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
     break;
   case 2:
-    convolveffdot41<FLAGS,noPlns,2> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,2> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   case 3:
-    convolveffdot41<FLAGS,noPlns,3> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,3> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   case 4:
-    convolveffdot41<FLAGS,noPlns,4> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,4> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   case 5:
-    convolveffdot41<FLAGS,noPlns,5> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,5> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   case 6:
-    convolveffdot41<FLAGS,noPlns,6> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,6> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   case 7:
-    convolveffdot41<FLAGS,noPlns,7> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,7> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   case 8:
-    convolveffdot41<FLAGS,noPlns,8> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+    convolveffdot41<FLAGS,noPlns,8> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
   //case 9:
-  //  convolveffdot41<FLAGS,noPlns,9> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+  //  convolveffdot41<FLAGS,noPlns,9> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
   //    break;
   //case 10:
-  //  convolveffdot41<FLAGS,noPlns,10> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+  //  convolveffdot41<FLAGS,noPlns,10> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
   //    break;
   //case 11:
-  //  convolveffdot41<FLAGS,noPlns,11> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
+  //  convolveffdot41<FLAGS,noPlns,11> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
   //    break;
   default:
     fprintf(stderr, "ERROR: convolveffdot41 has not been templated for %i steps\n", noSteps);
@@ -478,7 +478,7 @@ __host__ void convolveffdot41_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_
   }
 
 #else
-  convolveffdot41<FLAGS,noPlns> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps);
+  convolveffdot41<FLAGS,noPlns> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps);
 #endif
 }
 
@@ -1009,47 +1009,47 @@ __host__ void convolveffdot7_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t
   switch (noSteps)
   {
   case 1:
-    convolveffdot7<FLAGS,noPlns,1><<<dimBlock,  dimGrid, i1, cnvlStream >>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,1><<<dimGrid,  dimBlock, i1, cnvlStream >>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
     break;
   case 2:
-    convolveffdot7<FLAGS,noPlns,2> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,2> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 3:
-    convolveffdot7<FLAGS,noPlns,3> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,3> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 4:
-    convolveffdot7<FLAGS,noPlns,4> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,4> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 5:
-    convolveffdot7<FLAGS,noPlns,5> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,5> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 6:
-    convolveffdot7<FLAGS,noPlns,6> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,6> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 7:
-    convolveffdot7<FLAGS,noPlns,7> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,7> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 8:
-    convolveffdot7<FLAGS,noPlns,8> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+    convolveffdot7<FLAGS,noPlns,8> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   //case 9:
-  //  convolveffdot7<FLAGS,noPlns,9> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+  //  convolveffdot7<FLAGS,noPlns,9> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
   //    break;
   //case 10:
-  //  convolveffdot7<FLAGS,noPlns,10> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+  //  convolveffdot7<FLAGS,noPlns,10> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
    //   break;
   //case 11:
-  //  convolveffdot7<FLAGS,noPlns,11> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+  //  convolveffdot7<FLAGS,noPlns,11> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
   //    break;
   //case MAX_STEPS:
-  //  convolveffdot7<FLAGS,noPlns,MAX_STEPS> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
+  //  convolveffdot7<FLAGS,noPlns,MAX_STEPS> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
   //    break;
   default:
     fprintf(stderr, "ERROR: convolveffdot7 has not been templated for %i steps\n", noSteps);
     exit(EXIT_FAILURE);
   }
 #else
-  convolveffdot7<FLAGS,noPlns> <<<dimBlock,  dimGrid, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps);
+  convolveffdot7<FLAGS,noPlns> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps);
 #endif
 }
 

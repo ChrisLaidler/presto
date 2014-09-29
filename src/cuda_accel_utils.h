@@ -25,7 +25,7 @@
 #define   CU_MAX_BLOCK_SIZE   2048            //  2K FFT's
 //#define   CU_MAX_BLOCK_SIZE   4096          //  4K FFT's
 //#define   CU_MAX_BLOCK_SIZE   8192          //  8K FFT's
-//#define   CU_MAX_BLOCK_SIZE   16384           // 16K FFT's
+//#define   CU_MAX_BLOCK_SIZE   16384         // 16K FFT's
 //#define   CU_MAX_BLOCK_SIZE   32768         // 32K FFT's
 
 #define BS_MAX          (CU_MAX_BLOCK_SIZE/2) // BITonic sort max number of elements
