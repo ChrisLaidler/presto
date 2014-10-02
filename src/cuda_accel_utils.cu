@@ -1821,16 +1821,17 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         }
 
         // Multi-step data layout method
-        stkLst->flag |= FLAG_STP_ROW ;    //   FLAG_STP_ROW   or    FLAG_STP_PLN
+        stkLst->flag |= FLAG_STP_ROW ;          //  FLAG_STP_ROW   or    FLAG_STP_PLN
 
         // Convolution flags
-        //stkLst->flag |= FLAG_CNV_TEX;     // Use texture memory to access the kernel for convolution - May give advantge on pre-Fermi generation which we dont really care about
-        stkLst->flag |= FLAG_CNV_1KER;    // Create a minimal kernel (exploit overlap in stacks)
-        stkLst->flag |= FLAG_CNV_STK;     // FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
+        //stkLst->flag |= FLAG_CNV_TEX;         // Use texture memory to access the kernel for convolution - May give advantge on pre-Fermi generation which we dont really care about
+        stkLst->flag |= FLAG_CNV_1KER;          // Create a minimal kernel (exploit overlap in stacks)  This should always be the case
+        //stkLst->flag |= FLAG_CNV_OVLP;        // Use the overlap kernel
+        stkLst->flag |= FLAG_CNV_STK;           //  FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
 
         // Sum and Search Flags
-        //stkLst->flag |= FLAG_PLN_TEX;     // Use texture memory to access the d-∂d plains during sum and search (non interpolation methoud) - May give advantge on pre-Fermi generation which we dont really care about
-        //stkLst->flag |= FLAG_SAS_SIG;     // Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+        //stkLst->flag |= FLAG_PLN_TEX;         // Use texture memory to access the d-∂d plains during sum and search (non interpolation methoud) - May give advantge on pre-Fermi generation which we dont really care about
+        //stkLst->flag |= FLAG_SAS_SIG;         // Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
         // How to handle input and output
         stkLst->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
@@ -2534,11 +2535,11 @@ cuStackList* initPlains(cuStackList* harms, int no, int of)
         }
         else
         {
-          CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_bCands, stkLst->accelLen*stkLst->noHarmStages*sizeof(accelcandBasic)*stkLst->noSteps ), "Failed to allocate device memory for candidates.");
+          CUDA_SAFE_CALL(cudaMalloc((void** ) &stkLst->d_bCands, stkLst->accelLen*stkLst->noHarmStages*stkLst->noSteps*sizeof(accelcandBasic) ), "Failed to allocate device memory for candidates.");
         }
 
         // Create page-locked memory to copy the candidates back to
-        CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_bCands, stkLst->accelLen*stkLst->noHarmStages*sizeof(accelcandBasic)*stkLst->noSteps),"");
+        CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_bCands, stkLst->accelLen*stkLst->noHarmStages*stkLst->noSteps*sizeof(accelcandBasic)),"");
         memset(stkLst->h_bCands, 0, stkLst->accelLen*stkLst->noHarmStages*sizeof(accelcandBasic)*stkLst->noSteps );
       }
       else if ( stkLst->flag & CU_CAND_HOST )
@@ -3449,6 +3450,8 @@ void setStackRVals(cuStackList* plains, double* searchRLow, double* searchRHi)
   
 int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands)
 {
+  cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
   CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
 
   if ( searchRLow[0] < searchRHi[0] ) // Initialise input data

@@ -96,7 +96,8 @@ LINKCOMMAND2 = ar rcs
 # -gencode arch=compute_30,code=sm_30
 # -gencode arch=compute_35,code=sm_35
 # -gencode arch=compute_50,code=sm_50
-ARCH=-gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35 -gencode arch=compute_50,code=sm_50
+ARCH=-gencode arch=compute_30,code=sm_30 
+#-gencode arch=compute_35,code=sm_35 -gencode arch=compute_50,code=sm_50
 NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m64 -I/usr/local/cuda/include  -I$(HOME)/local/include
 NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lcufft -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) \
 -L$(HOME)/local/lib
@@ -109,7 +110,7 @@ ifeq ($(DEBUG),1)
   CFLAGS += -O0 -g -ggdb  -DDEBUG
   LFLAGS += -O0 -g -ggdb
   
-  NVCCFLAGS +=-g -G -O0
+  NVCCFLAGS += -g -G -O0
   NVCLFLAGS += -g -G -O0
 
   DEBUG_TARGET=debug
@@ -127,8 +128,9 @@ else
   # vectorisation output
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
   
-  NVCCFLAGS +=-O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
-  NVCLFLAGS +=-O3
+  NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
+  NVCCFLAGS += -Xptxas -dlcm=ca
+  NVCLFLAGS += -O3
   
   DEBUG_TARGET=release
   POSTFIX=

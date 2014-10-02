@@ -61,14 +61,15 @@
 
 #define     FLAG_CNV_TEX      (1<<12)   /// Use texture memory for convolution  - May give advantge on pre-Fermi generation which we dont really care about
 #define     FLAG_CNV_1KER     (1<<13)   /// Use minimal kernel                  - ie Only the kernel of largest plain in each stack
-#define     FLAG_CNV_PLN      (1<<14)   /// Convolve one plain at a time
-#define     FLAG_CNV_STK      (1<<15)   /// Convolve one stack at a time        - This seams to be best in most cases
-#define     FLAG_CNV_FAM      (1<<16)   /// Convolve one family at a time       - Preferably don't use this!
+#define     FLAG_CNV_OVLP     (1<<14)   /// Use the overlap kernrl              - I found this slower that the alternative
+#define     FLAG_CNV_PLN      (1<<15)   /// Convolve one plain at a time
+#define     FLAG_CNV_STK      (1<<16)   /// Convolve one stack at a time        - This seams to be best in most cases
+#define     FLAG_CNV_FAM      (1<<17)   /// Convolve one family at a time       - Preferably don't use this!
 #define     FLAG_CNV_ALL      ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
 
-#define     FLAG_STP_ROW      (1<<17 )  /// Multi-step Row   interleaved        - This seams to be best in most cases
-#define     FLAG_STP_PLN      (1<<18 )  /// Multi-step Plain interleaved
-#define     FLAG_STP_STK      (1<<19 )  /// Multi-step Stack interleaved        - Preferably don't use this!
+#define     FLAG_STP_ROW      (1<<18 )  /// Multi-step Row   interleaved        - This seams to be best in most cases
+#define     FLAG_STP_PLN      (1<<19 )  /// Multi-step Plain interleaved
+#define     FLAG_STP_STK      (1<<20 )  /// Multi-step Stack interleaved        - Preferably don't use this!
 #define     FLAG_STP_ALL      ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
 
 
@@ -128,7 +129,7 @@ typedef struct dHarmList
 
 typedef struct cHarmList
 {
-    fcomplexcu* val[MAX_HARM_NO];
+    fcomplexcu* __restrict__ val[MAX_HARM_NO];
 } cHarmList;
 
 typedef struct tHarmList

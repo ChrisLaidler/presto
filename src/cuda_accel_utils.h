@@ -14,8 +14,8 @@
 #include "accel.h"
 
 
-#define   TEMPLATE_CONVOLVE 0
-#define   TEMPLATE_SEARCH   0
+#define   TEMPLATE_CONVOLVE 1
+#define   TEMPLATE_SEARCH   1
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 

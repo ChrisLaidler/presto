@@ -338,17 +338,17 @@ __global__ void convolveffdot4(const fcomplexcu *kernels, const fcomplexcu *data
  * Each thread loops down a column of the plains and convolves input with kernel and writes result to plain
  */
 #if TEMPLATE_CONVOLVE == 1
-template<uint FLAGS, uint noPlns, uint noSteps>
-__global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, cHarmList kerDat, fCplxTex kerTex )
+template<int FLAGS, int noPlns, int noSteps>
+__global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ datas, fcomplexcu* __restrict__ ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex )
 #else
-template<uint FLAGS, uint noPlns>
-__global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, cHarmList kerDat, fCplxTex kerTex, const uint noSteps )
+template<int FLAGS, int noPlns>
+__global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ datas, fcomplexcu* __restrict__ ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, const int noSteps )
 #endif
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;
 
-  if ( tid < width )
+  if ( tid < width )                  // Valid thread
   {
     int iy = 0;                       // y index
     int idx;                          // flat index
@@ -365,9 +365,9 @@ __global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *dat
     ffdot   += tid;
     datas   += tid;
 
-    int pHeight = 0;
+    int pHeight = 0;                  // Height ot previous data in the stack
 
-    for (int plnNo = 0; plnNo < noPlns; plnNo++)          // Loop through the plains
+    for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains .
     {
       kerDat.val[plnNo] += tid;
     }
@@ -378,48 +378,69 @@ __global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *dat
 #endif
     for (int n = 0; n < noPlns*noSteps; n++)
     {
-      dat[n]           = datas[ n * stride ] ;
+      dat[n]           = datas[ (int)(n * stride) ] ;
       dat[n].r        /= (float) width ;
       dat[n].i        /= (float) width ;
     }
 
+    int newStride = noSteps * stride ;                // New stride based on type of multi-step
+
 #ifndef DEBUG
 #pragma unroll
 #endif
-    for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains
+    for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains .
     {
-      for (iy = 0; iy < heights.val[plnNo]; iy++)     // Loop over the plain
+      for (iy = 0; iy < heights.val[plnNo]; iy++)     // Loop over the plain .
       {
-        idx = (iy) * stride ;
-        int sy = iy+pHeight;
+        idx = iy * stride ;
+        int stackY = iy + pHeight;                    // Base of stack Y
 
-        if ( FLAGS & FLAG_CNV_TEX )
+        FOLD // Read the krenel value .
         {
-          ker   = *(fcomplexcu*)& tex2D < float2 > (kerTex, tid, sy);
+          if ( FLAGS & FLAG_CNV_TEX )
+          {
+            ker   = *(fcomplexcu*)& tex2D < float2 > (kerTex, tid, stackY);
+          }
+          else
+          {
+            ker   = kerDat.val[plnNo][idx];
+          }
         }
-        else
+
+        FOLD // Calulate stride values that rely on pln and/or y only .
         {
-          ker   = kerDat.val[plnNo][idx];
+          if      ( FLAGS & FLAG_STP_ROW )
+          {
+            stackY    *= newStride ;
+          }
+          else if ( FLAGS & FLAG_STP_PLN )
+          {
+            stackY    *= stride ;
+            newStride  = heights.val[plnNo] * stride ;
+          }
         }
 
 #if TEMPLATE_CONVOLVE == 1
 #pragma unroll
 #endif
-        for ( int step = 0; step < noSteps; step++)   // Loop over steps
+        for ( int step = 0; step < noSteps; ++step )    // Loop over steps .
         {
           // Calculate indices
           if      ( FLAGS & FLAG_STP_ROW )
           {
-            idx  = ( sy * noSteps + step) * stride ;
+            //idx  = ( sy * noSteps + step) * stride ;
+            idx  = step * stride + stackY ;
           }
           else if ( FLAGS & FLAG_STP_PLN )
           {
-            idx  = ( sy + heights.val[plnNo]*step) * stride ;
+            idx  = stackY + step * newStride ;
           }
+          /*
           else if ( FLAGS & FLAG_STP_STK )
           {
-            idx  = ( sy + stackHeight*step) * stride ;
+            idx  = ( stackY + stackHeight*step) * stride ;
           }
+          */
 
           const int ox = plnNo*noSteps+step;
 
@@ -433,8 +454,8 @@ __global__ void convolveffdot41(const fcomplexcu *kernels, const fcomplexcu *dat
   }
 }
 
-template<uint FLAGS, uint noPlns >
-__host__ void convolveffdot41_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, cHarmList kerDat, fCplxTex kerTex, const uint noSteps )
+template<int FLAGS, int noPlns >
+__host__ void convolveffdot41_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, const int noSteps )
 {
 #if TEMPLATE_CONVOLVE == 1
   switch (noSteps)
@@ -463,15 +484,6 @@ __host__ void convolveffdot41_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_
   case 8:
     convolveffdot41<FLAGS,noPlns,8> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
       break;
-  //case 9:
-  //  convolveffdot41<FLAGS,noPlns,9> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
-  //    break;
-  //case 10:
-  //  convolveffdot41<FLAGS,noPlns,10> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
-  //    break;
-  //case 11:
-  //  convolveffdot41<FLAGS,noPlns,11> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex  );
-  //    break;
   default:
     fprintf(stderr, "ERROR: convolveffdot41 has not been templated for %i steps\n", noSteps);
     exit(EXIT_FAILURE);
@@ -482,37 +494,37 @@ __host__ void convolveffdot41_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_
 #endif
 }
 
-template<uint FLAGS >
-__host__ void convolveffdot41_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, cHarmList kerDat, fCplxTex kerTex, uint noSteps, uint noPlns )
+template<int FLAGS >
+__host__ void convolveffdot41_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns )
 {
   switch (noPlns)
   {
     case 1:
-      convolveffdot41_s<FLAGS,1> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,1> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 2:
-      convolveffdot41_s<FLAGS,2> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,2> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 3:
-      convolveffdot41_s<FLAGS,3> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,3> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 4:
-      convolveffdot41_s<FLAGS,4> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,4> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 5:
-      convolveffdot41_s<FLAGS,5> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,5> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 6:
-      convolveffdot41_s<FLAGS,6> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,6> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 7:
-      convolveffdot41_s<FLAGS,7> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,7> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 8:
-      convolveffdot41_s<FLAGS,8> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,8> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     case 9:
-      convolveffdot41_s<FLAGS,9> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
+      convolveffdot41_s<FLAGS,9> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps );
       break;
     default:
       fprintf(stderr, "ERROR: convolveffdot41 has not been templated for %i plains\n", noPlns);
@@ -520,32 +532,32 @@ __host__ void convolveffdot41_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_
   }
 }
 
-__host__ void convolveffdot41_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, cHarmList kerDat, fCplxTex kerTex, uint noSteps, uint noPlns, uint FLAGS )
+__host__ void convolveffdot41_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns, int FLAGS )
 {
   if ( FLAGS & FLAG_CNV_TEX )
   {
     /*
     if      (FLAGS & FLAG_STP_ROW )
-      convolveffdot41_p <FLAG_CNV_TEX | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
+      convolveffdot41_p <FLAG_CNV_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
     else if ( FLAGS & FLAG_STP_PLN )
-      convolveffdot41_p <FLAG_CNV_TEX | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
+      convolveffdot41_p <FLAG_CNV_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
     //else if ( FLAGS & FLAG_STP_STK )
-    //  convolveffdot41_p <FLAG_CNV_TEX | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
+    //  convolveffdot41_p <FLAG_CNV_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
     else
     {
       fprintf(stderr, "ERROR: convolveffdot41 has not been templated for \n", noPlns);
       exit(EXIT_FAILURE);
     }
     */
+    fprintf(stderr, "ERROR: convolveffdot41 has not been setup to use texture memory and multistep\n", noPlns);
+    exit(EXIT_FAILURE);
   }
   else
   {
       if      ( FLAGS & FLAG_STP_ROW )
-        convolveffdot41_p< FLAG_STP_ROW > (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
+        convolveffdot41_p< FLAG_STP_ROW > (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
       else if ( FLAGS & FLAG_STP_PLN )
-        convolveffdot41_p< FLAG_STP_PLN > (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
-      //else if ( FLAGS & FLAG_STP_STK )
-      //  convolveffdot41_p< FLAG_STP_STK | FLAG_STP_ROW > (dimBlock, dimGrid, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
+        convolveffdot41_p< FLAG_STP_PLN > (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
       else
       {
         fprintf(stderr, "ERROR: convolveffdot41 has not been templated for %i plains\n", noPlns);
@@ -799,17 +811,16 @@ __global__ void convolveffdot6(const fcomplexcu *kernels, const fcomplexcu *data
 /** Convolution kernel - Convolve a multi-step stack - using a 1 plain convolution kernel
  * Split the stack into overlapping sections and read the shared kernel values once and convolve with all relevant values
  */
-
 #if TEMPLATE_CONVOLVE == 1
 template<uint FLAGS, uint noPlns, uint noSteps>
-__global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn )
+__global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const uint width, const uint stride, iHarmList plnHeights, const uint stkHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn )
 #else
 template<uint FLAGS, uint noPlns>
-__global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, uint noSteps )
+__global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const uint width, const uint stride, iHarmList plnHeights, const uint stkHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, uint noSteps )
 #endif
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;
+  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;    /// The thread ID which is the x location in the step
 
   if ( tid < width )
   {
@@ -817,36 +828,41 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
     int iyBot;                        // Kernel y index of bottom section
     int idxTop, idxBot;               // Plain  y index of top & bottom of section
 #if TEMPLATE_CONVOLVE == 1
-    fcomplexcu dat[noPlns*noSteps];   // set of input data for this thread, this should be dat[noPlns*noSteps];
+    fcomplexcu dat[noPlns*noSteps];   // set of input data for this thread
 #else
-    fcomplexcu dat[noPlns*MAX_STEPS];   // set of input data for this thread, this should be dat[noPlns*noSteps];
+    fcomplexcu dat[noPlns*MAX_STEPS]; // set of input data for this thread
 #endif
 
-    // Stride
-    kernel          += tid;
-    datas           += tid;
-
-    // Shift the plain data to the correct x offset
-#pragma unroll
-    for (int n = 0; n < noPlns; n++)
-      ffdot.val[n]    += tid;
-
-    // Read the input data
-#if TEMPLATE_CONVOLVE == 1
-#pragma unroll
-#endif
-    for (int n = 0; n < noPlns*noSteps; n++)
+    FOLD // Stride
     {
-      dat[n]          = datas[ n * stride ] ;
-      dat[n].r        /= (float) width ;
-      dat[n].i        /= (float) width ;
+      kernel          += tid;   // Shift kernel pointer
+      datas           += tid;   // Shift data
+
+      // Shift the plain data to the correct x offset
+#pragma unroll
+      for (int n = 0; n < noPlns; n++)
+        ffdot.val[n]  += tid;
     }
 
+    FOLD // Read the input data
+    {
+#if TEMPLATE_CONVOLVE == 1
+      #pragma unroll
+#endif
+      for (int n = 0; n < noPlns*noSteps; n++)
+      {
+        dat[n]           = datas[ n * stride ] ;
+        dat[n].r        /= (float) width ;
+        dat[n].i        /= (float) width ;
+      }
+    }
+
+    /*
     if ( noPlns == 1 )
     {
       fcomplexcu ker;     // kernel data
 
-      for (; iyTop < heights.val[0]; iyTop++)     // Loop over the plain
+      for (; iyTop < plnHeights.val[0]; iyTop++)     // Loop over the plain
       {
         idxTop = (iyTop) * stride ;
 
@@ -872,11 +888,11 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
           }
           else if ( FLAGS & FLAG_STP_PLN )
           {
-            idxTop  = (( (iyTop )  ) + heights.val[0]*step) * stride ;
+            idxTop  = (( (iyTop )  ) + plnHeights.val[0]*step) * stride ;
           }
           else if ( FLAGS & FLAG_STP_STK )
           {
-            idxTop  = (( (iyTop )  ) + stackHeight*step) * stride ;
+            idxTop  = (( (iyTop )  ) + stkHeight*step) * stride ;
           }
 
           ffdot.val[0][idxTop].r = (dat[step].r * ker.r + dat[step].i * ker.i);
@@ -885,15 +901,17 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
       }
     }
     else
+    */
+    FOLD
     {
       fcomplexcu kerTop[1];
       fcomplexcu kerBot[1];
 
       // Loop through sections - read kernel value - convolve with plain values
 #pragma unroll
-      for ( int section = 0; section < noPlns - 1; section++ )
+      for ( int section = 0; section < noPlns - 1; section++ )                    //
       {
-        for ( iyTop = zUp.val[section]; iyTop < zUp.val[section+1] ; iyTop++ ) // Loop over the z values for the kernel for this this section
+        for ( iyTop = zUp.val[section]; iyTop < zUp.val[section+1] ; iyTop++ )    // Loop over the z values for the kernel for this this section .
         {
           iyBot   = iyTop + zDn.val[noPlns-2-section] ;
           idxTop  = iyTop * stride ;
@@ -915,86 +933,118 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
 
           // Loop over all plain values and convolve
 #pragma unroll
-          for ( int plnNo = 0; plnNo < section+1; plnNo++)  // Loop over sub plains
+          for ( int plnNo = 0; plnNo < section+1; plnNo++)  // Loop over sub plains .
           {
 #if TEMPLATE_CONVOLVE == 1
 #pragma unroll
 #endif
-            for ( int step = 0; step < noSteps; step++)     // Loop over steps
+            int iyTopPln, iyBotPln;
+            FOLD  // Calculate y indices for this plain
+            {
+              if      ( FLAGS & FLAG_STP_ROW )
+              {
+                //iyTopPln  = ( iyTop - zUp.val[plnNo] ) ;
+                //iyBotPln  = ( iyBot - zUp.val[plnNo] ) ;
+                iyTopPln  = ( iyTop - zUp.val[plnNo] ) * noSteps * stride ;
+                iyBotPln  = ( iyBot - zUp.val[plnNo] ) * noSteps * stride ;
+              }
+              else if ( FLAGS & FLAG_STP_PLN )
+              {
+                iyTopPln  = ( iyTop - zUp.val[plnNo] );
+                iyBotPln  = ( iyBot - zUp.val[plnNo] );
+              }
+              else if ( FLAGS & FLAG_STP_STK )
+              {
+                iyTopPln  = ( iyTop - zUp.val[plnNo] );
+                iyBotPln  = ( iyBot - zUp.val[plnNo] );
+              }
+            }
+
+            for ( int step = 0; step < noSteps; step++ )    // Loop over steps .
             {
               // Calculate indices
               if      ( FLAGS & FLAG_STP_ROW )
               {
-                idxTop  = (( iyTop - zUp.val[plnNo] ) * noSteps + step) * stride ;
-                idxBot  = (( iyBot - zUp.val[plnNo] ) * noSteps + step) * stride ;
+                //idxTop  = (iyTopPln * noSteps + step) * stride ;
+                //idxBot  = (iyBotPln * noSteps + step) * stride ;
+                idxTop  = iyTopPln + step * stride ;
+                idxBot  = iyBotPln + step * stride ;
               }
               else if ( FLAGS & FLAG_STP_PLN )
               {
-                idxTop  = (( iyTop - zUp.val[plnNo] ) + heights.val[plnNo]*step) * stride ;
-                idxBot  = (( iyBot - zUp.val[plnNo] ) + heights.val[plnNo]*step) * stride ;
+                idxTop  = (iyTopPln + plnHeights.val[plnNo]*step) * stride ;
+                idxBot  = (iyBotPln + plnHeights.val[plnNo]*step) * stride ;
               }
               else if ( FLAGS & FLAG_STP_STK )
               {
-                idxTop  = (( iyTop - zUp.val[plnNo] ) + stackHeight*step) * stride ;
-                idxBot  = (( iyBot - zUp.val[plnNo] ) + stackHeight*step) * stride ;
+                idxTop  = (iyTopPln + stkHeight*step) * stride ;
+                idxBot  = (iyBotPln + stkHeight*step) * stride ;
               }
 
-              // Convolve
-              (ffdot.val[plnNo])[idxTop].r = (dat[plnNo*noSteps+step].r * kerTop[0].r + dat[plnNo*noSteps+step].i * kerTop[0].i);
-              (ffdot.val[plnNo])[idxTop].i = (dat[plnNo*noSteps+step].i * kerTop[0].r - dat[plnNo*noSteps+step].r * kerTop[0].i);
+              // Actual convolution
+              FOLD
+              {
+                (ffdot.val[plnNo])[idxTop].r = ( dat[plnNo*noSteps+step].r * kerTop[0].r + dat[plnNo*noSteps+step].i * kerTop[0].i );
+                (ffdot.val[plnNo])[idxTop].i = ( dat[plnNo*noSteps+step].i * kerTop[0].r - dat[plnNo*noSteps+step].r * kerTop[0].i );
 
-              (ffdot.val[plnNo])[idxBot].r = (dat[plnNo*noSteps+step].r * kerBot[0].r + dat[plnNo*noSteps+step].i * kerBot[0].i);
-              (ffdot.val[plnNo])[idxBot].i = (dat[plnNo*noSteps+step].i * kerBot[0].r - dat[plnNo*noSteps+step].r * kerBot[0].i);
+                (ffdot.val[plnNo])[idxBot].r = ( dat[plnNo*noSteps+step].r * kerBot[0].r + dat[plnNo*noSteps+step].i * kerBot[0].i );
+                (ffdot.val[plnNo])[idxBot].i = ( dat[plnNo*noSteps+step].i * kerBot[0].r - dat[plnNo*noSteps+step].r * kerBot[0].i );
+              }
             }
           }
         }
       }
 
-      // Loop through the centre block - convolve with chunks plain values
-      // I tested reading in "chunks" of kernel and then looping but this made no improvement
-      for ( iyTop = zUp.val[noPlns-1]; iyTop < zDn.val[0] ; iyTop += 1 )
+      FOLD // Loop through the centre block - convolve with chunks plain values
       {
-        FOLD // Read kernel value
+        // I tested reading in "chunks" of kernel and then looping but this made no improvement
+
+        for ( iyTop = zUp.val[noPlns-1]; iyTop < zDn.val[0] ; iyTop += 1 )
         {
-          idxTop = ( iyTop ) * stride ;
-
-          // Read the kernel value
-          if ( FLAGS & FLAG_CNV_TEX )
+          FOLD // Read kernel value
           {
-            kerTop[0]   = *((fcomplexcu*)& tex2D < float2 > (kerTex, tid, ( iyTop ) )) ;
-          }
-          else
-          {
-            kerTop[0]   = kernel[idxTop] ;
-          }
-        }
+            idxTop = ( iyTop ) * stride ;
 
-        // Now convolve the kernel element with the relevant plain elements
+            // Read the kernel value
+            if ( FLAGS & FLAG_CNV_TEX )
+            {
+              kerTop[0]   = *((fcomplexcu*)& tex2D < float2 > (kerTex, tid, ( iyTop ) )) ;
+            }
+            else
+            {
+              kerTop[0]   = kernel[idxTop] ;
+            }
+          }
+
+          // Now convolve the kernel element with the relevant plain elements
 #pragma unroll
-        for ( int plnNo = 0; plnNo < noPlns; plnNo++)   // Loop over plains
-        {
+          for ( int plnNo = 0; plnNo < noPlns; plnNo++)   // Loop over plains
+          {
+            float cy = ( (iyTop )  - zUp.val[plnNo] ) * noSteps * stride;
+            int di = plnNo*noSteps;
 #if TEMPLATE_CONVOLVE == 1
 #pragma unroll
 #endif
-          for ( int step = 0; step < noSteps; step++)   // Loop over steps
-          {
-            // Calculate indices
-            if ( FLAGS & FLAG_STP_ROW )
+            for ( int step = 0; step < noSteps; step++)   // Loop over steps
             {
-              idxTop  = (( (iyTop )  - zUp.val[plnNo] ) * noSteps + step) * stride ;
-            }
-            else if ( FLAGS & FLAG_STP_PLN )
-            {
-              idxTop  = (( (iyTop )  - zUp.val[plnNo] ) + heights.val[plnNo]*step) * stride ;
-            }
-            else if ( FLAGS & FLAG_STP_STK )
-            {
-              idxTop  = (( (iyTop )  - zUp.val[plnNo] ) + stackHeight*step) * stride ;
-            }
+              // Calculate indices
+              if ( FLAGS & FLAG_STP_ROW )
+              {
+                idxTop  = cy + step * stride ;
+              }
+              else if ( FLAGS & FLAG_STP_PLN )
+              {
+                idxTop  = (( (iyTop )  - zUp.val[plnNo] ) + plnHeights.val[plnNo]*step) * stride ;
+              }
+              else if ( FLAGS & FLAG_STP_STK )
+              {
+                idxTop  = (( (iyTop )  - zUp.val[plnNo] ) + stkHeight*step) * stride ;
+              }
 
-            // Convolve
-            (ffdot.val[plnNo])[idxTop].r = (dat[plnNo*noSteps+step].r * kerTop[0].r + dat[plnNo*noSteps+step].i * kerTop[0].i);
-            (ffdot.val[plnNo])[idxTop].i = (dat[plnNo*noSteps+step].i * kerTop[0].r - dat[plnNo*noSteps+step].r * kerTop[0].i);
+              // Actual convolution
+              (ffdot.val[plnNo])[idxTop].r = (dat[di+step].r * kerTop[0].r + dat[di+step].i * kerTop[0].i);
+              (ffdot.val[plnNo])[idxTop].i = (dat[di+step].i * kerTop[0].r - dat[di+step].r * kerTop[0].i);
+            }
           }
         }
       }
@@ -1003,33 +1053,41 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
 }
 
 template<uint FLAGS, uint noPlns >
-__host__ void convolveffdot7_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps )
+__host__ void convolveffdot7_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps )
 {
 #if TEMPLATE_CONVOLVE == 1
   switch (noSteps)
   {
   case 1:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,1>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,1><<<dimGrid,  dimBlock, i1, cnvlStream >>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
     break;
   case 2:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,2>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,2> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 3:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,3>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,3> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 4:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,4>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,4> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 5:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,5>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,5> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 6:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,6>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,6> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 7:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,7>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,7> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 8:
+    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,8>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,8> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   //case 9:
@@ -1049,41 +1107,42 @@ __host__ void convolveffdot7_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t
     exit(EXIT_FAILURE);
   }
 #else
+  cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns>, cudaFuncCachePreferL1);
   convolveffdot7<FLAGS,noPlns> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps);
 #endif
 }
 
 template<uint FLAGS >
-__host__ void convolveffdot7_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps, const uint noPlns )
+__host__ void convolveffdot7_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps, const uint noPlns )
 {
   switch (noPlns)
   {
     case 1:
-      convolveffdot7_s<FLAGS,1> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,1> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 2:
-      convolveffdot7_s<FLAGS,2> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,2> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 3:
-      convolveffdot7_s<FLAGS,3> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,3> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 4:
-      convolveffdot7_s<FLAGS,4> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,4> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 5:
-      convolveffdot7_s<FLAGS,5> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,5> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 6:
-      convolveffdot7_s<FLAGS,6> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,6> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 7:
-      convolveffdot7_s<FLAGS,7> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,7> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 8:
-      convolveffdot7_s<FLAGS,8> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,8> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     case 9:
-      convolveffdot7_s<FLAGS,9> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
+      convolveffdot7_s<FLAGS,9> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps );
       break;
     default:
       fprintf(stderr, "ERROR: convolveffdot7 has not been templated for %i plains\n", noPlns);
@@ -1091,16 +1150,16 @@ __host__ void convolveffdot7_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t
   }
 }
 
-__host__ void convolveffdot7_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps, const uint noPlns, uint FLAGS )
+__host__ void convolveffdot7_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps, const uint noPlns, uint FLAGS )
 {
   if ( FLAGS & FLAG_CNV_TEX )
   {
     if      ( FLAGS & FLAG_STP_ROW )
-      convolveffdot7_p<FLAG_CNV_TEX | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+      convolveffdot7_p<FLAG_CNV_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else if ( FLAGS & FLAG_STP_PLN )
-      convolveffdot7_p<FLAG_CNV_TEX | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+      convolveffdot7_p<FLAG_CNV_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     //else if ( FLAGS & FLAG_STP_STK )
-    //  convolveffdot7_p<FLAG_CNV_TEX | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    //  convolveffdot7_p<FLAG_CNV_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else
     {
       fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination. \n", noPlns);
@@ -1110,11 +1169,11 @@ __host__ void convolveffdot7_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t
   else
   {
     if      ( FLAGS & FLAG_STP_ROW )
-      convolveffdot7_p< FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+      convolveffdot7_p< FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else if ( FLAGS & FLAG_STP_PLN )
-      convolveffdot7_p< FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+      convolveffdot7_p< FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     //else if ( FLAGS & FLAG_STP_STK )
-    //  convolveffdot7_p< FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    //  convolveffdot7_p< FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else
     {
       fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination.\n", noPlns);
@@ -1125,6 +1184,8 @@ __host__ void convolveffdot7_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t
 
 void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
 {
+  cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
   dim3 dimBlock, dimGrid;
 
   nvtxRangePush("Convolve & FFT");
@@ -1167,12 +1228,9 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
         CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
 
-        if ( plains->flag & FLAG_CNV_1KER )
+        if ( plains->flag & FLAG_CNV_OVLP )
         {
           // NOTE convolveffdot41 seams fatser and has been adapted for multi-step so now using it
-          // Will have to put in some flag to call convolveffdot41 if desired
-          //convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->stride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
-
           convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->stride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
         }
         else

@@ -220,9 +220,9 @@ int main(int argc, char *argv[])
         printf("cupTime %f", cupTime/1000.0);
         cands = candsCPU;
         
-//#ifndef DEBUG
+#ifndef DEBUG
         printCands("CPU_Cands.csv", candsCPU);
-//#endif
+#endif
         
         nvtxRangePop();
 
@@ -233,8 +233,11 @@ int main(int argc, char *argv[])
 //#ifdef CUDA
       if ( cmd->gpuP >= 0)
       {
-        candsGPU = NULL; 
+        candsGPU = NULL;
         
+        //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+        cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
         int noHarms = (1 << (obs.numharmstages - 1));
         
         FOLD
@@ -354,7 +357,7 @@ int main(int argc, char *argv[])
           if ( maxxx < 0 )
             maxxx = 0;
           
-          //#pragma omp parallel
+          #pragma omp parallel
           {
             int tid = omp_get_thread_num();
             

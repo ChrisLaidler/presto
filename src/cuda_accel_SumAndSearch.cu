@@ -1820,16 +1820,16 @@ __global__ void add_and_searchCU3(cuSearchList searchList, accelcandBasic* d_can
  * @param searchList
  * @param d_cands
  * @param d_sem
- * @param base
+ * @param base          Used in CU_CAND_DEVICE
  * @param noSteps
  */
-//#if TEMPLATE_SEARCH == 1
-//template<uint FLAGS, typename sType, int noStages, typename stpType, int noSteps>
-//__global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, sType pd, stpType rLows )
-//#else
+#if TEMPLATE_SEARCH == 1
+template<uint FLAGS, typename sType, int noStages, typename stpType, int noSteps>
+__global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, sType pd, stpType rLows )
+#else
 template<uint FLAGS, typename sType, int noStages, typename stpType>
 __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, sType pd, stpType rLows, int noSteps )
-//#endif
+#endif
 {
   const int bidx  = threadIdx.y * SS3_X       +   threadIdx.x;
   const int tid   = blockIdx.x  * (SS3_Y*SS3_X) + bidx;
@@ -1849,25 +1849,30 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
     const int noHarms = ( 1 << (noStages-1) ) ;
 
 #if TEMPLATE_SEARCH == 1
-    accelcandBasic candLists[noStages*noSteps ];
+
+    //accelcandBasic candLists[noStages*noSteps ];
+    accelcandBasic candLists[noStages][noSteps];
 
     // One of the two variables below should get optimised out depending on FLAG_STP_ROW or FLAG_STP_PLN
     int inds[noSteps][noHarms];
     fcomplexcu* pData[noSteps][noHarms];
 
 #else
-    accelcandBasic candLists[noStages*MAX_STEPS ];
+
+    //accelcandBasic candLists[noStages*MAX_STEPS ];
+    accelcandBasic candLists[noStages][MAX_STEPS];
 
     // One of the two variables below should get optimised out depending on FLAG_STP_ROW or FLAG_STP_PLN
     int inds[MAX_STEPS][noHarms];
     fcomplexcu* pData[MAX_STEPS][noHarms];
+
 #endif
 
     int start   = 0;
     int end     = 0;
     int iy;
 
-    FOLD // Prep
+    FOLD // Prep - Initialise the x indices & set caidates to 0
     {
       // Initialise the x indices for this thread
       //inds[0] = tid + searchList.ffdBuffre.val[0];
@@ -1875,7 +1880,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
       int ix;
 
       // Calculate the x indices or create a pointer offset by the correct amount
-      //#pragma unroll
+#pragma unroll
       for ( int harm = 0; harm < noHarms; harm++ )      // loop over harmonic
       {
 #if TEMPLATE_SEARCH == 1
@@ -1894,7 +1899,9 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
           }
           else                           // Create a pointer list that is offset by the correct amount
           {
-            if     ( FLAGS & FLAG_STP_ROW )
+            inds[step][harm]      = ix;
+
+            if        ( FLAGS & FLAG_STP_ROW )
             {
               pData[step][harm]   = &searchList.datas.val[harm][ ix + searchList.strides.val[harm]*step ] ;
             }
@@ -1903,38 +1910,39 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
               pData[step][harm]   = &searchList.datas.val[harm][ ix + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
             }
           }
-
-          if( tid == 0 )
-            printf("harm %i  step %i   ix: %i \n", harm, step, ix);
-
         }
 
         // Change the stride for this harmonic
-        if     (( FLAGS & FLAG_PLN_TEX ) && ( FLAGS & FLAG_STP_ROW ))
-          searchList.strides.val[harm] *= noSteps;
+        //if     ( !( FLAGS & FLAG_PLN_TEX ) && ( FLAGS & FLAG_STP_ROW ) )
+        //  searchList.strides.val[harm] *= noSteps;
 
       }
 
       // Set the local and return candidate powers to zero
-//#pragma unroll
-      for ( int stage = 0; stage < noStages; stage++ )
+      FOLD
       {
 #if TEMPLATE_SEARCH == 1
-#pragma unroll
+        #pragma unroll
 #endif
         for ( int step = 0; step < noSteps; step++)   // Loop over steps
         {
-          candLists[stage*noSteps + step ].sigma = 0;
-
-          if ( FLAGS & CU_CAND_SINGLE_G )
+          #pragma unroll
+          for ( int stage = 0; stage < noStages; stage++ )
           {
-            d_cands[stage*noSteps*width + step*width + tid ].sigma = 0;
+            candLists[stage][step ].sigma = 0;
+
+            if ( FLAGS & CU_CAND_SINGLE_G )
+            {
+              //int iidx = step*noStages*width + stage*width + tid ;
+              //d_cands[iidx].sigma = 0;
+              d_cands[step*noStages*width + stage*width + tid ].sigma = 0;
+            }
           }
         }
       }
     }
 
-    FOLD
+    FOLD // Sum & Search
     {
       const int nPowers = (noStages)*2;   		  // The number of powers to batch calculate together, *2 is a "random choice it would be this or noHarms
 #if TEMPLATE_SEARCH == 1
@@ -1943,25 +1951,24 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
       float powers[MAX_STEPS][nPowers];        	// registers to hold values to increase mem cache hits
 #endif
       int y;
-      for( y = 0; y < searchList.heights.val[0] - nPowers ; y+= nPowers ) // loop over
+      for( y = 0; y < searchList.heights.val[0] - nPowers ; y+= nPowers ) // loop over chunks
       {
-
         // Initialise powers for each section column to 0
 #if TEMPLATE_SEARCH == 1
 #pragma unroll
 #endif
-        for ( int step = 0; step < noSteps; step++)       // Loop over steps
+        for ( int step = 0; step < noSteps; step++)       	    // Loop over steps
         {
-//#pragma unroll
-          for( int i = 0; i < nPowers ; i++ )             // Loop over powers
+#pragma unroll
+          for( int i = 0; i < nPowers ; i++ )                   // Loop over powers
           {
             powers[step][i] = 0;
           }
         }
 
         // Loop over stages, sum and search
-//#pragma unroll
-        for ( int stage = 0 ; stage < noStages; stage++)  // Loop over stages
+#pragma unroll
+        for ( int stage = 0 ; stage < noStages; stage++)        // Loop over stages
         {
           if      ( stage == 0 )
           {
@@ -1989,42 +1996,58 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             end = 16;
           }
 
-          // Create a section of summed powers one for each
-//#pragma unroll
+          // Create a section of summed powers one for each step
+#pragma unroll
           for ( int harm = start; harm < end; harm++ )          // Loop over harmonics (plains) in this stage
           {
 
 #if TEMPLATE_SEARCH == 1
-//#pragma unroll
+#pragma unroll
 #endif
             for ( int step = 0; step < noSteps; step++)         // Loop over steps
             {
 
-//#pragma unroll
-              for( int i = 0; i < nPowers; i++ )                // Loop over section
+#pragma unroll
+              for( int i = 0; i < nPowers; i++ )                // Loop over the chunk
               {
+                iy  = YINDS[searchList.yInds.val[harm]+y+i];
 
                 if     (FLAGS & FLAG_PLN_TEX)
                 {
                   // Calculate y indice
                   if      ( FLAGS & FLAG_STP_ROW )
                   {
-                    iy  = ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step);
+                    iy  = ( iy * noSteps + step );
                   }
                   else if ( FLAGS & FLAG_STP_PLN )
                   {
-                    iy  = ( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step) ;
+                    iy  = ( iy + searchList.heights.val[harm]*step ) ;
                   }
 
-                  const float2 cmpf    = tex2D < float2 > (searchList.texs.val[harm], inds[step][harm], iy);
-                  powers[step][i]     += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
+                  const float2 cmpf     = tex2D < float2 > (searchList.texs.val[harm], inds[step][harm], iy);
+                  powers[step][i]      += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
                 }
                 else
                 {
-                  iy  = YINDS[searchList.yInds.val[harm]+y+i];
+                  long ix     = inds[step][harm] ;
+                  long width  = searchList.strides.val[harm] ;
 
-                  const fcomplexcu cmpc = *(pData[step][harm] + searchList.strides.val[harm]*iy) ;
-                  powers[step][i]       += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+
+                  fcomplexcu cmpc;
+                  if        ( FLAGS & FLAG_STP_ROW )
+                  {
+                    long idxx = searchList.strides.val[harm]*(noSteps*iy+step) + ix ;
+                    cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*noSteps*iy + searchList.strides.val[harm]*step ] ;
+                  }
+                  else if   ( FLAGS & FLAG_STP_PLN )
+                  {
+                    long idxx = searchList.strides.val[harm]*( step*searchList.heights.val[harm] + iy ) + ix ;
+                    cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
+                  }
+
+
+                  //const fcomplexcu cmpc   = pData[step][harm][searchList.strides.val[harm]*iy] ; // Note stride has been set depending on multi-step type
+                  powers[step][i]        += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                 }
               }
             }
@@ -2034,17 +2057,18 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 #if TEMPLATE_SEARCH == 1
 //#pragma unroll
 #endif
-          for ( int step = 0; step < noSteps; step++)         // Loop over steps
+          for ( int step = 0; step < noSteps; step++)         	// Loop over steps
           {
-//#pragma unroll
-            for( int i = 0; i < nPowers ; i++ )               // Loop over section
+#pragma unroll
+            for( int i = 0; i < nPowers ; i++ )                 // Loop over section
             {
               if  (  powers[step][i] >  POWERCUT[stage] )
               {
-                if ( powers[step][i] > candLists[stage*noSteps + step].sigma )
+                if ( powers[step][i] > candLists[stage][step].sigma )
                 {
-                  candLists[stage*noSteps + step].sigma  = powers[step][i];
-                  candLists[stage*noSteps + step].z      = y+i;
+                  // This is our new max!
+                  candLists[stage][step].sigma  = powers[step][i];
+                  candLists[stage][step].z      = y+i;
                 }
               }
             }
@@ -2056,23 +2080,22 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
       // one last loop with the if statement included
       FOLD
       {
-        start   = 0;
-        end     = 0;
-
+       // Initialise powers for each section column to 0
 #if TEMPLATE_SEARCH == 1
 #pragma unroll
 #endif
-        for ( int step = 0; step < noSteps; step++)         // Loop over steps
+        for ( int step = 0; step < noSteps; step++)       	    // Loop over steps
         {
-//#pragma unroll
-          for( int i = 0; i < nPowers ; i++ )               // Loop over section
+#pragma unroll
+          for( int i = 0; i < nPowers ; i++ )                   // Loop over powers
           {
             powers[step][i] = 0;
           }
         }
 
-//#pragma unroll
-        for ( int stage = 0 ; stage < noStages; stage++)
+        // Loop over stages, sum and search
+#pragma unroll
+        for ( int stage = 0 ; stage < noStages; stage++)        // Loop over stages
         {
           if      ( stage == 0 )
           {
@@ -2100,64 +2123,68 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             end = 16;
           }
 
-//#pragma unroll
-          for ( int harm = start; harm < end; harm++ )
+          // Create a section of summed powers one for each step
+#pragma unroll
+          for ( int harm = start; harm < end; harm++ )          // Loop over harmonics (plains) in this stage
           {
 
 #if TEMPLATE_SEARCH == 1
-//#pragma unroll
+#pragma unroll
 #endif
             for ( int step = 0; step < noSteps; step++)         // Loop over steps
             {
-//#pragma unroll
-              for( int i = 0; i < nPowers; i++ )
-              {
-                if ( i + y < searchList.heights.val[0])
-                {
+              int mx = searchList.heights.val[0] - y;
 
-                  // Calculate y indice
-                  if      ( FLAGS & FLAG_STP_ROW )
-                  {
-                    iy  = ( YINDS[searchList.yInds.val[harm]+y+i] * noSteps + step);
-                  }
-                  else if ( FLAGS & FLAG_STP_PLN )
-                  {
-                    iy  = ( YINDS[searchList.yInds.val[harm]+y+i] + searchList.heights.val[harm]*step) ;
-                  }
+//#pragma unroll
+              //for( int i = 0; i < nPowers; i++ )
+              for( int i = 0; i < mx; i++ )
+              {
+                //if ( i + y < searchList.heights.val[0])
+                //{
+                  iy  = YINDS[searchList.yInds.val[harm]+y+i];
 
                   if     (FLAGS & FLAG_PLN_TEX)
                   {
-                    const float2 cmpf    = tex2D < float2 > (searchList.texs.val[harm], inds[step][harm], iy);
-                    powers[step][i]     += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
+                    // Calculate y indice
+                    if      ( FLAGS & FLAG_STP_ROW )
+                    {
+                      iy  = ( iy * noSteps + step );
+                    }
+                    else if ( FLAGS & FLAG_STP_PLN )
+                    {
+                      iy  = ( iy + searchList.heights.val[harm]*step ) ;
+                    }
+
+                    const float2 cmpf     = tex2D < float2 > (searchList.texs.val[harm], inds[step][harm], iy);
+                    powers[step][i]      += cmpf.x * cmpf.x + cmpf.y * cmpf.y;
                   }
                   else
                   {
-                    const fcomplexcu cmpc = *(pData[step][harm] + searchList.strides.val[harm]*iy) ;
-                    powers[step][i]       += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                    const fcomplexcu cmpc   = *(pData[step][harm] + searchList.strides.val[harm]*iy) ; // Note stride has been set depending on multi-step type
+                    powers[step][i]        += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                   }
 
-                }
+                //}
               }
-
             }
           }
 
           // Search set of powers
 #if TEMPLATE_SEARCH == 1
-//#pragma unroll
+#pragma unroll
 #endif
-          for ( int step = 0; step < noSteps; step++)         // Loop over steps
+          for ( int step = 0; step < noSteps; step++)         	// Loop over steps
           {
-
-//#pragma unroll
-            for( int i = 0; i < nPowers ; i++ )
+#pragma unroll
+            for( int i = 0; i < nPowers ; i++ )                 // Loop over section
             {
               if  (  powers[step][i] >  POWERCUT[stage] )
               {
-                if ( powers[step][i] > candLists[stage*noSteps + step].sigma )
+                if ( powers[step][i] > candLists[stage][step].sigma )
                 {
-                  candLists[stage*noSteps + step].sigma  = powers[step][i];
-                  candLists[stage*noSteps + step].z      = y+i;
+                  // This is our new max!
+                  candLists[stage][step].sigma  = powers[step][i];
+                  candLists[stage][step].z      = y+i;
                 }
               }
             }
@@ -2166,9 +2193,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
         }
       }
     }
-
-
-    //printf("Found candidate stage 0 power %f \n", candLists[0*noSteps + 0].sigma );
 
     // Write results back to DRAM and calculate sigma if needed
     if      ( FLAGS & CU_CAND_DEVICE   )
@@ -2178,30 +2202,41 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
       {
         const short numharm = 1 << stage;
 
-        if  ( candLists[stage].sigma >  POWERCUT[stage] )
+#if TEMPLATE_SEARCH == 1
+#pragma unroll
+#endif
+        for ( int step = 0; step < noSteps; step++)         // Loop over steps
         {
-          int idx =  (int)(( searchList.rLow.val[0] + tid * (double) ACCEL_DR ) / (double)numharm ) - base ;
-          if ( idx >= 0 )
-          {
-            long long numtrials         = NUMINDEP[stage];
-            candLists[stage].numharm    = numharm;
-            //candLists[stage].z          = ( candLists[stage].z*(double) ACCEL_DZ - searchList.zMax.val[0]  )  / (double)numharm ;
-            candLists[stage].sigma      = (float)candidate_sigma_cu(candLists[stage].sigma, numharm, numtrials);
 
-            FOLD // Atomic write to global list
+          if  ( candLists[step][stage].sigma >  POWERCUT[stage] )
+          {
+            //float rLow    = rLows.arry[step] * searchList.frac.val[harm];
+            //float diff    = rLow - (int)rLow;
+            //float idxS    = 0.5  + diff*ACCEL_RDR ;
+
+            int idx =  (int)(( rLows.arry[step] + tid * (double) ACCEL_DR ) / (double)numharm ) - base ;
+            if ( idx >= 0 )
             {
-              volatile bool done = false;
-              while (!done)
+              long long numtrials             = NUMINDEP[stage];
+              candLists[step][stage].numharm  = numharm;
+              //candLists[step][stage].z      = ( candLists[stage].z*(double) ACCEL_DZ - searchList.zMax.val[0]  )  / (double)numharm ;
+              candLists[step][stage].sigma    = (float)candidate_sigma_cu(candLists[step][stage].sigma, numharm, numtrials);
+
+              FOLD // Atomic write to global list
               {
-                volatile int prev = atomicCAS(&d_sem[idx], UINT_MAX, tid );
-                if ( prev == UINT_MAX )
+                volatile bool done = false;
+                while (!done)
                 {
-                  if ( candLists[stage].sigma > d_cands[idx].sigma )
+                  volatile int prev = atomicCAS(&d_sem[idx], UINT_MAX, tid );
+                  if ( prev == UINT_MAX )
                   {
-                    d_cands[idx]              = candLists[stage];
+                    if ( candLists[step][stage].sigma > d_cands[idx].sigma )
+                    {
+                      d_cands[idx]              = candLists[step][stage];
+                    }
+                    d_sem[idx]                  = UINT_MAX;
+                    done = true;
                   }
-                  d_sem[idx]                  = UINT_MAX;
-                  done = true;
                 }
               }
             }
@@ -2211,28 +2246,29 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
     }
     else if ( FLAGS & CU_CAND_SINGLE_G )
     {
-//#pragma unroll
-      for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
-      {
 #if TEMPLATE_SEARCH == 1
 #pragma unroll
 #endif
-        for ( int step = 0; step < noSteps; step++)         // Loop over steps
+      for ( int step = 0; step < noSteps; step++)             // Loop over steps
+      {
+#pragma unroll
+        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
         {
-          if  ( candLists[stage*noSteps + step].sigma >  POWERCUT[stage] )
+
+          if  ( candLists[step][stage].sigma >  POWERCUT[stage] )
           {
             const short numharm = ( 1 << stage );
-            candLists[stage*noSteps + step].numharm     = numharm;
+            candLists[step][stage].numharm     = numharm;
 
             if ( FLAGS & FLAG_SAS_SIG )
             {
               // Calculate sigma value
               long long numtrials                       = NUMINDEP[stage];
-              candLists[stage*noSteps + step].sigma     = (float)candidate_sigma_cu(candLists[stage*noSteps + step].sigma, numharm, numtrials);
+              candLists[step][stage].sigma     = (float)candidate_sigma_cu(candLists[step][stage].sigma, numharm, numtrials);
             }
 
             // Write to DRAM
-            d_cands[stage*noSteps*width + step*width + tid] = candLists[stage*noSteps + step];
+            d_cands[step*noStages*width + stage*width + tid] = candLists[step][stage];
           }
         }
       }
@@ -2241,73 +2277,81 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 }
 
 template<uint FLAGS, typename sType, uint noStages>
-__host__ void add_and_searchCU31_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, sType pd, float* rLows, int noSteps)
+__host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, sType pd, float* rLows, int noSteps)
 {
 #if TEMPLATE_SEARCH == 1
   switch (noSteps)
   {
     case 1:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f01,1>, cudaFuncCachePreferL1);
       f01 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,1,f01><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f01,1><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 2:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f02,2>, cudaFuncCachePreferL1);
       f02 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,2,f02><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f02,2><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 3:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f03,3>, cudaFuncCachePreferL1);
       f03 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,3,f03><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f03,3><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 4:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f04,4>, cudaFuncCachePreferL1);
       f04 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,4,f04><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f04,4><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 5:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f05,5>, cudaFuncCachePreferL1);
       f05 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,5,f05><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f05,5><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 6:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f06,6>, cudaFuncCachePreferL1);
       f06 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,6,f06><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f06,6><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 7:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f07,7>, cudaFuncCachePreferL1);
       f07 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,7,f07><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f07,7><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     case 8:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f08,8>, cudaFuncCachePreferL1);
       f08 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS,sType,noStages,8,f08><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
+      add_and_searchCU31<FLAGS,sType,noStages,f08,8><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
     //case 9:
@@ -2321,6 +2365,7 @@ __host__ void add_and_searchCU31_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       exit(EXIT_FAILURE);
   }
 #else
+  //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,fMax>, cudaFuncCachePreferL1);
   fMax tmpArr;
   for (int i = 0; i < noSteps; i++)
     tmpArr.arry[i] = rLows[i];
@@ -2329,7 +2374,7 @@ __host__ void add_and_searchCU31_s(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
 }
 
 template<uint FLAGS >
-__host__ void add_and_searchCU31_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, cuSearchItem* pd, float* rLows, int noSteps, const uint noStages )
+__host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, cuSearchItem* pd, float* rLows, int noSteps, const uint noStages )
 {
   switch (noStages)
   {
@@ -2337,7 +2382,7 @@ __host__ void add_and_searchCU31_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
     {
       sch1 tmpArr;
       tmpArr.arry[0] = pd[0];
-      add_and_searchCU31_s<FLAGS,sch1,1> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noStages );
+      add_and_searchCU31_s<FLAGS,sch1,1> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
       break;
     }
     case 2:
@@ -2345,7 +2390,7 @@ __host__ void add_and_searchCU31_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       sch2 tmpArr;
       tmpArr.arry[0] = pd[0];
       tmpArr.arry[1] = pd[1];
-      add_and_searchCU31_s<FLAGS,sch2,2> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noStages );
+      add_and_searchCU31_s<FLAGS,sch2,2> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
       break;
     }
     case 3:
@@ -2355,7 +2400,7 @@ __host__ void add_and_searchCU31_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       tmpArr.arry[1] = pd[1];
       tmpArr.arry[2] = pd[2];
       tmpArr.arry[3] = pd[3];
-      add_and_searchCU31_s<FLAGS,sch4,3> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noStages );
+      add_and_searchCU31_s<FLAGS,sch4,3> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
       break;
     }
     case 4:
@@ -2369,7 +2414,7 @@ __host__ void add_and_searchCU31_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       tmpArr.arry[5] = pd[5];
       tmpArr.arry[6] = pd[6];
       tmpArr.arry[7] = pd[7];
-      add_and_searchCU31_s<FLAGS,sch8,4> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noStages );
+      add_and_searchCU31_s<FLAGS,sch8,4> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
       break;
     }
     case 5:
@@ -2391,36 +2436,23 @@ __host__ void add_and_searchCU31_p(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       tmpArr.arry[13] = pd[13];
       tmpArr.arry[14] = pd[14];
       tmpArr.arry[15] = pd[15];
-      add_and_searchCU31_s<FLAGS,sch16,5> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noStages );
+      add_and_searchCU31_s<FLAGS,sch16,5> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
       break;
     }
-    //case 6:
-    //  add_and_searchCU31_s<FLAGS,6> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, noStages );
-    //  break;
-    //case 7:
-    //  add_and_searchCU31_s<FLAGS,7> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, noStages );
-    //  break;
-    //case 8:
-    //  add_and_searchCU31_s<FLAGS,8> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, noStages );
-    //  break;
-    //case 9:
-    //  add_and_searchCU31_s<FLAGS,9> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, noStages );
-    //  break;
-      /**/
     default:
       fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for %i stages\n", noStages);
       exit(EXIT_FAILURE);
   }
 }
 
-__host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, cuSearchItem* pd, float* rLows, int noSteps, const uint noStages, uint FLAGS )
+__host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, cuSearchItem* pd, float* rLows, int noSteps, const uint noStages, uint FLAGS )
 {
   if      ( FLAGS & FLAG_STP_ROW )
-    add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+    add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
   else if ( FLAGS & FLAG_STP_PLN )
-    add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+    add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
   //else if ( FLAGS & FLAG_STP_STK )
-  //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+  //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
   else
   {
     fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n" );
@@ -2436,11 +2468,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       if ( FLAGS & FLAG_SAS_SIG )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.\n", noPlns);
@@ -2450,11 +2482,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       else
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_PLN_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2467,11 +2499,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       if ( FLAGS & FLAG_SAS_SIG )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_SAS_SIG | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_SAS_SIG | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_SAS_SIG | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2481,11 +2513,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       else
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_DEVICE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2501,11 +2533,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       if ( FLAGS & FLAG_SAS_SIG )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -2515,11 +2547,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       else
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_PLN_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2532,11 +2564,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       if ( FLAGS & FLAG_SAS_SIG )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_SAS_SIG | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_SAS_SIG | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_SAS_SIG | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -2546,11 +2578,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       else
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_CAND_SINGLE_G | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2566,11 +2598,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       if ( FLAGS & FLAG_SAS_SIG )
       {
         if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -2580,11 +2612,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       else
       {
         if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_PLN_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2597,11 +2629,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       if ( FLAGS & FLAG_SAS_SIG )
       {
         if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_SAS_SIG | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_SAS_SIG | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_SAS_SIG | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -2611,11 +2643,11 @@ __host__ void add_and_searchCU31_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStre
       else
       {
         if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_STP_ROW> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_STP_PLN> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_STP_STK> (dimBlock, dimGrid, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_CAND_SINGLE_C | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -2854,6 +2886,8 @@ __global__ void add_and_searchCU4(cuSearchList searchList, accelcandBasic* d_can
 
 void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
 {
+  cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
   dim3 dimBlock, dimGrid;
 
   nvtxRangePush("Add & Search");
@@ -3138,11 +3172,7 @@ void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
           dimGrid.x   = ceil(ww);
           dimGrid.y   = 1;
 
-          add_and_searchCU31_f(dimBlock, dimGrid, 0, plains->strmSearch,searchList, plains->d_bCands, plains->d_candSem, 0, pd, &plains->plains->rLow[0], plains->noSteps, noStages, plains->flag );
-
-          // DEBUG
-          CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Error at add_and_searchCU31 kernel launch");
-          int TMP = 0;
+          add_and_searchCU31_f(dimGrid, dimBlock, 0, plains->strmSearch,searchList, plains->d_bCands, plains->d_candSem, 0, pd, &plains->plains->rLow[0], plains->noSteps, plains->noHarmStages, plains->flag );
         }
 
         // Run message
@@ -3221,44 +3251,45 @@ void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
         {
 #pragma omp critical
           //for ( int x = 0; x < ACCEL_USELEN; x++ )
-          for ( int x = 0; x < plains->accelLen; x++ )
+          for ( int step = 0; step < plains->noSteps; step++)         // Loop over steps
           {
-            for ( int stage = 0; stage < noStages; stage++ )
+            for ( int stage = 0; stage < plains->noHarmStages; stage++ )
             {
-              for ( int step = 0; step < plains->noSteps; step++)         // Loop over steps
+              for ( int x = 0; x < plains->accelLen; x++ )
               {
-                int idx = x*noStages + stage ;
-                //idx = stage*plains->noSteps*plains->accelLen + step*plains->accelLen + x;
+                int idx = step*plains->noHarmStages*plains->accelLen +   stage*plains->accelLen + x;
 
                 poww      = plains->h_bCands[idx].sigma;
                 if ( poww > 0 )
                 {
+                  // We have a canidates
                   rr = ( plains->plains[0].searchRlow[step] + x *  ACCEL_DR )            / (double)numharm ;
                   zz = ( plains->h_bCands[idx].z * ACCEL_DZ - plains->hInfos[0].zmax )   / (double)numharm ;
 
                   added = 0;
-                  long bser = floor(rr - plains->rLow );
-                  if ( bser >= 0 )
+                  long grIdx = floor( rr - plains->rLow );     /// The index of the canidate in the global list
+                  if ( grIdx >= 0 )
                   {
                     plains->noResults++;
-                    numharm   = plains->h_bCands[idx].numharm;
+                    numharm   = plains->h_bCands[idx].numharm; /// TODO this can be calcualted from the stage we dont need to store it!
                     numindep  = obs->numindep[twon_to_index(numharm)];
 
+                    // Calculate sigam of detection
                     if ( plains->flag & FLAG_SAS_SIG )
                       sig     = poww;
                     else
                       sig     = candidate_sigma(poww, numharm, numindep);
 
-                    if ( plains->h_candidates[bser].sig < sig )
+                    if ( plains->h_candidates[grIdx].sig < sig )
                     {
-                      //#pragma omp critical
-                      if ( plains->h_candidates[bser].sig < sig )
+                      // this sigma is greater that the curent sigma for this r value
+                      if ( plains->h_candidates[grIdx].sig < sig )
                       {
-                        plains->h_candidates[bser].sig      = sig;
-                        plains->h_candidates[bser].power    = poww;
-                        plains->h_candidates[bser].numharm  = numharm;
-                        plains->h_candidates[bser].r        = rr;
-                        plains->h_candidates[bser].z        = zz;//plains->h_bCands[idx].z;
+                        plains->h_candidates[grIdx].sig      = sig;
+                        plains->h_candidates[grIdx].power    = poww;
+                        plains->h_candidates[grIdx].numharm  = numharm;
+                        plains->h_candidates[grIdx].r        = rr;
+                        plains->h_candidates[grIdx].z        = zz;
                         added = 1;
                       }
                     }
@@ -3292,7 +3323,7 @@ void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
         cudaStreamWaitEvent(plains->strmSearch, plains->processComp, 0);
 
         //CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_bCands, plains->d_bCands, ACCEL_USELEN*noStages*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
-        CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_bCands, plains->d_bCands, plains->accelLen*noStages*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
+        CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_bCands, plains->d_bCands, plains->accelLen*plains->noHarmStages*plains->noSteps*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
 
         CUDA_SAFE_CALL(cudaEventRecord(plains->candCpyComp, plains->strmSearch),"Recording event: readComp");
         CUDA_SAFE_CALL(cudaGetLastError(), "COPY");
