@@ -25,7 +25,7 @@ PNGLINK := $(shell pkg-config --libs libpng)
 
 # Include and link information for PGPLOT v5.X (including shared libs!)
 # Typically you need to have your PGPLOT_DIR environment variable set
-PGPLOTINC = -I$(PGPLOT_DIR)
+PGPLOTINC  = -I$(PGPLOT_DIR)
 PGPLOTLINK = -L$(PGPLOT_DIR) -lcpgplot -lpgplot $(X11LINK) $(PNGLINK)
 
 # Include and link information for the FFTW 3.X single-precision library
@@ -90,13 +90,16 @@ FLINKFLAGS = $(FFLAGS)
 LINKCOMMAND1 = $(CC) $(LIBCMD) -o
 LINKCOMMAND2 = ar rcs
 
+CFLAGS_DBG = -I/home/chris/projects/libs/build/include
+LFLAGS_DBG = -L/home/chris/projects/libs/build/lib
 
 # CUDA flags
 # -gencode arch=compute_20,code=sm_21
 # -gencode arch=compute_30,code=sm_30
 # -gencode arch=compute_35,code=sm_35
 # -gencode arch=compute_50,code=sm_50
-ARCH=-gencode arch=compute_30,code=sm_30 
+ARCH=-gencode arch=compute_30,code=sm_30
+# -gencode arch=compute_50,code=sm_50
 #-gencode arch=compute_35,code=sm_35 -gencode arch=compute_50,code=sm_50
 NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m64 -I/usr/local/cuda/include  -I$(HOME)/local/include
 NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lcufft -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) \
@@ -136,6 +139,8 @@ else
   POSTFIX=
   export DEBUG=0
 endif
+
+LFLAGS_DBG += -lndarray
 
 # With open MP
 ifeq ($(WITHOMP),yes)
@@ -181,6 +186,8 @@ CUDA_OBS  =
 NVCLFLAGS = $(CLINKFLAGS)
 endif
 	
+CXXFLAGS = $(CFLAGS)
+
 INSTRUMENTOBJS = backend_common.o zerodm.o sigproc_fb.o psrfits.o
 
 # Use old header reading stuff for readfile
@@ -256,6 +263,13 @@ mpiprepsubband: mpiprepsubband_cmd.c mpiprepsubband_cmd.o mpiprepsubband_utils.o
 accelsearch: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o
 	$(NVCC) $(NVCLFLAGS) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
 
+test_GPUaccel.o: test_GPUaccel.cpp
+	$(CXX) $(CFLAGS) $(CFLAGS_DBG) -o $@ -c $<
+#	$(NVCC) $(NVCCFLAGS) $(CFLAGS_DBG) -o $@ -c $<
+
+test_GPUaccel: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o test_GPUaccel.o zapping.o
+	$(NVCC) $(NVCLFLAGS) $(LFLAGS_DBG) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o test_GPUaccel.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
+	
 bary: bary.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bary.o $(PRESTOLINK) -lm
 

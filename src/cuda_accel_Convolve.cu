@@ -365,6 +365,11 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
     ffdot   += tid;
     datas   += tid;
 
+    if ( tid == 228 )
+    {
+//      printf("kernels %f %f   datas  %f  %f \n",kernels->r, kernels->i, datas->r, datas->i );
+    }
+
     int pHeight = 0;                  // Height ot previous data in the stack
 
     for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains .
@@ -386,7 +391,7 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
     int newStride = noSteps * stride ;                // New stride based on type of multi-step
 
 #ifndef DEBUG
-#pragma unroll
+//#pragma unroll
 #endif
     for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains .
     {
@@ -421,7 +426,7 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
         }
 
 #if TEMPLATE_CONVOLVE == 1
-#pragma unroll
+//#pragma unroll
 #endif
         for ( int step = 0; step < noSteps; ++step )    // Loop over steps .
         {
@@ -441,6 +446,11 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
             idx  = ( stackY + stackHeight*step) * stride ;
           }
           */
+
+          if ( tid == 228 && iy == 0 && step == 0 && plnNo == 0 )
+          {
+            //printf("kernels %f %f   datas  %f  %f \n",kernels->r, kernels->i, datas->r, datas->i );
+          }
 
           const int ox = plnNo*noSteps+step;
 
@@ -856,6 +866,9 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
         dat[n].i        /= (float) width ;
       }
     }
+
+    if ( tid == 228 )
+      printf("kernels %f %f   datas  %f  %f \n",kernel->r, kernel->i, dat->r, dat->i );
 
     /*
     if ( noPlns == 1 )
@@ -1376,6 +1389,7 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
   }
 
   FOLD // FFT
+  //if (0)
   {
     // Copy fft data to device
     //for (int ss = plains->noStacks-1; ss >= 0; ss-- )

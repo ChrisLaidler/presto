@@ -55,6 +55,11 @@ fcomplex *complex_corr_conv(fcomplex * data, fcomplex * kernel,
 
    if (type == CORR || type == INPLACE_CORR) {
       for (ii = 0; ii < numdata; ii++) {
+        if(ii == 7698)
+        {
+          int tmpx = 0;
+        }
+
          tmpd = tmpdat[ii].r;
          tmpk = kernel[ii].r;
          tmpdat[ii].r = (tmpd * tmpk + tmpdat[ii].i * kernel[ii].i)
@@ -76,6 +81,7 @@ fcomplex *complex_corr_conv(fcomplex * data, fcomplex * kernel,
    /* Perform the inverse FFT on the result and return */
 
    COMPLEXFFT(tmpdat, numdata, 1);
+
    return tmpdat;
 }
 

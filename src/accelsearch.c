@@ -12,8 +12,6 @@
 
 #ifdef CUDA
 #include "cuda_accel.h"
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
 
 #include <sys/time.h>
 #include <time.h>

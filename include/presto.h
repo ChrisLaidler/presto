@@ -277,6 +277,17 @@ typedef struct bird{
   double hibin;
 } bird;
 
+typedef struct corrData{
+    fcomplex *dataarray;
+    fcomplex *kernarray;
+    int firsttime;
+    int oldnumbetween;
+    int oldkern_half_width;
+    int oldfftlen;
+    int oldnumdata;
+    int oldlobin;
+} corrData;
+
 /*****  Function Prototypes    *****/
 
 /* From swapendian.c: */
@@ -921,10 +932,19 @@ float *real_corr_conv(float *data, float *kernel, int numdata, \
 
 /* In corr_routines.c */
 
-int corr_complex(fcomplex *data, int numdata, presto_datainf datainf, \
-		 fcomplex *kern, int numkern, presto_datainf kerninf, \
-		 fcomplex *result, int numresult, int lobin, \
-		 int numbetween, int kern_half_width, presto_optype optype);
+corrData* initCorrData();
+
+void clearCorrData( corrData* corrd);
+
+int corr_complex( corrData* corrd,                                    \
+                 fcomplex * data, int numdata, presto_datainf datainf,\
+                 fcomplex * kern, int numkern, presto_datainf kerninf,\
+                 fcomplex * result, int numresult, int lobin,         \
+                 int numbetween, int kern_half_width, presto_optype optype);
+//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf, \
+//		 fcomplex *kern, int numkern, presto_datainf kerninf, \
+//		 fcomplex *result, int numresult, int lobin, \
+//		 int numbetween, int kern_half_width, presto_optype optype);
   /* This routine is a general correlation or convolution routine    */
   /* for complex data.  It can perform convolutions or correlations  */
   /* on raw complex data, data that is prepared for a convolution/   */

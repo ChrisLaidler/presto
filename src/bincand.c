@@ -531,8 +531,12 @@ static double orbit_trial(fcomplex * data, int datalen,
 
    /* Perform the correlation */
 
-   numgood = corr_complex(data, datalen, datainf, resp, resplen, RAW,
+   corrData* corrd = initCorrData();
+
+   numgood = corr_complex(corrd, data, datalen, datainf, resp, resplen, RAW,
                           buffer, datalen, resphw, numbetween, resphw, CORR);
+
+   clearCorrData(corrd);
 
    /* Search the correlation */
 

@@ -3262,16 +3262,17 @@ void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
                 poww      = plains->h_bCands[idx].sigma;
                 if ( poww > 0 )
                 {
-                  // We have a canidates
+                  numharm   = plains->h_bCands[idx].numharm; /// TODO this can be calculated from the stage we don't need to store it!
+
+                  // We have a candidate
                   rr = ( plains->plains[0].searchRlow[step] + x *  ACCEL_DR )            / (double)numharm ;
                   zz = ( plains->h_bCands[idx].z * ACCEL_DZ - plains->hInfos[0].zmax )   / (double)numharm ;
 
                   added = 0;
-                  long grIdx = floor( rr - plains->rLow );     /// The index of the canidate in the global list
+                  long grIdx = floor( rr - plains->rLow );     /// The index of the candidate in the global list
                   if ( grIdx >= 0 )
                   {
                     plains->noResults++;
-                    numharm   = plains->h_bCands[idx].numharm; /// TODO this can be calcualted from the stage we dont need to store it!
                     numindep  = obs->numindep[twon_to_index(numharm)];
 
                     // Calculate sigam of detection

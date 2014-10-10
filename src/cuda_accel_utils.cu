@@ -1467,9 +1467,9 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
   cx = blockDim.x * blockIdx.x + threadIdx.x;// use BLOCKSIZE rather (its constant)
   cy = blockDim.y * blockIdx.y + threadIdx.y;// use BLOCKSIZE rather (its constant)
 
-  float z = maxZ - cy * ACCEL_DZ;   /// The Fourier Frequency derivative
+  float z = -maxZ + cy * ACCEL_DZ;   /// The Fourier Frequency derivative
 
-  if (z < -maxZ || cx >= fftlen || cx < 0 )
+  if ( z < -maxZ || z > maxZ || cx >= fftlen || cx < 0 )
   {
     // Out of bounds
     return;
@@ -1481,7 +1481,7 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
   int numkern = 2 * hw;           /// The number of complex points that the kernel row will contain
   if (cx < hw)
     rx = cx + hw;
-  else if (cx > fftlen - hw)
+  else if (cx >= fftlen - hw)
     rx = cx - (fftlen - hw);
 
   FOLD // Calculate the response value
@@ -1495,7 +1495,7 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
 
       if (absz < 1E-4 )    // If z~=0 use the normal Fourier interpolation kernel
       {
-        gen_r_response(rx, 0.0, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
+        gen_r_response (rx, 0.0, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
       }
       else                 // Calculate the complex response value for Fourier f-dot interpolation.
       {
@@ -1537,16 +1537,16 @@ __global__ void init_kernels_stack(float2* response, const int stack, const int 
   }
 
   // Calculate which plain in the stack we are working with
-  for (int i = 0; i < maxZa.noInStack; i++)
+  for ( int i = 0; i < maxZa.noInStack; i++ )
   {
-    if (cy >= startR.val[i] && cy < startR.val[i + 1])
+    if ( cy >= startR.val[i] && cy < startR.val[i + 1] )
     {
       plain = i;
       break;
     }
   }
-  maxZ = -1*zmax.val[plain];
-  float z = maxZ + (cy-startR.val[plain]) * ACCEL_DZ; /// The Fourier Frequency derivative
+  maxZ = zmax.val[plain];
+  float z = -maxZ + (cy-startR.val[plain]) * ACCEL_DZ; /// The Fourier Frequency derivative
 
   // Calculate the response x position from the plain x position
   int kern_half_width = z_resp_halfwidth((double) z);
@@ -1554,7 +1554,7 @@ __global__ void init_kernels_stack(float2* response, const int stack, const int 
   int numkern = 2 * hw;             /// The number of complex points that the kernel row will contain
   if (cx < hw)
     rx = cx + hw;
-  else if (cx > fftlen - hw)
+  else if (cx >= fftlen - hw)
     rx = cx - (fftlen - hw);
 
   FOLD // Calculate the response value
@@ -1681,7 +1681,8 @@ float cuGetMedian(float *data, uint len)
 
 int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, accelobs* obs, int device, int noSteps, int width, int noThreads )
 { 
-  //nvtxRangePush("initHarmonics");
+  nvtxRangePush("initHarmonics");
+  printf("\nInitializing GPU %i\n",device);
   
   size_t free, total; 
   int noInStack[MAX_HARM_NO];
@@ -1955,7 +1956,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
       // Run message
       CUDA_SAFE_CALL(cudaGetLastError(), "Error before creating GPU kernels");
 
-      printf("\nCreateing GPU convolution kernels ... \n");
+      printf("\nGenerating GPU convolution kernels ... \n");
 
       int hh = 1;
       for (int i = 0; i< stkLst->noStacks; i++)
@@ -1964,7 +1965,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         dim3 dimBlock, dimGrid;
         cuFfdotStack* cStack = &stkLst->stacks[i];
 
-        printf("  Stack %i has %02i f-∂f plain(s) with Width: %5i,  Stride %5i,  Height: %6i,   Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->stride, cStack->height, cStack->height*cStack->stride*sizeof(fcomplex)/1024.0/1024.0);
+        printf("  Stack %i has %02i f-∂f plain(s) with Width: %5i,  Stride %5i,  Total Height: %6i,   Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->stride, cStack->height, cStack->height*cStack->stride*sizeof(fcomplex)/1024.0/1024.0);
 
         dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
         dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
@@ -2021,7 +2022,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
 
         for (int j = 0; j< cStack->noInStack; j++)
         {          
-          printf("    Harmonic %2i  Fraction: %5.3f   Z-Max: %4i.  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax);
+          printf("    Harmonic %2i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
           if ( stkLst->flag & FLAG_CNV_1KER )
             if ( j == 0 )
               printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->stride*sizeof(fcomplex)/1024.0/1024.0);
@@ -2045,6 +2046,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
       }
 
       FOLD // FFT the kernels
+      //if ( 0)
       {
         printf("  FFT'ing the kernels ");
         cufftHandle plnPlan;
@@ -2091,7 +2093,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         printf("\n");
       }
 
-      printf("Done.\n");
+      printf("Done generating GPU convolution kernels.\n");
 
       if ( DBG_KER02 )  // Print debug info
       {
@@ -2117,6 +2119,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
     }
     else                  // Copy kernrls from master device
     {
+      printf("Copying convolution kernels from device %i.\n", master->device);
       CUDA_SAFE_CALL(cudaMemcpyPeer(stkLst->d_kerData, stkLst->device, master->d_kerData, master->device, master->kerDataSize ), "Copying convolution kernels between devices.");
     }
   }
@@ -2262,16 +2265,17 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
     size_t freeRam = getFreeRam();
-    printf("  There is a total of %.2f GB of device memory of which there is %.3f GB free GPU memory and %.3f GB free host memory.\n",total / 1073741824.0, (free - fffTotSize)  / 1073741824.0, freeRam / 1073741824.0 );
+    printf("  There is a total of %.2f GB of device memory of which there is %.3f GB free and %.3f GB free host memory.\n",total / 1073741824.0, (free - fffTotSize)  / 1073741824.0, freeRam / 1073741824.0 );
 
 
     float noKers2 = ( free ) / (double) ( fffTotSize + totSize * noThreads ) ;  // (fffTotSize * noKers2) for the CUFFT memory for FFT'ing the plain(s) and (totSize * noThreads * noKers2) for each thread(s) plan(s)
 
+    printf("    Requested %i threads on this device.\n", noThreads);
     if ( noKers2 > 1.1 )
     {
       if ( noSteps > floor(noKers2) )
       {
-        printf("    Requested %i steps per thread, but with %i threads we can only do %.2f steps per thread. \n",noSteps, noThreads, noKers2 );
+        printf("      Requested %i steps per thread, but with %i threads we can only do %.2f steps per thread. \n",noSteps, noThreads, noKers2 );
         noSteps = floor(noKers2);
       }
 
@@ -2280,17 +2284,20 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
       if ( stkLst->noSteps > MAX_STEPS )
       {
         stkLst->noSteps = MAX_STEPS;
-        printf("    Trying to use more steps that the maximum number (%i) this code is compiled with.\n", stkLst->noSteps );
+        printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", stkLst->noSteps );
       }
-      printf("    Doing %i steps per thread.\n", noSteps );
     }
     else
+    {
+      printf("      There may not be enough memory to do %i treds, throtelling to 1 step per thread.\n", noThreads);
       stkLst->noSteps = 1;                  // Default we have to do at least one step at a time
+    }
+    printf("    Processing %i steps pre stack.\n", noSteps );
 
-    printf("  Kernels use %.2f GB of device memory.\n", (stkLst->kerDataSize) / 1073741824.0 );
-    printf("  CUFFT use %.2f GB of device memory.\n", (fffTotSize*stkLst->noSteps) / 1073741824.0 );
-    printf("  Each of the %i thread(s) uses %.2f GB of device memory.\n", noThreads, (totSize*stkLst->noSteps) / 1073741824.0 );
-    printf("  Using ~%.2f / %.2f GB (%.2f%%) device memory.\n", (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / 1073741824.0, total / 1073741824.0, (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / (float)total * 100.0f );
+    printf("    Kernels use: %.2f GB of device memory.\n", (stkLst->kerDataSize) / 1073741824.0 );
+    printf("    CUFFT   use: %.2f GB of device memory.\n", (fffTotSize*stkLst->noSteps) / 1073741824.0 );
+    printf("    Each of the %i stacks/thread(s) uses %.2f GB of device memory.\n", noThreads, (totSize*stkLst->noSteps) / 1073741824.0 );
+    printf("    Using ~%.2f / %.2f GB (%.2f%%) device memory.\n", (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / 1073741824.0, total / 1073741824.0, (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / (float)total * 100.0f );
 
     float noKers   = ( free - fullRSize - fullCands - fullSem ) / (double)(totSize*stkLst->noSteps) ;
 
@@ -2455,7 +2462,8 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
     }
   }
 
-  //nvtxRangePop();
+  printf("Done initializing GPU %i.\n",device);
+  nvtxRangePop();
   
   return 1;
 }
@@ -3168,9 +3176,14 @@ void CPU_Norm_Spread(cuStackList* plains, double searchRLow, double searchRHi, i
           double norm;    /// The normalising factor
 
           nvtxRangePush("Powers");
-          for (int ii = 0+start; ii < numdata; ii++)
+          for (int ii = 0; ii < numdata; ii++)
           {
-            plains->h_powers[ii] = POWERCU(fft[(int)lobin+ii].r, fft[(int)lobin+ii].i);
+            if ( lobin+ii < 0 )
+            {
+              plains->h_powers[ii] = 0;
+            }
+            else
+              plains->h_powers[ii] = POWERCU(fft[(int)lobin+ii].r, fft[(int)lobin+ii].i);
           }
           nvtxRangePop();
 
@@ -3186,14 +3199,13 @@ void CPU_Norm_Spread(cuStackList* plains, double searchRLow, double searchRHi, i
           }
 
           nvtxRangePush("Median");
-          //printf("\n\nMedian is %0.20f %i\n",median(plains->h_powers, numdata), numdata);
-          norm = 1.0 / sqrt(median(&plains->h_powers[start], (numdata+start))/ log(2.0));
-          //printf("\n\nMedian is %0.20f %i\n",norm, numdata);
+          norm = 1.0 / sqrt(median(plains->h_powers, (numdata))/ log(2.0));                   /// NOTE: This is the same methoud as CPU version
+          //norm = 1.0 / sqrt(median(&plains->h_powers[start], (numdata-start))/ log(2.0));       /// NOTE: This is a slightly better methoud in my opinion
           nvtxRangePop();
 
           // Normalise and spread
           nvtxRangePush("Write");
-          for (int ii = 0; ii < numdata, ii * ACCEL_NUMBETWEEN < cStack->stride; ii++)
+          for (int ii = 0; ii < numdata && ii * ACCEL_NUMBETWEEN < cStack->stride; ii++)
           {
             if ( lobin+ii < 0 )
             {
@@ -3312,9 +3324,14 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
             double norm;    /// The normalising factor
 
             nvtxRangePush("Powers");
-            for (int ii = 0+start; ii < numdata; ii++)
+            for (int ii = 0; ii < numdata; ii++)
             {
-              plains->h_powers[ii] = POWERCU(fft[(int)lobin+ii].r, fft[(int)lobin+ii].i);
+              if ( lobin+ii < 0 )
+              {
+                plains->h_powers[ii] = 0;
+              }
+              else
+                plains->h_powers[ii] = POWERCU(fft[(int)lobin+ii].r, fft[(int)lobin+ii].i);
             }
             nvtxRangePop();
 
@@ -3330,14 +3347,13 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
             }
 
             nvtxRangePush("Median");
-            //printf("\n\nMedian is %0.20f %i\n",median(plains->h_powers, numdata), numdata);
-            norm = 1.0 / sqrt(median(&plains->h_powers[start], (numdata+start))/ log(2.0));
-            //printf("\n\nMedian is %0.20f %i\n",norm, numdata);
+            norm = 1.0 / sqrt(median(plains->h_powers, (numdata))/ log(2.0));                       /// NOTE: This is the same methoud as CPU version
+            //norm = 1.0 / sqrt(median(&plains->h_powers[start], (numdata-start))/ log(2.0));       /// NOTE: This is a slightly better methoud (in my opinion)
             nvtxRangePop();
 
             // Normalise and spread
             nvtxRangePush("Write");
-            for (int ii = 0; ii < numdata, ii * ACCEL_NUMBETWEEN < cStack->stride; ii++)
+            for (int ii = 0; ii < numdata && ii * ACCEL_NUMBETWEEN < cStack->stride; ii++)
             {
               if ( lobin+ii < 0 )
               {
@@ -3351,6 +3367,7 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
                   fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
                   exit(EXIT_FAILURE);
                 }
+
                 plains->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[(int)lobin+ ii].r * norm;
                 plains->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[(int)lobin+ ii].i * norm;
               }
@@ -3439,6 +3456,10 @@ void setStackRVals(cuStackList* plains, double* searchRLow, double* searchRHi)
         if (numrs < numtocopy)
           numtocopy = numrs;
 
+        if ( numrs != numtocopy )
+          int tmp = 0;
+
+        cPlain->numrs[step]           = numrs;
         cPlain->ffdotPowWidth[step]   = numtocopy;
         cPlain->fullRLow[step]        = lobin;
         cPlain->rLow[step]            = drlo;
@@ -3801,6 +3822,7 @@ int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, i
     }
 
     FOLD // fft the input data
+    //if(0)
     {
       for (int ss = 0; ss< plains->noStacks; ss++)
       {

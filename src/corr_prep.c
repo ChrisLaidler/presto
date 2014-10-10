@@ -125,7 +125,7 @@ void chop_complex_ends(fcomplex * data, int numdata,
    numtocopy = numdata - 2 * chopbins;
    if (numresult < numtocopy)
       numtocopy = numresult;
-   for (ii = 0; ii < numresult; ii++)
+   for (ii = numtocopy; ii < numresult; ii++)
       result[ii] = zeros;
    memcpy(result, data + chopbins, sizeof(fcomplex) * numtocopy);
 }

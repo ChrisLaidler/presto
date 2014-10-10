@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
    fflush(stdout);
 
    /* Prep FFTW */
-   read_wisdom();
+   //read_wisdom();
 
    /* Loop through fftfile */
 

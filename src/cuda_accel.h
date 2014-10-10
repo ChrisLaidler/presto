@@ -3,8 +3,11 @@
 
 #include <cuda.h>
 #include <cufft.h>
-#include <cuda_runtime.h>
-#include <cuda_runtime_api.h>
+//#include <cuda_runtime.h>
+//#include <cuda_runtime_api.h>
+
+#include <nvToolsExt.h>
+#include <nvToolsExtCudaRt.h>
 
 #define __float128 long double
 #include "accel.h"
@@ -13,6 +16,7 @@
 #ifdef __cplusplus
 #define ExternC extern "C"
 #endif
+
 
 //=========================================== Defines ====================================================\\
 
@@ -170,6 +174,7 @@ typedef struct cuFFdot
     fcomplexcu* d_iData;            /// A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
     size_t numInpData[MAX_STEPS];   /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
+    size_t numrs[MAX_STEPS];        /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
     float fullRLow[MAX_STEPS];      /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
     float rLow[MAX_STEPS];          /// The low r value of the plain at input fft
     float searchRlow[MAX_STEPS];    /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
@@ -303,6 +308,6 @@ ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharms
  */
 ExternC cuStackList* initPlains(cuStackList* harms, int no, int of);
 
-void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands);
+ExternC void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands);
 
 #endif // CUDA_ACCEL_INCLUDED
