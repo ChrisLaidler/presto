@@ -10,12 +10,14 @@
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 
+extern "C"
+{
 #define __float128 long double
 #include "accel.h"
-
+}
 
 #define   TEMPLATE_CONVOLVE 1
-#define   TEMPLATE_SEARCH   0
+#define   TEMPLATE_SEARCH   1
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
@@ -300,9 +302,11 @@ typedef struct primaryInf
   int ffdBuffre;
 } primaryInf;
 
-__constant__ int        YINDS[MAX_YINDS];
-__constant__ float      POWERCUT[MAX_HARM_NO];
-__constant__ long long  NUMINDEP[MAX_HARM_NO];
+
+//__device__ __constant__ int        YINDS[MAX_YINDS];
+//__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
+//__device__ __constant__ long long  NUMINDEP[MAX_HARM_NO];
+
 
 __device__ volatile int g_canSem          = SEMFREE;
 __device__ int g_canCount                 = 0;
@@ -359,6 +363,9 @@ __host__ __device__ static inline int index_from_z(float z, float loz)
   return (int) ((z - loz) * ACCEL_RDZ + 1e-6);
 }
 
+//template<uint FLAGS, typename sType, int noStages, typename stpType>
+__global__ void print_YINDS(int no);
+
 /** Return the first value of 2^n >= x
  */
 //__host__ __device__ long long next2_to_n(long long x);
@@ -405,6 +412,11 @@ double _GammaP (double n, double x);
 double _GammaQ (double n, double x);
 
 void printData_cu(cuStackList* stkLst, const int FLAGS, int harmonic, int nX = 10, int nY = 5, int sX = 0, int sY = 0);
+
+
+//int setYINDS( cuStackList* stkLst, int numharmstages );
+int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long long *numindep );
+
 
 ///////////////////////////////////////////// Convolution Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 

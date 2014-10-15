@@ -7,10 +7,8 @@
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
-//#include <cub/cub.cuh>
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
-
 
 
 extern "C"
@@ -19,12 +17,12 @@ extern "C"
 #include "accel.h"
 }
 
+#include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
 //extern "C"
 //{
-
 //#include "cuda_utils.h"
 //}
 
@@ -1146,57 +1144,6 @@ __global__ void sumPlains(float* fund, int fWidth, int fStride, int fHeight, flo
   }
 }
 
-__global__ void sumPlains2(cuFfdot fund, cuFfdot10 others, int noOthers, float fRlow, float fZlow)
-{
-  int thredsinBlock = (blockDim.x * blockDim.y);
-  int ix = threadIdx.y * blockDim.x + threadIdx.x;
-  //int bidx;
-
-  //__shared__ int indsY[1202];
-
-  int batches = ceilf(fund.ffdotHeight / (float) thredsinBlock);
-
-  ix = blockIdx.x * thredsinBlock + threadIdx.y * blockDim.x + threadIdx.x;
-
-  int intStr = fund.ffPowStride;
-
-  for (int ss = 0; ss < noOthers; ss++)
-  {
-    float frac = (others.arr[ss].ffPowHeight - 1) / ((float) fund.ffdotHeight - 1);
-    int rr = fRlow + ix * ACCEL_DR;
-    int subr = calc_required_r_gpu(frac, rr);
-    int sRlow = calc_required_r_gpu(frac, fRlow);
-    int isx = index_from_r(subr, sRlow);
-
-    int oStrd = others.arr[ss].ffPowStride;
-    /*
-     for ( int i = 0; i < batches; i++ )
-     {
-     bidx = i*thredsinBlock + threadIdx.y*blockDim.x + threadIdx.x;;
-     if ( bidx < fund.ffdotHeight )
-     {
-     int sZlow = calc_required_z(frac, fZlow);
-     int zz = fZlow + (sZlow-1-bidx) * ACCEL_DZ;
-     int subz  = calc_required_z(frac, zz);
-     indsY[bidx] = index_from_z(subz, sZlow);
-     }
-     }
-     __syncthreads();
-     */
-
-    if (ix < fund.ffPowWidth)
-    {
-      int* yInds = &YINDS[others.arr[ss].inds];
-      for (int iy = 0; iy < fund.ffPowHeight; iy++)
-      {
-        //int yind = yInds[iy];
-        //yind = YINDS[others.arr[ss].inds+iy]
-        fund.ffdotPowers[iy * intStr + ix] += others.arr[ss].ffdotPowers[yInds[iy] * oStrd + isx];
-      }
-    }
-  }
-}
-
 __global__ void resetCount()
 {
   can_count_total += g_canCount;
@@ -1581,6 +1528,25 @@ __global__ void init_kernels_stack(float2* response, const int stack, const int 
     //response[(cy*fftlen+cx)*2+1]  = ri;
   }
 }
+
+//template<uint FLAGS, typename sType, int noStages, typename stpType>
+/*
+__global__ void print_YINDS(int no)
+{
+  const int bidx  = threadIdx.y * SS3_X       +   threadIdx.x;
+  const int tid   = blockIdx.x  * (SS3_Y*SS3_X) + bidx;
+
+  if ( tid == 0 )
+  {
+    printf("%p\n", YINDS );
+
+    for(int i = 0 ; i < no; i ++)
+    {
+      printf("%03i: %-5i  %i \n", i, YINDS[i], sizeof(int)*8 );
+    }
+  }
+}
+*/
 
 void printData_cu(cuStackList* stkLst, const int FLAGS, int harmonic, int nX, int nY, int sX, int sY)
 {
@@ -2198,9 +2164,15 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
     CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error At start of everything?.\n");
   }
 
+
   FOLD // Set constant memory values
   {
-    if (stkLst->hInfos[0].height* (noHarms /*-1*/ ) > MAX_YINDS)
+    setConstVals( stkLst,  obs->numharmstages, obs->powcut, obs->numindep);
+
+    /*
+    int szx = sizeof(int)*8;
+
+    if (stkLst->hInfos[0].height* (noHarms  ) > MAX_YINDS)
     {
       printf("ERROR! YINDS to small!");
     }
@@ -2228,17 +2200,33 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
             int Err = 0;
             printf("ERROR! YINDS Wrong!");
           }
-          indsY[bace+ j] = zind;
+          indsY[bace + j] = zind;
         }
       }
       stkLst->hInfos[ii].yInds = bace;
       bace += stkLst->hInfos[0].height;
     }
-    cudaMemcpyToSymbol(YINDS,    indsY,         bace * sizeof(int));
+
+    //CUDA_SAFE_CALL(cudaMemcpyToSymbol(YINDS,    indsY,         bace * sizeof(int), cudaMemcpyHostToDevice), "Failed to copy Y indices to device memory.");
+
+    int *dcoeffs;
+    cudaGetSymbolAddress((void **)&dcoeffs, YINDS);
+    cudaMemcpy(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice);
+
     cudaMemcpyToSymbol(POWERCUT, obs->powcut,   obs->numharmstages* sizeof(float));
     cudaMemcpyToSymbol(NUMINDEP, obs->numindep, obs->numharmstages* sizeof(long long));
 
+    //for(int i = 0 ; i < 400; i ++)
+    //{
+    //  printf("%03i:  %-5i  %i \n", i, indsY[i], sizeof(int)*8 );
+    //}
+
+    //print_YINDS<<<1,1>>>(400);
+
+    //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"");
+
     CUDA_SAFE_CALL(cudaGetLastError(), "Error Preparing the constant memory.");
+    */
   }
 
   FOLD // Decide how to handle input and output and allocate required memory
@@ -2462,7 +2450,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
     }
   }
 
-  printf("Done initializing GPU %i.\n",device);
+  printf("Done initialising GPU %i.\n",device);
   nvtxRangePop();
   
   return 1;
@@ -3459,11 +3447,15 @@ void setStackRVals(cuStackList* plains, double* searchRLow, double* searchRHi)
         if ( numrs != numtocopy )
           int tmp = 0;
 
+        cPlain->searchRlowPrev[step]  = cPlain->searchRlow[step];
+        cPlain->searchRlow[step]      = searchRLow[step];
+
         cPlain->numrs[step]           = numrs;
         cPlain->ffdotPowWidth[step]   = numtocopy;
         cPlain->fullRLow[step]        = lobin;
         cPlain->rLow[step]            = drlo;
         cPlain->numInpData[step]      = numdata;
+
       }
     }
   }
@@ -3471,7 +3463,9 @@ void setStackRVals(cuStackList* plains, double* searchRLow, double* searchRHi)
   
 int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands)
 {
-  cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+  //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
+  //print_YINDS<<<1,1>>>(400);
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
 

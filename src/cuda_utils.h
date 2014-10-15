@@ -77,6 +77,9 @@ static const char *_cudaGetErrorEnum(cufftResult error)
 #endif
 
 
+//__device__ __constant__ int        YINDS[MAX_YINDS];
+//__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
+//__device__ __constant__ long long  NUMINDEP[MAX_HARM_NO];
 
 
 // Defines for GPU Architecture types (using the SM version to determine the # of cores per SM)

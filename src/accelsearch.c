@@ -501,6 +501,7 @@ int main(int argc, char *argv[])
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
 
+   if(0)
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;

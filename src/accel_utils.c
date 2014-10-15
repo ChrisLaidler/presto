@@ -1,6 +1,7 @@
 #include "accel.h"
 #include "accelsearch_cmd.h"
 
+
 #if defined (__GNUC__)
 #  define inline __inline__
 #else

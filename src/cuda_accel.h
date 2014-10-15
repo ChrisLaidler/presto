@@ -9,14 +9,20 @@
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
-#define __float128 long double
-#include "accel.h"
-
 #define ExternC
 #ifdef __cplusplus
 #define ExternC extern "C"
 #endif
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+#define __float128 long double
+#include "accel.h"
+#ifdef __cplusplus
+}
+#endif
 
 //=========================================== Defines ====================================================\\
 
@@ -48,33 +54,33 @@
 
 //====================================== Bit flag values =================================================\\
 
-#define     CU_CAND_DEVICE    (1<<0)    /// Write all candidates to the device
-#define     CU_CAND_HOST      (1<<1)    /// Write all candidates to the device
-#define     CU_CAND_SINGLE_G  (1<<2)    /// Only get candidates from the current plain - This seams to be best in most cases
-#define     CU_CAND_SINGLE_C  ((1<<3)| CU_CAND_SINGLE_G)      /// Only get candidates from the current plain
-#define     CU_CAND_ALL       ( CU_CAND_DEVICE | CU_CAND_HOST | CU_CAND_SINGLE_G | CU_CAND_SINGLE_C  )
+#define     CU_CAND_DEVICE      (1<<0)    /// Write all candidates to the device
+#define     CU_CAND_HOST        (1<<1)    /// Write all candidates to the device
+#define     CU_CAND_SINGLE_G    (1<<2)    /// Only get candidates from the current plain - This seams to be best in most cases
+#define     CU_CAND_SINGLE_C    ((1<<3)| CU_CAND_SINGLE_G)      /// Only get candidates from the current plain
+#define     CU_CAND_ALL         ( CU_CAND_DEVICE | CU_CAND_HOST | CU_CAND_SINGLE_G | CU_CAND_SINGLE_C  )
 
-#define     CU_INPT_DEVICE     (1<<5)   /// Put the entire raw input FFT on device memeory - No CPU synchronisation required, but normalisation on GPU!
-#define     CU_INPT_HOST       (1<<6)   /// Use host locked data for entire raw FFT data -  normalisation on GPU
-#define     CU_INPT_SINGLE_G   (1<<7)   /// Prepare input data using GPU - normalisation on GPU
-#define     CU_INPT_SINGLE_C   (1<<8)   /// Prepare input data using CPU - Generally bets option, as CPU is "idle"
-#define     CU_INPT_ALL        ( CU_INPT_DEVICE | CU_INPT_HOST | CU_INPT_SINGLE_G | CU_INPT_SINGLE_C  )
+#define     CU_INPT_DEVICE      (1<<5)   /// Put the entire raw input FFT on device memory - No CPU synchronisation required, but normalisation on GPU!
+#define     CU_INPT_HOST        (1<<6)   /// Use host locked data for entire raw FFT data -  normalisation on GPU
+#define     CU_INPT_SINGLE_G    (1<<7)   /// Prepare input data using GPU - normalisation on GPU
+#define     CU_INPT_SINGLE_C    (1<<8)   /// Prepare input data using CPU - Generally bets option, as CPU is "idle"
+#define     CU_INPT_ALL         ( CU_INPT_DEVICE | CU_INPT_HOST | CU_INPT_SINGLE_G | CU_INPT_SINGLE_C  )
 
-#define     FLAG_SAS_SIG      (1<<10)   /// Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
-#define     FLAG_PLN_TEX      (1<<11)   /// Use texture memory to access the d-∂d plains during sum and search (non interpolation methoud) - May give advantge on pre-Fermi generation which we dont really care about
+#define     FLAG_SAS_SIG        (1<<10)   /// Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define     FLAG_PLN_TEX        (1<<11)   /// Use texture memory to access the d-∂d plains during sum and search (non interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
 
-#define     FLAG_CNV_TEX      (1<<12)   /// Use texture memory for convolution  - May give advantge on pre-Fermi generation which we dont really care about
-#define     FLAG_CNV_1KER     (1<<13)   /// Use minimal kernel                  - ie Only the kernel of largest plain in each stack
-#define     FLAG_CNV_OVLP     (1<<14)   /// Use the overlap kernrl              - I found this slower that the alternative
-#define     FLAG_CNV_PLN      (1<<15)   /// Convolve one plain at a time
-#define     FLAG_CNV_STK      (1<<16)   /// Convolve one stack at a time        - This seams to be best in most cases
-#define     FLAG_CNV_FAM      (1<<17)   /// Convolve one family at a time       - Preferably don't use this!
-#define     FLAG_CNV_ALL      ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
+#define     FLAG_CNV_TEX        (1<<12)   /// Use texture memory for convolution  - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_CNV_1KER       (1<<13)   /// Use minimal kernel                  - ie Only the kernel of largest plain in each stack
+#define     FLAG_CNV_OVLP       (1<<14)   /// Use the overlap kernel              - I found this slower that the alternative
+#define     FLAG_CNV_PLN        (1<<15)   /// Convolve one plain at a time
+#define     FLAG_CNV_STK        (1<<16)   /// Convolve one stack at a time        - This seams to be best in most cases
+#define     FLAG_CNV_FAM        (1<<17)   /// Convolve one family at a time       - Preferably don't use this!
+#define     FLAG_CNV_ALL        ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
 
-#define     FLAG_STP_ROW      (1<<18 )  /// Multi-step Row   interleaved        - This seams to be best in most cases
-#define     FLAG_STP_PLN      (1<<19 )  /// Multi-step Plain interleaved
-#define     FLAG_STP_STK      (1<<20 )  /// Multi-step Stack interleaved        - Preferably don't use this!
-#define     FLAG_STP_ALL      ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
+#define     FLAG_STP_ROW        (1<<18 )  /// Multi-step Row   interleaved        - This seams to be best in most cases
+#define     FLAG_STP_PLN        (1<<19 )  /// Multi-step Plain interleaved
+#define     FLAG_STP_STK        (1<<20 )  /// Multi-step Stack interleaved        - Preferably don't use this!
+#define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
 
 
 
@@ -165,20 +171,22 @@ typedef struct cuKernel
 
 typedef struct cuFFdot
 {
-    cuHarmInfo* harmInf;            /// A pointer to the harmonic information for this plains
-    cuKernel* kernel;               /// A pointer to the kernel for this plain
+    cuHarmInfo* harmInf;              /// A pointer to the harmonic information for this plains
+    cuKernel* kernel;                 /// A pointer to the kernel for this plain
 
-    fcomplexcu* d_plainData;        /// A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
-    fCplxTex datTex;                /// A texture holding the kernel data
+    fcomplexcu* d_plainData;          /// A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
+    fCplxTex datTex;                  /// A texture holding the kernel data
 
-    fcomplexcu* d_iData;            /// A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
+    fcomplexcu* d_iData;              /// A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
-    size_t numInpData[MAX_STEPS];   /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
-    size_t numrs[MAX_STEPS];        /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
-    float fullRLow[MAX_STEPS];      /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    float rLow[MAX_STEPS];          /// The low r value of the plain at input fft
-    float searchRlow[MAX_STEPS];    /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    int ffdotPowWidth[MAX_STEPS];   /// The width of the final f-∂f plain
+    size_t numInpData[MAX_STEPS];     /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
+    size_t numrs[MAX_STEPS];          /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
+    float fullRLow[MAX_STEPS];        /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
+    float rLow[MAX_STEPS];            /// The low r value of the plain at input fft
+    float searchRlow[MAX_STEPS];      /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
+    int ffdotPowWidth[MAX_STEPS];     /// The width of the final f-∂f plain
+
+    float searchRlowPrev[MAX_STEPS];  /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
 
 } cuFFdot;
 
@@ -281,7 +289,9 @@ typedef struct cuStackList
 } cuStackList;
 
 
+
 //===================================== Function prototypes ===============================================\\
+
 
 /** Initialise the template structure and kernels for a multi-step stack list
  * This is called once per device

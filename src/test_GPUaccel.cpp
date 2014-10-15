@@ -242,7 +242,6 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
    return ffdot;
 }
 
-
 int main(int argc, char *argv[])
 {
    int ii;
@@ -341,7 +340,7 @@ int main(int argc, char *argv[])
       int noSteps = 0;
 
 
-      cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
       subharminfo **subharminfs;
 
@@ -355,7 +354,6 @@ int main(int argc, char *argv[])
       printf("Generating CPU correlation kernels:\n");
       subharminfs = create_subharminfos(&obs);
       printf("Done generating kernels.\n\n");
-
 
       nDarray<2, float> DFF_kernels;
 
@@ -595,7 +593,9 @@ int main(int argc, char *argv[])
           double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
           double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
 
-          setContext(trdStack) ;
+          setContext( trdStack ) ;
+
+          //setYINDS( trdStack,  obs.numharmstages );
 
           int firstStep = 0;
 
@@ -617,7 +617,7 @@ int main(int argc, char *argv[])
               lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
             }
 
-            // Call the cuda stuff
+            // Call the CUDA stuff
             ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, &obs, &candsGPU);
 
             if ( trdStack->flag & CU_CAND_HOST )
@@ -809,8 +809,6 @@ int main(int argc, char *argv[])
             }
 
             print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
-
-            //ss = maxxx;
           }
 
           int si;
@@ -920,7 +918,7 @@ int main(int argc, char *argv[])
 
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
-   FOLD /* Candidate list trimming and optimization */
+   if(0) /* Candidate list trimming and optimization */
    {
       int numcands;
       GSList *listptr;
