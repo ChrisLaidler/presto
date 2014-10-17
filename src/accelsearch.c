@@ -234,7 +234,6 @@ int main(int argc, char *argv[])
         candsGPU = NULL;
         
         //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-        cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
         int noHarms = (1 << (obs.numharmstages - 1));
         

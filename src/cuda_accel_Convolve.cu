@@ -1072,35 +1072,35 @@ __host__ void convolveffdot7_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t
   switch (noSteps)
   {
   case 1:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,1>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,1>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,1><<<dimGrid,  dimBlock, i1, cnvlStream >>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
     break;
   case 2:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,2>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,2>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,2> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 3:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,3>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,3>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,3> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 4:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,4>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,4>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,4> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 5:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,5>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,5>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,5> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 6:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,6>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,6>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,6> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 7:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,7>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,7>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,7> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   case 8:
-    cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,8>, cudaFuncCachePreferL1);
+    //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns,8>, cudaFuncCachePreferL1);
     convolveffdot7<FLAGS,noPlns,8> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn );
       break;
   //case 9:
@@ -1120,7 +1120,7 @@ __host__ void convolveffdot7_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t
     exit(EXIT_FAILURE);
   }
 #else
-  cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns>, cudaFuncCachePreferL1);
+  //cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns>, cudaFuncCachePreferL1);
   convolveffdot7<FLAGS,noPlns> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps);
 #endif
 }
