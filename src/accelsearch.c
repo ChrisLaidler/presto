@@ -68,13 +68,19 @@ int main(int argc, char *argv[])
    Cmdline *cmd;
 
    // Timing vars   
-   long long cupTime = 0, gpuTime = 0, optTime = 0;
+   long long prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0;
    struct timeval start, end, timeval;   
    
    
    /* Prep the timer */
 
    tott = times(&runtimes) / (double) CLK_TCK;
+
+#ifdef CUDA
+      gettimeofday(&start, NULL);       // Profiling
+      nvtxRangePush("Prep");
+      gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+#endif
 
    /* Call usage() if we have no command line arguments */
 
@@ -129,6 +135,13 @@ int main(int argc, char *argv[])
    printf("  f = %.1f to %.1f Hz\n", obs.rlo / obs.T, obs.rhi / obs.T);
    printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
    printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
+
+
+#ifdef CUDA
+      nvtxRangePop();
+      gettimeofday(&end, NULL);
+      prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+#endif
 
 
    /* Start the main search loop */
@@ -233,7 +246,7 @@ int main(int argc, char *argv[])
       {
         candsGPU = NULL;
         
-        //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+        cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
         int noHarms = (1 << (obs.numharmstages - 1));
         
@@ -409,7 +422,7 @@ int main(int argc, char *argv[])
             }
           }
           
-          printf("Done\n");
+          //printf("Done\n");
           
           if ( ( master->flag & CU_CAND_SINGLE_C ) == CU_CAND_SINGLE_G )
           {
@@ -500,7 +513,7 @@ int main(int argc, char *argv[])
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
 
-   if(0)
+   FOLD // optimization
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;
@@ -510,8 +523,8 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA
       gettimeofday(&start, NULL);       // Profiling
-      nvtxRangePush("CPU");
-      gettimeofday(&start, NULL); // Note could start the timer after kernel init
+      nvtxRangePush("CPU optimisation");
+      gettimeofday(&start, NULL);       // Note could start the timer after kernel init
 #endif
 
       numcands = g_slist_length(cands);
@@ -578,10 +591,12 @@ int main(int argc, char *argv[])
       nvtxRangePop();
       gettimeofday(&end, NULL);
       optTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-
-      printf("\n CPU: %9.06f  GPU: %9.06f [%6.2f x]  Optimization: %9.06f \n", cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 #endif
    }
+
+#ifdef CUDA
+      printf("\n Timing:  Prep: %9.06f  CPU: %9.06f  GPU: %9.06f [%6.2f x]  Optimization: %9.06f \n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
+#endif
 
    /* Finish up */
 

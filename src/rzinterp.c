@@ -97,11 +97,11 @@ fcomplex **corr_rz_plane(fcomplex * data, int numdata, int numbetween,
 
    /* Perform the correlations. */
 
-   corrData* corrd = initCorrData();
+   //corrData* corrd = initCorrData();
 
    datainf = RAW;
    for (ii = 0; ii < numz; ii++) {
-      numgoodbins2 = corr_complex(corrd,
+      numgoodbins2 = corr_complex(/*corrd,*/
                                   data, numdata, datainf,
                                   kernel[ii], fftlen, FFT,
                                   result[ii], numgoodbins, startbin,
@@ -112,7 +112,7 @@ fcomplex **corr_rz_plane(fcomplex * data, int numdata, int numbetween,
       }
       datainf = SAME;
    }
-   clearCorrData(corrd);
+   //clearCorrData(corrd);
    return result;
 }
 

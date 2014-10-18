@@ -2295,7 +2295,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     case 1:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f01,1>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f01,1>, cudaFuncCachePreferL1);
       f01 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2304,7 +2304,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 2:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f02,2>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f02,2>, cudaFuncCachePreferL1);
       f02 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2313,7 +2313,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 3:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f03,3>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f03,3>, cudaFuncCachePreferL1);
       f03 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2322,7 +2322,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 4:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f04,4>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f04,4>, cudaFuncCachePreferL1);
       f04 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2331,7 +2331,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 5:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f05,5>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f05,5>, cudaFuncCachePreferL1);
       f05 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2340,7 +2340,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 6:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f06,6>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f06,6>, cudaFuncCachePreferL1);
       f06 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2349,7 +2349,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 7:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f07,7>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f07,7>, cudaFuncCachePreferL1);
       f07 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2358,7 +2358,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     case 8:
     {
-      //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f08,8>, cudaFuncCachePreferL1);
+      cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f08,8>, cudaFuncCachePreferL1);
       f08 tmpArr;
       for (int i = 0; i < noSteps; i++)
         tmpArr.arry[i] = rLows[i];
@@ -2376,7 +2376,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       exit(EXIT_FAILURE);
   }
 #else
-  //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,fMax>, cudaFuncCachePreferL1);
+  cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,fMax>, cudaFuncCachePreferL1);
   fMax tmpArr;
   for (int i = 0; i < noSteps; i++)
     tmpArr.arry[i] = rLows[i];

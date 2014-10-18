@@ -525,8 +525,7 @@ static void center_string(char *outstring, char *instring, int width)
 
    len = strlen(instring);
    if (width < len) {
-      printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n",
-             len, instring, width);
+      //printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n", len, instring, width);
    }
    tmp = memset(outstring, ' ', width);
    outstring[width] = '\0';
@@ -958,12 +957,12 @@ ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
 
    /* Perform the correlations */
 
-   corrData* corrd = initCorrData();
+   //corrData* corrd = initCorrData();
 
    result = gen_cmatrix(ffdot->numzs, ffdot->numrs);
    datainf = RAW;
    for (ii = 0; ii < ffdot->numzs; ii++) {
-      nrs = corr_complex(corrd,
+      nrs = corr_complex(/*corrd,*/
                          data, numdata, datainf,
                          shi->kern[ii].data, fftlen, FFT,
                          result[ii], ffdot->numrs, binoffset,
@@ -973,7 +972,7 @@ ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
 
    // Always free data
    vect_free(data);
-   clearCorrData(corrd);
+   //clearCorrData(corrd);
 
    /* Convert the amplitudes to normalized powers */
 
