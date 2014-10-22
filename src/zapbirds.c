@@ -92,11 +92,11 @@ static void process_bird(double basebin, int harm, double *lofreq, double *hifre
       data[abs(lodatabin)].r = 1.0;
       data[abs(lodatabin)].i = 1.0;
    }
-   corrData* corrd = initCorrData();
+   //corrData* corrd = initCorrData();
    firstcorrbin = (int) truebin - MAXBINSTOSHOW / 2;
    average = med / -log(0.5);
    result = gen_cvect(FFTLEN);
-   numgoodpts = corr_complex(corrd,
+   numgoodpts = corr_complex(/*corrd,*/
                              data, BINSTOGET, RAW,
                              kernel, FFTLEN, FFT,
                              result, MAXPTSTOSHOW,
@@ -108,7 +108,7 @@ static void process_bird(double basebin, int harm, double *lofreq, double *hifre
          maxbin = firstcorrbin + dr * ii;
       }
    }
-   clearCorrData(corrd);
+   //clearCorrData(corrd);
    printf("\nHarmonic %d of %.15g Hz (%.15g Hz, bin = %.15g)\n",
           harm, basebin / T, pred_freq, truebin);
    printf("  Max power = %.2f at %.15g Hz (bin = %.15g)\n",

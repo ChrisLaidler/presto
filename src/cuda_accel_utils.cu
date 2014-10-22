@@ -1579,7 +1579,7 @@ static int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen)
 
   bins_needed = accelLen * harm_fract + 2;
   end_effects = 2 * ACCEL_NUMBETWEEN * z_resp_halfwidth(calc_required_z(harm_fract, max_zfull), LOWACC);
-  return next2_to_n(bins_needed+ end_effects);
+  return next2_to_n(bins_needed + end_effects);
 }
 
 float cuGetMedian(float *data, uint len)
@@ -1690,12 +1690,24 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
       stkLst->noHarmStages  = numharmstages;
 
       float halfwidth       = z_resp_halfwidth(zmax, LOWACC); /// The halfwidth of the maximum zmax, to calculate accel len
-      float pow2            = pow(2 , round(log2(width*1000.0)) );
-      stkLst->accelLen      = floor(pow2  - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
-      if ( pow2 < 2048 || pow2 > 32768 )
+      float pow2;
+      if ( width > 100 )
       {
-        fprintf(stderr,"ERROR: width must be a power of 2 >= 2048 and <= 32768  ie (2 4 8 46 32)  \n");
-        return(1);
+        float width1    = width + 2 + 2 * ACCEL_NUMBETWEEN * halfwidth;
+        float width2    = ceil(log2(width1));
+        pow2            = pow(2, width2);
+
+        stkLst->accelLen = width;
+      }
+      else
+      {
+        pow2            = pow(2 , round(log2(width*1000.0)) );
+        stkLst->accelLen      = floor(pow2  - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
+        if ( pow2 < 2048 || pow2 > 32768 )
+        {
+          fprintf(stderr,"ERROR: width must be a power of 2 >= 2048 and <= 32768  ie (2 4 8 46 32)  \n");
+          return(1);
+        }
       }
       
       if ( DBG_KER01 || DBG_KER02 || DBG_PRNTKER02 || DBG_INP01 || DBG_INP02 || DBG_INP03 || DBG_INP04 || DBG_PLN01 || DBG_PLN02 || DBG_PLN03 || DBG_PLTPLN06 || DBG_PLTDETC )
@@ -1718,7 +1730,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         stkLst->hInfos[idx].zmax        = calc_required_z(stkLst->hInfos[idx].harmFrac, zmax);
         stkLst->hInfos[idx].height      = (stkLst->hInfos[idx].zmax / ACCEL_DZ) * 2 + 1;
         stkLst->hInfos[idx].halfWidth   = z_resp_halfwidth(stkLst->hInfos[idx].zmax, LOWACC);
-        stkLst->hInfos[idx].width       = calc_fftlen3(stkLst->hInfos[idx].harmFrac, stkLst->hInfos[idx].zmax, stkLst->accelLen);
+        stkLst->hInfos[idx].width       = calc_fftlen3(stkLst->hInfos[idx].harmFrac, stkLst->hInfos[0].zmax, stkLst->accelLen);
 
         if (prevWidth!= stkLst->hInfos[idx].width)
         {
@@ -1784,6 +1796,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
             int idx                         = round(harmFrac*noHarms);
             stkLst->hInfos[idx].stageOrder  = i;
             stkLst->pIdx[i]                 = idx;
+            //printf("%i/%i %6.4f Len %i\n",harm,harmtosum,stkLst->hInfos[idx].harmFrac,stkLst->hInfos[idx].width);
           }
         }
 
@@ -2012,7 +2025,6 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
       }
 
       FOLD // FFT the kernels
-      //if ( 0)
       {
         printf("  FFT'ing the kernels ");
         cufftHandle plnPlan;

@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
 
       /*  Do the f-fdot plane correlations: */
 
-      corrData* corrd = initCorrData();
+      //corrData* corrd = initCorrData();
 
       for (zct = 0; zct < nz; zct++) {
 
@@ -325,8 +325,7 @@ int main(int argc, char *argv[])
 
          /* Perform the correlation */
 
-         nr = corr_complex(corrd,
-                           filedata, filedatalen, datainf,
+         nr = corr_complex(filedata, filedatalen, datainf,
                            kernels[zct], corrsize, FFT,
                            corrdata, corrsize, kern_half_width,
                            numbetween, kern_half_width, CORR);
@@ -367,7 +366,7 @@ int main(int argc, char *argv[])
          totnumsearched += worknumbins;
       }
       vect_free(filedata);
-      clearCorrData(corrd);
+      //clearCorrData(corrd);
    } while (nextbin <= highestbin);
 
    /* Free the memory used by the correlation kernels */

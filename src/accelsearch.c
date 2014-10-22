@@ -224,16 +224,16 @@ int main(int argc, char *argv[])
         }
         print_percent_complete(obs.highestbin - obs.rlo,
                               obs.highestbin - obs.rlo, "search", 0);
-        
-        #ifdef CUDA
+
+#ifdef CUDA
         gettimeofday(&end, NULL);
         cupTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
         printf("cupTime %f", cupTime/1000.0);
         cands = candsCPU;
         
-#ifndef DEBUG
+//#ifndef DEBUG
         printCands("CPU_Cands.csv", candsCPU);
-#endif
+//#endif
         
         nvtxRangePop();
 
@@ -377,7 +377,6 @@ int main(int argc, char *argv[])
             double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
             
             setContext(trdStack) ;
-            //printContext();
             
             int firstStep = 0;
             
@@ -442,15 +441,34 @@ int main(int argc, char *argv[])
             for (cdx = 0; cdx < len; cdx++)
             {
               poww        = master->h_candidates[cdx].power;
-              
+
               if ( poww > 0 )
               {
-                numharm   = master->h_candidates[cdx].numharm;
-                numindep  = obs.numindep[twon_to_index(numharm)];
-                sig       = master->h_candidates[cdx].sig;
-                rr        = master->h_candidates[cdx].r;
-                zz        = master->h_candidates[cdx].z;               
-                candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+                double sig = master->h_candidates[cdx].sig;
+                int biggest = 1;
+
+                int dx;
+                for ( dx = cdx - ACCEL_CLOSEST_R ; dx <= cdx + ACCEL_CLOSEST_R; dx++ )
+                {
+                  if ( dx >= 0 && dx < len )
+                  {
+                    if ( master->h_candidates[dx].sig > sig )
+                    {
+                      biggest = 0;
+                      break;
+                    }
+                  }
+                }
+
+                if ( biggest )
+                {
+                  numharm   = master->h_candidates[cdx].numharm;
+                  numindep  = obs.numindep[twon_to_index(numharm)];
+                  sig       = master->h_candidates[cdx].sig;
+                  rr        = master->h_candidates[cdx].r;
+                  zz        = master->h_candidates[cdx].z;
+                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+                }
               }            
             }
             nvtxRangePop();
@@ -489,9 +507,6 @@ int main(int argc, char *argv[])
             }                    
             nvtxRangePop();
           }
-          
-          //if ( time1 != 0 )
-          //  printf("\n\nCopy %5.3f  Convolve %5.3f    %5.3f X  \n",time1 / 1000.0, time2 / 1000.0, time1/(double)time2 );
           
           cudaProfilerStop(); 
           

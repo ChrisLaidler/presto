@@ -80,7 +80,7 @@ endif
 CFLAGS = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) \
 	-DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 \
 	-g -Wall -W -fPIC -march=native
-#       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds done with mode=debug
+#       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
 CLINKFLAGS = $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
 #        FFLAGs.  Certain compilers (i.e. on Intel Macs) will
@@ -123,7 +123,7 @@ ifeq ($(DEBUG),1)
 else
 
   # CPU optimisations
-  CFLAGS+=-O3 -ffast-math -DNDBUG
+  CFLAGS+=-g -O3 -ffast-math -DNDBUG
   # Additional CPU optimisations
   CFLAGS+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32  
@@ -133,7 +133,7 @@ else
   
   NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
   NVCCFLAGS += -Xptxas -dlcm=ca
-  NVCLFLAGS += -O3
+  NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
   
   DEBUG_TARGET=release
   POSTFIX=

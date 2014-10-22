@@ -55,8 +55,8 @@ extern "C"
 
 
 #define SS3_X           16                    // X Thread Block
-#define SS3_Y           8                     // Y Thread Block  
-#define SS3_NPOWERS     21                    // Added by auto-tune script
+#define SS3_Y           4                     // Y Thread Block
+//#define SS3_NPOWERS     21                    // Added by auto-tune script
 
 #define SS4_X           32                    // X Thread Block
 #define SS4_Y           16                    // Y Thread Block

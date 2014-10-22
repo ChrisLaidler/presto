@@ -27,6 +27,7 @@ extern "C"
 //=========================================== Defines ====================================================\\
 
 #define   FOLD if (1)                   /// A simple marker used for folding blocks of code in NSIGHT
+#define   KILL if (0)                   /// A simple marker used for folding blocks of code in NSIGHT
 
 #define   MAX_IN_STACK  10              /// NOTE: this is 1 to big to handle the init problem
 #define   MAX_HARM_NO   16              /// The maximum number of harmonics handled by a accel search

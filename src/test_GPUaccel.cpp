@@ -128,6 +128,12 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
          rr = fullrlo + ii * ACCEL_DR;
          subr = calc_required_r(harm_fract, rr);
          shi->rinds[ii] = index_from_r(subr, ffdot->rlo);
+
+         if( ii == 100 )
+         {
+           //printf("harm: %02i  rLow: %10.5f  ix: %i  drlo: %8.3f  srlo: %8.3f \n", int((double) harmnum / (double) numharm *16), fullrlo, (int)shi->rinds[ii], (float)ffdot->rlo, subr );
+         }
+
       }
    }
    ffdot->rinds = shi->rinds;
@@ -210,7 +216,7 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
 
    for (ii = 0; ii < ffdot->numzs; ii++)
    {
-      nrs = corr_complex(corrd,
+      nrs = corr_complex2(corrd,
                          data, numdata, datainf,
                          shi->kern[ii].data, fftlen, FFT,
                          result[ii], ffdot->numrs, binoffset,
@@ -239,6 +245,11 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
       ffdot->powers[0][ii] = POWER(result[0][ii].r, result[0][ii].i);
    vect_free(result[0]);
    vect_free(result);
+
+   if (numharm == 1 && harmnum == 1 )
+   {
+       printf("\nstage:\t %i \t harm:\t %02i \t Power:\t %15.7f \t sum:\t %15.7f \n", 1, 1,  ffdot->powers[100][100],  ffdot->powers[100][100] );
+   }
    return ffdot;
 }
 
@@ -365,7 +376,7 @@ int main(int argc, char *argv[])
 
         if ( cmd->gpuP ) // Determine the index and number of devices
         {
-          if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a chage in accelsearch_cmd every time clig is run!!!!
+          if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd every time clig is run!!!!
           {
             // Make a list of all devices
             cmd->gpuC = getGPUCount();
@@ -394,11 +405,18 @@ int main(int argc, char *argv[])
             else
               noSteps = cmd->nsteps[dev];
 
-            added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
+            // Get width from ACCEL_USELEN
+            float halfwidth       = z_resp_halfwidth(obs.zhi, LOWACC); /// The halfwidth of the maximum zmax, to calculate accel len
+            float width           = ACCEL_USELEN + 2 + 2 * ACCEL_NUMBETWEEN * halfwidth;
+            float width2          = ceil(log2(width));
+            float width3          = pow(2, width2);
+            float width4          = floor(width3/1000.0);
+
+
+            added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, ACCEL_USELEN/*cmd->width*/, no );
             if ( added && (master == NULL) )
             {
               master = &kernels[0];
-              master->accelLen = ACCEL_USELEN; // Set this to mimic GPU and CPU
             }
             if ( added )
             {
@@ -488,7 +506,6 @@ int main(int argc, char *argv[])
               memcpy(CPU_kernels.getP(0,row), sinf->kern[row].data, hinf->width*sizeof(fcomplex));
             }
 
-
             //printf("   Input: %02i (%.2f)    MSE: %15.10f  μ: %10.5f   σ: %10.5f\n", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma );
 
             basicStats stat = GPU_kernels.getStats(true);
@@ -511,7 +528,7 @@ int main(int argc, char *argv[])
             else if ( ERR > 1e-19 )
               printf("  GOOD  Very good.\n"  );
             else
-              printf("  Greate \n");
+              printf("  Great \n");
           }
         }
       }
@@ -623,7 +640,7 @@ int main(int argc, char *argv[])
             if ( trdStack->flag & CU_CAND_HOST )
               trdStack->h_bCands = &master->h_bCands[master->accelLen*obs.numharmstages*firstStep] ;
 
-            FOLD // Copy data from device
+            FOLD // Copy data from device  .
             {
               ulong sz  = 0;
               harm      = 0;
@@ -678,9 +695,9 @@ int main(int argc, char *argv[])
               }
             }
 
-            CUDA_SAFE_CALL(cudaDeviceSynchronize(),"Error synchronising");
+            //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"Error synchronising");
 
-            FOLD // Now do an equivalent CPU search
+            FOLD // Now do an equivalent CPU search  .
             {
               for ( si = 0; si < trdStack->noSteps ; si ++) // Loop over steps
               {
@@ -741,11 +758,10 @@ int main(int argc, char *argv[])
               }
             }
 
-            FOLD // Print MSE
+            FOLD // Print MSE  .
             {
               for ( si = 0; si < trdStack->noSteps ; si ++) // Loop over steps
               {
-
                 printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
                 for ( int harz = 0; harz < trdStack->noHarms; harz++ )
                 {

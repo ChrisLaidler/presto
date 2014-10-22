@@ -1055,6 +1055,15 @@ void add_ffdotpows(ffdotpows * fundamental,
         for (jj = 0; jj < fundamental->numrs; jj++) {
             rind = subharmonic->rinds[jj];
             fundamental->powers[ii][jj] += subharmonic->powers[zind][rind];
+
+            if (ii == 100 && jj == 100 )
+               {
+                //printf("harm: %i  rLow: %f  is: %i ", harm_fract*16, step, ix);
+
+                 //if ( tid == 100 && trm == 100 && step == 0 )
+                   //printf("stage:\t %i \t harm:\t %02i \t Power:\t %15.7f \t sum:\t %15.7f \n", 0, 0,  subharmonic->powers[zind][rind],  fundamental->powers[ii][jj] );
+               }
+
         }
     }
 }
