@@ -246,10 +246,12 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
    vect_free(result[0]);
    vect_free(result);
 
+   /*
    if (numharm == 1 && harmnum == 1 )
    {
        printf("\nstage:\t %i \t harm:\t %02i \t Power:\t %15.7f \t sum:\t %15.7f \n", 1, 1,  ffdot->powers[100][100],  ffdot->powers[100][100] );
    }
+   */
    return ffdot;
 }
 
@@ -865,6 +867,8 @@ int main(int argc, char *argv[])
 
             if ( poww > 0 )
             {
+              printf("ADD %i/%i\n", cdx, len);
+
               numharm   = master->h_candidates[cdx].numharm;
               numindep  = obs.numindep[twon_to_index(numharm)];
               sig       = master->h_candidates[cdx].sig;

@@ -1646,7 +1646,7 @@ float cuGetMedian(float *data, uint len)
 }
 
 int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, accelobs* obs, int device, int noSteps, int width, int noThreads )
-{ 
+{
   nvtxRangePush("initHarmonics");
   printf("\nInitializing GPU %i\n",device);
   

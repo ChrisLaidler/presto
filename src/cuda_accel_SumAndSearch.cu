@@ -2816,7 +2816,6 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
 #if TEMPLATE_SEARCH == 1
   switch (noSteps)
   {
-    /*
     case 1:
     {
       //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f01,1>, cudaFuncCachePreferL1);
@@ -2844,7 +2843,6 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       add_and_searchCU311<FLAGS,sType,noStages,f03,3><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
-    */
     case 4:
     {
       //cudaFuncSetCacheConfig(add_and_searchCU311<FLAGS,sType,noStages,f04,4>, cudaFuncCachePreferL1);
@@ -2854,7 +2852,6 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       add_and_searchCU31<FLAGS,sType,noStages,f04,4><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
-    /*
     case 5:
     {
       //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,sType,noStages,f05,5>, cudaFuncCachePreferL1);
@@ -2891,13 +2888,6 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       add_and_searchCU311<FLAGS,sType,noStages,f08,8><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd, tmpArr);
       break;
     }
-    */
-    //case 9:
-      //  add_and_searchCU31<FLAGS,sType,noStages,9><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd);
-    //  break;
-    //case 10:
-    //  add_and_searchCU31<FLAGS,sType,noStages,10><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, pd);
-    //  break;
     default:
       fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for %i steps\n", noSteps);
       exit(EXIT_FAILURE);
@@ -2926,9 +2916,9 @@ __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     case 1:
     {
-      //sch1 tmpArr;
-      //tmpArr.arry[0] = pd[0];
-      //add_and_searchCU31_s<FLAGS,sch1,1> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
+      sch1 tmpArr;
+      tmpArr.arry[0] = pd[0];
+      add_and_searchCU31_s<FLAGS,sch1,1> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, tmpArr, rLows, noSteps );
       break;
     }
     case 2:

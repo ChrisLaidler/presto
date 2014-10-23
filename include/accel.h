@@ -18,7 +18,7 @@
 // #define ACCEL_USELEN 3850 // This works up to zmax=100 to use 4K FFTs
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
-//#define ACCEL_USELEN 1326       // Added by run time script
+#define ACCEL_USELEN 1326       // Added by run time script for 2K FFT's at a ZMAZ of 300
 
 
 /* Stepsize in Fourier Freq */

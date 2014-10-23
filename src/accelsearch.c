@@ -224,19 +224,20 @@ int main(int argc, char *argv[])
         }
         print_percent_complete(obs.highestbin - obs.rlo,
                               obs.highestbin - obs.rlo, "search", 0);
+        //printf("\n");
 
 #ifdef CUDA
         gettimeofday(&end, NULL);
         cupTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-        printf("cupTime %f", cupTime/1000.0);
+        printf("  cupTime %f\n", cupTime/1000.0);
         cands = candsCPU;
         
+        nvtxRangePop();
+
 //#ifndef DEBUG
         printCands("CPU_Cands.csv", candsCPU);
 //#endif
         
-        nvtxRangePop();
-
         free_subharminfos(&obs, subharminfs);
 #endif
       } 
@@ -254,7 +255,7 @@ int main(int argc, char *argv[])
         {
           cudaDeviceSynchronize();          // This is only necessary for timing
           gettimeofday(&start, NULL);       // Profiling
-          cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
+          //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
           
           printf("\n------------------------\nDoing GPU Search 2\n------------------------\n"); 
           
@@ -281,6 +282,8 @@ int main(int argc, char *argv[])
           
           FOLD // Create a kernel on each device
           {
+            nvtxRangePush("Init Kernels");
+
             kernels = (cuStackList*)malloc(cmd->gpuC*sizeof(cuStackList));        
             int added; 
             
@@ -312,13 +315,17 @@ int main(int argc, char *argv[])
                 printf("Error: failed to set up a kernel on device %i, trying to continue... \n", cmd->gpu[dev]);              
               }            
             }
+
+            nvtxRangePop();
           } 
           
           cuStackList* plainsj[noKers*5];   // List of pointers to each plain
           int noSteps = 0;
           
           FOLD // Create plains for calculations
-          {           
+          {
+            nvtxRangePush("Init Stacks");
+
             int pln;
             for ( dev = 0 ; dev < noKers; dev++)
             {
@@ -348,25 +355,25 @@ int main(int argc, char *argv[])
                 }
               }
             }
+
+            nvtxRangePop();
           }
           
           printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", noSteps, noKers);
           
           omp_set_num_threads(nPlains);
           
-          int harmtosum, harm;
           startr = obs.rlo, lastr = 0, nextr = 0;
-          
-          print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
-          
           int ss = 0;
           int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
           
-          float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
+          //float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
           
           if ( maxxx < 0 )
             maxxx = 0;
           
+          print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
+
           #pragma omp parallel
           {
             int tid = omp_get_thread_num();
@@ -391,6 +398,12 @@ int main(int argc, char *argv[])
               if ( firstStep >= maxxx )
                 break;
               
+              if ( firstStep + trdStack->noSteps >= maxxx )
+              {
+                trdStack->noSteps = maxxx - firstStep;
+              }
+
+
               int si;
               for ( si = 0; si < trdStack->noSteps ; si ++)
               {
@@ -421,7 +434,9 @@ int main(int argc, char *argv[])
             }
           }
           
-          //printf("Done\n");
+          print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
+
+          //printf("\nDone\n");
           
           if ( ( master->flag & CU_CAND_SINGLE_C ) == CU_CAND_SINGLE_G )
           {
@@ -436,8 +451,7 @@ int main(int argc, char *argv[])
             int added = 0;
             int numharm;
             poww = 0;
-            
-            
+
             for (cdx = 0; cdx < len; cdx++)
             {
               poww        = master->h_candidates[cdx].power;
@@ -471,9 +485,12 @@ int main(int argc, char *argv[])
                 }
               }            
             }
+
             nvtxRangePop();
           }
           
+          //printf("List Done\n");
+
           if ( master->flag & CU_CAND_DEVICE )
           {
             nvtxRangePush("Add to list"); 
@@ -508,16 +525,17 @@ int main(int argc, char *argv[])
             nvtxRangePop();
           }
           
-          cudaProfilerStop(); 
-          
-          print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
+          //cudaProfilerStop();
+
           cudaDeviceSynchronize();
           gettimeofday(&end, NULL);
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+          printf("  gpuTime %f\n", gpuTime/1000.0);
           cands = candsGPU;
           
 //#ifndef DEBUG
           printCands("GPU_Cands.csv", candsGPU);
+          //printf("Print Done\n");
 //#endif
         }
       }
