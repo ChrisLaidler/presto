@@ -9,6 +9,26 @@ OS = Linux
 WITH_CUDA = yes
 WITHOMP = yes
 
+OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
+OS_ARCH    = $(shell uname -m)
+ARCH_FLAGS =
+
+# Take command line flags that override any of these settings
+ifeq ($(x86_64),1)
+	OS_SIZE = 64
+	OS_ARCH = x86_64
+endif
+ifeq ($(ARMv7),1)
+	OS_SIZE    = 32
+	OS_ARCH    = armv7l
+	ARCH_FLAGS = -target-cpu-arch ARM
+endif
+ifeq ($(aarch64),1)
+	OS_SIZE    = 64
+	OS_ARCH    = aarch64
+	ARCH_FLAGS = -target-cpu-arch ARM
+endif
+
 # Linux is the first choice
 ifeq ($(OS),Linux)
 	LIBSUFFIX = .so
@@ -38,7 +58,7 @@ GLIBLINK := $(shell pkg-config --libs glib-2.0)
 
 # Include and link information for CFITSIO
 CFITSIOINC := $(shell pkg-config --cflags cfitsio)
-CFITSIOLINK := $(shell pkg-config --libs cfitsio)
+CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
 PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto $(FFTLINK)
@@ -101,9 +121,10 @@ ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
 ARCH += -gencode arch=compute_50,code=sm_50
 
-NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m64 -I/usr/local/cuda/include  -I$(HOME)/local/include
-NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lcufft -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) \
--L$(HOME)/local/lib
+NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
+NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
+NVCLFLAGS += -lcufft_static -lculibos
+#NVCLFLAGS  = -lcufft
 NVCCFLAGS += `freetype-config --cflags` `freetype-config --libs`
 
 

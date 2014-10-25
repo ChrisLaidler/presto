@@ -771,7 +771,7 @@ int main(int argc, char *argv[])
                   double MSE = gpuInput[si][harz].MSE(cpuInput[si][harz]);
                   double ERR =  MSE / stat.sigma ;
 
-                  printf("   Cmplx: %02i (%.2f)  MSE: %.3e    μ: %10.3e    σ: %.3e    MSE/σ: %.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
+                  printf("   Input: %02i (%.2f)  MSE: %.3e    μ: %10.3e    σ: %.3e    MSE/σ: %.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
                   if ( ERR > 1e-6  )
                     badInp++;

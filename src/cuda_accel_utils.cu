@@ -55,6 +55,7 @@ static __device__ double gn[11] =
 static __device__ double gd[11] =
 { 1.47495759925128324529E0, 3.37748989120019970451E-1, 2.53603741420338795122E-2, 8.14679107184306179049E-4, 1.27545075667729118702E-5, 1.04314589657571990585E-7, 4.60680728146520428211E-10, 1.10273215066240270757E-12, 1.38796531259578871258E-15, 8.39158816283118707363E-19, 1.86958710162783236342E-22,};
 
+/*
 __device__ void acquire_semaphore(volatile int *lock)
 {
   while (atomicCAS((int *) lock, 0, 1) != 0);
@@ -65,6 +66,7 @@ __device__ void release_semaphore(volatile int *lock)
   *lock = 0;
   __threadfence();
 }
+*/
 
 /** Return the first value of 2^n >= x
  */
@@ -1816,7 +1818,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         stkLst->flag    |= CU_CAND_SINGLE_G;    // Only get candidates from the current plain - This seams to be best in most cases
 
         stkLst->flag    |= FLAG_FFT_INP;        // Convolve input with fft
-        stkLst->flag    |= FLAG_FFT_OUT;        // Power output
+        //stkLst->flag    |= FLAG_FFT_OUT;        // Power output
       }
 
       FOLD // Calculate the stride of all the stacks (by allocating temporary memory)  .
@@ -3932,7 +3934,7 @@ int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, i
   if ( searchRLow[0] < searchRHi[0] ) // Convolve & FFT
   {
     //printf("Convolve & FFT\n");
-    convolveStack(plains, obs, cands);
+    convolveStack(plains, obs);
   }
 
   //printfData<<<1,1,0,0>>>((float*)plains->kernels[0].data,15,3,plains->hInfos[0].stride*2);

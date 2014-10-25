@@ -3547,7 +3547,7 @@ void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
             searchList.yInds.val[i]     = plains->hInfos[idx].yInds;
             searchList.heights.val[i]   = plains->hInfos[idx].height;
             searchList.widths.val[i]    = plains->plains[idx].ffdotPowWidth[0];
-            searchList.strides.val[i]   = plains->hInfos[idx].stride;
+            searchList.strides.val[i]   = plains->hInfos[idx].outStride;
             searchList.ffdBuffre.val[i] = plains->hInfos[idx].halfWidth*ACCEL_NUMBETWEEN;
             searchList.zMax.val[i]      = plains->hInfos[idx].zmax;
             searchList.fullRLow.val[i]  = plains->plains[idx].fullRLow[0];
@@ -3560,7 +3560,7 @@ void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands)
             pd[i].yInd                  = plains->hInfos[idx].yInds;
             pd[i].height                = plains->hInfos[idx].height;
             pd[i].width                 = plains->plains[idx].ffdotPowWidth[0];
-            pd[i].stride                = plains->hInfos[idx].stride;
+            pd[i].stride                = plains->hInfos[idx].inpStride;
             pd[i].ffdBuffre             = plains->hInfos[idx].halfWidth*ACCEL_NUMBETWEEN;
             pd[i].zMax                  = plains->hInfos[idx].zmax;
 

@@ -154,11 +154,16 @@ typedef struct tHarmList
 
 //------------- Data structures for, plains, stacks etc ----------------\\
 
+/** The size information of a f-∂f plain
+ */
 typedef struct cuHarmInfo
 {
-    size_t  width;                    /// The number of complex numbers in each kernel (2 floats)
-    size_t  inpStride;                /// The x stride in complex numbers
     size_t  height;                   /// The number if rows (Z's)
+    size_t  width;                    /// The number of complex numbers in each kernel (2 floats)
+
+    size_t  inpStride;                /// The x stride in complex numbers
+    size_t  outStride;                /// The stride of the block of memory  [ in complex numbers! ]
+
     int     zmax;                     /// The maximum (and minimum) z
     float   harmFrac;                 /// The harmonic fraction
     int     halfWidth;                /// The kernel half width
@@ -166,6 +171,8 @@ typedef struct cuHarmInfo
     int     stageOrder;               /// The index of this harmonic in the staged order
 } cuHarmInfo;
 
+/** The complex convolution kernels of a f-∂f plain
+ */
 typedef struct cuKernel
 {
     cuHarmInfo* harmInf;              /// A pointer to the harmonic information for this kernel
@@ -173,7 +180,7 @@ typedef struct cuKernel
     fCplxTex    kerDatTex;            /// A texture holding the kernel data
 } cuKernel;
 
-/** A plain f-∂f plain
+/** A f-∂f plain
  */
 typedef struct cuFFdot
 {
@@ -197,6 +204,8 @@ typedef struct cuFFdot
 
 } cuFFdot;
 
+/** A stack of f-∂f plains that all have the same FFT width
+ */
 typedef struct cuFfdotStack
 {
     int noInStack;                    /// The number of plains in this stack
@@ -206,9 +215,11 @@ typedef struct cuFfdotStack
     cudaStream_t inpStream;           /// CUDA stream for work on input data for the stack
 
     size_t width;                     /// The width of the block of memory   [ in complex numbers! ]
+    size_t height;                    /// The height of the block of memory for one step
+
     size_t inpStride;                 /// The stride of the block of memory  [ in complex numbers! ]
     size_t outStride;                 /// The stride of the block of memory  [ in complex numbers! ]
-    size_t height;                    /// The height of the block of memory for one step
+
     int startR[MAX_IN_STACK];         /// The heights of the individual plains assuming one step
 
     int zUp[MAX_IN_STACK];            /// The heights of the individual plains
@@ -236,6 +247,8 @@ typedef struct cuFfdotStack
     cudaStream_t fftIStream;          /// CUDA stream for summing and searching the data
 } cuFfdotStack;
 
+/** A collection of all the stack that make up a harmonic family of f-∂f plains
+ */
 typedef struct cuStackList
 {
     size_t noStacks;                  /// The number of stacks in this stack list

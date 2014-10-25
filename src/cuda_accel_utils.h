@@ -430,7 +430,7 @@ int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long lo
 
 ///////////////////////////////////////////// Convolution Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands);
+void convolveStack(cuStackList* plains, accelobs * obs);
 
 /*
 __global__ void convolveffdot(fcomplexcu *ffdot, const int width, const int stride, const int height, const fcomplexcu *data, const fcomplexcu *kernels);

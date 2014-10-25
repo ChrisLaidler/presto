@@ -23,6 +23,8 @@
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
+#include <cufft.h>
+#include <cufftXt.h>
 
 extern "C"
 {
@@ -1190,6 +1192,10 @@ __host__ void convolveffdot7_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t
 
 __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
+  /*
+  if (offset == 0)
+    printf("offset %i\n",offset);
+
   fftCnvlvInfo *inf = (fftCnvlvInfo*)callerInfo;
 
   const int strd = inf->stride * inf->noSteps;
@@ -1210,17 +1216,92 @@ __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *cal
   size_t row  = grow - inf->heights[pln];
   size_t step = offset % strd / inf->stride ;
 
-  fcomplexcu ker = inf->d_kernel[pln][row*inf->stride + col ];
-  fcomplexcu inp = inf->d_idata[step][col];
+  cufftComplex ker = ((cufftComplex*)inf->d_kernel[pln])[row*inf->stride + col ];
+  cufftComplex inp = ((cufftComplex*)inf->d_idata[step])[col];
 
-  fcomplexcu out;
-  out.r = ( inp.r * ker.r + inp.i * ker.i ) / inf->width;
-  out.i = ( inp.i * ker.r - inp.r * ker.i ) / inf->width;
+  //if (offset == 0)
+  //  printf("grow %i  col: %i  row: %i  step: %i  \n",grow, col, row, step);
 
-  return (cufftComplex)(out);
+  cufftComplex out;
+  out.x = 1;//( inp.x * ker.x + inp.y * ker.y ) / inf->width;
+  out.y = 2;//( inp.y * ker.x - inp.x * ker.y ) / inf->width;
+
+  ((cufftComplex*)dataIn)[offset] = out;
+
+  return out;
+
+  //cufftComplex *bob =
+
+  return ((cufftComplex*)dataIn)[offset+10];
+
+  */
 }
 
-void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
+__device__ cufftCallbackLoadC d_loadCallbackPtr = CB_ConvolveInput;
+
+void convolveStackFFT(cuStackList* plains, accelobs * obs )
+{
+  // Convolve this entire stack in one block
+  for (int ss = 0; ss< plains->noStacks; ss++)
+  {
+    cuFfdotStack* cStack = &plains->stacks[ss];
+    iHarmList hlist;
+    cHarmList plainsDat;
+    cHarmList kerDat;
+    iHarmList zUp;
+    iHarmList zDn;
+    size_t heights = 0;
+
+    fftCnvlvInfo h_inf;
+    fftCnvlvInfo* d_inf;
+
+
+    h_inf.noSteps = plains->noSteps;
+    h_inf.stride  = cStack->inpStride;
+    h_inf.width   = cStack->width;
+
+    for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
+    {
+      h_inf.d_idata[i]    = cStack->d_iData;
+      h_inf.d_kernel[i]   = cStack->kernels[i].d_kerData;
+      h_inf.heights[i]    = cStack->harmInf[i].height;
+      h_inf.top[i]        = heights;
+      heights           += cStack->harmInf[i].height;
+    }
+
+    CUDA_SAFE_CALL(cudaMalloc((void **)&d_inf, sizeof(d_inf)),"Malloc Device memory");
+
+
+
+    // Synchronisation
+    //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
+    //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
+    // Synchronise
+    cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
+
+    // Copy host memory to device
+    CUDA_SAFE_CALL(cudaMemcpyAsync(d_inf, &h_inf, sizeof(d_inf), cudaMemcpyHostToDevice, cStack->fftPStream),"Copy to device");
+
+    cufftCallbackLoadC h_loadCallbackPtr;
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_loadCallbackPtr, d_loadCallbackPtr, sizeof(h_loadCallbackPtr)),"");
+
+    //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_loadCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&d_inf ),"");
+    //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_loadCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&d_inf ),"");
+
+    // Do the FFT
+#pragma omp critical
+    {
+      CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
+      CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
+    }
+
+    // Synchronise
+    cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+  }
+}
+
+void convolveStack(cuStackList* plains, accelobs * obs)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
@@ -1228,215 +1309,226 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
 
   nvtxRangePush("Convolve & FFT");
 
-  FOLD // Convolve
+  //if ( plains->flag & FLAG_FFT_INP )
   {
-    dimBlock.x = CNV_DIMX;   // in my experience 16 is almost always best (half warp)
-    dimBlock.y = CNV_DIMY;   // in my experience 16 is almost always best (half warp)
-
-    int harm = 0;
-
-    // In my limited testing I found convolving each plain separately works fastest so it is the "default"
-    if      ( plains->flag & FLAG_CNV_STK ) // Do the convolutions one stack  at a time
+    //convolveStackFFT(plains, obs );
+  }
+  //else
+  {
+    FOLD // Convolve
     {
-      // Convolve this entire stack in one block
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      dimBlock.x = CNV_DIMX;   // in my experience 16 is almost always best (half warp)
+      dimBlock.y = CNV_DIMY;   // in my experience 16 is almost always best (half warp)
+
+      int harm = 0;
+
+      // In my limited testing I found convolving each plain separately works fastest so it is the "default"
+      if      ( plains->flag & FLAG_CNV_STK ) // Do the convolutions one stack  at a time
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        iHarmList hlist;
-        cHarmList plainsDat;
-        cHarmList kerDat;
-        iHarmList zUp;
-        iHarmList zDn;
-
-        for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
+        // Convolve this entire stack in one block
+        for (int ss = 0; ss< plains->noStacks; ss++)
         {
-          hlist.val[i]      =  cStack->harmInf[i].height;
-          plainsDat.val[i]  =  cStack->plains[i].d_plainData;
-          kerDat.val[i]     =  cStack->kernels[i].d_kerData;
+          cuFfdotStack* cStack = &plains->stacks[ss];
+          iHarmList hlist;
+          cHarmList plainsDat;
+          cHarmList kerDat;
+          iHarmList zUp;
+          iHarmList zDn;
 
-          zUp.val[i]        =  cStack->zUp[i];
-          zDn.val[i]        =  cStack->zDn[i];
+          for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
+          {
+            hlist.val[i]      =  cStack->harmInf[i].height;
+            plainsDat.val[i]  =  cStack->plains[i].d_plainData;
+            kerDat.val[i]     =  cStack->kernels[i].d_kerData;
+
+            zUp.val[i]        =  cStack->zUp[i];
+            zDn.val[i]        =  cStack->zDn[i];
+          }
+
+          dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
+          dimGrid.y = 1;
+
+          // Synchronisation
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
+
+          if ( plains->flag & FLAG_CNV_OVLP )
+          {
+            // NOTE convolveffdot41 seams faster and has been adapted for multi-step so now using it
+            convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
+          }
+          else
+          {
+            convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
+          }
+
+          // Run message
+          CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch (convolveffdot7)");
+
+          // Synchronisation
+          cudaEventRecord(cStack->convComp, cStack->cnvlStream);
+        }
+      }
+      else if ( plains->flag & FLAG_CNV_FAM ) // Do the convolutions one family at a time
+      {
+        iHarmList hlist;
+        iHarmList slist;
+        iHarmList wlist;
+        int heights = 0;
+        for (int ss = 0; ss< plains->noHarms; ss++)
+        {
+          cuHarmInfo* cHarm = &plains->hInfos[ss];
+
+          hlist.val[ss] = cHarm->height;
+          slist.val[ss] = cHarm->inpStride;
+          wlist.val[ss] = cHarm->width;
+          heights += cHarm->height;
         }
 
-        dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
+        dimGrid.x = ceil(plains->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
         dimGrid.y = 1;
 
-        // Synchronisation
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+        cudaStreamWaitEvent(plains->stacks[0].cnvlStream, plains->searchComp, 0);
 
-
-        if ( plains->flag & FLAG_CNV_OVLP )
+        if ( ( (plains->flag & FLAG_STP_ROW) || (plains->flag & FLAG_STP_PLN) ) && !( plains->flag & FLAG_CNV_1KER) )
         {
-          // NOTE convolveffdot41 seams faster and has been adapted for multi-step so now using it
-          convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
+          for ( int stp = 0; stp < plains->noSteps; stp++ )
+          {
+            if (plains->flag & FLAG_STP_ROW)
+              convolveffdot5<FLAG_STP_ROW><<<dimGrid, dimBlock, 0, plains->stacks[0].cnvlStream>>>(plains->d_kerData, plains->d_iData, plains->d_plainData, wlist, slist, hlist, plains->noHarms, heights, plains->noSteps, stp);
+            else
+              convolveffdot5<FLAG_STP_PLN><<<dimGrid, dimBlock, 0, plains->stacks[0].cnvlStream>>>(plains->d_kerData, plains->d_iData, plains->d_plainData, wlist, slist, hlist, plains->noHarms, heights, plains->noSteps, stp);
+          }
         }
         else
         {
-          convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
+          fprintf(stderr,"ERROR: Family convolutions require stack interleaved data and plain sized kernels \n");
+          exit(EXIT_FAILURE);
         }
 
         // Run message
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch (convolveffdot7)");
+        CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
 
-        // Synchronisation
-        cudaEventRecord(cStack->convComp, cStack->cnvlStream);
-      }
-    }
-    else if ( plains->flag & FLAG_CNV_FAM ) // Do the convolutions one family at a time
-    {
-      iHarmList hlist;
-      iHarmList slist;
-      iHarmList wlist;
-      int heights = 0;
-      for (int ss = 0; ss< plains->noHarms; ss++)
-      {
-        cuHarmInfo* cHarm = &plains->hInfos[ss];
-
-        hlist.val[ss] = cHarm->height;
-        slist.val[ss] = cHarm->inpStride;
-        wlist.val[ss] = cHarm->width;
-        heights += cHarm->height;
-      }
-
-      dimGrid.x = ceil(plains->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
-      dimGrid.y = 1;
-
-      cudaStreamWaitEvent(plains->stacks[0].cnvlStream, plains->searchComp, 0);
-
-      if ( ( (plains->flag & FLAG_STP_ROW) || (plains->flag & FLAG_STP_PLN) ) && !( plains->flag & FLAG_CNV_1KER) )
-      {
-        for ( int stp = 0; stp < plains->noSteps; stp++ )
+        for (int ss = 0; ss< plains->noStacks; ss++)
         {
-          if (plains->flag & FLAG_STP_ROW)
-            convolveffdot5<FLAG_STP_ROW><<<dimGrid, dimBlock, 0, plains->stacks[0].cnvlStream>>>(plains->d_kerData, plains->d_iData, plains->d_plainData, wlist, slist, hlist, plains->noHarms, heights, plains->noSteps, stp);
-          else
-            convolveffdot5<FLAG_STP_PLN><<<dimGrid, dimBlock, 0, plains->stacks[0].cnvlStream>>>(plains->d_kerData, plains->d_iData, plains->d_plainData, wlist, slist, hlist, plains->noHarms, heights, plains->noSteps, stp);
+          cuFfdotStack* cStack = &plains->stacks[ss];
+          cudaEventRecord(cStack->convComp, cStack->cnvlStream);
         }
       }
-      else
+      else // ( plains->flag & FLAG_CNV_PLN ) // Do the convolutions one plain  at a time
       {
-        fprintf(stderr,"ERROR: Family convolutions require stack interleaved data and plain sized kernels \n");
-        exit(EXIT_FAILURE);
-      }
+        // NOTE: The use of FLAG_CNV_1KER in this section will be handled because we are using the "kernels" pointers to the complex data
 
-      // Run message
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
-
-      for (int ss = 0; ss< plains->noStacks; ss++)
-      {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        cudaEventRecord(cStack->convComp, cStack->cnvlStream);
-      }
-    }
-    else // ( plains->flag & FLAG_CNV_PLN ) // Do the convolutions one plain  at a time
-    {
-      // NOTE: The use of FLAG_CNV_1KER in this section will be handled because we are using the "kernels" pointers to the complex data
-
-      //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
-      for (int ss = 0; ss< plains->noStacks; ss++)              // Loop through Stacks
-      {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-
-        // Do some Synchronisation
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-
-        fcomplexcu* d_plainData;    // The complex f-∂f plain data
-        fcomplexcu* d_iData;        // The complex input array
-
-
-        for (int si = 0; si< cStack->noInStack; si++)         // Loop through plains in stack
+        //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
+        for (int ss = 0; ss< plains->noStacks; ss++)              // Loop through Stacks
         {
-          cudaStream_t sst = cStack->cnvlStream;              // NB: This is really the only option because of synchronisation issues
-          //cudaStream_t sst = plains->stacks[harm%(plains->noStacks)].cnvlStream;
-          //cudaStream_t sst = plains->stacks[ss+harm%(plains->noStacks-ss)].cnvlStream;
-
-          cuHarmInfo* cHInfo    = &cStack->harmInf[si];     // The current harmonic we are working on
-          cuFFdot*    cPlain    = &cStack->plains[si];      // The current f-∂f plain
-
-          dimGrid.x = ceil(cHInfo->width / (float) ( CNV_DIMX * CNV_DIMY ));
-          dimGrid.y = 1;
+          cuFfdotStack* cStack = &plains->stacks[ss];
 
           // Do some Synchronisation
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(sst, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(sst, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
-          for (int sti = 0; sti < plains->noSteps; sti++)         // Loop through Steps
+          fcomplexcu* d_plainData;    // The complex f-∂f plain data
+          fcomplexcu* d_iData;        // The complex input array
+
+
+          for (int si = 0; si< cStack->noInStack; si++)         // Loop through plains in stack
           {
-            d_iData       = cPlain->d_iData + cHInfo->inpStride * sti;
+            cudaStream_t sst = cStack->cnvlStream;              // NB: This is really the only option because of synchronisation issues
+            //cudaStream_t sst = plains->stacks[harm%(plains->noStacks)].cnvlStream;
+            //cudaStream_t sst = plains->stacks[ss+harm%(plains->noStacks-ss)].cnvlStream;
 
-            if      ( plains->flag & FLAG_STP_ROW )
+            cuHarmInfo* cHInfo    = &cStack->harmInf[si];     // The current harmonic we are working on
+            cuFFdot*    cPlain    = &cStack->plains[si];      // The current f-∂f plain
+
+            dimGrid.x = ceil(cHInfo->width / (float) ( CNV_DIMX * CNV_DIMY ));
+            dimGrid.y = 1;
+
+            // Do some Synchronisation
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(sst, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(sst, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
+            for (int sti = 0; sti < plains->noSteps; sti++)         // Loop through Steps
             {
-              fprintf(stderr,"ERROR: Cannot do single plain convolutions with row interleave multi step stacks.\n");
-              exit(EXIT_FAILURE);
+              d_iData       = cPlain->d_iData + cHInfo->inpStride * sti;
+
+              if      ( plains->flag & FLAG_STP_ROW )
+              {
+                fprintf(stderr,"ERROR: Cannot do single plain convolutions with row interleave multi step stacks.\n");
+                exit(EXIT_FAILURE);
+              }
+              else if ( plains->flag & FLAG_STP_PLN )
+                d_plainData = cPlain->d_plainData + sti * cHInfo->height * cHInfo->inpStride;   // Shift by plain height
+              else if ( plains->flag & FLAG_STP_STK )
+                d_plainData = cPlain->d_plainData + sti * cStack->height * cHInfo->inpStride;   // Shift by stack height
+              else
+                d_plainData   = cPlain->d_plainData;  // If nothing is specified just use plain data
+
+              if ( plains->flag & FLAG_CNV_TEX )
+                convolveffdot36<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->inpStride, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);
+              else
+                convolveffdot35<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->inpStride, cHInfo->height, d_iData, cPlain->kernel->d_kerData);
+
+              // Run message
+              CUDA_SAFE_CALL(cudaGetLastError(), "Error at convolution kernel launch");
+
+              harm++;
             }
-            else if ( plains->flag & FLAG_STP_PLN )
-              d_plainData = cPlain->d_plainData + sti * cHInfo->height * cHInfo->inpStride;   // Shift by plain height
-            else if ( plains->flag & FLAG_STP_STK )
-              d_plainData = cPlain->d_plainData + sti * cStack->height * cHInfo->inpStride;   // Shift by stack height
-            else
-              d_plainData   = cPlain->d_plainData;  // If nothing is specified just use plain data
-
-            if ( plains->flag & FLAG_CNV_TEX )
-              convolveffdot36<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->inpStride, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);
-            else
-              convolveffdot35<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->inpStride, cHInfo->height, d_iData, cPlain->kernel->d_kerData);
-
-            // Run message
-            CUDA_SAFE_CALL(cudaGetLastError(), "Error at convolution kernel launch");
-
-            harm++;
           }
+
+          // Synchronise
+          cudaEventRecord(cStack->convComp, cStack->cnvlStream);
+        }
+      }
+    }
+
+    if ( DBG_PLN01 ) // Print debug info
+    {
+      for (int ss = 0; ss < plains->noStacks; ss++)
+      {
+        cuFfdotStack* cStack = &plains->stacks[ss];
+        CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->cnvlStream),"");
+      }
+
+      for (int ss = 0; ss < plains->noHarms; ss++) // Print
+      {
+        cuFFdot* cPlain     = &plains->plains[plains->pIdx[ss]];
+        printf("\nGPU Convolved h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
+        printData_cu(plains, plains->flag, plains->pIdx[ss], 10, 1);
+        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
+      }
+    }
+
+    FOLD // FFT
+    {
+      convolveStackFFT(plains, obs );
+
+      // Copy fft data to device
+      //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
+      for (int ss = 0; ss< plains->noStacks; ss++)
+      {
+        //cuFfdotStack* cStack = &plains->stacks[ss];
+
+        // Synchronise
+        //cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
+
+        //convolveStackFFT(plains, obs );
+
+        // Do the FFT
+//#pragma omp critical
+        {
+          //CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
+          //CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
         }
 
         // Synchronise
-        cudaEventRecord(cStack->convComp, cStack->cnvlStream);
+        //cudaEventRecord(cStack->plnComp, cStack->fftPStream);
       }
     }
   }
 
-  if ( DBG_PLN01 ) // Print debug info
-  {
-    for (int ss = 0; ss < plains->noStacks; ss++)
-    {
-      cuFfdotStack* cStack = &plains->stacks[ss];
-      CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->cnvlStream),"");
-    }
-
-    for (int ss = 0; ss < plains->noHarms; ss++) // Print
-    {
-      cuFFdot* cPlain     = &plains->plains[plains->pIdx[ss]];
-      printf("\nGPU Convolved h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-      printData_cu(plains, plains->flag, plains->pIdx[ss], 10, 1);
-      CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-    }
-  }
-
-  FOLD // FFT
-  {
-    // Copy fft data to device
-    //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
-    for (int ss = 0; ss< plains->noStacks; ss++)
-    {
-      cuFfdotStack* cStack = &plains->stacks[ss];
-
-      // Synchronise
-      cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
-
-      // Do the FFT
-#pragma omp critical
-      {
-        CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
-        CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
-      }
-
-      // Synchronise
-      cudaEventRecord(cStack->plnComp, cStack->fftPStream);
-    }
-  }
-
-  if ( DBG_PLN02 )  // Print debug info
+  if ( DBG_PLN02 )  		// Print debug info
   {
     for (int ss = 0; ss < plains->noHarms; ss++) // Print
     {
@@ -1447,7 +1539,7 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
     }
   }
 
-  if ( DBG_PLTPLN06 ) // Draw the plain
+  if ( DBG_PLTPLN06 ) 	// Draw the plain
   {
     char fname[1024];
     for (int i = 0; i< plains->noHarms; i++)
@@ -1462,24 +1554,4 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
   nvtxRangePop();
 }
 
-void convolveStackFFT(cuStackList* plains, accelobs * obs, GSList** cands)
-{
-  // Convolve this entire stack in one block
-  for (int ss = 0; ss< plains->noStacks; ss++)
-  {
-    cuFfdotStack* cStack = &plains->stacks[ss];
-    iHarmList hlist;
-    cHarmList plainsDat;
-    cHarmList kerDat;
-    iHarmList zUp;
-    iHarmList zDn;
 
-
-    // Synchronisation
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-
-    // Synchronisation
-    cudaEventRecord(cStack->convComp, cStack->cnvlStream);
-  }
-}

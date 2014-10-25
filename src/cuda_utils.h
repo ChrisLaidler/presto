@@ -70,6 +70,12 @@ static const char *_cudaGetErrorEnum(cufftResult error)
 
     case CUFFT_NO_WORKSPACE:
       return "CUFFT_NO_WORKSPACE";
+
+    case CUFFT_LICENSE_ERROR:
+      return "CUFFT_LICENSE_ERROR";
+
+    case CUFFT_NOT_IMPLEMENTED:
+      return "CUFFT_NOT_IMPLEMENTED";
   }
 
   return "<unknown>";
