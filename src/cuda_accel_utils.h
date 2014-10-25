@@ -16,8 +16,8 @@ extern "C"
 #include "accel.h"
 }
 
-#define   TEMPLATE_CONVOLVE 1
-#define   TEMPLATE_SEARCH   1
+#define   TEMPLATE_CONVOLVE 0
+#define   TEMPLATE_SEARCH   0
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
@@ -302,7 +302,17 @@ typedef struct primaryInf
   int ffdBuffre;
 } primaryInf;
 
+typedef struct fftCnvlvInfo
+{
+    int stride;
+    int width;
+    int heights[MAX_STKSZ];
+    int top[MAX_STKSZ];
+    int noSteps;
+    fcomplexcu* d_idata [MAX_STEPS];
+    fcomplexcu* d_kernel[MAX_STKSZ];
 
+} fftCnvlvInfo;
 //__device__ __constant__ int        YINDS[MAX_YINDS];
 //__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
 //__device__ __constant__ long long  NUMINDEP[MAX_HARM_NO];

@@ -1188,6 +1188,38 @@ __host__ void convolveffdot7_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t
   }
 }
 
+__device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
+{
+  fftCnvlvInfo *inf = (fftCnvlvInfo*)callerInfo;
+
+  const int strd = inf->stride * inf->noSteps;
+
+  size_t grow = offset / strd;
+  size_t col = offset % inf->stride;
+
+  size_t pln;
+
+  for ( int i = 0; i < 5; i++ )
+  {
+    if ( grow < inf->heights[i+1] )
+    {
+      pln = i;
+    }
+  }
+
+  size_t row  = grow - inf->heights[pln];
+  size_t step = offset % strd / inf->stride ;
+
+  fcomplexcu ker = inf->d_kernel[pln][row*inf->stride + col ];
+  fcomplexcu inp = inf->d_idata[step][col];
+
+  fcomplexcu out;
+  out.r = ( inp.r * ker.r + inp.i * ker.i ) / inf->width;
+  out.i = ( inp.i * ker.r - inp.r * ker.i ) / inf->width;
+
+  return (cufftComplex)(out);
+}
+
 void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
@@ -1237,11 +1269,11 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
         if ( plains->flag & FLAG_CNV_OVLP )
         {
           // NOTE convolveffdot41 seams faster and has been adapted for multi-step so now using it
-          convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->stride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
+          convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, plains->noSteps, cStack->noInStack, plains->flag );
         }
         else
         {
-          convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->stride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
+          convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, plains->noSteps, cStack->noInStack, plains->flag );
         }
 
         // Run message
@@ -1262,7 +1294,7 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
         cuHarmInfo* cHarm = &plains->hInfos[ss];
 
         hlist.val[ss] = cHarm->height;
-        slist.val[ss] = cHarm->stride;
+        slist.val[ss] = cHarm->inpStride;
         wlist.val[ss] = cHarm->width;
         heights += cHarm->height;
       }
@@ -1332,7 +1364,7 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
 
           for (int sti = 0; sti < plains->noSteps; sti++)         // Loop through Steps
           {
-            d_iData       = cPlain->d_iData + cHInfo->stride * sti;
+            d_iData       = cPlain->d_iData + cHInfo->inpStride * sti;
 
             if      ( plains->flag & FLAG_STP_ROW )
             {
@@ -1340,16 +1372,16 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
               exit(EXIT_FAILURE);
             }
             else if ( plains->flag & FLAG_STP_PLN )
-              d_plainData = cPlain->d_plainData + sti * cHInfo->height * cHInfo->stride;   // Shift by plain height
+              d_plainData = cPlain->d_plainData + sti * cHInfo->height * cHInfo->inpStride;   // Shift by plain height
             else if ( plains->flag & FLAG_STP_STK )
-              d_plainData = cPlain->d_plainData + sti * cStack->height * cHInfo->stride;   // Shift by stack height
+              d_plainData = cPlain->d_plainData + sti * cStack->height * cHInfo->inpStride;   // Shift by stack height
             else
               d_plainData   = cPlain->d_plainData;  // If nothing is specified just use plain data
 
             if ( plains->flag & FLAG_CNV_TEX )
-              convolveffdot36<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->stride, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);
+              convolveffdot36<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->inpStride, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);
             else
-              convolveffdot35<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->stride, cHInfo->height, d_iData, cPlain->kernel->d_kerData);
+              convolveffdot35<<<dimGrid, dimBlock, 0, sst>>>(d_plainData, cHInfo->width, cHInfo->inpStride, cHInfo->height, d_iData, cPlain->kernel->d_kerData);
 
             // Run message
             CUDA_SAFE_CALL(cudaGetLastError(), "Error at convolution kernel launch");
@@ -1382,7 +1414,6 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
   }
 
   FOLD // FFT
-  //if (0)
   {
     // Copy fft data to device
     //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
@@ -1422,11 +1453,33 @@ void convolveStack(cuStackList* plains, accelobs * obs, GSList** cands)
     for (int i = 0; i< plains->noHarms; i++)
     {
       sprintf(fname, "./%08.0f_pln_%02i_%04.02f_GPU.png", plains->rLow, i, plains->hInfos[plains->pIdx[i]].harmFrac);
-      drawPlainCmplx(plains->plains[plains->pIdx[i]].d_plainData, fname, plains->hInfos[plains->pIdx[i]].stride, plains->hInfos[plains->pIdx[i]].height );
+      drawPlainCmplx(plains->plains[plains->pIdx[i]].d_plainData, fname, plains->hInfos[plains->pIdx[i]].inpStride, plains->hInfos[plains->pIdx[i]].height );
     }
   }
 
   plains->haveCData = 1;
 
   nvtxRangePop();
+}
+
+void convolveStackFFT(cuStackList* plains, accelobs * obs, GSList** cands)
+{
+  // Convolve this entire stack in one block
+  for (int ss = 0; ss< plains->noStacks; ss++)
+  {
+    cuFfdotStack* cStack = &plains->stacks[ss];
+    iHarmList hlist;
+    cHarmList plainsDat;
+    cHarmList kerDat;
+    iHarmList zUp;
+    iHarmList zDn;
+
+
+    // Synchronisation
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
+    // Synchronisation
+    cudaEventRecord(cStack->convComp, cStack->cnvlStream);
+  }
 }

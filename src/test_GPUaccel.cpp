@@ -444,7 +444,7 @@ int main(int argc, char *argv[])
 
             for ( pln = 0 ; pln < no; pln++ )
             {
-              plainsj[nPlains] = initPlains(&kernels[dev], pln, no-1);
+              plainsj[nPlains] = initStkList(&kernels[dev], pln, no-1);
 
               if ( plainsj[nPlains] == NULL)
               {
@@ -670,7 +670,7 @@ int main(int argc, char *argv[])
                     // Copy input data from GPU
                     fcomplexcu *data = &trdStack->d_iData[sz];
                     //cudaStreamWaitEvent(cStack->fftIStream, trdStack->normComp, 0); // just encase we skip the FFT'ing
-                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->stride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
+                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
 
 
                     for( int y = 0; y < cHInfo->height; y++ )
@@ -678,11 +678,11 @@ int main(int argc, char *argv[])
                       fcomplexcu *cmplxData;
                       if ( trdStack->flag & FLAG_STP_ROW )
                       {
-                        cmplxData = &plan->d_plainData[(y*trdStack->noSteps + step)*cHInfo->stride ];
+                        cmplxData = &plan->d_plainData[(y*trdStack->noSteps + step)*cHInfo->inpStride ];
                       }
                       else if ( trdStack->flag & FLAG_STP_PLN )
                       {
-                        cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cHInfo->stride ];
+                        cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cHInfo->inpStride ];
                       }
 
                       cmplxData += cHInfo->halfWidth*2;
@@ -690,7 +690,7 @@ int main(int argc, char *argv[])
                       CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                     }
 
-                    sz += cStack->stride;
+                    sz += cStack->inpStride;
                   }
                   harm++;
                 }

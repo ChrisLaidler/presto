@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
             kernels = (cuStackList*)malloc(cmd->gpuC*sizeof(cuStackList));        
             int added; 
             
-            for ( dev = 0 ; dev < cmd->gpuC; dev++ ) // Loop over devices
+            for ( dev = 0 ; dev < cmd->gpuC; dev++ ) // Loop over devices  .
             {
               int no;
               int noSteps;
@@ -337,7 +337,7 @@ int main(int argc, char *argv[])
               
               for ( pln = 0 ; pln < no; pln++ )
               {
-                plainsj[nPlains] = initPlains(&kernels[dev], pln, no-1);
+                plainsj[nPlains] = initStkList(&kernels[dev], pln, no-1);
                 
                 if ( plainsj[nPlains] == NULL)
                 {
