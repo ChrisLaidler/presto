@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cufft.h>
+//#include <cufftXt.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 
@@ -302,28 +303,17 @@ typedef struct primaryInf
   int ffdBuffre;
 } primaryInf;
 
-typedef struct fftCnvlvInfo
-{
-    int stride;
-    int width;
-    int heights[MAX_STKSZ];
-    int top[MAX_STKSZ];
-    int noSteps;
-    fcomplexcu* d_idata [MAX_STEPS];
-    fcomplexcu* d_kernel[MAX_STKSZ];
 
-} fftCnvlvInfo;
 //__device__ __constant__ int        YINDS[MAX_YINDS];
 //__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
 //__device__ __constant__ long long  NUMINDEP[MAX_HARM_NO];
 
-
-__device__ volatile int g_canSem          = SEMFREE;
-__device__ int g_canCount                 = 0;
-__device__ int g_canCount_aut             = 0;
-__device__ volatile int can_count_total   = 0;
-__device__ int can_count2                 = 0;
-__device__ uint g_max                     = 0;
+//__device__ volatile int g_canSem          = SEMFREE;
+//__device__ int g_canCount                 = 0;
+//__device__ int g_canCount_aut             = 0;
+//__device__ volatile int can_count_total   = 0;
+//__device__ int can_count2                 = 0;
+//__device__ uint g_max                     = 0;
 
 cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
 
@@ -376,6 +366,8 @@ __host__ __device__ static inline int index_from_z(float z, float loz)
 //template<uint FLAGS, typename sType, int noStages, typename stpType>
 __global__ void print_YINDS(int no);
 
+void copyCUFFT_LD_CB();
+
 /** Return the first value of 2^n >= x
  */
 //__host__ __device__ long long next2_to_n(long long x);
@@ -393,8 +385,6 @@ cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
 //int init_harms(cuSubharminfo* hInf, int noHarms);
 //int init_harms(cuSubharminfo* hInf, int noHarms, accelobs * obs);
 int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
-
-
 
 float* ffdot_planeCU(int harm, double searchRLow, double fullrhi, cuHarmInfo* hInf, int norm_type, fcomplexcu* fft, cuFfdot* ffdotPlain);
 //float* ffdot_planeCU2(cuStackList* plains, double searchRLow, float fullrhi, int norm_type, int search, fcomplexcu* fft);
@@ -485,6 +475,7 @@ ExternC void printContext();
 ExternC void setContext(cuStackList* stkList) ;
 
 ExternC void testzm();
+
 
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED

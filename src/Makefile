@@ -121,7 +121,7 @@ ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
 ARCH += -gencode arch=compute_50,code=sm_50
 
-NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
+NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} -dc ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
 NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
 NVCLFLAGS += -lcufft_static -lculibos
 #NVCLFLAGS  = -lcufft

@@ -1146,6 +1146,7 @@ __global__ void sumPlains(float* fund, int fWidth, int fStride, int fHeight, flo
   }
 }
 
+/*
 __global__ void resetCount()
 {
   can_count_total += g_canCount;
@@ -1154,12 +1155,15 @@ __global__ void resetCount()
   g_canSem = SEMFREE;
   g_max = 0;
 }
+*/
 
+/*
 __global__ void printCount()
 {
   if ( g_canCount )
     printf("\n                                     Search found %05i candidates. \n", g_canCount);
 }
+*/
 
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
@@ -1827,6 +1831,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
         stkLst->plnDataSize     = 0;
         stkLst->inpDataSize     = 0;
         stkLst->kerDataSize     = 0;
+
         for (int i = 0; i< stkLst->noStacks; i++)           // Loop through Stacks
         {
           cuFfdotStack* cStack  = &stkLst->stacks[i];
@@ -2776,6 +2781,40 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
       }
       CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plain data.");
 
+    }
+  }
+
+  FOLD // Set up CUFFT call back stuff
+  {
+    if ( stkLst->flag & FLAG_FFT_INP && 0)
+    {
+      for (int i = 0; i< stkLst->noStacks; i++)
+      {
+        cuFfdotStack* cStack  = &stkLst->stacks[i];
+        CUDA_SAFE_CALL(cudaMalloc((void **)&cStack->d_cinf, sizeof(fftCnvlvInfo)),"Malloc Device memory for CUFFT call-back structure");
+
+        size_t heights = 0;
+
+        fftCnvlvInfo h_inf;
+        fftCnvlvInfo* d_inf;
+
+        h_inf.noSteps = stkLst->noSteps;
+        h_inf.stride  = cStack->inpStride;
+        h_inf.width   = cStack->width;
+
+        for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
+        {
+          h_inf.d_idata[i]    = cStack->d_iData;
+          h_inf.d_kernel[i]   = cStack->kernels[i].d_kerData;
+          h_inf.heights[i]    = cStack->harmInf[i].height;
+          h_inf.top[i]        = heights;
+          heights            += cStack->harmInf[i].height;
+        }
+
+        // Copy host memory to device
+        CUDA_SAFE_CALL(cudaMemcpy(cStack->d_cinf, &h_inf, sizeof(fftCnvlvInfo), cudaMemcpyHostToDevice),"Copy to device");
+      }
+      copyCUFFT_LD_CB();
     }
   }
 

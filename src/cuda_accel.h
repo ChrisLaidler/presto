@@ -124,6 +124,20 @@ typedef struct cand
     int     numharm;
 } cand;
 
+/** A data structure to pass to CUFFT call-back load functions
+ */
+typedef struct fftCnvlvInfo
+{
+    int stride;
+    int width;
+    int noSteps;
+
+    int heights[MAX_STKSZ];
+    int top[MAX_STKSZ];
+    fcomplexcu* d_idata [MAX_STEPS];
+    fcomplexcu* d_kernel[MAX_STKSZ];
+} fftCnvlvInfo;
+
 //------------- Arrays that can be passed to kernels -------------------\\
 
 typedef struct iHarmList
@@ -236,6 +250,8 @@ typedef struct cuFfdotStack
     fcomplexcu* d_plainData;          /// Plain data for this stack
     fcomplexcu* d_iData;              /// Input data for this stack
     float*      d_powers;             /// Powers for this stack
+
+    fftCnvlvInfo* d_cinf;             /// Convolve info structure on device
 
     fCplxTex kerDatTex;               /// A texture holding the kernel data
 

@@ -333,6 +333,7 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
   }
 }
 
+/*
 __device__ void search(const float powers[SS_Y_NUM][SS_X_NUM], int stage, cand* d_candList, cand* candListsm, int *count, float rlo, float zlo)
 {
   int sx;     // Shared memory x location
@@ -390,31 +391,6 @@ __device__ void search(const float powers[SS_Y_NUM][SS_X_NUM], int stage, cand* 
 
         if (mypwer > powcut)
         {
-          /*
-#ifndef DEBUG
-#pragma unroll
-#endif
-          for (int yy = sy - SS_Z_MAX_BUF; yy <= sy + SS_Z_MAX_BUF && lmax; yy++)
-          {
-            if (yy >= 0 && yy < SS_Y_NUM)
-            {
-#ifndef DEBUG
-#pragma unroll
-#endif
-              for (int xx = sx - SS_R_MAX_BUF; xx <= sx + SS_R_MAX_BUF && lmax; xx++)
-              {
-                if (xx >= 0 && xx < SS_X_NUM)
-                {
-                  if (mypwer < powers[yy][xx])
-                  {
-                    lmax = false;
-                  }
-                }
-              }
-            }
-          }
-           */
-
           //if (lmax == true)
           {
             //float power =
@@ -522,7 +498,6 @@ __device__ void search(const float powers[SS_Y_NUM][SS_X_NUM], int stage, cand* 
               //atomicAdd((unsigned long long int*) &g_canSem, 1);
               //atomicAdd((unsigned long long int*) &sem, 1);
             }
-            //*/
 
             //__syncthreads();
             //atomicAdd(&ff, 1);
@@ -536,25 +511,6 @@ __device__ void search(const float powers[SS_Y_NUM][SS_X_NUM], int stage, cand* 
         {
           //powers[sy][sx] = 0;
         }
-        /*
-         //pix = tlx + sx;                     // Note I should chop off this value as it is "out of bounds" but for the moment I am including it.
-
-
-         //cmplxX = pix + others.arr[0].ffdBuffre;
-
-         float lPwer = 0;
-         if ( cmplxX >= 0 && cmplxX < others.arr[0].ffdotWidth )
-         {
-         fcomplexcu cmp = others.arr[0].ffdot[piy+cmplxX];
-         lPwer = cmp.r*cmp.r+cmp.i*cmp.i;
-         powers[sy][sx] = lPwer;
-
-         //int ns = others.arr[0].ffPowStride/sizeof(float);
-         //others.arr[0].ffdotPowers[(tly + sy)*ns + pix] = lPwer;
-         }
-         powers[sy][sx] = lPwer;
-         }
-         */
       }
     }
   }
@@ -572,19 +528,19 @@ __device__ void search(const float powers[SS_Y_NUM][SS_X_NUM], int stage, cand* 
   //if (threadIdx.x == (SS_X-1) && threadIdx.y == (SS_Y-1) && start > 0 )
   //  printf("Found %i canidates!\n", start);
 
-  /*
-   if (tid == (SS_X) * (SS_Y) && *count > 0)
-   printf("Found %i  %i  %i  canidates!\n", *count, (int) sem, spin);
-   */
+   //if (tid == (SS_X) * (SS_Y) && *count > 0)
+   //printf("Found %i  %i  %i  canidates!\n", *count, (int) sem, spin);
 
   //for( int i = 0; i < count; i++ )
   {
     //candList[start+i] = lCands[i];
   }
 }
+*/
 
+/*
 template<int stage>
-__device__ static inline void searcht(const float powers_t[SS_Y_TILES][SS_X_TILES], /*int stage,*/ cand* d_candList, cand* candListsm, int *count, /*int *s_count,*/ double rlo, float zlo, int tlx, int tly)
+__device__ static inline void searcht(const float powers_t[SS_Y_TILES][SS_X_TILES], cand* d_candList, cand* candListsm, int *count, double rlo, float zlo, int tlx, int tly)
 {
   int sx;     // Shared memory x location
   int sy;     // Shared memory y location
@@ -644,30 +600,7 @@ __device__ static inline void searcht(const float powers_t[SS_Y_TILES][SS_X_TILE
 
           if (mypwer > powcut)
           {
-            /*
-#ifndef DEBUG
-#pragma unroll
-#endif
-          for (int yy = sy - SS_Z_MAX_BUF; yy <= sy + SS_Z_MAX_BUF && lmax; yy++)
-          {
-            if (yy >= 0 && yy < SS_Y_NUM)
-            {
-#ifndef DEBUG
-#pragma unroll
-#endif
-              for (int xx = sx - SS_R_MAX_BUF; xx <= sx + SS_R_MAX_BUF && lmax; xx++)
-              {
-                if (xx >= 0 && xx < SS_X_NUM)
-                {
-                  if (mypwer < powers[yy][xx])
-                  {
-                    lmax = false;
-                  }
-                }
-              }
-            }
-          }
-             */
+
 
             //if (lmax == true)
             {
@@ -793,7 +726,6 @@ __device__ static inline void searcht(const float powers_t[SS_Y_TILES][SS_X_TILE
                 //atomicAdd((unsigned long long int*) &g_canSem, 1);
                 //atomicAdd((unsigned long long int*) &sem, 1);
               }
-              //*/
 
               //__syncthreads();
               //atomicAdd(&ff, 1);
@@ -807,25 +739,7 @@ __device__ static inline void searcht(const float powers_t[SS_Y_TILES][SS_X_TILE
           {
             //powers[sy][sx] = 0;
           }
-          /*
-         //pix = tlx + sx;                     // Note I should chop off this value as it is "out of bounds" but for the moment I am including it.
 
-
-         //cmplxX = pix + others.arr[0].ffdBuffre;
-
-         float lPwer = 0;
-         if ( cmplxX >= 0 && cmplxX < others.arr[0].ffdotWidth )
-         {
-         fcomplexcu cmp = others.arr[0].ffdot[piy+cmplxX];
-         lPwer = cmp.r*cmp.r+cmp.i*cmp.i;
-         powers[sy][sx] = lPwer;
-
-         //int ns = others.arr[0].ffPowStride/sizeof(float);
-         //others.arr[0].ffdotPowers[(tly + sy)*ns + pix] = lPwer;
-         }
-         powers[sy][sx] = lPwer;
-         }
-           */
         }
       }
     }
@@ -844,17 +758,14 @@ __device__ static inline void searcht(const float powers_t[SS_Y_TILES][SS_X_TILE
   //if (threadIdx.x == (SS_X-1) && threadIdx.y == (SS_Y-1) && start > 0 )
   //  printf("Found %i canidates!\n", start);
 
-  /*
-   if (tid == (SS_X) * (SS_Y) && *count > 0)
-   printf("Found %i  %i  %i  canidates!\n", *count, (int) sem, spin);
-   */
-
   //for( int i = 0; i < count; i++ )
   {
     //candList[start+i] = lCands[i];
   }
 }
+*/
 
+/*
 __device__ void sumPlainsSm(float powers[SS_Y_NUM][SS_X_NUM], cuFfdot10 others, int stage, float fRlow, float fZlow, int tlx, int tly)
 {
   int tId = threadIdx.y * SS_X + threadIdx.x;       // Index in thread block
@@ -979,6 +890,7 @@ __device__ void sumPlainsSm(float powers[SS_Y_NUM][SS_X_NUM], cuFfdot10 others, 
 
   __syncthreads();
 }
+*/
 
 template<int stage>
 __device__ static inline  void sumPlainsSmTex(float powers_t[SS_Y_TILES][SS_X_TILES], /*uint xInds[8][SS_X_NUM],*/const cuSearchList searchList, /*const primaryInf* pInf, const int stage,*/ int tlx, int tly, cand* candListsm, int *count)
@@ -1234,6 +1146,7 @@ __device__ static inline  void sumPlainsSmTex(float powers_t[SS_Y_TILES][SS_X_TI
   //__syncthreads();
 }
 
+/*
 __global__ void add_and_searchCU(cuFfdot10 others, cand* d_cands, int noStages, float fRlow, float fZlow, int copyBack, int searchP)
 {
   __shared__ float powers[SS_Y_NUM][SS_X_NUM];
@@ -1308,39 +1221,6 @@ __global__ void add_and_searchCU(cuFfdot10 others, cand* d_cands, int noStages, 
     }
   }
 
-  /*
-  __syncthreads();
-  const int tId = threadIdx.y * SS_X + threadIdx.x;       // Index in thread block
-  const int blkId = blockIdx.y*gridDim.x+blockIdx.x;
-
-  __syncthreads();
-  if ( tId == 0 && blkId == 0 )
-  {
-    printf("\n Stage %i \n", 0 );
-    for ( int gx = 0; gx < 10; gx++ )
-    {
-      printf("%.4f ", powers[0][gx] );
-    }
-    printf("\n");
-  }
-   */
-
-  /*
-  if ( tId == 0 && blkId == 0 )
-  {
-    printf("\n");
-    for (int y = 0; y < SS_Y_TILES; y++)
-    {
-      for (int x = 0; x < SS_X_TILES; x++)
-      {
-        printf("%.4f ",powers[y][x]);
-      }
-      printf("\n");
-    }
-    printf("------------------\n");
-  }
-   */
-
   if (searchP)
   {
     search(powers, 0, d_cands, candList, &candCount, fRlow, fZlow);
@@ -1352,36 +1232,6 @@ __global__ void add_and_searchCU(cuFfdot10 others, cand* d_cands, int noStages, 
     {
       sumPlainsSm(powers, others, stage, fRlow, fZlow, tlx, tly);
 
-      /*
-      __syncthreads();
-      if ( tId == 0 && blkId == 0 )
-      {
-        printf("\n Stage %i \n", stage );
-        for ( int gx = 0; gx < 10; gx++ )
-        {
-          printf("%.4f ", powers[0][gx] );
-        }
-        printf("\n");
-      }
-       */
-
-      /*
-      __syncthreads();
-      if ( tId == 0 && blkId == 0 )
-      {
-        printf(" stage %i \n",stage);
-        for (int y = 0; y < SS_Y_TILES; y++)
-        {
-          for (int x = 0; x < SS_X_TILES; x++)
-          {
-            printf("%.4f ",powers[y][x]);
-          }
-          printf("\n");
-        }
-        printf("------------------\n");
-      }
-       */
-
       if (searchP)
       {
         search(powers, stage, d_cands, candList, &candCount, fRlow, fZlow);
@@ -1389,47 +1239,13 @@ __global__ void add_and_searchCU(cuFfdot10 others, cand* d_cands, int noStages, 
     }
   }
 
-  /*
-   // Write the Shared memory to the plain
-   if (copyBack)
-   {
-   float* pRow;
-   __syncthreads();
 
-   for (int y = 0; y < SS_Y_TILES; y++)
-   {
-   sy = y * SS_Y + threadIdx.y;
-   piy = tly + sy;
-
-   if (sy >= SS_Y_OVERLAP && sy < SS_Y_NUM - SS_Y_OVERLAP && piy >= 0 && piy < others.arr[0].ffPowHeight)
-   {
-   piy *= others.arr[0].ffPowStride;
-   pRow = &others.arr[0].ffdotPowers[piy];
-
-   for (int x = 0; x < SS_X_TILES; x++)
-   {
-   sx = x * SS_X + threadIdx.x;
-   pix = tlx + sx;
-
-   if ((sx >= SS_X_OVERLAP) && sx < SS_X_NUM - SS_X_OVERLAP && pix >= 0 && pix < others.arr[0].ffPowWidth)
-   {
-   //pRow[pix] = powers[sy][sx];
-   //others.arr[0].ffdotPowers[piy + pix] = powers[sy][sx] ;
-   //if ( blockIdx.x == 62 && blockIdx.y == 8 )
-   others.arr[0].ffdotPowers[piy + pix] = powers[sy][sx];
-   //else
-   //others.arr[0].ffdotPowers[piy + pix] = 0;
-   }
-   }
-   }
-   }
-   }
-   */
   //others.arr[0].ffdotPowers[tId] += 1;
   //__threadfence();
   //if (  threadIdx.y == 0 && threadIdx.x ==0 && blockIdx.x == 0 && blockIdx.y == 0 && g_canCount != 0 )
   //  printf("Found %i \n",g_canCount);
 }
+*/
 
 /** Sum and Search - loop down - find column max
  *
