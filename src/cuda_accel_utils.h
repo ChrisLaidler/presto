@@ -17,8 +17,8 @@ extern "C"
 #include "accel.h"
 }
 
-#define   TEMPLATE_CONVOLVE 0
-#define   TEMPLATE_SEARCH   0
+#define   TEMPLATE_CONVOLVE 1
+#define   TEMPLATE_SEARCH   1
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
@@ -174,19 +174,20 @@ typedef struct cuStackHarms
 
 typedef struct cuSearchList
 {
-    tHarmList texs;           ///
-    cHarmList datas;          ///
-    iHarmList yInds;          ///
-    fHarmList frac;           ///
-    iHarmList heights;        ///
-    iHarmList widths;         ///
-    iHarmList strides;        ///
-    iHarmList ffdBuffre;      ///
-    iHarmList zMax;           ///
-    iHarmList fullRLow;       ///
-    iHarmList rLow;           ///
+    tHarmList   texs;           ///
+    cHarmList   datas;          ///
+    fsHarmList  powers;         ///
+    iHarmList   yInds;          ///
+    fHarmList   frac;           ///
+    iHarmList   heights;        ///
+    iHarmList   widths;         ///
+    iHarmList   strides;        ///
+    iHarmList   ffdBuffre;      ///
+    iHarmList   zMax;           ///
+    //iHarmList   fullRLow;       ///
+    iHarmList   rLow;           ///
 
-    fHarmList idxSum;
+    //fHarmList   idxSum;
 
     double     searchRLow;      /// The value of the r bin to start the search at
 } cuSearchList;

@@ -34,11 +34,13 @@ extern "C"
 #include "cuda_accel_utils.h"
 
 __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+__device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
 
-__device__ cufftCallbackLoadC d_loadCallbackPtr = CB_ConvolveInput;
+__device__ cufftCallbackLoadC d_loadCallbackPtr   = CB_ConvolveInput;
+__device__ cufftCallbackStoreC d_storeCallbackPtr = CB_PowerOut;
 
-cufftCallbackLoadC h_loadCallbackPtr;
-
+cufftCallbackLoadC    h_loadCallbackPtr;
+cufftCallbackStoreC   h_storeCallbackPtr;
 
 /** Convolution kernel - One thread per f-∂f pixel
  */
@@ -554,15 +556,15 @@ __host__ void convolveffdot41_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
       exit(EXIT_FAILURE);
     }
     */
-    fprintf(stderr, "ERROR: convolveffdot41 has not been setup to use texture memory and multistep\n", noPlns);
+    fprintf(stderr, "ERROR: convolveffdot41 has not been setup to use texture memory and multi-step\n", noPlns);
     exit(EXIT_FAILURE);
   }
   else
   {
       if      ( FLAGS & FLAG_STP_ROW )
         convolveffdot41_p< FLAG_STP_ROW > (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
-      else if ( FLAGS & FLAG_STP_PLN )
-        convolveffdot41_p< FLAG_STP_PLN > (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
+      //else if ( FLAGS & FLAG_STP_PLN )
+      //  convolveffdot41_p< FLAG_STP_PLN > (dimGrid, dimBlock, i1, cnvlStream, kernels,  datas, ffdot, width, stride,  heights,  stackHeight, kerDat, kerTex, noSteps, noPlns );
       else
       {
         fprintf(stderr, "ERROR: convolveffdot41 has not been templated for %i plains\n", noPlns);
@@ -1068,6 +1070,7 @@ __global__ void convolveffdot7(const fcomplexcu *kernel, const fcomplexcu *datas
 template<uint FLAGS, uint noPlns >
 __host__ void convolveffdot7_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps )
 {
+  /*
 #if TEMPLATE_CONVOLVE == 1
   switch (noSteps)
   {
@@ -1123,6 +1126,7 @@ __host__ void convolveffdot7_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t
   cudaFuncSetCacheConfig(convolveffdot7<FLAGS,noPlns>, cudaFuncCachePreferL1);
   convolveffdot7<FLAGS,noPlns> <<<dimGrid,  dimBlock, i1, cnvlStream>>>(kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps);
 #endif
+*/
 }
 
 template<uint FLAGS >
@@ -1197,23 +1201,16 @@ __host__ void convolveffdot7_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t
 
 __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
-
-  if ( offset == 5100963 )
-  {
-    printf("offset: %i \n", offset );
-  }
-
-
   fftCnvlvInfo *inf = (fftCnvlvInfo*)callerInfo;
 
   const int strd = inf->stride * inf->noSteps;
 
   size_t grow = offset / strd;
   size_t col  = offset % inf->stride;
-
+  size_t step = ( offset % strd ) / inf->stride ;
   size_t pln  = 0;
 
-  for ( int i = 0; i < 5; i++ )
+  for ( int i = 0; i < inf->noPlains; i++ )
   {
     if ( grow >= inf->top[i] )
     {
@@ -1222,28 +1219,39 @@ __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *cal
   }
 
   size_t row  = grow - inf->top[pln];
-  size_t step = ( offset % strd ) / inf->stride ;
 
-  if ( offset == 5100963 )
-    printf("offset %i  strd: %i   grow %i   pln: %i  col: %i  row: %i  step: %i  \n", (int)offset, (int)strd, (int)grow, (int)pln, (int)col, (int)row, (int)step);
-
-  cufftComplex ker ;//= ((cufftComplex*)inf->d_kernel[pln])[row*inf->stride + col ];
-  cufftComplex inp ;//= ((cufftComplex*)inf->d_idata[step])[col];
+  cufftComplex ker = ((cufftComplex*)inf->d_kernel[pln])[row*inf->stride + col ];
+  cufftComplex inp = ((cufftComplex*)inf->d_idata[pln])[step*inf->stride + col ];
 
   cufftComplex out;
   out.x = ( inp.x * ker.x + inp.y * ker.y ) / inf->width;
   out.y = ( inp.y * ker.x - inp.x * ker.y ) / inf->width;
 
-  //((cufftComplex*)dataIn)[offset] = out;
+  return out;
 
-  //return out;
-
-  return ((cufftComplex*)dataIn)[offset];
+  //return ((cufftComplex*)dataIn)[offset];
 }
+
+__device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  float power = element.x*element.x + element.y*element.y ;
+  /*
+  if ( offset == 1)
+  {
+    printf(" %f  %f  %f \n", element.x, element.y, power );
+  }
+  printf("%i  %f  %f  %f \n", offset, element.x, element.y, power );
+*/
+  ((float*)callerInfo)[offset] = power;
+
+  //((cufftComplex*)dataIn)[offset] = element;
+}
+
 
 void copyCUFFT_LD_CB()
 {
-  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_loadCallbackPtr, d_loadCallbackPtr, sizeof(h_loadCallbackPtr)),"");
+  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_loadCallbackPtr,  d_loadCallbackPtr,  sizeof(h_loadCallbackPtr)),   "");
+  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_storeCallbackPtr, d_storeCallbackPtr, sizeof(h_storeCallbackPtr)),  "");
 }
 
 void convolveStackFFT(cuStackList* plains, accelobs * obs )
@@ -1252,49 +1260,23 @@ void convolveStackFFT(cuStackList* plains, accelobs * obs )
   for (int ss = 0; ss< plains->noStacks; ss++)
   {
     cuFfdotStack* cStack = &plains->stacks[ss];
-    //iHarmList hlist;
-    //cHarmList plainsDat;
-    //cHarmList kerDat;
-    //iHarmList zUp;
-    //iHarmList zDn;
-
-    /*
-    size_t heights = 0;
-
-    fftCnvlvInfo h_inf;
-    fftCnvlvInfo* d_inf;
-
-    h_inf.noSteps = plains->noSteps;
-    h_inf.stride  = cStack->inpStride;
-    h_inf.width   = cStack->width;
-
-    for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
-    {
-      h_inf.d_idata[i]    = cStack->d_iData;
-      h_inf.d_kernel[i]   = cStack->kernels[i].d_kerData;
-      h_inf.heights[i]    = cStack->harmInf[i].height;
-      h_inf.top[i]        = heights;
-      heights            += cStack->harmInf[i].height;
-    }
-    */
 
     // Synchronisation
-    //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp, 0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
-    //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // Need input data
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
     // Synchronise
-    cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
-
-    //CUDA_SAFE_CALL(cudaMalloc((void **)&cStack->d_cinf, sizeof(fftCnvlvInfo)),"Malloc Device memory");
-
-    // Copy host memory to device
-    //CUDA_SAFE_CALL(cudaMemcpyAsync(cStack->d_cinf, &h_inf, sizeof(fftCnvlvInfo), cudaMemcpyHostToDevice, cStack->fftPStream),"Copy to device");
-    //CUDA_SAFE_CALL(cudaMemcpyAsync(d_inf, &h_inf, sizeof(fftCnvlvInfo), cudaMemcpyHostToDevice, cStack->fftPStream),"Copy to device");
+    //cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
 
     // Do the FFT
 #pragma omp critical
     {
       //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_loadCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_cinf ),"");
+
+      if ( plains->flag & FLAG_FFT_OUT )
+      {
+        CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_storeCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_powers ),"");
+      }
 
       CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
       CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
@@ -1313,11 +1295,11 @@ void convolveStack(cuStackList* plains, accelobs * obs)
 
   nvtxRangePush("Convolve & FFT");
 
-  //if ( plains->flag & FLAG_FFT_INP )
+  if ( plains->flag & FLAG_FFT_INP )
   {
-    //convolveStackFFT(plains, obs );
+    convolveStackFFT(plains, obs );
   }
-  //else
+  else
   {
     FOLD // Convolve
     {
@@ -1520,6 +1502,11 @@ void convolveStack(cuStackList* plains, accelobs * obs)
         // Do the FFT
 #pragma omp critical
         {
+          if ( plains->flag & FLAG_FFT_OUT )
+          {
+            CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_storeCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_powers ),"");
+          }
+
           CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
           CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
         }
@@ -1527,7 +1514,6 @@ void convolveStack(cuStackList* plains, accelobs * obs)
         // Synchronise
         cudaEventRecord(cStack->plnComp, cStack->fftPStream);
       }
-      //*/
     }
   }
 

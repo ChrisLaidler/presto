@@ -153,12 +153,12 @@ int main(int argc, char *argv[])
 
       if ( cmd->cpuP )
       {
-        subharminfo **subharminfs;
-
 #ifdef CUDA
         nvtxRangePush("CPU");
         gettimeofday(&start, NULL); // Note could start the timer after kernel init
 #endif
+
+        subharminfo **subharminfs;
 
         /* Generate the correlation kernels */
         
@@ -176,6 +176,8 @@ int main(int argc, char *argv[])
         
         print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
         
+
+
         while (startr + ACCEL_USELEN * ACCEL_DR < obs.highestbin) {
           /* Search the fundamental */
           print_percent_complete(startr - obs.rlo,
@@ -224,8 +226,6 @@ int main(int argc, char *argv[])
         }
         print_percent_complete(obs.highestbin - obs.rlo,
                               obs.highestbin - obs.rlo, "search", 0);
-        //printf("\n");
-
 #ifdef CUDA
         gettimeofday(&end, NULL);
         cupTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -234,9 +234,9 @@ int main(int argc, char *argv[])
         
         nvtxRangePop();
 
-//#ifndef DEBUG
+#ifndef DEBUG
         printCands("CPU_Cands.csv", candsCPU);
-//#endif
+#endif
         
         free_subharminfos(&obs, subharminfs);
 #endif
@@ -253,15 +253,14 @@ int main(int argc, char *argv[])
         
         FOLD
         {
-          cudaDeviceSynchronize();          // This is only necessary for timing
+          //cudaDeviceSynchronize();          // This is only necessary for timing
           gettimeofday(&start, NULL);       // Profiling
           //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
           
           printf("\n------------------------\nDoing GPU Search 2\n------------------------\n"); 
-          
-          //time1 = 0;
-          //time2 = 0;
+
           int dev;
+          long noCands = 0;
           
           if ( cmd->gpuP ) // Determine the index and number of devices
           { 
@@ -273,7 +272,7 @@ int main(int argc, char *argv[])
               for ( dev = 0 ; dev < cmd->gpuC; dev++ )
                 cmd->gpu[dev] = dev;
             }
-          } 
+          }
           
           cuStackList* kernels;             // List of stacks with the kernels, one for each device being used
           cuStackList* master   = NULL;     // The first kernel stack created
@@ -382,6 +381,7 @@ int main(int argc, char *argv[])
             
             double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
             double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
+            size_t rest = trdStack->noSteps;
             
             setContext(trdStack) ;
             
@@ -400,16 +400,26 @@ int main(int argc, char *argv[])
               
               if ( firstStep + trdStack->noSteps >= maxxx )
               {
-                trdStack->noSteps = maxxx - firstStep;
+                //trdStack->noSteps = maxxx - firstStep;
+                //setPlainPointers(trdStack);
+                rest = maxxx - firstStep;
               }
-
 
               int si;
               for ( si = 0; si < trdStack->noSteps ; si ++)
               {
-                startrs[si] = obs.rlo + (firstStep+si) * ( master->accelLen * ACCEL_DR );
-                lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
+                if ( si < rest )
+                {
+                  startrs[si] = obs.rlo + (firstStep+si) * ( master->accelLen * ACCEL_DR );
+                  lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
+                }
+                else
+                {
+                  startrs[si] = 0 ;
+                  lastrs[si]  = 0 ;
+                }
               }
+
               
               ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
               
@@ -431,13 +441,12 @@ int main(int argc, char *argv[])
             for ( pln = 0 ; pln < 2; pln++ )
             {
               ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
+              trdStack->mxSteps = rest;
             }
           }
           
           print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
 
-          //printf("\nDone\n");
-          
           if ( ( master->flag & CU_CAND_SINGLE_C ) == CU_CAND_SINGLE_G )
           {
             nvtxRangePush("Add to list");
@@ -450,6 +459,7 @@ int main(int argc, char *argv[])
             double rr, zz;
             int added = 0;
             int numharm;
+
             poww = 0;
 
             for (cdx = 0; cdx < len; cdx++)
@@ -482,14 +492,17 @@ int main(int argc, char *argv[])
                   rr        = master->h_candidates[cdx].r;
                   zz        = master->h_candidates[cdx].z;
                   candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+
+                  if (added)
+                  {
+                    noCands++;
+                  }
                 }
               }            
             }
 
             nvtxRangePop();
           }
-          
-          //printf("List Done\n");
 
           if ( master->flag & CU_CAND_DEVICE )
           {
@@ -520,23 +533,24 @@ int main(int argc, char *argv[])
                 rr        = cdx + master->rLow;
                 zz        = master->h_bCands[cdx].z;         
                 candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-              }            
-            }                    
+              }
+            }
             nvtxRangePop();
           }
           
           //cudaProfilerStop();
 
-          cudaDeviceSynchronize();
+          //cudaDeviceSynchronize();
           gettimeofday(&end, NULL);
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
           printf("  gpuTime %f\n", gpuTime/1000.0);
           cands = candsGPU;
+          printf("GPU found %i candidates.\n",noCands);
           
-//#ifndef DEBUG
+#ifndef DEBUG
           printCands("GPU_Cands.csv", candsGPU);
-          //printf("Print Done\n");
-//#endif
+#endif
+          //cudaDeviceSynchronize();
         }
       }
 
@@ -546,7 +560,7 @@ int main(int argc, char *argv[])
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
 
-   if (0) // optimization
+   if (1) // optimization
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;
@@ -649,6 +663,10 @@ int main(int argc, char *argv[])
 
    printf("Final candidates in binary format are in '%s'.\n", obs.candnm);
    printf("Final Candidates in a text format are in '%s'.\n\n", obs.accelnm);
+
+#ifndef DEBUG
+   cudaDeviceReset();
+#endif
 
    free_accelobs(&obs);
    g_slist_foreach(cands, free_accelcand, NULL);

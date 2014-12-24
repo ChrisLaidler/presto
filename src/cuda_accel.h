@@ -128,14 +128,17 @@ typedef struct cand
  */
 typedef struct fftCnvlvInfo
 {
-    int stride;
-    int width;
-    int noSteps;
+    int     stride;
+    int     width;
+    int     noSteps;
+    int     noPlains;
+    float*  d_powers;
 
     int heights[MAX_STKSZ];
     int top[MAX_STKSZ];
-    fcomplexcu* d_idata [MAX_STEPS];
+    fcomplexcu* d_idata [MAX_STKSZ];
     fcomplexcu* d_kernel[MAX_STKSZ];
+
 } fftCnvlvInfo;
 
 //------------- Arrays that can be passed to kernels -------------------\\
@@ -149,6 +152,11 @@ typedef struct fHarmList
 {
     float val[MAX_HARM_NO];
 } fHarmList;
+
+typedef struct fsHarmList
+{
+    float* val[MAX_HARM_NO];
+} fsHarmList;
 
 typedef struct dHarmList
 {
@@ -176,7 +184,7 @@ typedef struct cuHarmInfo
     size_t  width;                    /// The number of complex numbers in each kernel (2 floats)
 
     size_t  inpStride;                /// The x stride in complex numbers
-    size_t  outStride;                /// The stride of the block of memory  [ in complex numbers! ]
+    //size_t  outStride;                /// The stride of the block of memory  [ in complex numbers! ]
 
     int     zmax;                     /// The maximum (and minimum) z
     float   harmFrac;                 /// The harmonic fraction
@@ -232,7 +240,8 @@ typedef struct cuFfdotStack
     size_t height;                    /// The height of the block of memory for one step
 
     size_t inpStride;                 /// The stride of the block of memory  [ in complex numbers! ]
-    size_t outStride;                 /// The stride of the block of memory  [ in complex numbers! ]
+    //size_t outStride;                 /// The stride of the block of memory  [ in complex numbers! ]
+    size_t pwrStride;                 /// The stride of the block of memory  [ in complex numbers! ]
 
     int startR[MAX_IN_STACK];         /// The heights of the individual plains assuming one step
 
@@ -249,6 +258,7 @@ typedef struct cuFfdotStack
     fcomplexcu* d_kerData;            /// Kernel data for this stack
     fcomplexcu* d_plainData;          /// Plain data for this stack
     fcomplexcu* d_iData;              /// Input data for this stack
+    fcomplexcu* h_iData;              /// Paged locked input data for this stack
     float*      d_powers;             /// Powers for this stack
 
     fftCnvlvInfo* d_cinf;             /// Convolve info structure on device
@@ -270,6 +280,9 @@ typedef struct cuStackList
     size_t noStacks;                  /// The number of stacks in this stack list
     size_t noHarms;                   /// The number of harmonics in the entire stack
     size_t noSteps;                   /// The number of slices in the stack list
+    //size_t noSteps1;                  /// The number of slices in the stack list
+    //size_t noSteps2;                  /// The number of slices in the stack list
+    size_t mxSteps;                   /// The number of slices in the stack list
     int noHarmStages;                 /// The number of stages of harmonic summing
 
     int pIdx[MAX_HARM_NO];            /// The index of the plains in the Presto harmonic summing order
@@ -283,7 +296,8 @@ typedef struct cuStackList
     iHarmList iDataLens;              /// A list of the input data allocated in memory
 
     int inpDataSize;                  /// The size of the input data memory in bytes for one step
-    int plnDataSize;                  /// The size of the plain data memory in bytes for one step
+    int plnDataSize;                  /// The size of the complex plain data memory in bytes for one step
+    int pwrDataSize;                  /// The size of the powers  plain data memory in bytes for one step
     int kerDataSize;                  /// The size of the plain data memory in bytes for one step
     int cndDataSize;                  /// The size of candidates data memory in bytes for one step
 
@@ -356,6 +370,10 @@ ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharms
  * @return
  */
 ExternC cuStackList* initStkList(cuStackList* harms, int no, int of);
+
+ExternC void setStkPointers(cuStackList* stkLst);
+
+ExternC void setPlainPointers(cuStackList* stkLst);
 
 ExternC void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands);
 
