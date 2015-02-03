@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
           
           if ( cmd->gpuP ) // Determine the index and number of devices
           { 
-            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a chage in accelsearch_cmd every time clig is run!!!!
+            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd every time clig is run!!!!
             {
               // Make a list of all devices
               cmd->gpuC = getGPUCount();
@@ -279,6 +279,12 @@ int main(int argc, char *argv[])
           int nPlains           = 0;        // The number of plains
           int noKers            = 0;        // Real number of kernels/devices being used
           
+          fftInfo fftinf;
+          fftinf.fft    = obs.fft;
+          fftinf.nor    = obs.N;
+          fftinf.rlow   = obs.rlo;
+          fftinf.rhi    = obs.rhi;
+
           FOLD // Create a kernel on each device
           {
             nvtxRangePush("Init Kernels");
@@ -300,7 +306,8 @@ int main(int argc, char *argv[])
               else
                 noSteps = cmd->nsteps[dev];
 
-              added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
+              //added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
+              added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, cmd->width, no, *obs.powcut, *obs.numindep );
               if ( added && (master == NULL) )
               {
                 master = &kernels[0];
@@ -374,6 +381,7 @@ int main(int argc, char *argv[])
           print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
           #pragma omp parallel
+          FOLD
           {
             int tid = omp_get_thread_num();
             
@@ -419,9 +427,7 @@ int main(int argc, char *argv[])
                   lastrs[si]  = 0 ;
                 }
               }
-
-              
-              ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
+              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs.numindep, &candsGPU);
               
               if ( trdStack->flag & CU_CAND_HOST )
                 trdStack->h_bCands = &master->h_bCands[master->accelLen*obs.numharmstages*firstStep] ;
@@ -440,7 +446,7 @@ int main(int argc, char *argv[])
             int pln;
             for ( pln = 0 ; pln < 2; pln++ )
             {
-              ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
+              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs.numindep, &candsGPU);
               trdStack->mxSteps = rest;
             }
           }

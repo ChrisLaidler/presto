@@ -1254,7 +1254,10 @@ void copyCUFFT_LD_CB()
   CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_storeCallbackPtr, d_storeCallbackPtr, sizeof(h_storeCallbackPtr)),  "");
 }
 
-void convolveStackFFT(cuStackList* plains, accelobs * obs )
+/** Convolve and FFT using FFT callback *
+ * @param plains
+ */
+void convolveStackFFT(cuStackList* plains )
 {
   // Convolve this entire stack in one block
   for (int ss = 0; ss< plains->noStacks; ss++)
@@ -1265,14 +1268,9 @@ void convolveStackFFT(cuStackList* plains, accelobs * obs )
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // Need input data
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, plains->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
-    // Synchronise
-    //cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
-
     // Do the FFT
 #pragma omp critical
     {
-      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_loadCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_cinf ),"");
-
       if ( plains->flag & FLAG_FFT_OUT )
       {
         CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_storeCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_powers ),"");
@@ -1287,7 +1285,7 @@ void convolveStackFFT(cuStackList* plains, accelobs * obs )
   }
 }
 
-void convolveStack(cuStackList* plains, accelobs * obs)
+void convolveStack(cuStackList* plains)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
@@ -1297,7 +1295,8 @@ void convolveStack(cuStackList* plains, accelobs * obs)
 
   if ( plains->flag & FLAG_FFT_INP )
   {
-    convolveStackFFT(plains, obs );
+    // Do the convolution using a callback
+    convolveStackFFT( plains );
   }
   else
   {
@@ -1488,8 +1487,6 @@ void convolveStack(cuStackList* plains, accelobs * obs)
 
     FOLD // FFT
     {
-      //convolveStackFFT(plains, obs );
-
       // Copy fft data to device
       //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
       for (int ss = 0; ss< plains->noStacks; ss++)

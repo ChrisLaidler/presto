@@ -28,7 +28,7 @@ extern "C"
 //#endif
 
 
-#include "utilstats.h"
+//#include "utilstats.h"
 #ifdef WITHOMP
 #include <omp.h>
 #endif
@@ -420,6 +420,12 @@ int main(int argc, char *argv[])
           kernels = (cuStackList*)malloc(cmd->gpuC*sizeof(cuStackList));
           int added;
 
+          fftInfo fftinf;
+          fftinf.fft    = obs.fft;
+          fftinf.nor    = obs.N;
+          fftinf.rlow   = obs.rlo;
+          fftinf.rhi    = obs.rhi;
+
           for ( dev = 0 ; dev < cmd->gpuC; dev++ ) // Loop over devices
           {
             int no;
@@ -442,7 +448,7 @@ int main(int argc, char *argv[])
             float width4          = floor(width3/1000.0);
 
 
-            added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, ACCEL_USELEN/*cmd->width*/, no );
+            added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, ACCEL_USELEN/*cmd->width*/, no, *obs.powcut, *obs.numindep );
             if ( added && (master == NULL) )
             {
               master = &kernels[0];
@@ -692,7 +698,8 @@ int main(int argc, char *argv[])
             }
 
             // Call the CUDA stuff
-            ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, &obs, &candsGPU);
+            search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+            //ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, &obs, &candsGPU);
 
             if ( trdStack->flag & CU_CAND_HOST )
               trdStack->h_bCands = &master->h_bCands[master->accelLen*obs.numharmstages*firstStep] ;
@@ -939,7 +946,8 @@ int main(int argc, char *argv[])
           int pln;
           for ( pln = 0 ; pln < 2; pln++ )
           {
-            ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, &obs, &candsGPU);
+                //ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, &obs, &candsGPU);
+            search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
           }
         }
 

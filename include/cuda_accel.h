@@ -109,7 +109,7 @@ typedef struct fcomplexcu
 /// Basic accel search candidate to be used in CUDA kernels
 typedef struct accelcandBasic
 {
-  float sigma;        // Sigma - adjusted for number of trials, NOTE: at points this value holds the sum of powers from which the sigma value will be calculated
+  float sigma;        // Sigma - adjusted for number of trials, NOTE: at some points this value holds the sum of powers from which the sigma value will be calculated
   short numharm;      // Number of harmonics summed
   short z;            // Fourier f-dot of first harmonic
 } accelcandBasic;
@@ -140,6 +140,14 @@ typedef struct fftCnvlvInfo
     fcomplexcu* d_kernel[MAX_STKSZ];
 
 } fftCnvlvInfo;
+
+typedef struct fftInfo
+{
+    double      rlow;
+    double      rhi;
+    int         nor;
+    fcomplex*   fft;
+} fftInfo;
 
 //------------- Arrays that can be passed to kernels -------------------\\
 
@@ -173,7 +181,6 @@ typedef struct tHarmList
     cudaTextureObject_t val[MAX_HARM_NO];
 } tHarmList;
 
-
 //------------- Data structures for, plains, stacks etc ----------------\\
 
 /** The size information of a f-∂f plain
@@ -203,6 +210,8 @@ typedef struct cuKernel
 } cuKernel;
 
 /** A f-∂f plain
+ * This could be a fundamental or harmonic
+ * it holds basic information no memory addresses
  */
 typedef struct cuFFdot
 {
@@ -273,15 +282,15 @@ typedef struct cuFfdotStack
     cudaStream_t fftIStream;          /// CUDA stream for summing and searching the data
 } cuFfdotStack;
 
-/** A collection of all the stack that make up a harmonic family of f-∂f plains
+/** A collection of f-∂f plain(s) and all its/their sub harmonics
+ * This is a collection of stack(s) that make up a harmonic family of f-∂f plain(s)
+ * And the device specific convolution kernels which is just another stack list
  */
 typedef struct cuStackList
 {
     size_t noStacks;                  /// The number of stacks in this stack list
     size_t noHarms;                   /// The number of harmonics in the entire stack
     size_t noSteps;                   /// The number of slices in the stack list
-    //size_t noSteps1;                  /// The number of slices in the stack list
-    //size_t noSteps2;                  /// The number of slices in the stack list
     size_t mxSteps;                   /// The number of slices in the stack list
     int noHarmStages;                 /// The number of stages of harmonic summing
 
@@ -342,7 +351,6 @@ typedef struct cuStackList
 } cuStackList;
 
 
-
 //===================================== Function prototypes ===============================================\\
 
 
@@ -353,14 +361,16 @@ typedef struct cuStackList
  * @param master            The master data structure to copy kernel and some settings from, if this is the first call this should be NULL
  * @param numharmstages     The number of harmonic stages
  * @param zmax              The ZMax of the primary harmonic
- * @param obs               The observation
+ * @param fftinf            The address and accel search info
  * @param device            The device to create the kernels on
  * @param device            The number of steps to use on the device
  * @param width             The desired width of the primary harmonic in thousands
- * @param noThreads         The desired number of thread to run on this device
+ * @param noThreads         The desired number of threads to run on this device
+ * @param powcut            The value above which to return
+ * @param numindep          The number of independent trials
  * @return
  */
-ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, accelobs* obs, int device, int noSteps, int width, int noThreads );
+ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noSteps, int width, int noThreads, float  powcut, long long  numindep);
 
 /** Initialise a multi-step stack list from the device kernel
  *
@@ -375,6 +385,6 @@ ExternC void setStkPointers(cuStackList* stkLst);
 
 ExternC void setPlainPointers(cuStackList* stkLst);
 
-ExternC void sumAndSearch(cuStackList* plains, accelobs* obs, GSList** cands);
+ExternC void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, float* powers );
 
 #endif // CUDA_ACCEL_INCLUDED

@@ -316,7 +316,7 @@ typedef struct primaryInf
 //__device__ int can_count2                 = 0;
 //__device__ uint g_max                     = 0;
 
-cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
+//cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
 
 /** Create the stacks to do the
  *
@@ -381,7 +381,7 @@ fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPla
 float cuGetMedian(float *data, uint len);
 
 //cuSubharminfo* createsubharminfos(int numharmstages, int zmax);
-cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
+//cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
 
 //int init_harms(cuSubharminfo* hInf, int noHarms);
 //int init_harms(cuSubharminfo* hInf, int noHarms, accelobs * obs);
@@ -391,7 +391,8 @@ float* ffdot_planeCU(int harm, double searchRLow, double fullrhi, cuHarmInfo* hI
 //float* ffdot_planeCU2(cuStackList* plains, double searchRLow, float fullrhi, int norm_type, int search, fcomplexcu* fft);
 
 ExternC int ffdot_planeCU2(cuStackList* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
-ExternC int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
+ExternC int search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
+
 
 int add_ffdot_planeCU(int harm, cuHarmInfo* hInf, cuFfdot* fund, cuFfdot* ffdotPlain, double searchRLow);
 
@@ -421,7 +422,11 @@ int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long lo
 
 ///////////////////////////////////////////// Convolution Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-void convolveStack(cuStackList* plains, accelobs * obs);
+/** Convolve plain(s) with kernel(s) and do the inverse FFT
+ *
+ * @param plains The plains to convolve
+ */
+void convolveStack(cuStackList* plains);
 
 /*
 __global__ void convolveffdot(fcomplexcu *ffdot, const int width, const int stride, const int height, const fcomplexcu *data, const fcomplexcu *kernels);
@@ -477,6 +482,8 @@ ExternC void setContext(cuStackList* stkList) ;
 
 ExternC void testzm();
 
+void sumAndSearch(cuStackList* plains, long long* numindep, GSList** cands);
 
+void sumAndMax(cuStackList* plains, long long *numindep, float* powers);
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED

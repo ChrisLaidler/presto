@@ -121,11 +121,14 @@ ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
 ARCH += -gencode arch=compute_50,code=sm_50
 
+CUDA_PATH = /usr/local/cuda
+CUDALIBS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
+
 NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} -dc ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
-NVCLFLAGS  = -L$(CUDA_LIB_PATH) -lcudart -lcuda -lnvToolsExt -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
-NVCLFLAGS += -lcufft_static -lculibos
-#NVCLFLAGS  = -lcufft
 NVCCFLAGS += `freetype-config --cflags` `freetype-config --libs`
+
+NVCLFLAGS  =  -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
+NVCLFLAGS += $(CUDALIBS)
 
 
 #Settings dependent on release or debug build
@@ -198,14 +201,19 @@ PRESTOOBJS = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 
 ifeq ($(WITH_CUDA),yes)
 $(info Compile with CUDA)
-NVCCFLAGS+=-DCUDA
+NVCCFLAGS+=-DCUDA -Xcompiler -fPIC
 CUDA_OBS = cuda_accel_utils.cu.o cuda_accel_SumAndSearch.cu.o cuda_accel_Convolve.cu.o cuda_utils.cu.o
+PRESTOLINK += $(CUDALIBS) $(GLIBLINK)
 CFLAGS += -I/usr/local/cuda/include/ -DCUDA
+PRESTOOBJS += $(CUDA_OBS)
+LINKCOMMAND1 = $(NVCC) $(LIBCMD) -o
 else
 NVCC      = $(CC)
 CUDA_OBS  = 
 NVCLFLAGS = $(CLINKFLAGS)
 endif
+
+
 	
 CXXFLAGS = $(CFLAGS)
 
@@ -287,7 +295,7 @@ accelsearch: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o
 	$(NVCC) $(NVCLFLAGS) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
 
 test_GPUaccel.o: test_GPUaccel.cpp
-	$(CXX) $(CFLAGS) $(CFLAGS_DBG) -o $@ -c $<
+	$(CXX) $(CFLAGS) -std=c++11 $(CFLAGS_DBG) -o $@ -c $<
 #	$(NVCC) $(NVCCFLAGS) $(CFLAGS_DBG) -o $@ -c $<
 
 test_GPUaccel: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o test_GPUaccel.o zapping.o
