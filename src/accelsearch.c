@@ -70,8 +70,7 @@ int main(int argc, char *argv[])
    // Timing vars   
    long long prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0;
    struct timeval start, end, timeval;   
-   
-   
+
    /* Prep the timer */
 
    tott = times(&runtimes) / (double) CLK_TCK;

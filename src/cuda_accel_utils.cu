@@ -2280,9 +2280,9 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
     uint noPoints       = maxR - minR;
     uint freeMem        = getFreeRam();
 
-    uint fullRSize      = noPoints * sizeof(fcomplexcu) ;
+    uint fullRSize      = noPoints * sizeof(fcomplexcu)     ;
     uint fullCands      = noPoints * sizeof(accelcandBasic) ;
-    uint fullSem        = noPoints * sizeof(uint) ;
+    uint fullSem        = noPoints * sizeof(uint)           ;
 
     stkLst->rLow        = minR;  
     stkLst->rHigh       = maxR;
@@ -2446,9 +2446,23 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
       {  
         if (master == NULL )
         {
-          // Same host candidates for all devices
-          stkLst->h_candidates = (cand*)malloc(fullCands*sizeof(cand));
-          memset(stkLst->h_candidates, 0, fullCands*sizeof(cand) );
+          size_t candSz   = fullCands*sizeof(cand)  ;
+          size_t freeRam  = getFreeRam()            ;
+          if ( fullCands*sizeof(cand) < freeRam*0.95 )
+          {
+            // Same host candidates for all devices
+            stkLst->h_candidates = (cand*)malloc(candSz);
+            memset(stkLst->h_candidates, 0, candSz );
+          }
+          else
+          {
+            fprintf(stderr, "ERROR: Not enough host memory for candidate list. Try set -fhi to a lower value. ie: numharm*1000\n");
+
+            // TODO: Fix this to use a dynamic candidate list.
+            fprintf(stderr, "freeRam:  %.3fGB\n",freeRam * 1e-9 );
+            fprintf(stderr, "candSz:   %.3fGB\n", candSz * 1e-9 );
+            exit(EXIT_FAILURE);
+          }
         }
       }
       else if ( stkLst->flag & CU_CAND_SINGLE_C == CU_CAND_SINGLE_C )

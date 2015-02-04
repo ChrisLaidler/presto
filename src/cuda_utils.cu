@@ -34,7 +34,7 @@ size_t getFreeRam()
 #else
 size_t getFreeRam()
 {
-  fprintf(stderr, "ERROR: getFreeRam not enablend on this system.");
+  fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
 #endif
 

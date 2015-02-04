@@ -397,7 +397,6 @@ int add_ffdot_planeCU(int harm, cuHarmInfo* hInf, cuFfdot* fund, cuFfdot* ffdotP
 
 int add_ffdot_planeCU2(cuFfdot* fund, int firstSub, int noSubs, cuHarmInfo* hInf, double searchRLow);
 
-
 int add_and_search(cuFfdot* plains, int stages, cuHarmInfo* hInf, double searchRLow, int copyBack, int search);
 
 /*
@@ -476,7 +475,6 @@ ExternC void printContext();
 ExternC void setContext(cuStackList* stkList) ;
 
 ExternC void testzm();
-
 
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED
