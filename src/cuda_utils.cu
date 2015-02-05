@@ -20,6 +20,9 @@ size_t getFreeRam()
 }
 #elif __linux
 #include <sys/sysinfo.h>
+/** Get the amount of free RAM in bytes
+ *
+ */
 size_t getFreeRam()
 {
   struct sysinfo sys_info;
@@ -145,8 +148,6 @@ void listDevices()
     printf("Could not detect any CUDA capable devices.\n");
     return;
   }
-
-  
   
   int driverVersion = 0, runtimeVersion = 0;
   
@@ -209,6 +210,7 @@ void listDevices()
     printf("  Memory Clock rate:                             %.0f Mhz\n",
         deviceProp.memoryClockRate * 1e-3f);
   } 
+
   printf("\n");
 }
 

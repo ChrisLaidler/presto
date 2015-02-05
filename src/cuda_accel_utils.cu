@@ -70,7 +70,7 @@ __device__ void release_semaphore(volatile int *lock)
 
 /** Return the first value of 2^n >= x
  */
-__host__ __device__ long long next2_to_n(long long x)
+__host__ __device__ long long next2_to_n_cu(long long x)
 {
   long long i = 1;
 
@@ -1572,8 +1572,8 @@ static int calc_fftlen(int numharm, int harmnum, int max_zfull)
   bins_needed = ACCEL_USELEN* harm_fract+ 2;
   end_effects = 2* ACCEL_NUMBETWEEN* z_resp_halfwidth(calc_required_z(harm_fract, max_zfull), LOWACC);
   //printf("bins_needed = %d  end_effects = %d  FFTlen = %lld\n",
-  //       bins_needed, end_effects, next2_to_n(bins_needed + end_effects));
-  return next2_to_n(bins_needed+ end_effects);
+  //       bins_needed, end_effects, next2_to_n_cu(bins_needed + end_effects));
+  return next2_to_n_cu(bins_needed+ end_effects);
 }
 
 /* The fft length needed to properly process a subharmonic */
@@ -1585,7 +1585,7 @@ static int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen)
 
   bins_needed = accelLen * harm_fract + 2;
   end_effects = 2 * ACCEL_NUMBETWEEN * z_resp_halfwidth(calc_required_z(harm_fract, max_zfull), LOWACC);
-  return next2_to_n(bins_needed + end_effects);
+  return next2_to_n_cu(bins_needed + end_effects);
 }
 
 float cuGetMedian(float *data, uint len)
@@ -1651,27 +1651,31 @@ float cuGetMedian(float *data, uint len)
   return 0;
 }
 
-int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, accelobs* obs, int device, int noSteps, int width, int noThreads )
+int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noSteps, int width, int noThreads, float*  powcut, long long*  numindep, int flags = 0, int candType = CU_FULLCAND, int retType = CU_SMALCAND, void* out = NULL)
 {
   nvtxRangePush("initHarmonics");
+
   printf("\nInitializing GPU %i\n",device);
   
-  size_t free, total; 
+  size_t free, total;             /// GPU memory
   int noInStack[MAX_HARM_NO];
   int noHarms         = (1 << (numharmstages - 1) );
   int prevWidth       = 0;
   int noStacks        = 0;  
   noInStack[0]        = 0;
-  size_t totSize      = 0;        /// Total size (in bytes) of all the data need by a stack excluding FFT temporary
+  size_t totSize      = 0;        /// Total size (in bytes) of all the data need by a family excluding FFT temporary
   size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary
 
-  int currentDevvice;
-  CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
-  CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
-  if (currentDevvice != device)
+  FOLD // See if we can use the cuda device
   {
-    fprintf(stderr, "ERROR: CUDA Device not set.\n");
-    return(0);
+    int currentDevvice;
+    CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+    CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+    if (currentDevvice != device)
+    {
+      fprintf(stderr, "ERROR: CUDA Device not set.\n");
+      return(0);
+    }
   }
 
   FOLD // First determine how many stacks and how many harmonics in each stack, accellen  .
@@ -1804,25 +1808,45 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
           }
         }
 
-        // Multi-step data layout method
-        stkLst->flag |= FLAG_STP_ROW ;          //  FLAG_STP_ROW   or    FLAG_STP_PLN
+        stkLst->flag = flags;
 
-        // Convolution flags
-        //stkLst->flag |= FLAG_CNV_TEX;         // Use texture memory to access the kernel for convolution - May give advantage on pre-Fermi generation which we don't really care about
-        stkLst->flag |= FLAG_CNV_1KER;          // Create a minimal kernel (exploit overlap in stacks)  This should always be the case
-        //stkLst->flag |= FLAG_CNV_OVLP;        // Use the overlap kernel
-        stkLst->flag |= FLAG_CNV_STK;           //  FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
+        FOLD // How to handle input and output
+        {
+          // NOTE:  Generally CU_INPT_SINGLE_C and CU_OUTP_SINGLE are the best options and SINGLE cases generally use less memory as well
+
+          if ( !( stkLst->flag & CU_INPT_ALL ) )
+            stkLst->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
+
+          if ( !( flags & CU_OUTP_ALL) )
+            stkLst->flag    |= CU_OUTP_SINGLE;      // Only get candidates from the current plain - This seams to be best in most cases
+        }
+
+        // Multi-step data layout method  .
+        if ( !(stkLst->flag & FLAG_STP_ALL ) )
+        {
+          stkLst->flag |= FLAG_STP_ROW ;          //  FLAG_STP_ROW   or    FLAG_STP_PLN
+        }
+
+        FOLD // Convolution flags  .
+        {
+          //stkLst->flag |= FLAG_CNV_TEX;         // Use texture memory to access the kernel for convolution - May give advantage on pre-Fermi generation which we don't really care about
+          stkLst->flag |= FLAG_CNV_1KER;          // Create a minimal kernel (exploit overlap in stacks)  This should always be the case
+          //stkLst->flag |= FLAG_CNV_OVLP;        // Use the overlap kernel
+          if ( !(stkLst->flag & FLAG_CNV_ALL ) )
+          {
+            stkLst->flag |= FLAG_CNV_STK;         //  FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
+          }
+        }
 
         // Sum and Search Flags
-        //stkLst->flag |= FLAG_PLN_TEX;         // Use texture memory to access the d-∂d plains during sum and search (non interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-        //stkLst->flag |= FLAG_SAS_SIG;         // Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+        //stkLst->flag |= FLAG_PLN_TEX;             // Use texture memory to access the d-∂d plains during sum and search (non interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+        //stkLst->flag |= FLAG_SAS_SIG;             // Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-        // How to handle input and output
-        stkLst->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
-        stkLst->flag    |= CU_CAND_SINGLE_G;    // Only get candidates from the current plain - This seams to be best in most cases
+        //stkLst->flag    |= FLAG_CUFFTCB_INP;      // Convolve input with fft
+        //stkLst->flag    |= FLAG_CUFFTCB_OUT;      // Power output
 
-        //stkLst->flag    |= FLAG_FFT_INP;        // Convolve input with fft
-        stkLst->flag    |= FLAG_FFT_OUT;        // Power output
+        stkLst->cndType = candType;
+        stkLst->retType = retType;
       }
 
       FOLD // Calculate the stride of all the stacks (by allocating temporary memory)  .
@@ -1855,7 +1879,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
             cStack->zDn[j]      = ( cStack->harmInf[0].height ) - cStack->zUp[cStack->noInStack - 1 - j ];
           }
 
-          // Allocate temporary device memory to asses stride
+          // Allocate temporary device memory to asses input stride
           FOLD
           {
             CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_kerData, &cStack->inpStride, cStack->width * sizeof(cufftComplex), cStack->harmInf[0].height), "Failed to allocate device memory for kernel stack.");
@@ -1868,21 +1892,20 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
             else
               stkLst->kerDataSize   += cStack->inpStride * cStack->height;             // At this point stride is still in bytes
 
-
             CUDA_SAFE_CALL(cudaFree(cStack->d_kerData), "Failed to free CUDA memory.");
             CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
           }
 
-          FOLD
+          FOLD // Allocate temporary device memory to asses plain data stride
           {
             stkLst->plnDataSize     += cStack->inpStride * cStack->height;            // At this point stride is still in bytes
 
-            if ( stkLst->flag & FLAG_FFT_OUT )
+            if ( stkLst->flag & FLAG_CUFFTCB_OUT )
             {
-              CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_powers, &cStack->pwrStride, cStack->width * sizeof(float), cStack->harmInf[0].height), "Failed to allocate device memory for kernel stack.");
+              CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_plainPowers, &cStack->pwrStride, cStack->width * sizeof(float), cStack->harmInf[0].height), "Failed to allocate device memory for kernel stack.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses plain stride.");
 
-              CUDA_SAFE_CALL(cudaFree(cStack->d_powers), "Failed to free CUDA memory.");
+              CUDA_SAFE_CALL(cudaFree(cStack->d_plainPowers), "Failed to free CUDA memory.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
 
               stkLst->pwrDataSize   += cStack->pwrStride * cStack->height;            // At this point stride is still in bytes
@@ -2209,7 +2232,7 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
 
   FOLD // Set constant memory values  .
   {
-    setConstVals( stkLst,  obs->numharmstages, obs->powcut, obs->numindep);
+    setConstVals( stkLst,  numharmstages, powcut, numindep);
 
     copyCUFFT_LD_CB();
 
@@ -2275,137 +2298,201 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
 
   FOLD // Decide how to handle input and output and allocate required memory  .
   {
-    int minR            = floor ( obs->rlo / (double)noHarms - stkLst->hInfos[0].halfWidth ); 
-    int maxR            = ceil  ( obs->rhi + - stkLst->hInfos[0].halfWidth );
-    uint noPoints       = maxR - minR;
-    uint freeMem        = getFreeRam();
+    printf("\nPreparing device %2i:\n", stkLst->device);
 
-    uint fullRSize      = noPoints * sizeof(fcomplexcu)     ;
-    uint fullCands      = noPoints * sizeof(accelcandBasic) ;
-    uint fullSem        = noPoints * sizeof(uint)           ;
+    int noRets; /// The number of candidates return per family (one step)
 
-    stkLst->rLow        = minR;  
-    stkLst->rHigh       = maxR;
+    int minR              = floor ( fftinf.rlow / (double)noHarms - stkLst->hInfos[0].halfWidth );
+    int maxR              = ceil  ( fftinf.rhi  - stkLst->hInfos[0].halfWidth );
 
-    int noCands         = stkLst->hInfos[0].width*numharmstages;
-    stkLst->cndDataSize = noCands*sizeof(accelcandBasic);
+    uint noInpPoints      = maxR - minR  ;  /// The number of input data points
+    uint noOutPoints      = noInpPoints  ;  /// The number of possible results
 
-    totSize             += stkLst->plnDataSize /*+ stkLst->pwrDataSize */+ stkLst->inpDataSize + stkLst->cndDataSize ;
-    fffTotSize          =  stkLst->plnDataSize + stkLst->inpDataSize;
+    if ( stkLst->flag  & FLAG_STORE_EXP )
+      noOutPoints *= ACCEL_RDR ;
 
-    printf("\nChoosing how to handle input and output data on device %2i:\n",stkLst->device);
+    if ( stkLst->flag  & FLAG_STORE_ALL )
+      noOutPoints *= numharmstages ;
 
-    CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-    size_t freeRam = getFreeRam();
-    printf("  There is a total of %.2f GB of device memory of which there is %.3f GB free and %.3f GB free host memory.\n",total / 1073741824.0, (free - fffTotSize)  / 1073741824.0, freeRam / 1073741824.0 );
+    uint freeRam;
 
-    float noKers2 = ( free ) / (double) ( fffTotSize + totSize * noThreads ) ;  // (fffTotSize * noKers2) for the CUFFT memory for FFT'ing the plain(s) and (totSize * noThreads * noKers2) for each thread(s) plan(s)
+    stkLst->rLow          = minR;
+    stkLst->rHigh         = maxR;
 
-    printf("    Requested %i threads on this device.\n", noThreads);
-    if ( noKers2 > 1.1 )
+    int retSZ   = 0;        /// The size in byte of the returned data
+    int candSZ  = 0;        /// The size in byte of the candidates
+
+    FOLD // Calculate candidate return type  .
     {
-      if ( noSteps > floor(noKers2) )
+      if (stkLst->retType == CU_CMPLXF)
+        retSZ = sizeof(fcomplexcu);
+      else if (stkLst->retType == CU_INT)
+        retSZ = sizeof(int);
+      else if (stkLst->retType == CU_FLOAT)
+        retSZ = sizeof(float);
+      else if (stkLst->retType == CU_POWERZ)
+        retSZ = sizeof(accelcand2);
+      else if (stkLst->retType == CU_SMALCAND)
+        retSZ = sizeof(accelcandBasic);
+      else if (stkLst->retType == CU_FULLCAND)
+        retSZ = sizeof(cand);
+      else
       {
-        printf("      Requested %i steps per thread, but with %i threads we can only do %.2f steps per thread. \n",noSteps, noThreads, noKers2 );
-        noSteps = floor(noKers2);
-      }
-
-      stkLst->noSteps = noSteps;
-
-      if ( stkLst->noSteps > MAX_STEPS )
-      {
-        stkLst->noSteps = MAX_STEPS;
-        printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", stkLst->noSteps );
+        fprintf(stderr,"ERROR: No output type specified in %s\n",__FUNCTION__);
       }
     }
-    else
+    FOLD // Calculate candidate type  .
     {
-      printf("      There may not be enough memory to do %i threads, throttling to 1 step per thread.\n", noThreads);
-      stkLst->noSteps = 1;                  // Default we have to do at least one step at a time
+      if (stkLst->retType == CU_CMPLXF)
+        candSZ = sizeof(fcomplexcu);
+      else if (stkLst->retType == CU_INT)
+        candSZ = sizeof(int);
+      else if (stkLst->retType == CU_FLOAT)
+        candSZ = sizeof(float);
+      else if (stkLst->retType == CU_POWERZ)
+        candSZ = sizeof(accelcand2);
+      else if (stkLst->retType == CU_SMALCAND)
+        candSZ = sizeof(accelcandBasic);
+      else if (stkLst->retType == CU_FULLCAND)
+        candSZ = sizeof(cand);
+      else
+      {
+        fprintf(stderr,"ERROR: No output type specified in %s\n",__FUNCTION__);
+      }
     }
-    printf("    Processing %i steps pre stack.\n", noSteps );
-    //stkLst->noSteps1 = stkLst->noSteps;
-    stkLst->mxSteps = stkLst->noSteps;
 
-    printf("    Kernels use: %.2f GB of device memory.\n", (stkLst->kerDataSize) / 1073741824.0 );
-    printf("    CUFFT   use: %.2f GB of device memory.\n", (fffTotSize*stkLst->noSteps) / 1073741824.0 );
-    printf("    Each of the %i stacks/thread(s) uses %.2f GB of device memory.\n", noThreads, (totSize*stkLst->noSteps) / 1073741824.0 );
-    printf("    Using ~%.2f / %.2f GB (%.2f%%) device memory.\n", (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / 1073741824.0, total / 1073741824.0, (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / (float)total * 100.0f );
-
-    float noKers   = ( free - fullRSize - fullCands - fullSem ) / (double)(totSize*stkLst->noSteps) ;
-
-    FOLD // Decide how to handle input and output NOTE: at the moment this is hardcoded above!
+    FOLD // calculate stack size and number of steps and stacks on this device
     {
-      if      ( fullCands < freeRam*0.8 )
-      {
-        // NOTE:  Generally CU_INPT_SINGLE_C and CU_CAND_SINGLE_G are the best options
+      noRets         = stkLst->hInfos[0].width;
+      if (stkLst->flag   & FLAG_RETURN_ALL)
+        noRets *= numharmstages;
 
-        if ( !(stkLst->flag & CU_INPT_ALL) )
-          stkLst->flag |= CU_INPT_SINGLE_C;
+      stkLst->retDataSize = noRets*retSZ;
 
-        if ( stkLst->cndDataSize*stkLst->noSteps < free)
-          if ( !(stkLst->flag & CU_CAND_ALL) )
-            stkLst->flag |= CU_CAND_SINGLE_G;
-      }
-      else if ( noKers > 1.1 )
-      {
-        // This is good, we can fit the input data and a candidate list on the device
-        if ( !(stkLst->flag & CU_INPT_ALL) )
-          stkLst->flag |= CU_INPT_DEVICE;
-        if ( !(stkLst->flag & CU_CAND_ALL) )
-          stkLst->flag |= CU_CAND_DEVICE;
-      }
-      else if ( ( free - fullCands - fullSem ) / (double)totSize  > 1.1 )
-      {
-        // We can get at least the results on the device
-        if ( !(stkLst->flag & CU_CAND_ALL) )
-          stkLst->flag |= CU_CAND_DEVICE;
+      totSize             += stkLst->plnDataSize /*+ stkLst->pwrDataSize */+ stkLst->inpDataSize + stkLst->retDataSize ;
+      fffTotSize          =  stkLst->plnDataSize + stkLst->inpDataSize;
 
-        if ( fullRSize < freeMem*0.8 )
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+      freeRam = getFreeRam();
+      printf("  There is a total of %.2f GB of device memory of which there is %.3f GB free and %.3f GB free host memory.\n",total / 1073741824.0, (free - fffTotSize)  / 1073741824.0, freeRam / 1073741824.0 );
+
+      float noKers2 = ( free ) / (double) ( fffTotSize + totSize * noThreads ) ;  // (fffTotSize * noKers2) for the CUFFT memory for FFT'ing the plain(s) and (totSize * noThreads * noKers2) for each thread(s) plan(s)
+
+      printf("    Requested %i threads on this device.\n", noThreads);
+      if ( noKers2 > 1.1 )
+      {
+        if ( noSteps > floor(noKers2) )
         {
-          // We can get the raw fft data in to page-locked host memory
-          if ( !(stkLst->flag & CU_INPT_ALL) )
-            stkLst->flag |= CU_INPT_HOST;
+          printf("      Requested %i steps per thread, but with %i threads we can only do %.2f steps per thread. \n",noSteps, noThreads, noKers2 );
+          noSteps = floor(noKers2);
         }
-      }
-      else if ( ( fullRSize + fullCands * numharmstages * ACCEL_RDR) < freeMem*0.8 )
-      {
-        if ( !(stkLst->flag & CU_INPT_ALL) )
-          stkLst->flag |= CU_INPT_HOST;
-        if ( !(stkLst->flag & CU_CAND_ALL) )
-          stkLst->flag |= CU_CAND_HOST;
-      }
-      else if ( (fullCands*numharmstages*ACCEL_RDR) < freeMem*0.8)
-      {
-        if ( !(stkLst->flag & CU_INPT_ALL) )
-          stkLst->flag |= CU_INPT_SINGLE_C;
-        if ( !(stkLst->flag & CU_CAND_ALL) )
-          stkLst->flag |= CU_CAND_HOST;
+
+        stkLst->noSteps = noSteps;
+
+        if ( stkLst->noSteps > MAX_STEPS )
+        {
+          stkLst->noSteps = MAX_STEPS;
+          printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", stkLst->noSteps );
+        }
       }
       else
       {
-        if ( !(stkLst->flag & CU_INPT_ALL) )
+        printf("      There may not be enough memory to do %i threads, throttling to 1 step per thread.\n", noThreads);
+        stkLst->noSteps = 1;                  // Default we have to do at least one step at a time
+      }
+      printf("    Processing %i steps per stack.\n", noSteps );
+      stkLst->mxSteps = stkLst->noSteps;
+
+      printf("    Kernels use: %.2f GB of device memory.\n", (stkLst->kerDataSize) / 1073741824.0 );
+      printf("    CUFFT   use: %.2f GB of device memory.\n", (fffTotSize*stkLst->noSteps) / 1073741824.0 );
+      printf("    Each of the %i stacks/thread(s) uses %.2f GB of device memory.\n", noThreads, (totSize*stkLst->noSteps) / 1073741824.0 );
+      printf("    Using ~%.2f / %.2f GB (%.2f%%) device memory for plains.\n", (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / 1073741824.0, total / 1073741824.0, (stkLst->kerDataSize + ( fffTotSize + totSize * noThreads )*stkLst->noSteps ) / (float)total * 100.0f );
+    }
+
+    float fullRSize     = noInpPoints*sizeof(fcomplexcu) ;              /// The full size of relevant input data
+    float fullCSize     = noOutPoints*retSZ;                            /// The full size of all data returned
+    float fullSem       = noOutPoints * sizeof(uint)           ;        /// size of semaphores
+
+    FOLD // Do sanity checks for input and output and adjust "down" if necessary
+    {
+      float remainigGPU   = free - fffTotSize*stkLst->noSteps - totSize*stkLst->noSteps*noThreads ;
+      float remainingRAM  = freeRam;
+
+      if ( stkLst->flag & CU_INPT_DEVICE )
+      {
+        if ( fullRSize > remainigGPU*0.98 )
+        {
+          fprintf(stderr, "WARNING: Requested to store all input data on device but there is insufficient space so changing to page locked memory instead.\n");
+          stkLst->flag ^= CU_INPT_DEVICE;
+          stkLst->flag |= CU_INPT_HOST;
+        }
+        else
+        {
+          // We can get all points on the device
+          remainigGPU -= fullRSize ;
+        }
+      }
+
+      if ( stkLst->flag & CU_INPT_HOST )
+      {
+        if (fullRSize > remainingRAM*0.98 )
+        {
+          fprintf(stderr, "WARNING: Requested to store all input data in page locked host memory but there is insufficient space, so changing to working on single stack at a time.\n");
+          stkLst->flag ^= CU_INPT_HOST;
           stkLst->flag |= CU_INPT_SINGLE_C;
-        if ( !(stkLst->flag & CU_CAND_ALL) )
-          stkLst->flag |= CU_CAND_SINGLE_G;
+        }
+        else
+        {
+          // We can get all points in ram
+          remainingRAM -= fullRSize ;
+        }
+      }
+
+      if ( stkLst->flag & CU_OUTP_DEVICE  )
+      {
+        if ( fullCSize > remainigGPU *0.98 )
+        {
+          fprintf(stderr, "WARNING: Requested to store all candidates on device but there is insufficient space so changing to page locked memory instead.\n");
+          stkLst->flag ^= CU_OUTP_DEVICE;
+          stkLst->flag |= CU_OUTP_HOST;
+        }
+        else
+        {
+          remainigGPU -= fullCSize ;
+        }
+      }
+
+      if ( ( stkLst->flag & CU_OUTP_HOST ) || ( stkLst->flag & CU_OUTP_DEVICE ) )
+      {
+        if ( fullCSize > remainingRAM *0.98 )
+        {
+          fprintf(stderr, "WARNING: Requested to store all candidates in page locked host memory but there is insufficient space, so changing to working on single stack at a time.\n");
+          stkLst->flag ^= CU_OUTP_HOST;
+          stkLst->flag ^= CU_OUTP_DEVICE;
+          stkLst->flag |= CU_OUTP_SINGLE;
+        }
+        else
+        {
+          remainingRAM -= fullCSize ;
+        }
       }
     }
 
-    FOLD // ALLOCATE the actual memory for all cases that have one instance per
+    FOLD // ALLOCATE device specific memory  .
     {
       if      ( stkLst->flag & CU_INPT_DEVICE )
       {
         // Create and copy raw fft data to the device
         CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_iData, fullRSize), "Failed to allocate device memory for input raw FFT data.");
-        CUDA_SAFE_CALL(cudaMemcpy(stkLst->d_iData, &obs->fft[minR], fullRSize, cudaMemcpyHostToDevice), "Failed to copy raw FFT data to device.");
+        CUDA_SAFE_CALL(cudaMemcpy(stkLst->d_iData, &fftinf.fft[minR], fullRSize, cudaMemcpyHostToDevice), "Failed to copy raw FFT data to device.");
       }
-      else if ( stkLst->flag & CU_INPT_HOST )
+      else if ( stkLst->flag & CU_INPT_HOST   )
       {
-        if (master == NULL ) 
+        if (master == NULL )
         {
           // Create page locked host memory and copy raw fft data - for the entire input data
           CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_iData, fullRSize), "Failed to create page-locked host memory for entire input data." );
-          
+
           int start = 0;
           if ( minR < 0 )
           {
@@ -2413,65 +2500,83 @@ int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, i
             memset(stkLst->h_iData, 0, start*sizeof(fcomplex) );
           }
           
-          memcpy(&stkLst->h_iData[start], &obs->fft[minR+start], fullRSize-start*sizeof(fcomplex));        
+          // Copy input data to pagelocked memory
+          memcpy(&stkLst->h_iData[start], &fftinf.fft[minR+start], fullRSize-start*sizeof(fcomplex));
         }
       }
-      else if ( stkLst->flag & CU_INPT_SINGLE_G ||  stkLst->flag & CU_INPT_SINGLE_C )
+      else if ( stkLst->flag & CU_INPT_SINGLE )
       {
+        // Nothing, each stack list has its own input data already
       }
       else
       {
-        fprintf(stderr, "ERROR: Undecided how to handle input data!");
+        fprintf(stderr, "ERROR: Undecided how to handle input data!\n");
         return 0;
       }
 
-      if      ( stkLst->flag & CU_CAND_DEVICE )
+      if      ( stkLst->flag & CU_OUTP_DEVICE )
       {
         // Create a candidate list
-        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_bCands, fullCands), "Failed to allocate device memory for candidate list stack.");
-        CUDA_SAFE_CALL(cudaMemset((void*)   stkLst->d_bCands, 0, fullCands ), "Failed to initialise  candidate list.");
+        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_retData, fullCSize), "Failed to allocate device memory for candidate list stack.");
+        CUDA_SAFE_CALL(cudaMemset((void*)stkLst->d_retData, 0, fullCSize ), "Failed to initialise  candidate list.");
 
         // Create a semaphore list
         CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_candSem, fullSem ), "Failed to allocate device memory for candidate semaphore list.");
-        CUDA_SAFE_CALL(cudaMemset((void*)   stkLst->d_candSem, UINT_MAX, fullSem ), "Failed to initialise  semaphore list.");
+        CUDA_SAFE_CALL(cudaMemset((void*)stkLst->d_candSem, UINT_MAX, fullSem ), "Failed to initialise  semaphore list.");
       }
-      else if ( ( stkLst->flag & CU_CAND_HOST ) || ( stkLst->flag & CU_CAND_DEVICE ) )
+      else if ( ( stkLst->flag & CU_OUTP_HOST ) || ( stkLst->flag & CU_OUTP_DEVICE ) )
       {
-        if (master == NULL )
+        if ( master == NULL )
         {
-          CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_bCands, fullCands*numharmstages*ACCEL_RDR), "Failed to create page-locked host memory for entire candidate list." );
+          CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_retData, fullCSize), "Failed to create page-locked host memory for entire candidate list." );
         }
       }
-      else if ( stkLst->flag & CU_CAND_SINGLE_G )
-      {  
-        if (master == NULL )
-        {
-          size_t candSz   = fullCands*sizeof(cand)  ;
-          size_t freeRam  = getFreeRam()            ;
-          if ( fullCands*sizeof(cand) < freeRam*0.95 )
-          {
-            // Same host candidates for all devices
-            stkLst->h_candidates = (cand*)malloc(candSz);
-            memset(stkLst->h_candidates, 0, candSz );
-          }
-          else
-          {
-            fprintf(stderr, "ERROR: Not enough host memory for candidate list. Try set -fhi to a lower value. ie: numharm*1000\n");
-
-            // TODO: Fix this to use a dynamic candidate list.
-            fprintf(stderr, "freeRam:  %.3fGB\n",freeRam * 1e-9 );
-            fprintf(stderr, "candSz:   %.3fGB\n", candSz * 1e-9 );
-            exit(EXIT_FAILURE);
-          }
-        }
-      }
-      else if ( stkLst->flag & CU_CAND_SINGLE_C == CU_CAND_SINGLE_C )
+      else if ( stkLst->flag & CU_OUTP_SINGLE )
       {
+        // Nothing, each stack list has its own return data already
       }
       else
       {
         fprintf(stderr, "ERROR: Undecided how to handle input data!");
         return 0;
+      }
+    }
+
+    FOLD // Allocate global (device independat) hots memory
+    {
+      // One set of global set of "candidates" for all devices
+      if ( master == NULL )
+      {
+        if( stkLst->flag | CU_CAND_ARR )
+        {
+          if ( out == NULL )
+          {
+            freeRam  = getFreeRam();
+            if ( noOutPoints*candSZ < freeRam*0.98 )
+            {
+              // Same host candidates for all devices
+              // This can use a lot of memory for long searches!
+              stkLst->h_candidates = malloc( noOutPoints*candSZ );
+            }
+            else
+            {
+              fprintf(stderr, "ERROR: Not enough host memory for candidate list. Need %.2fGB there is %.2fGB.\n", noOutPoints*candSZ/ 1073741824.0, freeRam / 1073741824.0 );
+              fprintf(stderr, "       Try set -fhi to a lower value. ie: numharm*1000.\n");
+              fprintf(stderr, "       Will continue trying to use a dynamic list.\n");
+
+              stkLst->flag ^= CU_CAND_ARR;
+              stkLst->flag |= CU_CAND_LST;
+
+              //exit(EXIT_FAILURE);
+            }
+          }
+          else
+          {
+            // This memory has already been allocated
+            stkLst->h_candidates = out;
+          }
+          memset(stkLst->h_candidates, 0, noOutPoints*candSZ );
+        }
       }
     }
 
@@ -2524,21 +2629,22 @@ void setPlainPointers(cuStackList* stkLst)
 
     for (int j = 0; j < cStack->noInStack; j++)
     {
-      cuFFdot* cPlain     = &cStack->plains[j];
-      if ( stkLst->flag & FLAG_STP_ROW || stkLst->flag & FLAG_STP_PLN )
+      cuFFdot* cPlain           = &cStack->plains[j];
+
+      if ( (stkLst->flag & FLAG_STP_ROW) || (stkLst->flag & FLAG_STP_PLN) )
       {
-        cPlain->d_plainData = &cStack->d_plainData[cStack->startR[j] * stkLst->noSteps * cStack->inpStride];
-        cPlain->d_powers    = &cStack->d_powers[cStack->startR[j] * stkLst->noSteps * cStack->pwrStride];
+        cPlain->d_plainData     = &cStack->d_plainData[   cStack->startR[j] * stkLst->noSteps * cStack->inpStride];
+        cPlain->d_plainPowers   = &cStack->d_plainPowers[ cStack->startR[j] * stkLst->noSteps * cStack->pwrStride];
       }
       else // Note this works for 1 step or FLAG_STP_STK
       {
-        cPlain->d_plainData = &cStack->d_plainData[cStack->startR[j] * cStack->inpStride];
-        cPlain->d_powers    = &cStack->d_powers[cStack->startR[j] * cStack->pwrStride];
+        cPlain->d_plainData     = &cStack->d_plainData[   cStack->startR[j] * cStack->inpStride];
+        cPlain->d_plainPowers   = &cStack->d_plainPowers[ cStack->startR[j] * cStack->pwrStride];
       }
 
-      cPlain->d_iData     = &cStack->d_iData[cStack->inpStride*j*stkLst->noSteps];
-      cPlain->harmInf     = &cStack->harmInf[j];
-      cPlain->kernel      = &cStack->kernels[j];
+      cPlain->d_iData           = &cStack->d_iData[cStack->inpStride*j*stkLst->noSteps];
+      cPlain->harmInf           = &cStack->harmInf[j];
+      cPlain->kernel            = &cStack->kernels[j];
     }
   }
 }
@@ -2554,37 +2660,21 @@ void setStkPointers(cuStackList* stkLst)
   {
     // Set stack pointers
     cuFfdotStack* cStack  = &stkLst->stacks[i];
+
     cStack->d_iData       = &stkLst->d_iData[idSiz];
+    cStack->h_iData       = &stkLst->h_iData[idSiz];
     cStack->plains        = &stkLst->plains[harm];
     cStack->kernels       = &stkLst->kernels[harm];
     cStack->d_plainData   = &stkLst->d_plainData[stkStart];
-    cStack->d_powers      = &stkLst->d_powers[pwrStart];
+    cStack->d_plainPowers = &stkLst->d_plainPowers[pwrStart];
 
-    // Now set plain pointers
-    for (int j = 0; j < cStack->noInStack; j++)
-    {
-      cuFFdot* cPlain     = &cStack->plains[j];
-
-      if ( stkLst->flag & FLAG_STP_ROW || stkLst->flag & FLAG_STP_PLN )
-      {
-        cPlain->d_plainData = &cStack->d_plainData[cStack->startR[j] * stkLst->noSteps * cStack->inpStride];
-        cPlain->d_powers    = &cStack->d_powers[cStack->startR[j] * stkLst->noSteps * cStack->pwrStride];
-      }
-      else // Note this works for 1 step or FLAG_STP_STK
-      {
-        cPlain->d_plainData = &cStack->d_plainData[cStack->startR[j] * cStack->inpStride];
-        cPlain->d_powers    = &cStack->d_powers[cStack->startR[j] * cStack->pwrStride];
-      }
-
-      cPlain->harmInf     = &cStack->harmInf[j];
-      cPlain->d_iData     = &cStack->d_iData[cStack->inpStride*j];
-      cPlain->kernel      = &cStack->kernels[j];
-      idSiz               += cStack->inpStride * stkLst->noSteps;
-      harm++;
-    }
-    stkStart += cStack->height * cStack->inpStride * stkLst->noSteps ;
-    pwrStart += cStack->height * cStack->pwrStride * stkLst->noSteps ;
+    harm                 += cStack->noInStack;
+    idSiz                += stkLst->noSteps * cStack->inpStride * cStack->noInStack;
+    stkStart             += cStack->height  * cStack->inpStride * stkLst->noSteps ;
+    pwrStart             += cStack->height  * cStack->pwrStride * stkLst->noSteps ;
   }
+
+  setPlainPointers(stkLst);
 }
 
 cuStackList* initStkList(cuStackList* harms, int no, int of)
@@ -2619,11 +2709,11 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
   FOLD // Allocate all device and host memory for the stacks  .
   {
     // Allocate page-locked host memory for input data
-    if ( stkLst->flag & CU_INPT_SINGLE_G ||  stkLst->flag & CU_INPT_SINGLE_C ) // TODO: Do a memory check here, ie is the enough
+    if ( stkLst->flag & CU_INPT_SINGLE ) // TODO: Do a memory check here, ie is the enough
     {
       CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_iData, stkLst->inpDataSize*stkLst->noSteps ), "Failed to create page-locked host memory plain input data." );
 
-      if ( stkLst->flag & CU_INPT_SINGLE_C )
+      if ( stkLst->flag & CU_INPT_SINGLE_C ) // Allocate memory for normalisation
         stkLst->h_powers = (float*) malloc(stkLst->hInfos[0].width * sizeof(float));
     }
 
@@ -2647,38 +2737,39 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
 
         CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_plainData,    stkLst->plnDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
 
-        if ( stkLst->flag & FLAG_FFT_OUT )
+        if ( stkLst->flag & FLAG_CUFFTCB_OUT )
         {
-          //CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_powers,     stkLst->pwrDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
-          stkLst->d_powers = (float*)stkLst->d_plainData; // We can just re-use the plain data
+          //CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_plainPowers,     stkLst->pwrDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
+          stkLst->d_plainPowers = (float*)stkLst->d_plainData; // We can just re-use the plain data
         }
       }
     }
 
     FOLD // Allocate device & page-locked host memory for candidate  data  .
     {
-      if ( stkLst->flag & CU_CAND_SINGLE_G )
+      if ( stkLst->flag & CU_OUTP_SINGLE )
       {
         CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
 
-        if ( stkLst->cndDataSize*stkLst->noSteps > free )
+        FOLD // Allocate device memory  .
         {
-          // Not enough memory =(
-          printf("Not enough GPU memory to create stacks.\n");
-          return NULL;
-        }
-        else
-        {
-          CUDA_SAFE_CALL(cudaMalloc((void** ) &stkLst->d_bCands, stkLst->accelLen*stkLst->noHarmStages*stkLst->noSteps*sizeof(accelcandBasic) ), "Failed to allocate device memory for candidates.");
+          if ( stkLst->retDataSize*stkLst->noSteps > free )
+          {
+            // Not enough memory =(
+            printf("Not enough GPU memory to create stacks.\n");
+            return NULL;
+          }
+          else
+          {
+            CUDA_SAFE_CALL(cudaMalloc((void** ) &stkLst->d_retData, stkLst->retDataSize*stkLst->noSteps ), "Failed to allocate device memory for return values.");
+          }
         }
 
-        // Create page-locked memory to copy the candidates back to
-        CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_bCands, stkLst->accelLen*stkLst->noHarmStages*stkLst->noSteps*sizeof(accelcandBasic)),"");
-        memset(stkLst->h_bCands, 0, stkLst->accelLen*stkLst->noHarmStages*sizeof(accelcandBasic)*stkLst->noSteps );
-      }
-      else if ( stkLst->flag & CU_CAND_HOST )
-      {
-        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_bCands, stkLst->accelLen*stkLst->noHarmStages*sizeof(accelcandBasic)*stkLst->noSteps ), "Failed to allocate device memory for candidates.");
+        FOLD // Allocate page-locked hots memory to copy the candidates back to  .
+        {
+          CUDA_SAFE_CALL(cudaMallocHost((void**) &stkLst->h_retData, stkLst->retDataSize*stkLst->noSteps),"");
+          memset(stkLst->h_retData, 0, stkLst->retDataSize*stkLst->noSteps );
+        }
       }
     }
 
@@ -2754,10 +2845,11 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
     CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams and events for the stack list.");
   }
 
-  FOLD // Setup stacks and plains of this stack list  .
+  FOLD // Setup the pointers for the stacks and plains of this stack list  .
   {
-    //setStkPointers(stkLst);
+    setStkPointers(stkLst);
 
+    /*
     size_t stkStart = 0;
     size_t pwrStart = 0;
     size_t idSiz    = 0;            /// The size in bytes of input data for one stack
@@ -2772,29 +2864,28 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
       cStack->plains        = &stkLst->plains[harm];
       cStack->kernels       = &stkLst->kernels[harm];
       cStack->d_plainData   = &stkLst->d_plainData[stkStart];
-      cStack->d_powers      = &stkLst->d_powers[pwrStart];
+      cStack->d_plainPowers = &stkLst->d_plainPowers[pwrStart];
 
       // Now set plain pointers
       for (int j = 0; j < cStack->noInStack; j++)
       {
         cuFFdot* cPlain     = &cStack->plains[j];
 
-        /*
-        if ( stkLst->flag & FLAG_STP_ROW || stkLst->flag & FLAG_STP_PLN )
+        if ( (stkLst->flag & FLAG_STP_ROW) || (stkLst->flag & FLAG_STP_PLN) )
         {
-          cPlain->d_plainData = &cStack->d_plainData[cStack->startR[j] * stkLst->noSteps * cStack->inpStride];
-          cPlain->d_powers    = &cStack->d_powers[cStack->startR[j] * stkLst->noSteps * cStack->pwrStride];
+          cPlain->d_plainData     = &cStack->d_plainData[   cStack->startR[j]  * stkLst->noSteps * cStack->inpStride ];
+          cPlain->d_plainPowers   = &cStack->d_plainPowers[ cStack->startR[j]  * stkLst->noSteps * cStack->pwrStride ];
         }
         else // Note this works for 1 step or FLAG_STP_STK
         {
-          cPlain->d_plainData = &cStack->d_plainData[cStack->startR[j] * cStack->inpStride];
-          cPlain->d_powers    = &cStack->d_powers[cStack->startR[j] * cStack->pwrStride];
+          cPlain->d_plainData     = &cStack->d_plainData[   cStack->startR[j]  * cStack->inpStride ];
+          cPlain->d_plainPowers   = &cStack->d_plainPowers[ cStack->startR[j]  * cStack->pwrStride ];
         }
 
         cPlain->harmInf     = &cStack->harmInf[j];
         cPlain->d_iData     = &cStack->d_iData[cStack->inpStride*j];
         cPlain->kernel      = &cStack->kernels[j];
-        */
+
         idSiz               += cStack->inpStride * stkLst->noSteps;
         harm++;
       }
@@ -2803,9 +2894,10 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
     }
 
     setPlainPointers(stkLst);
+    */
   }
 
-  /*
+  /*  // Rather use 1 FFT plan per device
   FOLD // Create FFT plans  .
   {
     for (int i = 0; i < stkLst->noStacks; i++)
@@ -2868,7 +2960,7 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
 
           if ( stkLst->flag & FLAG_PLN_TEX )
           {
-            resDesc.res.pitch2D.devPtr        = cPlain->d_powers;
+            resDesc.res.pitch2D.devPtr        = cPlain->d_plainPowers;
             resDesc.res.pitch2D.pitchInBytes  = cStack->pwrStride * sizeof(float);
           }
           else
@@ -2887,9 +2979,9 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
 
   FOLD // Set up CUFFT call back stuff
   {
-    if ( stkLst->flag & FLAG_FFT_INP || stkLst->flag & FLAG_FFT_OUT )
+    if ( (stkLst->flag & FLAG_CUFFTCB_INP) || (stkLst->flag & FLAG_CUFFTCB_OUT) )
     {
-      if ( stkLst->flag & FLAG_FFT_INP )
+      if ( stkLst->flag & FLAG_CUFFTCB_INP )
       {
         for (int i = 0; i < stkLst->noStacks; i++)
         {
@@ -2899,15 +2991,12 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
           size_t heights = 0;
 
           fftCnvlvInfo h_inf;
-          fftCnvlvInfo* d_inf;
 
-          h_inf.noSteps   = stkLst->noSteps;
-          h_inf.stride    = cStack->inpStride;
-          h_inf.width     = cStack->width;
-          h_inf.noPlains  = cStack->noInStack;
-          h_inf.d_powers  = cStack->d_powers;
-
-          //printf("\nStride %6i\n", cStack->inpStride );
+          h_inf.noSteps         = stkLst->noSteps;
+          h_inf.stride          = cStack->inpStride;
+          h_inf.width           = cStack->width;
+          h_inf.noPlains        = cStack->noInStack;
+          h_inf.d_plainPowers   = cStack->d_plainPowers;
 
           for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
           {
@@ -2915,8 +3004,6 @@ cuStackList* initStkList(cuStackList* harms, int no, int of)
             h_inf.d_kernel[i]   = cStack->kernels[i].d_kerData;
             h_inf.heights[i]    = cStack->harmInf[i].height;
             h_inf.top[i]        = heights;
-            //printf("top %02i: %6i\n", i, heights);
-
             heights            += cStack->harmInf[i].height;
           }
 
@@ -3370,7 +3457,7 @@ void CPU_Norm_Spread(cuStackList* plains, double searchRLow, double searchRHi, i
         if (lobin < 0 )
           start = -lobin;
 
-        nice_numdata = next2_to_n(numdata);  // for FFTs
+        nice_numdata = next2_to_n_cu(numdata);  // for FFTs
 
         if ( nice_numdata > cStack->width )
         {
@@ -3519,7 +3606,7 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
             if (lobin < 0 )
               start   = -lobin;
 
-            nice_numdata = next2_to_n(numdata);  // for FFTs
+            nice_numdata = next2_to_n_cu(numdata);  // for FFTs
 
             if ( nice_numdata > cStack->width )
             {
@@ -3610,7 +3697,7 @@ void CPU_Norm_Spread_mstep(cuStackList* plains, double* searchRLow, double* sear
               vect_free(loc_powers);  // I hate doing this!!!
             }
 
-            // I tested doing the FFT's on the CPU and its drastically faster doing it on the GPU, and can often be done synchronously
+            // I tested doing the FFT's on the CPU and its drastically faster doing it on the GPU, and can often be done synchronously -- Chris L
             //nvtxRangePush("CPU FFT");
             //COMPLEXFFT((fcomplex *)&plains->h_iData[sz], numdata*ACCEL_NUMBETWEEN, -1);
             //nvtxRangePop();
@@ -3692,326 +3779,92 @@ void setStackRVals(cuStackList* plains, double* searchRLow, double* searchRHi)
   }
 }
   
-int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands)
+/** Initialise input data for a f-∂f plain(s)  ready for convolution  .
+ * This:
+ *  Normalises the chunk of input data
+ *  Spreads it (interbinning)
+ *  FFT it ready for convolution
+ *
+ * @param plains      The plains
+ * @param searchRLow  The index of the low  R bin (1 value for each step)
+ * @param searchRHi   The index of the high R bin (1 value for each step)
+ * @param norm_type   The type of normalisation to perform
+ * @param fft         The fft
+ */
+void initInput(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
 {
-  //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+  iHarmList lengths;
+  iHarmList widths;
+  cHarmList d_iDataList;
+  cHarmList d_fftList;
+  int sz = 0;
+  int lobin, hibin, binoffset, numdata, numrs;
+  double drlo, drhi;
+  dim3 dimBlock, dimGrid;
+  int harm = 0;
 
-  //print_YINDS<<<1,1>>>(400);
+  nvtxRangePush("Input");
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
+  //printf("Input\n");
 
-  if ( searchRLow[0] < searchRHi[0] ) // Initialise input data
+  if      ( plains->flag & CU_INPT_SINGLE_G  )
   {
-    iHarmList lengths;
-    iHarmList widths;
-    cHarmList d_iDataList;
-    cHarmList d_fftList;
-    int sz = 0;
-    int lobin, hibin, binoffset, numdata, numrs;
-    double drlo, drhi;
-    dim3 dimBlock, dimGrid;
-    int harm = 0;
+    // Copy chunks of FFT data and normalise and spread using the GPU
 
-    nvtxRangePush("Input");
+    // Make sure the previous thread has complete reading from page locked memory
+    CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
+    nvtxRangePush("Zero");
+    memset(plains->h_iData, 0, plains->inpDataSize);
+    nvtxRangePop();
 
-    //printf("Input\n");
-
-    if      ( plains->flag & CU_INPT_SINGLE_G  )
+    FOLD // Copy fft data to device
     {
-      // Copy chunks of FFT data and normalise and spread using the GPU
-
-      // Make sure the previous thread has complete reading from page locked memory
-      CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-      nvtxRangePush("Zero");
-      memset(plains->h_iData, 0, plains->inpDataSize);
-      nvtxRangePop();
-
-      FOLD // Copy fft data to device
+      // Write fft data segments to contiguous page locked memory
+      for (int ss = 0; ss< plains->noStacks; ss++)
       {
-        // Write fft data segments to contiguous page locked memory
-        for (int ss = 0; ss< plains->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &plains->stacks[ss];
+        cuFfdotStack* cStack = &plains->stacks[ss];
 
-          for (int si = 0; si< cStack->noInStack; si++)
+        for (int si = 0; si< cStack->noInStack; si++)
+        {
+          cuHarmInfo* cHInfo = &plains->hInfos[harm];  // The current harmonic we are working on
+          cuFFdot* cPlain = &plains->plains[harm];     //
+
+          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
+          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+
+          binoffset = cHInfo->halfWidth;
+          lobin = (int) floor(drlo) - binoffset;
+          hibin = (int)  ceil(drhi) + binoffset;
+          numdata = hibin - lobin + 1;
+
+          numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+          if (harm == 0)
           {
-            cuHarmInfo* cHInfo = &plains->hInfos[harm];  // The current harmonic we are working on
-            cuFFdot* cPlain = &plains->plains[harm];     //
-
-            drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
-            drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
-
-            binoffset = cHInfo->halfWidth;
-            lobin = (int) floor(drlo) - binoffset;
-            hibin = (int)  ceil(drhi) + binoffset;
-            numdata = hibin - lobin + 1;
-
-            numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-            if (harm == 0)
-            {
-              //numrs = ACCEL_USELEN;
-              numrs = plains->accelLen;
-            }
-            else if (numrs % ACCEL_RDR)
-              numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-            int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-            if (numrs < numtocopy)
-              numtocopy = numrs;
-
-            lengths.val[harm]       = numdata;
-            d_iDataList.val[harm]   = cPlain->d_iData;
-            widths.val[harm]        = cStack->width;
-
-            int start = 0;
-            if ( lobin < 0 )
-              start = -lobin;
-
-            // Do the actual copy
-            memcpy(&plains->h_iData[sz+start], &fft[lobin+start], (numdata-start)* sizeof(fcomplexcu));
-
-            sz += cStack->inpStride;
-
-            harm++;
+            //numrs = ACCEL_USELEN;
+            numrs = plains->accelLen;
           }
-        }
+          else if (numrs % ACCEL_RDR)
+            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+          int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
+          if (numrs < numtocopy)
+            numtocopy = numrs;
 
-        // Synchronisation
-        for (int ss = 0; ss< plains->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &plains->stacks[ss];
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-        }
+          lengths.val[harm]       = numdata;
+          d_iDataList.val[harm]   = cPlain->d_iData;
+          widths.val[harm]        = cStack->width;
 
-        // Copy to device
-        CUDA_SAFE_CALL(cudaMemcpyAsync(plains->d_iData, plains->h_iData, plains->inpDataSize, cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
+          int start = 0;
+          if ( lobin < 0 )
+            start = -lobin;
 
-        // Synchronisation
-        cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
+          // Do the actual copy
+          memcpy(&plains->h_iData[sz+start], &fft[lobin+start], (numdata-start)* sizeof(fcomplexcu));
 
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
-      }
+          sz += cStack->inpStride;
 
-      FOLD // Normalise and spread
-      {
-        // Blocks of 1024 threads ( the maximum number of threads per block )
-        dimBlock.x = NAS_DIMX;
-        dimBlock.y = NAS_DIMY;
-        dimBlock.z = 1;
-
-        // One block per harmonic, thus we can sort input powers in Shared memory
-        dimGrid.x = plains->noHarms;
-        dimGrid.y = 1;
-
-        // Synchronisation
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, plains->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-
-        // Call the kernel to normalise and spread the input data
-        normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_iDataList, lengths, widths);
-
-        // Synchronisation
-        cudaEventRecord(plains->normComp, plains->inpStream);
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
-      }
-    }
-    else if ( plains->flag & CU_INPT_HOST      )
-    {
-      // Copy chunks of FFT data and normalise and spread using the GPU
-
-      // Make sure the previous thread has complete reading from page locked memory
-      CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-      //nvtxRangePush("Zero");
-      //memset(plains->h_iData, 0, plains->inpDataSize);
-      CUDA_SAFE_CALL(cudaMemsetAsync(plains->d_iData, 0, plains->inpDataSize, plains->inpStream),"Initialising input data to 0");
-      //nvtxRangePop();
-
-      FOLD // Copy fft data to device
-      {
-        // Write fft data segments to contiguous page locked memory
-        for (int ss = 0; ss< plains->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &plains->stacks[ss];
-
-          // Synchronisation
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-
-          for (int si = 0; si< cStack->noInStack; si++)
-          {
-            cuHarmInfo* cHInfo  = &plains->hInfos[harm];  // The current harmonic we are working on
-            cuFFdot* cPlain     = &plains->plains[harm];  //
-
-            drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
-            drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
-
-            binoffset = cHInfo->halfWidth;
-            lobin     = (int) floor(drlo) - binoffset;
-            hibin     = (int)  ceil(drhi) + binoffset;
-            numdata   = hibin - lobin + 1;
-
-            numrs     = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-            if (harm == 0)
-            {
-              numrs = plains->accelLen;
-            }
-            else if (numrs % ACCEL_RDR)
-              numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-            int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-            if (numrs < numtocopy)
-              numtocopy = numrs;
-
-            lengths.val[harm]       = numdata;
-            d_iDataList.val[harm]   = cPlain->d_iData;
-            widths.val[harm]        = cStack->width;
-
-            int start = 0;
-
-            if ( (lobin - plains->rLow)  < 0 )
-            {
-              // This should be unnecessary as rLow can be < 0 and h_iData is zero padded
-              start = -(lobin - plains->rLow);
-              CUDA_SAFE_CALL(cudaMemsetAsync(cPlain->d_iData, 0, start*sizeof(fcomplexcu), plains->inpStream),"Initialising input data to 0");
-            }
-
-
-            // Copy section to device
-            CUDA_SAFE_CALL(cudaMemcpyAsync(&cPlain->d_iData[start], &plains->h_iData[lobin-plains->rLow+start], (numdata-start)*sizeof(fcomplexcu), cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-
-            sz += cStack->inpStride;
-
-            if ( DBG_INP01 ) // Print debug info
-            {
-              printf("\nCPU Input Data RAW FFTs [ Half width: %i  lowbin: %i  drlo: %.2f ] \n", cHInfo->halfWidth, lobin, drlo);
-
-              printfData<<<1,1,0,plains->inpStream>>>((float*)cPlain->d_iData,10,1, cStack->inpStride);
-              CUDA_SAFE_CALL(cudaStreamSynchronize(plains->inpStream),"");
-            }
-
-            harm++;
-          }
-        }
-
-        // Synchronisation
-        //cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
-      }
-
-      FOLD // Normalise and spread
-      {
-        // Blocks of 1024 threads ( the maximum number of threads per block )
-        dimBlock.x = NAS_DIMX;
-        dimBlock.y = NAS_DIMY;
-        dimBlock.z = 1;
-
-        // One block per harmonic, thus we can sort input powers in Shared memory
-        dimGrid.x = plains->noHarms;
-        dimGrid.y = 1;
-
-        // Call the kernel to normalise and spread the input data
-        normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_iDataList, lengths, widths);
-
-        // Synchronisation
-        cudaEventRecord(plains->normComp, plains->inpStream);
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
-      }
-    }
-    else if ( plains->flag & CU_INPT_DEVICE    )
-    {
-      // Copy chunks of FFT data and normalise and spread using the GPU
-
-      // Make sure the previous thread has complete reading from page locked memory
-      //CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-      //nvtxRangePush("Zero");
-      //memset(plains->h_iData, 0, plains->inpDataSize);
-      //nvtxRangePop();
-
-      FOLD // Setup parameters
-      {
-        for (int ss = 0; ss< plains->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &plains->stacks[ss];
-
-          for (int si = 0; si< cStack->noInStack; si++)
-          {
-            cuHarmInfo* cHInfo = &plains->hInfos[harm];  // The current harmonic we are working on
-            cuFFdot* cPlain = &plains->plains[harm];     //
-
-            drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
-            drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
-
-            binoffset = cHInfo->halfWidth;
-            lobin = (int) floor(drlo) - binoffset;
-            hibin = (int)  ceil(drhi) + binoffset;
-            numdata = hibin - lobin + 1;
-
-            numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-            if (harm == 0)
-            {
-              numrs = plains->accelLen;
-            }
-            else if (numrs % ACCEL_RDR)
-              numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-            int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-            if (numrs < numtocopy)
-              numtocopy = numrs;
-
-            lengths.val[harm]     = numdata;
-            d_iDataList.val[harm] = cPlain->d_iData;
-            widths.val[harm]      = cStack->width;
-            if ( lobin-plains->rLow < 0 )
-            {
-              // NOTE could use an offset parameter here
-              printf("ERROR: Input data index out of bounds.\n");
-              exit(EXIT_FAILURE);
-            }
-            d_fftList.val[harm]   = &plains->d_iData[lobin-plains->rLow];
-
-            sz += cStack->inpStride;
-
-            harm++;
-          }
+          harm++;
         }
       }
-
-      FOLD // Normalise and spread
-      {
-        // Blocks of 1024 threads ( the maximum number of threads per block )
-        dimBlock.x = NAS_DIMX;
-        dimBlock.y = NAS_DIMY;
-        dimBlock.z = 1;
-
-        // One block per harmonic, thus we can sort input powers in Shared memory
-        dimGrid.x = plains->noHarms;
-        dimGrid.y = 1;
-
-        // Synchronisation
-        for (int ss = 0; ss< plains->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &plains->stacks[ss];
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-        }
-
-        // Call the kernel to normalise and spread the input data
-        normAndSpreadBlksDevice<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_fftList, d_iDataList, lengths, widths);
-
-        // Synchronisation
-        cudaEventRecord(plains->normComp, plains->inpStream);
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
-      }
-    }
-    else if ( plains->flag & CU_INPT_SINGLE_C  )
-    {
-      // Copy chunks of FFT data and normalise and spread using the CPU
-
-      // Make sure the previous thread has complete reading from page locked memory
-      CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-      nvtxRangePush("Zero");
-      memset(plains->h_iData, 0, plains->inpDataSize*plains->noSteps);
-      nvtxRangePop();
-
-      CPU_Norm_Spread_mstep(plains, searchRLow, searchRHi, norm_type, fft);
 
       // Synchronisation
       for (int ss = 0; ss< plains->noStacks; ss++)
@@ -4021,103 +3874,374 @@ int ffdot_planeCU3(cuStackList* plains, double* searchRLow, double* searchRHi, i
       }
 
       // Copy to device
-      CUDA_SAFE_CALL(cudaMemcpyAsync(plains->d_iData, plains->h_iData, plains->inpDataSize*plains->noSteps, cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-
-      /*
-      for (int ss = 0; ss< plains->noStacks; ss++)
-      {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        CUDA_SAFE_CALL(cudaMemcpyAsync(cStack->d_iData, cStack->h_iData, cStack->inpStride*plains->noSteps*sizeof(fcomplex), cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-      }
-      */
+      CUDA_SAFE_CALL(cudaMemcpyAsync(plains->d_iData, plains->h_iData, plains->inpDataSize, cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
 
       // Synchronisation
       cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
+    }
+
+    FOLD // Normalise and spread
+    {
+      // Blocks of 1024 threads ( the maximum number of threads per block )
+      dimBlock.x = NAS_DIMX;
+      dimBlock.y = NAS_DIMY;
+      dimBlock.z = 1;
+
+      // One block per harmonic, thus we can sort input powers in Shared memory
+      dimGrid.x = plains->noHarms;
+      dimGrid.y = 1;
+
+      // Synchronisation
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, plains->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+
+      // Call the kernel to normalise and spread the input data
+      normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_iDataList, lengths, widths);
+
+      // Synchronisation
       cudaEventRecord(plains->normComp, plains->inpStream);
 
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
     }
+  }
+  else if ( plains->flag & CU_INPT_HOST      )
+  {
+    // Copy chunks of FFT data and normalise and spread using the GPU
 
-    if ( DBG_INP03 ) // Print debug info
+    // Make sure the previous thread has complete reading from page locked memory
+    CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
+    //nvtxRangePush("Zero");
+    //memset(plains->h_iData, 0, plains->inpDataSize);
+    CUDA_SAFE_CALL(cudaMemsetAsync(plains->d_iData, 0, plains->inpDataSize, plains->inpStream),"Initialising input data to 0");
+    //nvtxRangePop();
+
+    FOLD // Copy fft data to device
     {
-      for (int ss = 0; ss< plains->noHarms && true; ss++)
+      // Write fft data segments to contiguous page locked memory
+      for (int ss = 0; ss< plains->noStacks; ss++)
       {
-        cuFFdot* cPlain     = &plains->plains[ss];
-        printf("\nGPU Input Data pre FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-        printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
-        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-        for (int ss = 0; ss< plains->noStacks; ss++)
+        cuFfdotStack* cStack = &plains->stacks[ss];
+
+        // Synchronisation
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+
+        for (int si = 0; si< cStack->noInStack; si++)
         {
-          cuFfdotStack* cStack = &plains->stacks[ss];
-          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
+          cuHarmInfo* cHInfo  = &plains->hInfos[harm];  // The current harmonic we are working on
+          cuFFdot* cPlain     = &plains->plains[harm];  //
+
+          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
+          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+
+          binoffset = cHInfo->halfWidth;
+          lobin     = (int) floor(drlo) - binoffset;
+          hibin     = (int)  ceil(drhi) + binoffset;
+          numdata   = hibin - lobin + 1;
+
+          numrs     = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+          if (harm == 0)
+          {
+            numrs = plains->accelLen;
+          }
+          else if (numrs % ACCEL_RDR)
+            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+          int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
+          if (numrs < numtocopy)
+            numtocopy = numrs;
+
+          lengths.val[harm]       = numdata;
+          d_iDataList.val[harm]   = cPlain->d_iData;
+          widths.val[harm]        = cStack->width;
+
+          int start = 0;
+
+          if ( (lobin - plains->rLow)  < 0 )
+          {
+            // This should be unnecessary as rLow can be < 0 and h_iData is zero padded
+            start = -(lobin - plains->rLow);
+            CUDA_SAFE_CALL(cudaMemsetAsync(cPlain->d_iData, 0, start*sizeof(fcomplexcu), plains->inpStream),"Initialising input data to 0");
+          }
+
+
+          // Copy section to device
+          CUDA_SAFE_CALL(cudaMemcpyAsync(&cPlain->d_iData[start], &plains->h_iData[lobin-plains->rLow+start], (numdata-start)*sizeof(fcomplexcu), cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
+
+          sz += cStack->inpStride;
+
+          if ( DBG_INP01 ) // Print debug info
+          {
+            printf("\nCPU Input Data RAW FFTs [ Half width: %i  lowbin: %i  drlo: %.2f ] \n", cHInfo->halfWidth, lobin, drlo);
+
+            printfData<<<1,1,0,plains->inpStream>>>((float*)cPlain->d_iData,10,1, cStack->inpStride);
+            CUDA_SAFE_CALL(cudaStreamSynchronize(plains->inpStream),"");
+          }
+
+          harm++;
         }
       }
+
+      // Synchronisation
+      //cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
     }
 
-    FOLD // fft the input data
+    FOLD // Normalise and spread
+    {
+      // Blocks of 1024 threads ( the maximum number of threads per block )
+      dimBlock.x = NAS_DIMX;
+      dimBlock.y = NAS_DIMY;
+      dimBlock.z = 1;
+
+      // One block per harmonic, thus we can sort input powers in Shared memory
+      dimGrid.x = plains->noHarms;
+      dimGrid.y = 1;
+
+      // Call the kernel to normalise and spread the input data
+      normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_iDataList, lengths, widths);
+
+      // Synchronisation
+      cudaEventRecord(plains->normComp, plains->inpStream);
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
+    }
+  }
+  else if ( plains->flag & CU_INPT_DEVICE    )
+  {
+    // Copy chunks of FFT data and normalise and spread using the GPU
+
+    // Make sure the previous thread has complete reading from page locked memory
+    //CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
+    //nvtxRangePush("Zero");
+    //memset(plains->h_iData, 0, plains->inpDataSize);
+    //nvtxRangePop();
+
+    FOLD // Setup parameters
     {
       for (int ss = 0; ss< plains->noStacks; ss++)
       {
         cuFfdotStack* cStack = &plains->stacks[ss];
 
-        // Synchronise
-        cudaStreamWaitEvent(cStack->fftIStream, plains->normComp, 0);
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
-
-        // Do the FFT
-        #pragma omp critical
+        for (int si = 0; si< cStack->noInStack; si++)
         {
-          CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
-          CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+          cuHarmInfo* cHInfo = &plains->hInfos[harm];  // The current harmonic we are working on
+          cuFFdot* cPlain = &plains->plains[harm];     //
 
-          CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
+          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+
+          binoffset = cHInfo->halfWidth;
+          lobin = (int) floor(drlo) - binoffset;
+          hibin = (int)  ceil(drhi) + binoffset;
+          numdata = hibin - lobin + 1;
+
+          numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+          if (harm == 0)
+          {
+            numrs = plains->accelLen;
+          }
+          else if (numrs % ACCEL_RDR)
+            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+          int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
+          if (numrs < numtocopy)
+            numtocopy = numrs;
+
+          lengths.val[harm]     = numdata;
+          d_iDataList.val[harm] = cPlain->d_iData;
+          widths.val[harm]      = cStack->width;
+          if ( lobin-plains->rLow < 0 )
+          {
+            // NOTE could use an offset parameter here
+            printf("ERROR: Input data index out of bounds.\n");
+            exit(EXIT_FAILURE);
+          }
+          d_fftList.val[harm]   = &plains->d_iData[lobin-plains->rLow];
+
+          sz += cStack->inpStride;
+
+          harm++;
         }
-
-        // Synchronise
-        cudaEventRecord(cStack->prepComp, cStack->fftIStream);
       }
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
     }
 
-    if ( DBG_INP04 ) // Print debug info
+    FOLD // Normalise and spread
     {
-      for (int ss = 0; ss< plains->noHarms && true; ss++)
+      // Blocks of 1024 threads ( the maximum number of threads per block )
+      dimBlock.x = NAS_DIMX;
+      dimBlock.y = NAS_DIMY;
+      dimBlock.z = 1;
+
+      // One block per harmonic, thus we can sort input powers in Shared memory
+      dimGrid.x = plains->noHarms;
+      dimGrid.y = 1;
+
+      // Synchronisation
+      for (int ss = 0; ss< plains->noStacks; ss++)
       {
-        cuFFdot* cPlain     = &plains->plains[ss];
-        printf("\nGPU Input Data post FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-        printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
-        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-        for (int ss = 0; ss< plains->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &plains->stacks[ss];
-          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
-        }
+        cuFfdotStack* cStack = &plains->stacks[ss];
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
       }
+
+      // Call the kernel to normalise and spread the input data
+      normAndSpreadBlksDevice<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_fftList, d_iDataList, lengths, widths);
+
+      // Synchronisation
+      cudaEventRecord(plains->normComp, plains->inpStream);
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
+    }
+  }
+  else if ( plains->flag & CU_INPT_SINGLE_C  )
+  {
+    // Copy chunks of FFT data and normalise and spread using the CPU
+
+    // Make sure the previous thread has complete reading from page locked memory
+    CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
+    nvtxRangePush("Zero");
+    memset(plains->h_iData, 0, plains->inpDataSize*plains->noSteps);
+    nvtxRangePop();
+
+    CPU_Norm_Spread_mstep(plains, searchRLow, searchRHi, norm_type, fft);
+
+    // Synchronisation
+    for (int ss = 0; ss< plains->noStacks; ss++)
+    {
+      cuFfdotStack* cStack = &plains->stacks[ss];
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
     }
 
-    nvtxRangePop();
+    // Copy to device
+    CUDA_SAFE_CALL(cudaMemcpyAsync(plains->d_iData, plains->h_iData, plains->inpDataSize*plains->noSteps, cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
+
+    /*
+    for (int ss = 0; ss< plains->noStacks; ss++)
+    {
+      cuFfdotStack* cStack = &plains->stacks[ss];
+      CUDA_SAFE_CALL(cudaMemcpyAsync(cStack->d_iData, cStack->h_iData, cStack->inpStride*plains->noSteps*sizeof(fcomplex), cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
+    }
+     */
+
+    // Synchronisation
+    cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
+    cudaEventRecord(plains->normComp, plains->inpStream);
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
+  }
+
+  if ( DBG_INP03 ) // Print debug info  .
+  {
+    for (int ss = 0; ss< plains->noHarms && true; ss++)
+    {
+      cuFFdot* cPlain     = &plains->plains[ss];
+      printf("\nGPU Input Data pre FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
+      printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
+      CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
+      for (int ss = 0; ss< plains->noStacks; ss++)
+      {
+        cuFfdotStack* cStack = &plains->stacks[ss];
+        CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
+      }
+    }
+  }
+
+  FOLD // fft the input data  .
+  {
+    // I tested doing the FFT's on the CPU and its way to slow! so go GPU!
+    // TODO: I could make this a flag
+
+    for (int ss = 0; ss< plains->noStacks; ss++)
+    {
+      cuFfdotStack* cStack = &plains->stacks[ss];
+
+      // Synchronise
+      cudaStreamWaitEvent(cStack->fftIStream, plains->normComp, 0);
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
+
+      // Do the FFT
+#pragma omp critical
+      {
+        CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
+        CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+
+        CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+      }
+
+      // Synchronise
+      cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+    }
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+  }
+
+  if ( DBG_INP04 ) // Print debug info  .
+  {
+    for (int ss = 0; ss< plains->noHarms && true; ss++)
+    {
+      cuFFdot* cPlain     = &plains->plains[ss];
+      printf("\nGPU Input Data post FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
+      printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
+      CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
+      for (int ss = 0; ss< plains->noStacks; ss++)
+      {
+        cuFfdotStack* cStack = &plains->stacks[ss];
+        CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
+      }
+    }
+  }
+
+  nvtxRangePop();
+}
+
+int search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands)
+{
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
+
+  if ( searchRLow[0] < searchRHi[0] ) // Initialise input data
+  {
+    initInput(plains, searchRLow, searchRHi, norm_type, fft);
   }
 
   FOLD // Sum & Search
   {
     //printf("Sum & Search\n");
-    sumAndSearch(plains, obs, cands);
+    sumAndSearch(plains, numindep, cands);
   }
 
   if ( searchRLow[0] < searchRHi[0] ) // Convolve & FFT
   {
     //printf("Convolve & FFT\n");
-    convolveStack(plains, obs);
+    convolveStack(plains);
   }
-
-  //printfData<<<1,1,0,0>>>((float*)plains->kernels[0].data,15,3,plains->hInfos[0].stride*2);
 
   // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
   setStackRVals(plains, searchRLow, searchRHi);
+}
 
-  //return cands;
+int max_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft, long long* numindep, float* powers)
+{
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
+
+  if ( searchRLow[0] < searchRHi[0] ) // Initialise input data
+  {
+    initInput(plains, searchRLow, searchRHi, norm_type, fft);
+  }
+
+  FOLD // Sum & Search
+  {
+    //printf("Sum & Search\n");
+    sumAndMax(plains, numindep, powers);
+  }
+
+  if ( searchRLow[0] < searchRHi[0] ) // Convolve & FFT
+  {
+    //printf("Convolve & FFT\n");
+    convolveStack(plains);
+  }
+
+  // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
+  setStackRVals(plains, searchRLow, searchRHi);
 }
 
 int selectDevice(int device, int print)
@@ -4170,7 +4294,6 @@ void printCands(char* fileName, GSList *cands)
     fprintf ( stderr, "ERROR: Unable to open log file %s\n", fileName );
   else
   {
-
     fprintf(myfile, "# ; r ; z ; sig ; power ; harm \n");
     int i = 0;
 
@@ -4224,4 +4347,341 @@ void testzm()
 {
   cufftHandle plan;
   CUFFT_SAFE_CALL(cufftCreate(&plan),"Failed associating a CUFFT plan with FFT input stream\n");   
+}
+
+void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, float* powers )
+{
+  long noCands = 0;
+
+  int gpuC = 0;
+  int dev  = 0;
+  int nplainsC = 5;
+  int nplains[10];
+  int nsteps[10];
+  int gpu[10];
+  nplains[0]=4;
+  nsteps[0]=4;
+  int width = 8;
+  long long numindep[numharmstages];
+  float powc[numharmstages];
+
+  int flags;
+
+  gpu[0] = 1;
+
+  cuStackList* kernels;             // List of stacks with the kernels, one for each device being used
+  cuStackList* master   = NULL;     // The first kernel stack created
+  int nPlains           = 0;        // The number of plains
+  int noKers            = 0;        // Real number of kernels/devices being used
+  int added;
+
+  fftInfo fftinf;
+  fftinf.fft    = fft;
+  fftinf.nor    = noEls;
+  fftinf.rlow   = 0;
+  fftinf.rhi    = noEls;
+
+  int numz      = (zMax / ACCEL_DZ) * 2 + 1;
+  double startr = 0, lastr = 0, nextr = 0;
+
+  for (int ii = 0; ii < numharmstages; ii++)
+  {
+    powc[ii] = 0;
+
+    if (numz == 1)
+      numindep[ii] = (fftinf.rhi - fftinf.rlow) / (1<<ii);
+    else
+    {
+      /* The numz+1 takes care of the small amount of  */
+      /* search we get above zmax and below zmin.      */
+      numindep[ii] = (fftinf.rhi - fftinf.rlow) * (numz + 1) * (ACCEL_DZ / 6.95) / (1<<ii);
+    }
+  }
+
+
+  flags = CU_CAND_ARR | FLAG_STORE_EXP ;
+
+  // Make a list of all devices
+  if ( gpuC == 0 )
+  {
+    gpuC = getGPUCount();
+    for ( dev = 0 ; dev < gpuC; dev++ )
+      gpu[dev] = dev;
+  }
+
+  FOLD // Create a kernel on each device  .
+  {
+    nvtxRangePush("Init Kernels");
+
+    kernels = (cuStackList*)malloc(gpuC*sizeof(cuStackList));
+    int added;
+
+    for ( dev = 0 ; dev < gpuC; dev++ ) // Loop over devices  .
+    {
+      int no;
+      int noSteps;
+      if ( dev >= nplainsC )
+        no = nplains[nplainsC-1];
+      else
+        no = nplains[dev];
+
+      if ( dev >= nplainsC )
+        noSteps = nsteps[nplainsC-1];
+      else
+        noSteps = nsteps[dev];
+
+      added = initHarmonics(&kernels[noKers], master, numharmstages, zMax, fftinf, gpu[dev], noSteps, width, no, powc, numindep, flags, CU_FLOAT, CU_FLOAT, (void*)powers );
+      if ( added && (master == NULL) )
+      {
+        master = &kernels[0];
+      }
+      if ( added )
+      {
+        noKers++;
+      }
+      else
+      {
+        printf("Error: failed to set up a kernel on device %i, trying to continue... \n", gpu[dev]);
+      }
+    }
+
+    nvtxRangePop();
+  }
+
+  cuStackList* plainsj[noKers*5];   // List of pointers to each plain
+  int noSteps = 0;
+
+  FOLD // Create plains for calculations  .
+  {
+    nvtxRangePush("Init Stacks");
+
+    int pln;
+    for ( dev = 0 ; dev < noKers; dev++)  // Loop over devices
+    {
+      int no;
+      if ( dev >= nplainsC )
+        no = nplains[nplainsC-1];
+      else
+        no = nplains[dev];
+
+      for ( pln = 0 ; pln < no; pln++ )  // Stack lists
+      {
+        plainsj[nPlains] = initStkList(&kernels[dev], pln, no-1);
+
+        if ( plainsj[nPlains] == NULL)
+        {
+          if (pln == 0 )
+          {
+            fprintf(stderr, "ERROR: Failed to create at least one stack for GPU search on device %i.\n", kernels[dev].device);
+            exit(EXIT_FAILURE);
+          }
+          break;
+        }
+        else
+        {
+          noSteps += plainsj[nPlains]->noSteps;
+          nPlains++;
+        }
+      }
+    }
+
+    nvtxRangePop();
+  }
+
+  printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", noSteps, noKers);
+
+  omp_set_num_threads(nPlains);
+
+  int ss = 0;
+  int maxxx = ( fftinf.rhi - fftinf.rlow ) / (float)( master->accelLen * ACCEL_DR ) ; /// The number of plains we can work with
+
+  //float ns = ( fftinf.nor - fftinf.rlow  ) / (float)( master->accelLen * ACCEL_DR ) ;
+
+  if ( maxxx < 0 )
+    maxxx = 0;
+
+  //print_percent_complete(startr - fftinf.rlow, fftinf.nor - fftinf.rlow , "search", 1);
+
+#ifndef DEBUG
+//#pragma omp parallel
+#endif
+  FOLD
+  {
+    int tid = omp_get_thread_num();
+
+    cuStackList* trdStack = plainsj[tid];
+
+    double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
+    double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
+    size_t rest = trdStack->noSteps;
+
+    setContext(trdStack) ;
+
+    int firstStep = 0;
+
+    while ( ss < maxxx )
+    {
+      #pragma omp critical
+      {
+        firstStep = ss;
+        ss       += trdStack->noSteps;
+      }
+
+      if ( firstStep >= maxxx )
+      {
+        break;
+      }
+
+      if ( firstStep + trdStack->noSteps >= maxxx )
+      {
+        //trdStack->noSteps = maxxx - firstStep;
+        //setPlainPointers(trdStack);
+        rest = maxxx - firstStep;
+      }
+
+      int si;
+      for ( si = 0; si < trdStack->noSteps ; si ++)
+      {
+        if ( si < rest )
+        {
+          startrs[si] = fftinf.rlow  + (firstStep+si) * ( master->accelLen * ACCEL_DR );
+          lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
+        }
+        else
+        {
+          startrs[si] = 0 ;
+          lastrs[si]  = 0 ;
+        }
+      }
+
+      max_ffdot_planeCU(trdStack, startrs, lastrs, 1, (fcomplexcu*)fftinf.fft, numindep, powers);
+
+      //if ( trdStack->flag & CU_OUTP_HOST )
+      //  trdStack->h_retData = &master->h_retData[master->accelLen*numharmstages*firstStep] ;
+
+      //print_percent_complete(startrs[0] - fftinf.rlow , fftinf.nor - fftinf.rlow , "search", 0);
+    }
+
+    int si;
+    for ( si = 0; si < trdStack->noSteps ; si ++)
+    {
+      startrs[si] = 0;
+      lastrs[si]  = 0;
+    }
+
+    // Finish searching the plains, this is required because of the out of order asynchronous calls
+    int pln;
+    for ( pln = 0 ; pln < 2; pln++ )
+    {
+      max_ffdot_planeCU(trdStack, startrs, lastrs, 1,(fcomplexcu*)fftinf.fft, numindep, powers);
+      trdStack->mxSteps = rest;
+    }
+  }
+
+  //print_percent_complete(fftinf.nor - fftinf.rlow , fftinf.nor - fftinf.rlow , "search", 0);
+/*
+  if ( master->flag & CU_OUTP_SINGLE )
+  {
+    nvtxRangePush("Add to list");
+    int cdx;
+    int len = master->rHigh - master->rLow;
+    long long numindep;
+
+    double poww, sig, sigx, sigc, diff;
+    double gpu_p, gpu_q;
+    double rr, zz;
+    int added = 0;
+    int numharm;
+
+    poww = 0;
+
+    for (cdx = 0; cdx < len; cdx++)
+    {
+      poww        = master->h_candidates[cdx].power;
+
+      if ( poww > 0 )
+      {
+        double sig = master->h_candidates[cdx].sig;
+        int biggest = 1;
+
+        int dx;
+        for ( dx = cdx - ACCEL_CLOSEST_R ; dx <= cdx + ACCEL_CLOSEST_R; dx++ )
+        {
+          if ( dx >= 0 && dx < len )
+          {
+            if ( master->h_candidates[dx].sig > sig )
+            {
+              biggest = 0;
+              break;
+            }
+          }
+        }
+
+        if ( biggest )
+        {
+          numharm   = master->h_candidates[cdx].numharm;
+          //numindep  = numindep[sqrt(numharm)];
+          sig       = master->h_candidates[cdx].sig;
+          rr        = master->h_candidates[cdx].r;
+          zz        = master->h_candidates[cdx].z;
+          //candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+
+          if (added)
+          {
+            noCands++;
+          }
+        }
+      }
+    }
+
+    nvtxRangePop();
+  }
+
+  if ( master->flag & CU_OUTP_DEVICE )
+  {
+    nvtxRangePush("Add to list");
+    int len = master->rHigh - master->rLow;
+
+    master->h_retData = (accelcandBasic*)malloc(len*sizeof(accelcandBasic));
+    CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, len*sizeof(accelcandBasic), cudaMemcpyDeviceToHost), "Failed to copy data to device");
+
+    int cdx;
+    long long numindep;
+
+    double poww, sig, sigx, sigc, diff;
+    double gpu_p, gpu_q;
+    double rr, zz;
+    int added = 0;
+    int numharm;
+    poww = 0;
+
+    for (cdx = 0; cdx < len; cdx++)
+    {
+      sig        = master->h_retData[cdx].sigma;
+
+      if ( sig > 0 )
+      {
+        //numharm   = master->h_retData[cdx].numharm;
+        //numindep  = obs.numindep[twon_to_index(numharm)];
+        rr        = cdx + master->rLow;
+        zz        = master->h_retData[cdx].z;
+        //candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+      }
+    }
+    nvtxRangePop();
+  }
+*/
+
+  //cudaProfilerStop();
+
+  //cudaDeviceSynchronize();
+  //gettimeofday(&end, NULL);
+  //gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  //printf("  gpuTime %f\n", gpuTime/1000.0);
+  //cands = candsGPU;
+  printf("GPU found %i candidates.\n",noCands);
+
+#ifndef DEBUG
+  //printCands("GPU_Cands.csv", candsGPU);
+#endif
 }

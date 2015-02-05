@@ -250,6 +250,8 @@ int main(int argc, char *argv[])
 
         int noHarms = (1 << (obs.numharmstages - 1));
         
+        int flags = FLAG_RETURN_ALL | CU_CAND_ARR ;
+
         FOLD
         {
           //cudaDeviceSynchronize();          // This is only necessary for timing
@@ -263,7 +265,7 @@ int main(int argc, char *argv[])
           
           if ( cmd->gpuP ) // Determine the index and number of devices
           { 
-            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a chage in accelsearch_cmd every time clig is run!!!!
+            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd every time clig is run!!!!
             {
               // Make a list of all devices
               cmd->gpuC = getGPUCount();
@@ -278,6 +280,12 @@ int main(int argc, char *argv[])
           int nPlains           = 0;        // The number of plains
           int noKers            = 0;        // Real number of kernels/devices being used
           
+          fftInfo fftinf;
+          fftinf.fft    = obs.fft;
+          fftinf.nor    = obs.N;
+          fftinf.rlow   = obs.rlo;
+          fftinf.rhi    = obs.rhi;
+
           FOLD // Create a kernel on each device
           {
             nvtxRangePush("Init Kernels");
@@ -299,7 +307,10 @@ int main(int argc, char *argv[])
               else
                 noSteps = cmd->nsteps[dev];
 
-              added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
+              //added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
+
+              added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, cmd->width, no, obs.powcut, obs.numindep, flags, CU_FULLCAND, CU_SMALCAND, (void*)candsGPU);
+              //ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noSteps, int width, int noThreads, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
               if ( added && (master == NULL) )
               {
                 master = &kernels[0];
@@ -363,7 +374,7 @@ int main(int argc, char *argv[])
           
           startr = obs.rlo, lastr = 0, nextr = 0;
           int ss = 0;
-          int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
+          int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ; // The number of plains to make
           
           //float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
           
@@ -373,6 +384,7 @@ int main(int argc, char *argv[])
           print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
           #pragma omp parallel
+          FOLD
           {
             int tid = omp_get_thread_num();
             
@@ -418,12 +430,13 @@ int main(int argc, char *argv[])
                   lastrs[si]  = 0 ;
                 }
               }
-
+              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs.numindep, &candsGPU);
               
-              ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
-              
-              if ( trdStack->flag & CU_CAND_HOST )
-                trdStack->h_bCands = &master->h_bCands[master->accelLen*obs.numharmstages*firstStep] ;
+              if ( trdStack->flag & CU_OUTP_HOST )
+              {
+                // TODO: check the adressing below for new cases ie:FLAG_STORE_EXP FLAG_STORE_ALL
+                trdStack->d_candidates = &master->d_candidates[master->accelLen*obs.numharmstages*firstStep] ;
+              }
               
               print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
             }
@@ -439,14 +452,15 @@ int main(int argc, char *argv[])
             int pln;
             for ( pln = 0 ; pln < 2; pln++ )
             {
-              ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs, &candsGPU);
+              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs.numindep, &candsGPU);
               trdStack->mxSteps = rest;
             }
           }
           
           print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
 
-          if ( ( master->flag & CU_CAND_SINGLE_C ) == CU_CAND_SINGLE_G )
+          /*
+          if ( master->flag & CU_CAND_SINGLE )
           {
             nvtxRangePush("Add to list");
             int cdx;
@@ -502,14 +516,14 @@ int main(int argc, char *argv[])
 
             nvtxRangePop();
           }
+          */
 
-          if ( master->flag & CU_CAND_DEVICE )
+          if ( master->flag & CU_OUTP_DEVICE )
           {
             nvtxRangePush("Add to list"); 
             int len = master->rHigh - master->rLow;
             
-            master->h_bCands = (accelcandBasic*)malloc(len*sizeof(accelcandBasic));
-            CUDA_SAFE_CALL(cudaMemcpy(master->h_bCands, master->d_bCands, len*sizeof(accelcandBasic), cudaMemcpyDeviceToHost), "Failed to copy data to device");
+            CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, master->retDataSize*maxxx, cudaMemcpyDeviceToHost), "Failed to copy data to device");
             
             int cdx; 
             long long numindep;
@@ -521,17 +535,22 @@ int main(int argc, char *argv[])
             int numharm;
             poww = 0;
             
-            for (cdx = 0; cdx < len; cdx++)
+            if ( master->retType == CU_SMALCAND &&  master->cndType == CU_FULLCAND )
             {
-              sig        = master->h_bCands[cdx].sigma;
+              accelcandBasic* bsk = master->h_retData;
               
-              if ( sig > 0 )
+              for (cdx = 0; cdx < len; cdx++)
               {
-                numharm   = master->h_bCands[cdx].numharm;
-                numindep  = obs.numindep[twon_to_index(numharm)];
-                rr        = cdx + master->rLow;
-                zz        = master->h_bCands[cdx].z;         
-                candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+                sig        = bsk[cdx].sigma;
+
+                if ( sig > 0 )
+                {
+                  numharm   = bsk[cdx].numharm;
+                  numindep  = obs.numindep[twon_to_index(numharm)];
+                  rr        = cdx + master->rLow;
+                  zz        = bsk[cdx].z;
+                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+                }
               }
             }
             nvtxRangePop();

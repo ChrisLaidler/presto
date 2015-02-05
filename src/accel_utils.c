@@ -651,9 +651,9 @@ void output_fundamentals(fourierprops * props, GSList * list,
          for (jj = 0; jj < cand->numharm; jj++) {
             harm = cand->derivs[jj];
             if (obs->nph > 0.0)
-               amp = sqrt(harm.pow / obs->nph);
+               amp = sqrt(harm.pow / obs->nph    );
             else
-               amp = sqrt(harm.pow / harm.locpow);
+               amp = sqrt(harm.pow / harm.locpow );
             phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
             coherent_r += amp * cos(harm.phs + phscorr);
             coherent_i += amp * sin(harm.phs + phscorr);
