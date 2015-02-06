@@ -1,14 +1,14 @@
 /*
  * cuda_utils.cu
  *
- *      Author: claidler Laidler 
+ *      Author: claidler Laidler
  *      e-mail: chris.laidler@gmail.com
- *      
+ *
  *      This contains a number of basic functions for use with CUDA applications
  */
 
 #include "cuda_utils.h"
- 
+
 #if _WIN32
 #include <windows.h>
 size_t getFreeRam()
@@ -44,7 +44,7 @@ size_t getFreeRam()
 // 32-bit floating-point add, multiply, multiply-add Operations per Clock Cycle per Multiprocessor
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions__throughput-native-arithmetic-instructions
 static SMVal opsF32_A_M_MAD_perMPperCC[] =
-{ 
+{
     { 0x10, 8 },      // Tesla   Generation (SM 1.0) G80   class
     { 0x11, 8 },      // Tesla   Generation (SM 1.1) G8x   class
     { 0x12, 8 },      // Tesla   Generation (SM 1.2) G9x   class
@@ -70,11 +70,11 @@ static SMVal opsF64_A_M_MAD_perMPperCC[] =
     { 0x20, 16 },     // Fermi  Generation  (SM 2.0) GF100 class
     { 0x21, 4 },      // Fermi  Generation  (SM 2.1) GF10x class
     { 0x30, 8 },      // Kepler Generation  (SM 3.0) GK10x class
-    { 0x35, 64 },     // Kepler Generation  (SM 3.5) GK11x class    
+    { 0x35, 64 },     // Kepler Generation  (SM 3.5) GK11x class
     { 0x50, 1 },      // Maxwell Generation (SM 5.0) GM10x class
     { -1, -1 }
 };
- 
+
 // Defined number of cores for SM of specific compute versions ( Taken from CUDA 6.5 Samples )
 static SMVal nGpuArchCoresPerSM[] =
 {
@@ -99,7 +99,7 @@ void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, con
     fprintf(stderr, "CUFFT ERROR: %s [ %s at line %d in file %s ]\n", errorMsg, _cudaGetErrorEnum(cudaStat), line, file);
     exit(EXIT_FAILURE);
   }
-} 
+}
 
 void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const char *errorMsg)
 {
@@ -131,7 +131,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 
     index++;
   }
-  
+
   // If we get here we didn't find the value in the array
   return -1;
 }
@@ -139,7 +139,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 void listDevices()
 {
   cudaDeviceProp deviceProp;
-  int currentDevvice, deviceCount; 
+  int currentDevvice, deviceCount;
   size_t free, total;
 
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
@@ -148,16 +148,16 @@ void listDevices()
     printf("Could not detect any CUDA capable devices.\n");
     return;
   }
-  
+
   int driverVersion = 0, runtimeVersion = 0;
-  
+
   CUDA_SAFE_CALL( cudaDriverGetVersion (&driverVersion),  "Failed to get driver version using cudaDriverGetVersion");
   CUDA_SAFE_CALL( cudaRuntimeGetVersion(&runtimeVersion), "Failed to get run time version using cudaRuntimeGetVersion");
   printf("\n  CUDA Driver Version    %d.%d \n", driverVersion  / 1000, (driverVersion  % 100) / 10);
   printf("  Runtime Version        %d.%d \n",   runtimeVersion / 1000, (runtimeVersion % 100) / 10);
 
   printf("\nListing %i device(s):\n",deviceCount);
-  
+
   for (int device = 0; device < deviceCount; device++)
   {
     CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
@@ -165,11 +165,11 @@ void listDevices()
     // Check if the the current device is 'device'
     CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
     if ( currentDevvice != device)
-    { 
+    {
       fprintf(stderr, "ERROR: Device not set.\n");
       exit(EXIT_FAILURE);
     }
- 
+
     CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
 
     printf("\nDevice %d: \"%s\"\n", device, deviceProp.name);
@@ -199,18 +199,17 @@ void listDevices()
         (float) deviceProp.totalGlobalMem / 1073741824.0f,
         (unsigned long long) deviceProp.totalGlobalMem);
     printf("%s", msg);
-    
+
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
     sprintf(msg,
         "   of which %6.2f%% is currently free:           %.1f GBytes (%llu bytes) free\n",
         free / (float)total * 100.0f, (float) free / 1073741824.0f,
         (unsigned long long) free);
     printf("%s", msg);
-    
+
     printf("  Memory Clock rate:                             %.0f Mhz\n",
         deviceProp.memoryClockRate * 1e-3f);
-  } 
+  }
 
   printf("\n");
 }
-

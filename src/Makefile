@@ -6,12 +6,28 @@ OS = Linux
 #OS = OSX
 
 # yes / no
-WITH_CUDA = yes
-WITHOMP = yes
+WITH_CUDA 	= yes
+WITHOMP 		= yes
+WITHNDARR 	= yes
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
 OS_ARCH    = $(shell uname -m)
 ARCH_FLAGS =
+
+BINPATH				 = $(PRESTO)/bin
+LIBPATH				 = $(PRESTO)/lib
+
+PRESTOOBJS = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
+	characteristics.o cldj.o chkio.o corr_prep.o corr_routines.o\
+	correlations.o database.o dcdflib.o dispersion.o\
+	fastffts.o fftcalls.o fminbr.o fold.o fresnl.o ioinf.o\
+	get_candidates.o iomak.o ipmpar.o maximize_r.o maximize_rz.o\
+	median.o minifft.o misc_utils.o clipping.o\
+	orbint.o output.o read_fft.o responses.o\
+	rzinterp.o rzwinterp.o select.o sorter.o swapendian.o\
+	transpose.o twopass.o twopass_real_fwd.o\
+	twopass_real_inv.o vectors.o multifiles.o mask.o\
+	fitsfile.o hget.o hput.o imio.o djcl.o
 
 # Take command line flags that override any of these settings
 ifeq ($(x86_64),1)
@@ -61,7 +77,7 @@ CFITSIOINC := $(shell pkg-config --cflags cfitsio)
 CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
-PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto $(FFTLINK)
+PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(FFTLINK)
 
 CC = gcc
 FC = gfortran
@@ -111,7 +127,6 @@ LINKCOMMAND1 = $(CC) $(LIBCMD) -o
 LINKCOMMAND2 = ar rcs
 
 CFLAGS_DBG = -I/home/chris/projects/libs/build/include
-LFLAGS_DBG = -L/home/chris/projects/libs/build/lib
 
 ######## CUDA flags
 
@@ -121,18 +136,20 @@ ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
 ARCH += -gencode arch=compute_50,code=sm_50
 
-CUDA_PATH = /usr/local/cuda
-CUDALIBS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
+CUDA_PATH    = /usr/local/cuda
+CUDALIBS 	   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
 
-NVCCFLAGS  = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} -dc ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
-NVCCFLAGS += `freetype-config --cflags` `freetype-config --libs`
+NVCCFLAGS    = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} -dc ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
+NVCCFLAGS 	+= `freetype-config --cflags` `freetype-config --libs`
 
-NVCLFLAGS  =  -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
-NVCLFLAGS += $(CUDALIBS)
+NVCLFLAGS  	 =  -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
+NVCLFLAGS 	+= $(CUDALIBS)
 
+$(info )
 
 #Settings dependent on release or debug build
 ifeq ($(DEBUG),1)
+  $(info Compiling in debug mode)
 
   CFLAGS += -O0 -g -ggdb  -DDEBUG
   LFLAGS += -O0 -g -ggdb
@@ -142,12 +159,13 @@ ifeq ($(DEBUG),1)
 
   DEBUG_TARGET=debug
   POSTFIX=_debug
-  export DEBUG=1
+  export DEBUG=1    
+else  
+  $(info Compileing in release mode)
   
-else
-
   # CPU optimisations
   CFLAGS+=-g -O3 -ffast-math -DNDBUG
+  
   # Additional CPU optimisations
   CFLAGS+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32  
@@ -164,15 +182,58 @@ else
   export DEBUG=0
 endif
 
-LFLAGS_DBG += -lndarray
+$(info )
 
 # With open MP
 ifeq ($(WITHOMP),yes)
-	CFLAGS += -fopenmp -DWITHOMP
-	FFLAGS += -fopenmp -DWITHOMP
-	FFTLINK +=
+  $(info • Compileing with OpenMP)
+  
+	CFLAGS 		+= -fopenmp -DWITHOMP
+	FFLAGS 		+= -fopenmp -DWITHOMP
+	FFTLINK 	+=
 	NVCCFLAGS += -Xcompiler -fopenmp -DWITHOMP
 endif
+
+# With CUDA
+ifeq ($(WITH_CUDA),yes)
+  $(info • Compileing with CUDA)
+
+  NVCCFLAGS		 +=-DCUDA -Xcompiler -fPIC
+  #NVCC_OBS 		 = cuda_accel_utils.cu.o cuda_accel_SumAndSearch.cu.o cuda_accel_Convolve.cu.o cuda_utils.cu.o
+  PRESTOLINK 	 += $(CUDALIBS)
+#  PRESTOLINK 	+= $(GLIBLINK)
+  CC 					  = $(NVCC) 
+  CXX					  = $(NVCC)
+  CLINKFLAGS 		= $(NVCLFLAGS)
+  CFLAGS 				= $(NVCCFLAGS)
+  
+  CFLAGS 			 += -I/usr/local/cuda/include/ -DCUDA
+  PRESTOOBJS 	 += $(NVCC_OBS)
+  LINKCOMMAND1  = $(NVCC) $(LIBCMD) -o
+
+  
+  NVCC_SRCS 		= $(wildcard *.cu)
+	NVCC_OBS  		= $(patsubst %.cu, %.cu.o,  $(NVCC_SRCS)  )
+else
+  NVCC      		= $(CC)
+  NVCC_OBS  		= 
+  NVCLFLAGS 		= $(CLINKFLAGS)
+endif
+
+ifeq ($(WITHNDARR),yes)
+	# Include and link information for FreeType
+	FTCFLG = $(shell freetype-config --cflags)
+	FTLINK = $(shell freetype-config --libs)
+
+	LNDARR			+= -L/home/chris/projects/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
+	INDARR			+= -I$(SRC)/libs/build/include/ $(FTCFLG)
+else
+endif
+
+$(info )
+
+#$(info $$BIN is [${BIN}])
+#$(info $$LIBSUFFIX is [${LIBSUFFIX}])
 
 # Add to the search path for the executables
 VPATH = ../lib:../bin
@@ -180,41 +241,6 @@ VPATH = ../lib:../bin
 # When modifying the CLIG files, the is the location of the clig binary
 CLIG = clig
 
-# Rules for CLIG generated files
-%_cmd.c : ../clig/%_cmd.cli
-	cd ../clig ; $(CLIG) -o $*_cmd -d $<
-	mv ../clig/$*_cmd.h ../include/
-	mv ../clig/$*_cmd.c .
-	cp ../clig/$*.1 ../docs/
-
-PRESTOOBJS = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
-	characteristics.o cldj.o chkio.o corr_prep.o corr_routines.o\
-	correlations.o database.o dcdflib.o dispersion.o\
-	fastffts.o fftcalls.o fminbr.o fold.o fresnl.o ioinf.o\
-	get_candidates.o iomak.o ipmpar.o maximize_r.o maximize_rz.o\
-	median.o minifft.o misc_utils.o clipping.o\
-	orbint.o output.o read_fft.o responses.o\
-	rzinterp.o rzwinterp.o select.o sorter.o swapendian.o\
-	transpose.o twopass.o twopass_real_fwd.o\
-	twopass_real_inv.o vectors.o multifiles.o mask.o\
-	fitsfile.o hget.o hput.o imio.o djcl.o
-
-ifeq ($(WITH_CUDA),yes)
-$(info Compile with CUDA)
-NVCCFLAGS+=-DCUDA -Xcompiler -fPIC
-CUDA_OBS = cuda_accel_utils.cu.o cuda_accel_SumAndSearch.cu.o cuda_accel_Convolve.cu.o cuda_utils.cu.o
-PRESTOLINK += $(CUDALIBS) $(GLIBLINK)
-CFLAGS += -I/usr/local/cuda/include/ -DCUDA
-PRESTOOBJS += $(CUDA_OBS)
-LINKCOMMAND1 = $(NVCC) $(LIBCMD) -o
-else
-NVCC      = $(CC)
-CUDA_OBS  = 
-NVCLFLAGS = $(CLINKFLAGS)
-endif
-
-
-	
 CXXFLAGS = $(CFLAGS)
 
 INSTRUMENTOBJS = backend_common.o zerodm.o sigproc_fb.o psrfits.o
@@ -237,6 +263,10 @@ BINARIES = makedata makeinf mjd2cal realfft quicklook\
 #	dump_spigot_zerolag spigot2filterbank\
 #	spigotSband2filterbank GBT350filterbank\
 
+SLA_SRCS = $(wildcard slalib/*.f)
+SLA_SRCS := $(filter-out slalib/sla_test.f, $(SLA_SRCS))
+SLA_OBS  = $(patsubst %.f, %.o,  $(SLA_SRCS)  )
+
 all: libpresto slalib binaries
 
 # Default indentation is K&R style with no-tabs,
@@ -248,79 +278,77 @@ indent:
 prep:
 	touch *_cmd.c
 
-makewisdom:
-	$(CC) $(CLINKFLAGS) -o $@ makewisdom.c $(FFTLINK)
-	./makewisdom
-	cp fftw_wisdom.txt $(PRESTO)/lib
+libpresto$(POSTFIX):  $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
+
+binaries: $(BINARIES)
+
+mpi: mpiprepsubband
+
+GPU: accelsearch$(POSTFIX) test_GPUaccel$(POSTFIX)
+
+slalib: slalib/sla_test test_sla
+
+test_GPUaccel$(POSTFIX): $(BINPATH)/test_GPUaccel$(POSTFIX)
+
+accelsearch$(POSTFIX): $(BINPATH)/accelsearch$(POSTFIX)
+
+cuda: $(NVCC_OBS)
+
+###############   Librays   ################
+	
+$(LIBPATH)/libsla$(LIBSUFFIX): $(SLA_OBS)
+	$(FC) $(LIBCMD) -o $@ -fno-second-underscore $(SLA_OBS)
+
+$(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
+	@echo ""
+	@echo "Building libpresto"
+	$(LINKCOMMAND1) $@ $(PRESTOOBJS) $(FFTLINK)
+
+###############   Tests   ################
+
+test_sla:
+	@echo ""
+	@echo "Testing SLALIB:"
+	@slalib/sla_test
 
 timetest: 
 	$(CC) -o $@ timetest.c
 	./timetest
 	rm -f timetest
 
-libpresto: libpresto$(LIBSUFFIX)
+makewisdom:
+	$(CC) $(CLINKFLAGS) -o $@ makewisdom.c $(FFTLINK)
+	./makewisdom
+	cp fftw_wisdom.txt $(PRESTO)/lib
 
-libpresto$(LIBSUFFIX): $(PRESTOOBJS)
-	$(LINKCOMMAND1) $(PRESTO)/lib/$@ $(PRESTOOBJS) $(FFTLINK)
 
-slalib: libsla$(LIBSUFFIX)
-	cd slalib ; $(FC) -o sla_test sla_test.f -fno-second-underscore -L$(PRESTO)/lib -lsla
-	slalib/sla_test
+###############   CLIG    ################
+# Rules for CLIG generated files
 
-libsla$(LIBSUFFIX):
-	cd slalib ; $(FC) $(FFLAGS) -fno-second-underscore -c -I. *.f *.F
-	rm slalib/sla_test.o
-	cd slalib ; $(FC) $(LIBCMD) -o $(PRESTO)/lib/libsla$(LIBSUFFIX) -fno-second-underscore *.o
+%_cmd.c : ../clig/%_cmd.cli
+	cd ../clig ; $(CLIG) -o $*_cmd -d $<
+	mv ../clig/$*_cmd.h ../include/
+	mv ../clig/$*_cmd.c .
+	cp ../clig/$*.1 ../docs/
 
-binaries: $(BINARIES)
+###############  binaries   ################
 
-mpi: mpiprepsubband
-
-# Compile CUDA objects
-%.cu.o: %.cu
-	$(NVCC) $(NVCCFLAGS) -o $@ -c $<
-
-mpiprepsubband_utils.o: mpiprepsubband_utils.c
-	mpicc $(CLINKFLAGS) -c mpiprepsubband_utils.c
-
-mpiprepsubband.o: mpiprepsubband.c
-	mpicc $(CLINKFLAGS) -c mpiprepsubband.c
-
+slalib/sla_test: $(LIBPATH)libsla$(LIBSUFFIX)
+	$(FC) -o slalib/sla_test slalib/sla_test.f -fno-second-underscore -L$(LIB) -lsla
+	
 mpiprepsubband: mpiprepsubband_cmd.c mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS)
 	mpicc $(CLINKFLAGS) -o $(PRESTO)/bin/$@ mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-GPU: accelsearch test_GPUaccel
 
-accelsearch: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o
-	$(NVCC) $(NVCLFLAGS) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
+${BINPATH}/accelsearch$(POSTFIX): $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX) accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o
+	@echo ""
+	@echo "Building accelsearch$(POSTFIX)"
+	$(NVCC) $(NVCLFLAGS) -o $@ accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
 
-test_GPUaccel.o: test_GPUaccel.cpp
-	$(CXX) $(CFLAGS) -std=c++11 $(CFLAGS_DBG) -o $@ -c $<
-#	$(NVCC) $(NVCCFLAGS) $(CFLAGS_DBG) -o $@ -c $<
-
-test_GPUaccel: libpresto accelsearch_cmd.o $(CUDA_OBS) accel_utils.o test_GPUaccel.o zapping.o
-	$(NVCC) $(NVCLFLAGS) $(LFLAGS_DBG) -o $(PRESTO)/bin/$@ accelsearch_cmd.o $(CUDA_OBS) accel_utils.o test_GPUaccel.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
-	
-bary: bary.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bary.o $(PRESTOLINK) -lm
-
-bincand: bincand_cmd.c bincand_cmd.o bincand.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bincand.o bincand_cmd.o $(PRESTOLINK) -lm
-
-dftfold: dftfold_cmd.c dftfold_cmd.o dftfold.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dftfold.o dftfold_cmd.o $(PRESTOLINK) -lm
-
-shiftdata: shiftdata.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ shiftdata.o -lm
-
-patchdata: patchdata.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ patchdata.o
-
-dat2sdat: dat2sdat.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dat2sdat.o $(PRESTOLINK) -lm
-
-sdat2dat: sdat2dat.o
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ sdat2dat.o $(PRESTOLINK) -lm
+$(BINPATH)/test_GPUaccel$(POSTFIX): $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX) accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o
+	@echo ""
+	@echo "Building test_GPUaccel$(POSTFIX)"
+	$(NVCC) $(NVCLFLAGS) -o $@ accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o $(LNDARR) $(PRESTOLINK) $(GLIBLINK) -lm
 
 check_parkes_raw: check_parkes_raw.o multibeam.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ check_parkes_raw.o multibeam.o $(PRESTOLINK) -lm
@@ -439,13 +467,64 @@ fitsdelrow: fitsdelrow.o
 fitsdelcol: fitsdelcol.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ fitsdelcol.o $(CFITSIOLINK)
 
+bary: bary.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bary.o $(PRESTOLINK) -lm
+
+bincand: bincand_cmd.c bincand_cmd.o bincand.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bincand.o bincand_cmd.o $(PRESTOLINK) -lm
+
+dftfold: dftfold_cmd.c dftfold_cmd.o dftfold.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dftfold.o dftfold_cmd.o $(PRESTOLINK) -lm
+
+shiftdata: shiftdata.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ shiftdata.o -lm
+
+patchdata: patchdata.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ patchdata.o
+
+dat2sdat: dat2sdat.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dat2sdat.o $(PRESTOLINK) -lm
+
+sdat2dat: sdat2dat.o
+	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ sdat2dat.o $(PRESTOLINK) -lm
+
+
+###############  objects   ################
+
+%.cu.o: %.cu
+	$(NVCC) $(NVCCFLAGS) -o $@ -c $<
+	
+slalib/%.o: slalib/%.f
+	$(FC) $(FFLAGS) -fno-second-underscore -I. -o $@ -c $<
+	
+mpiprepsubband_utils.o: mpiprepsubband_utils.c
+	mpicc $(CLINKFLAGS) -c mpiprepsubband_utils.c
+
+mpiprepsubband.o: mpiprepsubband.c
+	mpicc $(CLINKFLAGS) -c mpiprepsubband.c
+
+test_GPUaccel.o: test_GPUaccel.cpp
+	$(CXX) $(CFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+
+###############  Cleans   ################
+
+cleanGPU:
+	rm -f ../lib/libpresto*
+	rm -f ../bin/test_GPUaccel*
+	rm -f ../bin/accelsearch*
+	rm -f cuda*.o
+	rm -f accelsearch.o
+	rm -f accel_utils.o
+	
 clean:
 	rm -f *.o *~ *#
 	rm -f slalib/*.o slalib/sla_test
 
 cleaner: clean
 	cd ../bin ; rm -f $(BINARIES)
-	rm -f $(PRESTO)/lib/libpresto.* $(PRESTO)/lib/libsla.*
+	rm -f $(PRESTO)/lib/libpresto* $(PRESTO)/lib/libsla.*
+	
+distclean: cleaner
 
 squeaky:  cleaner
 	rm -f *.dat *.fft *.inf fftw_wisdom.txt

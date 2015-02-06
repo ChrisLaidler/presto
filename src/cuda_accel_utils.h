@@ -31,7 +31,7 @@ extern "C"
 //#define   CU_MAX_BLOCK_SIZE   16384         // 16K FFT's
 //#define   CU_MAX_BLOCK_SIZE   32768         // 32K FFT's
 
-#define BS_MAX          (CU_MAX_BLOCK_SIZE/2) // BITonic sort max number of elements
+//#define BS_MAX          (CU_MAX_BLOCK_SIZE/2) // BITonic sort max number of elements
 #define BS_MAX          8192                  // BITonic sort max number of elements
 
 //#define ACCEL_USELEN 7470     // This works up to zmax=300 to use 8K FFTs
@@ -391,8 +391,6 @@ float* ffdot_planeCU(int harm, double searchRLow, double fullrhi, cuHarmInfo* hI
 //float* ffdot_planeCU2(cuStackList* plains, double searchRLow, float fullrhi, int norm_type, int search, fcomplexcu* fft);
 
 ExternC int ffdot_planeCU2(cuStackList* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
-ExternC int search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
-
 
 int add_ffdot_planeCU(int harm, cuHarmInfo* hInf, cuFfdot* fund, cuFfdot* ffdotPlain, double searchRLow);
 
@@ -471,9 +469,9 @@ __host__ __device__ double incdf (double p, double q );
  */
 ExternC int selectDevice(int device, int print);
 
-ExternC void printCands(char* fileName, GSList *candsCPU);
+ExternC void printCands(const char* fileName, GSList *candsCPU);
 
-void testVL();
+//void testVL();
 
 ExternC void printContext();
 

@@ -1247,7 +1247,6 @@ __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, 
   //((cufftComplex*)dataIn)[offset] = element;
 }
 
-
 void copyCUFFT_LD_CB()
 {
   CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_loadCallbackPtr,  d_loadCallbackPtr,  sizeof(h_loadCallbackPtr)),   "");

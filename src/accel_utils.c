@@ -1,6 +1,7 @@
 #include "accel.h"
 #include "accelsearch_cmd.h"
-
+#include <fcntl.h>
+#include <sys/mman.h>
 
 #if defined (__GNUC__)
 #  define inline __inline__

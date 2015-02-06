@@ -110,11 +110,8 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals);
  **/
 size_t getFreeRam();
 
-//__host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
-
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
 ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);
-
 
 /** Get the number of CUDA capable GPUS's
  */

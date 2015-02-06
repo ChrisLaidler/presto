@@ -9,9 +9,11 @@
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
-#define ExternC
+
 #ifdef __cplusplus
 #define ExternC extern "C"
+#else
+#define ExternC
 #endif
 
 #ifdef __cplusplus
@@ -23,6 +25,9 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#undef FOLD
+#undef KILL
 
 //=========================================== Defines ====================================================\\
 
@@ -412,6 +417,16 @@ typedef struct cuStackList
  */
 ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noSteps, int width, int noThreads, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
 
+/** Free all host and device memory allocated by initHarmonics(...)
+ * If the stkLst is master, this will free any device independat memory
+ *
+ * @param stkLst            The data structure to free
+ * @param master            The master stak list
+ * @param out               The candidate output, if none was specified this should be NULL
+ */
+ExternC  void freeHarmonics(cuStackList* stkLst, cuStackList* master, void* out);
+
+
 /** Initialise a multi-step stack list from the device kernel
  *
  * @param harms             The kernel to base this multi-step stack list
@@ -420,6 +435,14 @@ ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharms
  * @return
  */
 ExternC cuStackList* initStkList(cuStackList* harms, int no, int of);
+
+/** Free device and host memory allocated by initStkList
+ *
+ * @param harms             The stack list to free
+ */
+ExternC void freeStkList(cuStackList* stkLst);
+
+ExternC int search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
 
 ExternC void setStkPointers(cuStackList* stkLst);
 

@@ -25,7 +25,7 @@
 #include "dmalloc.h"
 #endif
 
-extern float calc_median_powers(fcomplex * amplitudes, int numamps);
+//extern float calc_median_powers(fcomplex * amplitudes, int numamps);
 extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
 
 static void print_percent_complete(int current, int number, char *what, int reset)
@@ -307,10 +307,8 @@ int main(int argc, char *argv[])
               else
                 noSteps = cmd->nsteps[dev];
 
-              //added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, &obs, cmd->gpu[dev], noSteps, cmd->width, no );
-
               added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, cmd->width, no, obs.powcut, obs.numindep, flags, CU_FULLCAND, CU_SMALCAND, (void*)candsGPU);
-              //ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noSteps, int width, int noThreads, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
+
               if ( added && (master == NULL) )
               {
                 master = &kernels[0];
@@ -430,11 +428,12 @@ int main(int argc, char *argv[])
                   lastrs[si]  = 0 ;
                 }
               }
-              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs.numindep, &candsGPU);
+              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
               
               if ( trdStack->flag & CU_OUTP_HOST )
               {
-                // TODO: check the adressing below for new cases ie:FLAG_STORE_EXP FLAG_STORE_ALL
+                // TODO: check the addressing below for new cases ie:FLAG_STORE_EXP FLAG_STORE_ALL
+                // TODO: to a type casting check here!
                 trdStack->d_candidates = &master->d_candidates[master->accelLen*obs.numharmstages*firstStep] ;
               }
               
@@ -452,7 +451,7 @@ int main(int argc, char *argv[])
             int pln;
             for ( pln = 0 ; pln < 2; pln++ )
             {
-              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, obs.fft, &obs.numindep, &candsGPU);
+              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
               trdStack->mxSteps = rest;
             }
           }
@@ -537,7 +536,7 @@ int main(int argc, char *argv[])
             
             if ( master->retType == CU_SMALCAND &&  master->cndType == CU_FULLCAND )
             {
-              accelcandBasic* bsk = master->h_retData;
+              accelcandBasic* bsk = (accelcandBasic*)master->h_retData;
               
               for (cdx = 0; cdx < len; cdx++)
               {
@@ -563,7 +562,7 @@ int main(int argc, char *argv[])
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
           printf("  gpuTime %f\n", gpuTime/1000.0);
           cands = candsGPU;
-          printf("GPU found %i candidates.\n",noCands);
+          printf("GPU found %li candidates.\n",noCands);
           
 #ifndef DEBUG
           printCands("GPU_Cands.csv", candsGPU);

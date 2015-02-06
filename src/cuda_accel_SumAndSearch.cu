@@ -3072,16 +3072,16 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
     int iy, ix;
     int y;
 
-    FOLD // Prep - Initialise the x indices & set candidates to 0 .
+    FOLD // Prep - Initialise the x indices & set candidates to 0  .
     {
       // Calculate the x indices or create a pointer offset by the correct amount
 #pragma unroll
-      for ( int harm = 0; harm < noHarms; harm++ )      // loop over harmonic
+      for ( int harm = 0; harm < noHarms; harm++ )      // loop over harmonic  .
       {
 #if TEMPLATE_SEARCH == 1
 #pragma unroll
 #endif
-        for ( int step = 0; step < noSteps; step++)     // Loop over steps
+        for ( int step = 0; step < noSteps; step++)     // Loop over steps  .
         {
           int drlo = (int) ( ACCEL_RDR * rLows.arry[step] * searchList.frac.val[harm] + 0.5 ) * ACCEL_DR ;
           float srlo = (int) ( ACCEL_RDR * ( rLows.arry[step] + tid * ACCEL_DR ) * searchList.frac.val[harm] + 0.5 ) * ACCEL_DR ;
@@ -3154,7 +3154,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 #endif
         for ( int step = 0; step < noSteps; step++)   // Loop over steps
         {
-          candLists[step ] = 0 ;
+          candLists[step] = 0 ;
         }
       }
     }
@@ -3221,7 +3221,6 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 
                 iy            = YINDS[ searchList.yInds.val[harm] + trm ];
 
-
 #if TEMPLATE_SEARCH == 1
 //#pragma unroll
 #endif
@@ -3271,13 +3270,16 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                         cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                       }
 
-                      powers[step][yPlus]        += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                      //if ( iy == (searchList.heights.val[0]-1)/2*10  )
+                      if ( iy == 25 )
+                        powers[step][yPlus]        += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                     }
                   }
                 }
               }
             }
           }
+
           // Get max
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
@@ -4277,7 +4279,7 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
       }
     }
 
-    if ( plains->haveCData ) // Sum & search  .
+    if ( plains->haveCData ) // We have a convolved plain so call Sum & search  kernel .
     {
       FOLD // Create search list
       {
@@ -4349,13 +4351,17 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
 
         plains->noResults=0;
 
-        int gIdx = plains->plains[0].searchRlow - plains->plains[0].rLow;
+        //printf("searchRlow    %f \n",plains->plains[0].searchRlow[0] );
+        //printf("fullRLow      %f \n",plains->plains[0].fullRLow[0] );
+        //printf("rLow          %f \n",plains->plains[0].rLow[0] );
+
+        int gIdx = plains->plains[0].fullRLow[0] ;
 
         if ( plains->flag & FLAG_STORE_EXP )
-          gIdx =  ( plains->plains[0].searchRlow - plains->plains[0].rLow ) * ACCEL_RDR ;
+          gIdx =  ( plains->plains[0].fullRLow[0] ) * ACCEL_RDR ;
 
         float* gout = (float*)plains->h_candidates;
-        memcpy(&gout[gIdx], plains->h_retData,plains->retDataSize);
+        memcpy(&gout[gIdx], plains->h_retData,plains->retDataSize*plains->noSteps);
 
         nvtxRangePop();
 
@@ -4375,7 +4381,7 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
         cudaStreamWaitEvent(plains->strmSearch, plains->processComp, 0);
 
         //CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_retData, plains->d_retData, ACCEL_USELEN*noStages*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
-        CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_retData, plains->d_retData, plains->accelLen*plains->noHarmStages*plains->noSteps*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
+        CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_retData, plains->d_retData, plains->retDataSize*plains->noSteps, cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
 
         CUDA_SAFE_CALL(cudaEventRecord(plains->candCpyComp, plains->strmSearch),"Recording event: readComp");
         CUDA_SAFE_CALL(cudaGetLastError(), "COPY");
