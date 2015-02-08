@@ -348,62 +348,66 @@ __global__ void convolveffdot4(const fcomplexcu *kernels, const fcomplexcu *data
  */
 #if TEMPLATE_CONVOLVE == 1
 template<int FLAGS, int noPlns, int noSteps>
-__global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ datas, fcomplexcu* __restrict__ ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex )
+__global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex )
 #else
 template<int FLAGS, int noPlns>
-__global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ datas, fcomplexcu* __restrict__ ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, const int noSteps )
+__global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, const int noSteps )
 #endif
 {
-  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;
+  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
+  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie colum index of stack
 
-  if ( tid < width )                  // Valid thread
+  if ( tid < width )  // Valid thread  .
   {
-    int plainY = 0;                   // y index in the plain
-    int idx;                          // flat index
-    int pHeight = 0;                  // Height of previous data in the stack
+    int plainY = 0;                       /// y index in the plain
+    int idx;                              /// flat index of output plain
+    int pHeight = 0;                      /// Height of previous data in the stack
+    fcomplexcu ker;                       /// kernel data
+    int newStride = noSteps * stride ;    /// New stride based on type of multi-step
 
-    fcomplexcu ker;                   // kernel data
 #if TEMPLATE_CONVOLVE == 1
-    fcomplexcu dat[noPlns*noSteps];   // set of input data for this thread/column
+    fcomplexcu inpDat[noPlns*noSteps];    /// set of input data for this thread/column
 #else
-    fcomplexcu dat[noPlns*MAX_STEPS]; // set of input data for this thread/column
+    fcomplexcu inpDat[noPlns*MAX_STEPS];  /// set of input data for this thread/column
 #endif
 
-    // Stride
-    kernels += tid;
-    ffdot   += tid;
-    datas   += tid;
-    for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains .
+    FOLD  // Set relevant x pointers to correct column in kernrl, input data & output data  .
     {
-      kerDat.val[plnNo] += tid;
+      kernels += tid;
+      ffdot   += tid;
+      inpData += tid;
+      for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains  .
+      {
+        kerDat.val[plnNo] += tid;
+      }
     }
 
-    // Read the input data
+    FOLD // Read the input data into registers and normalise by width  .
+    {
 #if TEMPLATE_CONVOLVE == 1
 #pragma unroll
 #endif
-    for (int n = 0; n < noPlns*noSteps; n++)
-    {
-      dat[n]           = datas[ (int)(n * stride) ] ;
-      dat[n].r        /= (float) width ;
-      dat[n].i        /= (float) width ;
+      for (int n = 0; n < noPlns*noSteps; n++)
+      {
+        inpDat[n]           = inpData[ (int)(n * stride) ] ; // Stride for each step
+        inpDat[n].r        /= (float) width ;
+        inpDat[n].i        /= (float) width ;
+      }
     }
-
-    int newStride = noSteps * stride ;                // New stride based on type of multi-step
 
 #ifndef DEBUG
 //#pragma unroll
 #endif
-    for (int plnNo = 0; plnNo < noPlns; plnNo++)      // Loop through the plains .
+    for (int plnNo = 0; plnNo < noPlns; plnNo++)                // Loop through the plains  .
     {
-      const int datTerm = plnNo*noSteps;
-      for (plainY = 0; plainY < heights.val[plnNo]; plainY++)   // Loop over the plain .
+      const int datTerm = plnNo*noSteps;          /// Plain dependant term for adrressing input data
+
+      for (plainY = 0; plainY < heights.val[plnNo]; plainY++)   // Loop over the indevidual plain  .
       {
         idx = plainY * stride ;
-        int stackY = plainY + pHeight;                    // Base of stack Y
+        int stackY = plainY + pHeight;            /// Base of stack Y
 
-        FOLD // Read the kernel value .
+        FOLD // Read the kernel value  .
         {
           if ( FLAGS & FLAG_CNV_TEX )
           {
@@ -415,7 +419,7 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
           }
         }
 
-        FOLD // Calculate stride values that rely on plain and/or y only .
+        FOLD // Calculate stride values that rely on plain and/or y only  .
         {
           if      ( FLAGS & FLAG_STP_ROW )
           {
@@ -431,31 +435,34 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
 #if TEMPLATE_CONVOLVE == 1
 #pragma unroll
 #endif
-        for ( int step = 0; step < noSteps; ++step )    // Loop over steps .
+        for ( int step = 0; step < noSteps; ++step )            // Loop over steps .
         {
-          // Calculate indices
-          if      ( FLAGS & FLAG_STP_ROW )
+          FOLD // Calculate indices  .
           {
-            idx  = step * stride + stackY ;
+            if      ( FLAGS & FLAG_STP_ROW )
+            {
+              idx  = stackY + step * stride;
+            }
+            else if ( FLAGS & FLAG_STP_PLN )
+            {
+              idx  = stackY + step * newStride;
+            }
+            /*
+            else if ( FLAGS & FLAG_STP_STK )
+            {
+              idx  = ( stackY + stackHeight*step) * stride ;
+            }
+            */
           }
-          else if ( FLAGS & FLAG_STP_PLN )
-          {
-            idx  = stackY + step * newStride ;
-          }
-          /*
-          else if ( FLAGS & FLAG_STP_STK )
-          {
-            idx  = ( stackY + stackHeight*step) * stride ;
-          }
-          */
 
-          const int ox = datTerm + step;
+          const int ox = datTerm + step;    /// Flat index in input data
 
           // Convolve
-          ffdot[idx].r = (dat[ox].r * ker.r + dat[ox].i * ker.i);
-          ffdot[idx].i = (dat[ox].i * ker.r - dat[ox].r * ker.i);
+          ffdot[idx].r = (inpDat[ox].r * ker.r + inpDat[ox].i * ker.i);
+          ffdot[idx].i = (inpDat[ox].i * ker.r - inpDat[ox].r * ker.i);
         }
       }
+
       pHeight += heights.val[plnNo];
     }
   }
@@ -1253,7 +1260,7 @@ void copyCUFFT_LD_CB()
   CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &h_storeCallbackPtr, d_storeCallbackPtr, sizeof(h_storeCallbackPtr)),  "");
 }
 
-/** Convolve and FFT using FFT callback *
+/** Convolve and inverse FFT the complex f-∂f plain using FFT callback
  * @param plains
  */
 void convolveStackFFT(cuStackList* plains )
@@ -1285,6 +1292,10 @@ void convolveStackFFT(cuStackList* plains )
   }
 }
 
+/** Convolve and inverse FFT the complex f-∂f plain
+ * This assumes the input data is ready and on the device
+ * This creates a complex f-∂f plain
+ */
 void convolveStack(cuStackList* plains)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
@@ -1293,22 +1304,19 @@ void convolveStack(cuStackList* plains)
 
   nvtxRangePush("Convolve & FFT");
 
-  if ( plains->flag & FLAG_CUFFTCB_INP )
+  if ( plains->flag & FLAG_CUFFTCB_INP )  // Do the convolution using a CUFFT callback  .
   {
-    // Do the convolution using a callback
     convolveStackFFT( plains );
   }
-  else
+  else                                    // Do the convolution and FFT seperatlye  .
   {
-    FOLD // Convolve
+    FOLD // Convolve  .
     {
       dimBlock.x = CNV_DIMX;   // in my experience 16 is almost always best (half warp)
       dimBlock.y = CNV_DIMY;   // in my experience 16 is almost always best (half warp)
 
-      int harm = 0;
-
-      // In my limited testing I found convolving each plain separately works fastest so it is the "default"
-      if      ( plains->flag & FLAG_CNV_STK ) // Do the convolutions one stack  at a time
+      // In my testing I found convolving each plain separately works fastest so it is the "default"
+      if      ( plains->flag & FLAG_CNV_STK ) // Do the convolutions one stack  at a time  .
       {
         // Convolve this entire stack in one block
         for (int ss = 0; ss< plains->noStacks; ss++)
@@ -1355,7 +1363,7 @@ void convolveStack(cuStackList* plains)
           cudaEventRecord(cStack->convComp, cStack->cnvlStream);
         }
       }
-      else if ( plains->flag & FLAG_CNV_FAM ) // Do the convolutions one family at a time
+      else if ( plains->flag & FLAG_CNV_FAM ) // Do the convolutions one family at a time  .
       {
         iHarmList hlist;
         iHarmList slist;
@@ -1401,7 +1409,7 @@ void convolveStack(cuStackList* plains)
           cudaEventRecord(cStack->convComp, cStack->cnvlStream);
         }
       }
-      else // ( plains->flag & FLAG_CNV_PLN ) // Do the convolutions one plain  at a time
+      else // ( plains->flag & FLAG_CNV_PLN ) // Do the convolutions one plain  at a time  .
       {
         // NOTE: The use of FLAG_CNV_1KER in this section will be handled because we are using the "kernels" pointers to the complex data
 
@@ -1458,7 +1466,7 @@ void convolveStack(cuStackList* plains)
               // Run message
               CUDA_SAFE_CALL(cudaGetLastError(), "Error at convolution kernel launch");
 
-              harm++;
+              //harm++;
             }
           }
 
@@ -1466,26 +1474,27 @@ void convolveStack(cuStackList* plains)
           cudaEventRecord(cStack->convComp, cStack->cnvlStream);
         }
       }
-    }
 
-    if ( DBG_PLN01 ) // Print debug info
-    {
-      for (int ss = 0; ss < plains->noStacks; ss++)
+      if ( DBG_PLN01 ) // Print debug info  .
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->cnvlStream),"");
+        for (int ss = 0; ss < plains->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &plains->stacks[ss];
+          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->cnvlStream),"");
+        }
+
+        for (int ss = 0; ss < plains->noHarms; ss++) // Print
+        {
+          cuFFdot* cPlain     = &plains->plains[plains->pIdx[ss]];
+          printf("\nGPU Convolved h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
+          printData_cu(plains, plains->flag, plains->pIdx[ss], 10, 1);
+          CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
+        }
       }
 
-      for (int ss = 0; ss < plains->noHarms; ss++) // Print
-      {
-        cuFFdot* cPlain     = &plains->plains[plains->pIdx[ss]];
-        printf("\nGPU Convolved h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-        printData_cu(plains, plains->flag, plains->pIdx[ss], 10, 1);
-        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-      }
     }
 
-    FOLD // FFT
+    FOLD // Invers FFT the  f-∂f plain  .
     {
       // Copy fft data to device
       //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
@@ -1496,10 +1505,10 @@ void convolveStack(cuStackList* plains)
         // Synchronise
         cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
 
-        // Do the FFT
+        // Call the inverse CUFFT  .
 #pragma omp critical
         {
-          if ( plains->flag & FLAG_CUFFTCB_OUT )
+          if ( plains->flag & FLAG_CUFFTCB_OUT ) // Set the CUFFT callback to calculate and store powers  .
           {
             CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_storeCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
           }
@@ -1514,7 +1523,7 @@ void convolveStack(cuStackList* plains)
     }
   }
 
-  if ( DBG_PLN02 )  		// Print debug info
+  if ( DBG_PLN02 )  		// Print debug info  .
   {
     for (int ss = 0; ss < plains->noHarms; ss++) // Print
     {
@@ -1525,7 +1534,7 @@ void convolveStack(cuStackList* plains)
     }
   }
 
-  if ( DBG_PLTPLN06 ) 	// Draw the plain
+  if ( DBG_PLTPLN06 ) 	// Draw the complex plain  .
   {
     char fname[1024];
     for (int i = 0; i< plains->noHarms; i++)
@@ -1535,7 +1544,7 @@ void convolveStack(cuStackList* plains)
     }
   }
 
-  plains->haveCData = 1;
+  plains->haveConvData = 1;
 
   nvtxRangePop();
 }

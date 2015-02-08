@@ -3032,13 +3032,13 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
-//#if TEMPLATE_SEARCH == 1
+#if TEMPLATE_SEARCH == 1
 template<uint FLAGS, int noStages, typename stpType, int noSteps>
 __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d_sem, int base/*, sType pd*/, stpType rLows )
-//#else
-//template<uint FLAGS, /*typename sType,*/ int noStages, typename stpType>
-//__global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d_sem, int base/*, sType pd*/, stpType rLows, int noSteps )
-//#endif
+#else
+template<uint FLAGS, /*typename sType,*/ int noStages, typename stpType>
+__global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d_sem, int base/*, sType pd*/, stpType rLows, int noSteps )
+#endif
 {
   const int bidx  = threadIdx.y * SS3_X         +  threadIdx.x;
   const int tid   = blockIdx.x  * (SS3_Y*SS3_X) +  bidx;
@@ -3075,7 +3075,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
     FOLD // Prep - Initialise the x indices & set candidates to 0  .
     {
       // Calculate the x indices or create a pointer offset by the correct amount
-#pragma unroll
+//#pragma unroll
       for ( int harm = 0; harm < noHarms; harm++ )      // loop over harmonic  .
       {
 #if TEMPLATE_SEARCH == 1
@@ -3164,7 +3164,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
       FOLD  // Loop over blocks of set length .
       {
         //for( y = 0; y < searchList.heights.val[0] - nPowers ; y += nPowers ) // loop over chunks .
-        for( y = 0; y < searchList.heights.val[0] ; y += nPowers ) // loop over chunks .
+        for( y = 0; y < zeroHeight ; y += nPowers ) // loop over chunks .
         {
           // Initialise powers for each section column to 0
 #if TEMPLATE_SEARCH == 1
@@ -3255,7 +3255,13 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                       {
                         power = searchList.powers.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                       }
-                      powers[step][yPlus]        += power;
+
+                      //if ( (y+yPlus) == (searchList.heights.val[0]-1)/2 )
+                      if ( (y+yPlus) == 0 )
+                      {
+                        powers[step][yPlus]        += power;
+                      }
+                      //powers[step][yPlus]        += power;
                     }
                     else
                     {
@@ -3270,9 +3276,11 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                         cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                       }
 
-                      //if ( iy == (searchList.heights.val[0]-1)/2*10  )
-                      if ( iy == 25 )
+                      //if ( (y+yPlus) == (searchList.heights.val[0]-1)/2 )
+                      if ( (y+yPlus) == 0 )
+                      {
                         powers[step][yPlus]        += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                      }
                     }
                   }
                 }
@@ -3405,7 +3413,7 @@ __host__ void add_and_maxCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
   for (int i = 0; i < noSteps; i++)
     tmpArr.arry[i] = rLows[i];
 
-  add_and_maxCU31<FLAGS,/*sType,*/noStages,fMax> <<<dimGrid, dimBlock, i1, cnvlStream>>>(searchList, d_cands, d_sem, base, /*pd,*/ tmpArr, noSteps);
+  add_and_maxCU31<FLAGS,/*sType,*/noStages,fMax> <<<dimGrid, dimBlock, i1, cnvlStream>>>(searchList, d_cands, d_sem, base, /*pd,*/ tmpArr,noSteps);
 #endif
 }
 
@@ -3793,7 +3801,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
 
   nvtxRangePush("Add & Search");
 
-  if ( plains->haveSData || plains->haveCData ) // previous plain has data data so sum and search
+  if ( plains->haveSearchResults || plains->haveConvData ) // previous plain has data data so sum and search
   {
     int noStages = log(plains->noHarms)/log(2) + 1;
     int harmtosum;
@@ -3803,7 +3811,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
     pd = (cuSearchItem*)malloc(plains->noHarms * sizeof(cuSearchItem));
     rLows = (float*)malloc(plains->noSteps * sizeof(float));
 
-    FOLD // Do synchronisations
+    FOLD // Do synchronisations  .
     {
       for (int ss = 0; ss< plains->noStacks; ss++)
       {
@@ -3813,12 +3821,10 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
       }
     }
 
-    if ( plains->haveCData ) // Sum & search  .
+    if ( plains->haveConvData ) // Sum & search  .
     {
-      FOLD // Create search list
+      FOLD // Create search list to pass to kernel  .
       {
-        //printf("\n");
-
         searchList.searchRLow = plains->searchRLow;
         int i = 0;
         for (int stage = 0; stage < noStages; stage++)
@@ -3880,7 +3886,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
         }
       }
 
-      FOLD // Call the main sum & search kernel
+      FOLD // Call the main sum & search kernel  .
       {
         /*
         if      (  plains->flag & CU_OUTP_DEVICE )
@@ -4066,7 +4072,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
         }
          */
 
-        if ( (plains->flag & CU_OUTP_SINGLE) || (plains->flag & CU_OUTP_HOST) ) // Call the templated kernel
+        if ( (plains->flag & CU_OUTP_SINGLE) || (plains->flag & CU_OUTP_HOST) ) // Call the templated kernel  .
         {
           dimBlock.x  = SS3_X;
           dimBlock.y  = SS3_Y;
@@ -4083,18 +4089,24 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
           }
           else
           {
-            // ERROR
+            fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+            exit(EXIT_FAILURE);
           }
         }
+        else
+        {
+          fprintf(stderr,"ERROR: function %s is not setup to handle this type of output for GPU accel search\n",__FUNCTION__);
+          exit(EXIT_FAILURE);
+        }
 
-        // Run message
         CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
 
+        // Event
         CUDA_SAFE_CALL(cudaEventRecord(plains->searchComp,  plains->strmSearch),"Recording event: searchComp");
       }
     }
 
-    if ( plains->haveSData ) // Process previous results  .
+    if ( plains->haveSearchResults ) // Process previous results  .
     {
       if ( plains->flag & CU_OUTP_SINGLE )
       {
@@ -4104,8 +4116,6 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
         nvtxRangePush("CPU Process results");
 
         plains->noResults=0;
-
-        //long long numindep;
 
         double poww, sig, sigx, sigc, diff;
         double gpu_p, gpu_q;
@@ -4118,13 +4128,13 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
 
         {
 #pragma omp critical
-          for ( int x = 0; x < plains->accelLen; x++ )
+          for ( int step = 0; step < plains->mxSteps; step++)         // Loop over steps
           {
             for ( int i = 0; i < noStages; i++ )
             {
-              for ( int step = 0; step < plains->mxSteps; step++)         // Loop over steps
+              for ( int x = 0; x < plains->accelLen; x++ )
               {
-                int idx   = x*noStages + i ;
+                int idx   = step*noStages*plains->hInfos->width + i*plains->hInfos->width +  x ;
 
                 if ( plains->retType & CU_SMALCAND )
                 {
@@ -4136,17 +4146,20 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
                     plains->noResults++;
 
                     numharm   = candB.numharm;
+                    numharm   = (1<<i);
                     //numindep  = numindep[twon_to_index(numharm)];
 
                     if ( plains->flag & FLAG_SAS_SIG )
                       sig     = poww;
                     else
-                      sig     = candidate_sigma(poww, numharm, numindep[twon_to_index(numharm)]);
+                    {
+                      sig     = candidate_sigma(poww, numharm, numindep[i]);
+                    }
 
                     rr = ( plains->plains[0].searchRlowPrev[step] + x *  ACCEL_DR )   / (double)numharm ;
                     zz = ( candB.z * ACCEL_DZ - plains->hInfos[0].zmax )              / (double)numharm ;
 
-                    if ( plains->flag & CU_CAND_LST )
+                    if      ( plains->flag & CU_CAND_LST )
                     {
                       added = 0;
                       //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
@@ -4200,20 +4213,15 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
                     }
                     else
                     {
-                      fprintf(stderr,"ERROR: function %s requires cand\n");
+                      fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
                       exit(1);
                     }
                   }
                 }
                 else
                 {
-                  fprintf(stderr,"ERROR: function %s requires accelcandBasic\n");
+                  fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
                   exit(1);
-                }
-
-                //if (added && !obs->dat_input)
-                {
-                  //fprintf(obs->workfile, "%12.2f [ %12.5f %12.5f ]  %3d  %14.4f  %14.4f  %10.4f  GPU\n", poww, sig, sigx, numharm, rr, rr / obs->T, zz);
                 }
               }
             }
@@ -4225,26 +4233,25 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
         // Do some Synchronisation
         CUDA_SAFE_CALL(cudaEventRecord(plains->processComp, plains->strmSearch),"Recording event: searchComp");
 
-        plains->haveSData = 0;
+        plains->haveSearchResults = 0;
       }
     }
 
     // Copy results from device to host
     if ( plains->flag & CU_OUTP_SINGLE || plains->flag & CU_OUTP_HOST )
     {
-      if ( plains->haveCData )
+      if ( plains->haveConvData )
       {
         cudaStreamWaitEvent(plains->strmSearch, plains->searchComp,  0);
         cudaStreamWaitEvent(plains->strmSearch, plains->processComp, 0);
 
-        //CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_retData, plains->d_retData, ACCEL_USELEN*noStages*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
         CUDA_SAFE_CALL(cudaMemcpyAsync(plains->h_retData, plains->d_retData, plains->accelLen*plains->noHarmStages*plains->noSteps*sizeof(accelcandBasic), cudaMemcpyDeviceToHost, plains->strmSearch), "Failed to copy results back");
 
         CUDA_SAFE_CALL(cudaEventRecord(plains->candCpyComp, plains->strmSearch),"Recording event: readComp");
         CUDA_SAFE_CALL(cudaGetLastError(), "COPY");
 
-        plains->haveCData = 0;
-        plains->haveSData = 1;
+        plains->haveConvData = 0;
+        plains->haveSearchResults = 1;
       }
     }
   }
@@ -4259,7 +4266,7 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
 
   nvtxRangePush("Add & Max");
 
-  if ( plains->haveSData || plains->haveCData ) // previous plain has data data so sum and search  .
+  if ( plains->haveSearchResults || plains->haveConvData ) // previous plain has data data so sum and search  .
   {
     int noStages = log(plains->noHarms)/log(2) + 1;
     int harmtosum;
@@ -4279,7 +4286,7 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
       }
     }
 
-    if ( plains->haveCData ) // We have a convolved plain so call Sum & search  kernel .
+    if ( plains->haveConvData ) // We have a convolved plain so call Sum & search  kernel .
     {
       FOLD // Create search list
       {
@@ -4340,7 +4347,7 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
       }
     }
 
-    if ( plains->haveSData ) // Process previous results  .
+    if ( plains->haveSearchResults ) // Process previous results  .
     {
       if ( plains->flag & CU_OUTP_SINGLE )
       {
@@ -4355,27 +4362,35 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
         //printf("fullRLow      %f \n",plains->plains[0].fullRLow[0] );
         //printf("rLow          %f \n",plains->plains[0].rLow[0] );
 
-        int gIdx = plains->plains[0].fullRLow[0] ;
+        int noOut = plains->retDataSize/sizeof(float);
 
-        if ( plains->flag & FLAG_STORE_EXP )
-          gIdx =  ( plains->plains[0].fullRLow[0] ) * ACCEL_RDR ;
+        for ( int step = 0; step < plains->noSteps; step++ )
+        {
+          int gIdx = plains->plains[plains->noHarms-1].searchRlowPrev[step] ;
 
-        float* gout = (float*)plains->h_candidates;
-        memcpy(&gout[gIdx], plains->h_retData,plains->retDataSize*plains->noSteps);
+          if ( plains->flag & FLAG_STORE_EXP )
+            gIdx =  ( plains->plains[plains->noHarms-1].searchRlowPrev[step] ) * ACCEL_RDR ;
 
+          float* gout = (float*)plains->h_candidates+noOut*step;
+
+          memcpy(&gout[gIdx], (float*)(plains->h_retData + plains->hInfos->halfWidth*ACCEL_RDR), plains->plains->numrs[0]*sizeof(float));
+
+  #ifdef CBL
+  #endif
+        }
         nvtxRangePop();
 
         // Do some Synchronisation
         CUDA_SAFE_CALL(cudaEventRecord(plains->processComp, plains->strmSearch),"Recording event: searchComp");
 
-        plains->haveSData = 0;
+        plains->haveSearchResults = 0;
       }
     }
 
     // Copy results from device to host
-    if ( plains->flag & CU_OUTP_SINGLE || plains->flag & CU_OUTP_HOST )
+    if ( (plains->flag & CU_OUTP_SINGLE) || (plains->flag & CU_OUTP_HOST) )
     {
-      if ( plains->haveCData )
+      if ( plains->haveConvData )
       {
         cudaStreamWaitEvent(plains->strmSearch, plains->searchComp,  0);
         cudaStreamWaitEvent(plains->strmSearch, plains->processComp, 0);
@@ -4386,8 +4401,8 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
         CUDA_SAFE_CALL(cudaEventRecord(plains->candCpyComp, plains->strmSearch),"Recording event: readComp");
         CUDA_SAFE_CALL(cudaGetLastError(), "COPY");
 
-        plains->haveCData = 0;
-        plains->haveSData = 1;
+        plains->haveConvData = 0;
+        plains->haveSearchResults = 1;
       }
     }
   }

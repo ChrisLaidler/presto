@@ -5,6 +5,9 @@
 #
 DATE = $(shell date +%d%b%y)
 
+all:
+	$(MAKE) ./src/
+
 tar:  squeaky tags package
 
 tags:

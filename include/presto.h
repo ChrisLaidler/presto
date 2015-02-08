@@ -941,9 +941,9 @@ int corr_complex(\
                  fcomplex * kern, int numkern, presto_datainf kerninf,\
                  fcomplex * result, int numresult, int lobin,         \
                  int numbetween, int kern_half_width, presto_optype optype);
-//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf, \
-//		 fcomplex *kern, int numkern, presto_datainf kerninf, \
-//		 fcomplex *result, int numresult, int lobin, \
+//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf,
+//		 fcomplex *kern, int numkern, presto_datainf kerninf,
+//		 fcomplex *result, int numresult, int lobin,
 //		 int numbetween, int kern_half_width, presto_optype optype);
   /* This routine is a general correlation or convolution routine    */
   /* for complex data.  It can perform convolutions or correlations  */
@@ -993,9 +993,9 @@ int corr_complex2( corrData* corrd,                                     \
                  fcomplex * kern, int numkern, presto_datainf kerninf,  \
                  fcomplex * result, int numresult, int lobin,           \
                  int numbetween, int kern_half_width, presto_optype optype);
-//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf, \
-//     fcomplex *kern, int numkern, presto_datainf kerninf, \
-//     fcomplex *result, int numresult, int lobin, \
+//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf,
+//     fcomplex *kern, int numkern, presto_datainf kerninf,
+//     fcomplex *result, int numresult, int lobin,
 //     int numbetween, int kern_half_width, presto_optype optype);
   /* This routine is a general correlation or convolution routine    */
   /* for complex data.  It can perform convolutions or correlations  */

@@ -46,7 +46,8 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
    double wpr, wpi, wr, wi, theta, tmp1, tmp2;
    int move_size;
    unsigned char *move;
-#if defined USEFFTW
+//#if defined USEFFTW
+#ifdef USEFFTW
    fftwf_plan plan;
    static fftwf_plan last_plan = NULL;
    static int firsttime = 1, lastn = 0, lastisign = 0;
@@ -55,7 +56,8 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
    double *table;
 #endif
 
-#if defined USEFFTW
+//#if defined USEFFTW
+#ifdef USEFFTW
    /* If calling for the first time, read the wisdom file */
    if (firsttime) read_wisdom();
 #endif
@@ -84,7 +86,8 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
 
    /* then do n2 transforms of length n1 */
 
-#if defined USEFFTW
+//#if defined USEFFTW
+#ifdef USEFFTW
 
    /* Use FFTW for the small transforms if available. */
 
@@ -146,7 +149,8 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
 
    /* then do n1 transforms of length n2 */
 
-#if defined USEFFTW
+//#if defined USEFFTW
+#ifdef USEFFTW
 
    /* Use FFTW for the small transforms if available. */
 

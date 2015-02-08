@@ -1,5 +1,46 @@
+/*
+extern "C"
+{
+#include "accel.h"
+}
+
+//#ifdef CBL
 #include "array.h"
 #include "arrayDsp.h"
+#include "util.h"
+//#endif
+
+#ifdef USEMMAP
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif
+
+#ifdef CUDA
+#include "cuda_accel.h"
+#include "cuda_utils.h"
+#include "cuda_accel_utils.h"
+#include <nvToolsExt.h>
+#include <nvToolsExtCuda.h>
+#include <cuda_profiler_api.h>
+
+#include <sys/time.h>
+#include <time.h>
+#endif
+
+
+//#include "utilstats.h"
+#ifdef WITHOMP
+#include <omp.h>
+#endif
+
+#ifdef USEDMALLOC
+#include "dmalloc.h"
+#endif
+*/
+
 
 extern "C"
 {
@@ -16,9 +57,8 @@ extern "C"
 #include <fcntl.h>
 #endif
 
-//#ifdef CUDA
+#ifdef CUDA
 #include "cuda_accel.h"
-#include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
@@ -26,16 +66,20 @@ extern "C"
 
 #include <sys/time.h>
 #include <time.h>
-//#endif
+#endif
 
-
-//#include "utilstats.h"
 #ifdef WITHOMP
 #include <omp.h>
 #endif
 
 #ifdef USEDMALLOC
 #include "dmalloc.h"
+#endif
+
+#ifdef CBL
+#include "array.h"
+#include "arrayDsp.h"
+#include "util.h"
 #endif
 
 extern float calc_median_powers(fcomplex * amplitudes, int numamps);
@@ -232,7 +276,6 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
       memcpy(input->elems, corrd->dataarray, fftlen*2*sizeof(float) );
     }
     memcpy(complex->getP(0,ii), result[ii], nrs*2*sizeof(float) );
-    //memcpy(complex->getP(0,ii), result[ii], fftlen*2*sizeof(float) );
     datainf = SAME;
   }
 
@@ -289,8 +332,6 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
 
 int main(int argc, char *argv[])
 {
-  printf("Tetst test tets \n");
-
   int ii;
   double ttim, utim, stim, tott;
   struct tms runtimes;
@@ -301,8 +342,6 @@ int main(int argc, char *argv[])
   GSList *candsGPU = NULL;
   GSList *cands    = NULL;
   Cmdline *cmd;
-
-  printf("Tetst test tets \n");
 
   // Timing vars
   long long cupTime = 0, gpuTime = 0, optTime = 0;
@@ -387,7 +426,6 @@ int main(int argc, char *argv[])
     cuStackList* plainsj[10*5];       // List of pointers to each plain
     int noSteps = 0;
 
-
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
     subharminfo **subharminfs;
@@ -405,7 +443,7 @@ int main(int argc, char *argv[])
 
     nDarray<2, float> DFF_kernels;
 
-    int flags = FLAG_RETURN_ALL | CU_CAND_ARR ;
+    int flags = FLAG_RETURN_ALL | CU_CAND_ARR ;// | FLAG_CUFFTCB_OUT;
 
     FOLD // Generate the GPU kernel
     {
@@ -548,8 +586,6 @@ int main(int argc, char *argv[])
           int row;
           for (row=0; row < sinf->numkern; row++  )
           {
-            //float *bob = CPU_kernels.getP(0,row);
-
             memcpy(CPU_kernels.getP(0,row), sinf->kern[row].data, hinf->width*sizeof(fcomplex));
           }
 
@@ -586,7 +622,7 @@ int main(int argc, char *argv[])
     {
       printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", noSteps, noKers);
 
-      omp_set_num_threads(nPlains);
+      //omp_set_num_threads(nPlains);
 
       int harmtosum, harm;
       startr = obs.rlo, lastr = 0, nextr = 0;
@@ -601,9 +637,15 @@ int main(int argc, char *argv[])
       if ( maxxx < 0 )
         maxxx = 0;
 
+      nDarray<2, float> plotPowers;
+      plainsj[0]->hInfos->numrs;
+      plotPowers.addDim(plainsj[0]->hInfos->numrs,0,plainsj[0]->hInfos->numrs);
+      plotPowers.addDim(plainsj[0]->hInfos->height,0,plainsj[0]->hInfos->height);
+      plotPowers.allocate();
+
       //#pragma omp parallel // Note the CPU version is not set up to be thread capable so can't really test multi-threading
       {
-        int tid = omp_get_thread_num();
+        int tid = 0;  //omp_get_thread_num();
         cuStackList* trdStack = plainsj[tid];
 
         nDarray<1, float> **cpuInput = new nDarray<1, float>*[trdStack->noSteps];
@@ -713,7 +755,6 @@ int main(int argc, char *argv[])
 
           // Call the CUDA stuff
           search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
-          //ffdot_planeCU3(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, &obs, &candsGPU);
 
           if ( trdStack->flag & CU_OUTP_HOST )
           {
@@ -740,32 +781,36 @@ int main(int argc, char *argv[])
                 cuHarmInfo* cHInfo    = &trdStack->hInfos[harm];      // The current harmonic we are working on
                 cuFFdot*    plan      = &cStack->plains[si];          // The current plain
 
+
+
                 for (int step = 0; step < trdStack->noSteps; step++)
                 {
+                  int diff = plan->numrs[step] - cHInfo->numrs;
+                  if ( diff != 0 )
+                  {
+                    TMP
+                  }
+
                   // Copy input data from GPU
                   fcomplexcu *data = &trdStack->d_iData[sz];
-                  //cudaStreamWaitEvent(cStack->fftIStream, trdStack->normComp, 0); // just encase we skip the FFT'ing
                   CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
 
-
+                  // Copy pain from GPU
                   for( int y = 0; y < cHInfo->height; y++ )
                   {
                     fcomplexcu *cmplxData;
                     float *powers;
                     if ( trdStack->flag & FLAG_STP_ROW )
                     {
-                      cmplxData = &plan->d_plainData[(y*trdStack->noSteps + step)*cHInfo->inpStride ];
-                      powers    = &plan->d_plainPowers[((y*trdStack->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ) ];
+                      cmplxData = &plan->d_plainData[(y*trdStack->noSteps + step)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
+                      powers    = &plan->d_plainPowers[(y*trdStack->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
                     }
                     else if ( trdStack->flag & FLAG_STP_PLN )
                     {
-                      cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cHInfo->inpStride ];
-                      powers    = &plan->d_plainPowers[((y + step*cHInfo->height)*cStack->pwrStride  + cHInfo->halfWidth * 2 ) ];
+                      cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
+                      powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
                     }
 
-                    cmplxData += cHInfo->halfWidth*2;
-                    //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                     if ( trdStack->flag & FLAG_CUFFTCB_OUT )
                     {
                       CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
@@ -779,7 +824,8 @@ int main(int argc, char *argv[])
                     }
                     else
                     {
-
+                      //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
+                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                     }
                   }
 
@@ -787,6 +833,10 @@ int main(int argc, char *argv[])
                 }
                 harm++;
               }
+
+              // New events for Synchronsition (this event will ovrride the previous event)
+              cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+              cudaEventRecord(cStack->plnComp, cStack->fftPStream);
             }
           }
 
@@ -801,7 +851,7 @@ int main(int argc, char *argv[])
 
               fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, &cpuInput[si][0], &cpuCmplx[si][0], &cpuPowers[si][0] );
 
-              candsCPU = search_ffdotpows(fundamental, 1, &obs, candsCPU);
+              candsCPU    = search_ffdotpows(fundamental, 1, &obs, candsCPU);
 
               if (obs.numharmstages > 1)    /* Search the subharmonics */
               {
@@ -849,7 +899,6 @@ int main(int argc, char *argv[])
                 }
               }
               free_ffdotpows(fundamental);
-
             }
           }
 
@@ -918,6 +967,56 @@ int main(int argc, char *argv[])
                     printf("  GOOD  Very good.\n"  );
                   else
                     printf("  Great \n");
+
+                  if ( harz == 1 && 0 )
+                  {
+                    float *powArr     = (float*)plotPowers.getP(0,0);
+
+                    int nX = gpuPowers[si][harz].ax(0)->noEls() ;
+                    int nY = gpuPowers[si][harz].ax(1)->noEls() ;
+
+                    int width         = trdStack->hInfos[harz].numrs;
+
+                    // Copy CPU powers
+                    for(int y = 0; y < nY; y++ )
+                    {
+                      memcpy(&powArr[y*width],gpuPowers[si][harz].getP(0,y), width*sizeof(float));
+                    }
+                    sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_GPU.png", firstStep+si+1, harz);
+                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
+
+
+                    // Copy CPU powers
+                    for(int y = 0; y < nY; y++ )
+                    {
+                      memcpy(&powArr[y*width],cpuPowers[si][harz].getP(0,y), width*sizeof(float));
+                    }
+                    sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_CPU.png", firstStep+si+1, harz);
+                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
+                  }
+                }
+
+                if (0)
+                {
+                  for ( int harz = 0; harz < trdStack->noHarms; harz++ )
+                  {
+                    printf("Harm: %02i\n", harz );
+                    printf("CPU: ");
+                    for ( int x = 0; x < 10; x++ )
+                    {
+                      printf(" %9.6f ", cpuPowers[si][harz].get(x,0));
+                    }
+                    printf("\n");
+
+                    printf("GPU: ");
+                    for ( int x = 0; x < 10; x++ )
+                    {
+                      printf(" %9.6f ", gpuPowers[si][harz].get(x,0));
+                    }
+                    printf("\n");
+                    TMP;
+                  }
+                  TMP;
                 }
               }
               else
@@ -951,19 +1050,22 @@ int main(int argc, char *argv[])
                   else
                     printf("  Great \n");
 
-                  if (1)
+                  if ( harz == 1 && 0 )
                   {
                     fcomplex* cmplx   = (fcomplex*)gpuCmplx[si][harz].getP(0,0);
-                    float *powArr     = (float*)gpuPowers[si][harz].getP(0,0);
+                    float *powArr     = (float*)plotPowers.getP(0,0);
+
                     int nX = gpuPowers[si][harz].ax(0)->noEls() ;
                     int nY = gpuPowers[si][harz].ax(1)->noEls() ;
+
+                    int width         = trdStack->hInfos[harz].numrs;
 
                     // Calculate GPU powers
                     for(int y = 0; y < nY; y++ )
                     {
-                      for(int x = 0; x < nX; x++ )
+                      for(int x = 0; x < width; x++ )
                       {
-                        powArr[y*nX + x] = cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
+                        powArr[y*width + x] = cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
                       }
                     }
 
@@ -973,16 +1075,56 @@ int main(int argc, char *argv[])
                     //int tmp = 0;
 
                     sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_GPU.png", firstStep+si+1, harz);
-                    draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
+                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
-                    powArr = (float*)cpuPowers[si][harz].getP(0,0);
+
+                    // Copy CPU powers
+                    for(int y = 0; y < nY; y++ )
+                    {
+                      memcpy(&powArr[y*width],cpuPowers[si][harz].getP(0,y), width*sizeof(float));
+                    }
                     sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_CPU.png", firstStep+si+1, harz);
-                    draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
+                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
+
+
+                    // Copy CPU powers
+                    for(int y = 0; y < nY; y++ )
+                    {
+                      for(int x = 0; x < width; x++ )
+                      {
+                        powArr[y*width + x] -= cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
+                      }
+                    }
+                    sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_RES.png", firstStep+si+1, harz);
+                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
                     //fundamental = subharm_ffdot_plane(1, 1, startr, lastr, &subharminfs[0][0], &obs);
                     //draw2DArray6(fname, fundamental->powers[0], fundamental->numrs, fundamental->numzs, 4096, 1602);
                     //cands = search_ffdotpows(fundamental, 1, &obs, cands);
                   }
+                }
+
+                if (1)
+                {
+                  for ( int harz = 0; harz < trdStack->noHarms; harz++ )
+                  {
+                    printf("Harm: %02i\n", harz );
+                    printf("CPU: ");
+                    for ( int x = 0; x < 10; x++ )
+                    {
+                      printf(" %9.6f ", cpuCmplx[si][harz].get(x,0));
+                    }
+                    printf("\n");
+
+                    printf("GPU: ");
+                    for ( int x = 0; x < 10; x++ )
+                    {
+                      printf(" %9.6f ", gpuCmplx[si][harz].get(x,0));
+                    }
+                    printf("\n");
+                    TMP;
+                  }
+                  TMP;
                 }
               }
             }
@@ -1009,41 +1151,41 @@ int main(int argc, char *argv[])
 
       printf("Done\n");
 
-      /*
-        if ( master->flag & CU_CAND_SINGLE == CU_CAND_SINGLE )
+      if ( master->flag & CU_CAND_ARR )
+      {
+        nvtxRangePush("Add to list");
+        int cdx;
+
+        int len = master->rHigh - master->rLow;
+        long long numindep;
+
+        double poww, sig, sigx, sigc, diff;
+        double gpu_p, gpu_q;
+        double rr, zz;
+        int added = 0;
+        int numharm;
+        poww = 0;
+
+        cand* candidate = (cand*)master->h_candidates;
+
+        for (cdx = 0; cdx < len; cdx++)
         {
-          nvtxRangePush("Add to list");
-          int cdx;
-          int len = master->rHigh - master->rLow;
-          long long numindep;
+          poww        = candidate[cdx].power;
 
-          double poww, sig, sigx, sigc, diff;
-          double gpu_p, gpu_q;
-          double rr, zz;
-          int added = 0;
-          int numharm;
-          poww = 0;
-
-
-          for (cdx = 0; cdx < len; cdx++)
+          if ( poww > 0 )
           {
-            poww        = master->h_candidates[cdx].power;
+            printf("ADD %i/%i\n", cdx, len);
 
-            if ( poww > 0 )
-            {
-              printf("ADD %i/%i\n", cdx, len);
-
-              numharm   = master->h_candidates[cdx].numharm;
-              numindep  = obs.numindep[twon_to_index(numharm)];
-              sig       = master->h_candidates[cdx].sig;
-              rr        = master->h_candidates[cdx].r;
-              zz        = master->h_candidates[cdx].z;
-              candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-            }
+            numharm   = candidate[cdx].numharm;
+            numindep  = obs.numindep[twon_to_index(numharm)];
+            sig       = candidate[cdx].sig;
+            rr        = candidate[cdx].r;
+            zz        = candidate[cdx].z;
+            candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
           }
-          nvtxRangePop();
         }
-       */
+        nvtxRangePop();
+      }
 
       if ( master->flag & CU_OUTP_DEVICE )
       {
@@ -1094,6 +1236,7 @@ int main(int argc, char *argv[])
       gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
       cands = candsGPU;
 
+      printCands("CPU_Cands.csv", candsCPU);
       printCands("GPU_Cands.csv", candsGPU);
     }
 

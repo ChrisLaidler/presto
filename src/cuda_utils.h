@@ -108,7 +108,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals);
  *
  * @return number of bytes of free RAM
  **/
-size_t getFreeRam();
+size_t getFreeRamCU();
 
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
 ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);

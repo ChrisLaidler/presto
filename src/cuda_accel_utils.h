@@ -11,14 +11,19 @@
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 
+#ifdef CBL
+#include "array.h"
+#include "arrayDsp.h"
+#endif
+
 extern "C"
 {
 #define __float128 long double
 #include "accel.h"
 }
 
-#define   TEMPLATE_CONVOLVE 1
-#define   TEMPLATE_SEARCH   1
+#define   TEMPLATE_CONVOLVE 0
+#define   TEMPLATE_SEARCH   0
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
@@ -403,9 +408,9 @@ template<int noStages, int canMethoud>
 __global__ void add_and_searchCU3(cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base);
 */
 
-int drawPlainPowers(cuFfdot* ffdotPlain, char* name);
-int drawPlainCmlx(cuFfdot* ffdotPlain, char* name);
-int drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height);
+void drawPlainPowers(cuFfdot* ffdotPlain, char* name);
+void drawPlainCmlx(cuFfdot* ffdotPlain, char* name);
+void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height);
 
 double _GammaP (double n, double x);
 double _GammaQ (double n, double x);

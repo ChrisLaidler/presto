@@ -3,12 +3,14 @@
 
 #include <cuda.h>
 #include <cufft.h>
+
 //#include <cuda_runtime.h>
 //#include <cuda_runtime_api.h>
 
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
+//#define CBL   // REMOVE
 
 #ifdef __cplusplus
 #define ExternC extern "C"
@@ -26,13 +28,7 @@ extern "C"
 }
 #endif
 
-#undef FOLD
-#undef KILL
-
 //=========================================== Defines ====================================================\\
-
-#define   FOLD if (1)                   /// A simple marker used for folding blocks of code in NSIGHT
-#define   KILL if (0)                   /// A simple marker used for folding blocks of code in NSIGHT
 
 #define   MAX_IN_STACK  10              /// NOTE: this is 1 to big to handle the init problem
 #define   MAX_HARM_NO   16              /// The maximum number of harmonics handled by a accel search
@@ -70,9 +66,6 @@ extern "C"
 
 #define     CU_OUTP_DEVICE      (1<<4)    /// Write all candidates to the device memory : This requires a lot of device memory
 #define     CU_OUTP_HOST        (1<<5)    /// Write all candidates to page locked host memory : This requires a lot of memory
-//#define     CU_OUTP_SINGLE_G    (1<<6)    /// Only get candidates from the current plain - This seams to be best in most cases
-//#define     CU_OUTP_SINGLE_C    (1<<7)    /// Only get candidates from the current plain
-//#define     CU_OUTP_SINGLE      (CU_OUTP_SINGLE_G | CU_OUTP_SINGLE_C)    /// Only get candidates from the current plain
 #define     CU_OUTP_SINGLE      (1<<6)    /// Only get candidates from the current plain - This seams to be best in most cases
 #define     CU_OUTP_ALL         ( CU_OUTP_DEVICE | CU_OUTP_HOST | CU_OUTP_SINGLE )
 #define     FLAG_SAS_SIG        (1<<7)   /// Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
@@ -96,8 +89,8 @@ extern "C"
 #define     FLAG_STP_STK        (1<<19)   /// Multi-step Stack interleaved        - Preferably don't use this!
 #define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
 
-#define     FLAG_CUFFTCB_INP    (1<<24)   /// Use an input  callback to do the convolution
-#define     FLAG_CUFFTCB_OUT    (1<<25)   /// Use an output callback to create powers
+#define     FLAG_CUFFTCB_INP    (1<<24)   /// Use an input  callback to do the convolution      - I found this to be very slow
+#define     FLAG_CUFFTCB_OUT    (1<<25)   /// Use an output callback to create powers           - This is a simalr speed
 
 #define     FLAG_RETURN_ALL     (1<<26)   /// Return results for all stages of summing, default is only the final result
 #define     FLAG_STORE_ALL      (1<<28)   /// Store candidates for all stages of summing, default is only the final result
@@ -112,7 +105,6 @@ extern "C"
 #define     CU_SMALCAND         (1<<5)    /// A compressed candidate      accelcandBasic
 #define     CU_FULLCAND         (1<<6)    /// Full detailed candidate     cand
 #define     CU_GSList           (1<<7)    ///
-
 
 
 //========================================== Macros ======================================================\\
@@ -131,7 +123,38 @@ typedef cudaTextureObject_t fCplxTex;
 typedef struct fcomplexcu
 {
     float r, i;
+
+    /*
+    fcomplexcu* operator=(fcomplexcu a) {
+      r=a.r;
+      i=a.i;
+    }
+
+        fcomplexcu* operator=(float a)
+    {
+      r=a;
+      i=a;
+    }
+
+    bool operator==(fcomplexcu a)
+    {
+      if ( r==a.r && i == a.i)
+        return 1;
+      else
+        return 0;
+    }
+
+    bool operator==(float a)
+    {
+      if ( r==a && i == a )
+        return 1;
+      else
+        return 0;
+    }
+*/
 } fcomplexcu;
+
+
 
 /// Basic accel search candidate to be used in CUDA kernels
 /// Note this may not be the best choice on a GPU as it has a bad size
@@ -225,12 +248,15 @@ typedef struct cuHarmInfo
     size_t  height;                   /// The number if rows (Z's)
     size_t  width;                    /// The number of complex numbers in each kernel (2 floats)
 
+    int     halfWidth;                /// The kernel half width         - in plain units
+    int     numrs;                    /// The number of usable values   - in plain units NB: This number is actually dynamic this is just an upper bound rather use (numrs from cuFFdot)
+
     size_t  inpStride;                /// The x stride in complex numbers
-    //size_t  outStride;                /// The stride of the block of memory  [ in complex numbers! ]
 
     int     zmax;                     /// The maximum (and minimum) z
     float   harmFrac;                 /// The harmonic fraction
-    int     halfWidth;                /// The kernel half width
+    int     stackNo;                  /// Which Stack is the plain in. (0 indexed at starting at the widest stack)
+
     int     yInds;                    /// The offset of the y offset in constant memory
     int     stageOrder;               /// The index of this harmonic in the staged order
 } cuHarmInfo;
@@ -281,8 +307,8 @@ typedef struct cuFfdotStack
     cudaStream_t cnvlStream;          /// CUDA stream for work on the stack
     cudaStream_t inpStream;           /// CUDA stream for work on input data for the stack
 
-    size_t width;                     /// The width of the block of memory   [ in complex numbers! ]
-    size_t height;                    /// The height of the block of memory for one step
+    size_t width;                     /// The width of  the entire stack, for one step [ in complex numbers! ]
+    size_t height;                    /// The height of the entire stack, for one step
 
     size_t inpStride;                 /// The stride of the block of memory  [ in complex numbers! ]
     size_t pwrStride;                 /// The stride of the block of memory  [ in complex numbers! ]
@@ -361,11 +387,8 @@ typedef struct cuStackList
     fcomplexcu* h_iData;              /// Pointer to page locked host memory of Input data for all the stacks
     fcomplexcu* d_iData;              /// Input data for all the stacks - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
-    int haveSData;                    /// Weather we are starting with search data
-    int haveCData;                    /// Weather we are starting with search data
-
-    //accelcandBasic* h_bCands;         /// A list of basic candidates in host memory
-    //accelcandBasic* d_bCands;         /// A list of basic candidates in device memory
+    int haveSearchResults;            /// Weather the the plain has been searched and there is canidate data to process
+    int haveConvData;                 /// Weather the the plain has convolved data ready for searching
 
     uint* d_candSem;                  /// Semaphore for writing to device candidate list
 
@@ -426,7 +449,6 @@ ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharms
  */
 ExternC  void freeHarmonics(cuStackList* stkLst, cuStackList* master, void* out);
 
-
 /** Initialise a multi-step stack list from the device kernel
  *
  * @param harms             The kernel to base this multi-step stack list
@@ -442,7 +464,7 @@ ExternC cuStackList* initStkList(cuStackList* harms, int no, int of);
  */
 ExternC void freeStkList(cuStackList* stkLst);
 
-ExternC int search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
+ExternC void search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
 
 ExternC void setStkPointers(cuStackList* stkLst);
 

@@ -11,7 +11,7 @@
 
 #if _WIN32
 #include <windows.h>
-size_t getFreeRam()
+size_t getFreeRamCU()
 {
     MEMORYSTATUSEX status;
     status.dwLength = sizeof(status);
@@ -23,7 +23,7 @@ size_t getFreeRam()
 /** Get the amount of free RAM in bytes
  *
  */
-size_t getFreeRam()
+size_t getFreeRamCU()
 {
   struct sysinfo sys_info;
   if(sysinfo(&sys_info) != 0)
@@ -35,7 +35,7 @@ size_t getFreeRam()
     return sys_info.freeram + sys_info.bufferram;
 }
 #else
-size_t getFreeRam()
+size_t getFreeRamCU()
 {
   fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
@@ -61,6 +61,7 @@ static SMVal opsF32_A_M_MAD_perMPperCC[] =
 
 // 64-bit floating-point add, multiply, multiply-add Operations per Clock Cycle per Multiprocessor
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions__throughput-native-arithmetic-instructions
+/*
 static SMVal opsF64_A_M_MAD_perMPperCC[] =
 {
     { 0x10, 0 },      // Tesla  Generation  (SM 1.0) G80   class
@@ -74,6 +75,7 @@ static SMVal opsF64_A_M_MAD_perMPperCC[] =
     { 0x50, 1 },      // Maxwell Generation (SM 5.0) GM10x class
     { -1, -1 }
 };
+*/
 
 // Defined number of cores for SM of specific compute versions ( Taken from CUDA 6.5 Samples )
 static SMVal nGpuArchCoresPerSM[] =
@@ -123,8 +125,8 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 
   while (vals[index].SM != -1)
   {
-    int thisSM = ((major << 4) + minor);
-    int testSM = vals[index].SM;
+    //int thisSM = ((major << 4) + minor);
+    //int testSM = vals[index].SM;
 
     if (vals[index].SM == ((major << 4) + minor))
       return vals[index].value;
@@ -195,14 +197,14 @@ void listDevices()
 
     // This is supported in CUDA 5.0 (runtime API device properties)
     sprintf(msg,
-        "  Total amount of global memory:                 %.1f GBytes (%llu bytes)\n",
+        "  Total amount of global memory:                 %.1f Gibibyte (%llu bytes)\n",
         (float) deviceProp.totalGlobalMem / 1073741824.0f,
         (unsigned long long) deviceProp.totalGlobalMem);
     printf("%s", msg);
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
     sprintf(msg,
-        "   of which %6.2f%% is currently free:           %.1f GBytes (%llu bytes) free\n",
+        "   of which %6.2f%% is currently free:           %.1f Gibibyte (%llu bytes) free\n",
         free / (float)total * 100.0f, (float) free / 1073741824.0f,
         (unsigned long long) free);
     printf("%s", msg);

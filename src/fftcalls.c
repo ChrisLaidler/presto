@@ -1,6 +1,7 @@
 #include "ransomfft.h"
 
-#if defined USEFFTW
+//#if defined USEFFTW
+#ifdef USEFFTW
 
 void read_wisdom(void)
 {
@@ -30,6 +31,8 @@ void fftwcall(fcomplex * indata, long nn, int isign)
 /* files.  It is VERY fast.  nn does _not_ have to be a power of two   */
 /* size.  indata is a complex array but stored as floats.              */
 {
+  printf("fftwcall\n");
+
    fftwf_plan *plan_forward, *plan_inverse;
    int ii;
    unsigned long oldestplan = 0;

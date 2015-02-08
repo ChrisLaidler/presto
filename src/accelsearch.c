@@ -175,8 +175,6 @@ int main(int argc, char *argv[])
         
         print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
         
-
-
         while (startr + ACCEL_USELEN * ACCEL_DR < obs.highestbin) {
           /* Search the fundamental */
           print_percent_complete(startr - obs.rlo,
@@ -241,7 +239,7 @@ int main(int argc, char *argv[])
 #endif
       } 
       
-//#ifdef CUDA
+#ifdef CUDA
       if ( cmd->gpuP >= 0)
       {
         candsGPU = NULL;
@@ -571,7 +569,7 @@ int main(int argc, char *argv[])
         }
       }
 
-//#endif
+#endif
    }
 
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
@@ -682,7 +680,9 @@ int main(int argc, char *argv[])
    printf("Final Candidates in a text format are in '%s'.\n\n", obs.accelnm);
 
 #ifndef DEBUG
+#ifdef CUDA
    cudaDeviceReset();
+#endif
 #endif
 
    free_accelobs(&obs);

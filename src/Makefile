@@ -115,7 +115,8 @@ endif
 # Very recent Intel CPUs might see a few percent speedup using -mavx
 CFLAGS = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) \
 	-DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 \
-	-g -Wall -W -fPIC -march=native
+	-g -Wall -W -fPIC
+#	 -march=native
 #       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
 CLINKFLAGS = $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
@@ -136,14 +137,16 @@ ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
 ARCH += -gencode arch=compute_50,code=sm_50
 
-CUDA_PATH    = /usr/local/cuda
-CUDALIBS 	   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
+CUDA_PATH	= /usr/local/cuda
 
-NVCCFLAGS    = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(ARCH) -m${OS_SIZE} -dc ${ARCH_FLAGS} -I/usr/local/cuda/include  -I$(HOME)/local/include
-NVCCFLAGS 	+= `freetype-config --cflags` `freetype-config --libs`
+CUDALIBS	= -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
+CUDAINC	 	= -I$(CUDA_PATH)/include
 
-NVCLFLAGS  	 =  -Xcompiler -fopenmp -lpng -lfreetype -lglut $(ARCH) -L$(HOME)/local/lib
-NVCLFLAGS 	+= $(CUDALIBS)
+NVCCFLAGS	= $(CUDAINC) $(ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
+NVCCFLAGS	+= -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
+
+NVCLFLAGS	= $(CUDAINC) $(ARCH) $(CUDALIBS)  
+NVCLFLAGS	+= -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
 
 $(info )
 
@@ -151,23 +154,23 @@ $(info )
 ifeq ($(DEBUG),1)
   $(info Compiling in debug mode)
 
-  CFLAGS += -O0 -g -ggdb  -DDEBUG
-  LFLAGS += -O0 -g -ggdb
+  CFLAGS 		+= -O0 -ggdb  -DDEBUG
+  LFLAGS 		+= -O0 -ggdb
   
-  NVCCFLAGS += -g -G -O0
+  NVCCFLAGS += -g -G -O0 -DDEBUG
   NVCLFLAGS += -g -G -O0
 
-  DEBUG_TARGET=debug
-  POSTFIX=_debug
-  export DEBUG=1    
+  DEBUG_TARGET	=debug
+  POSTFIX				=_debug
+  export DEBUG	=1    
 else  
   $(info Compileing in release mode)
   
   # CPU optimisations
-  CFLAGS+=-g -O3 -ffast-math -DNDBUG
-  
+  CFLAGS		+=-O3 -ffast-math 
+
   # Additional CPU optimisations
-  CFLAGS+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
+  CFLAGS		+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32  
   
   # vectorisation output
@@ -177,9 +180,9 @@ else
   NVCCFLAGS += -Xptxas -dlcm=ca
   NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
   
-  DEBUG_TARGET=release
-  POSTFIX=
-  export DEBUG=0
+  DEBUG_TARGET	=release
+  POSTFIX				=
+  export DEBUG	=0
 endif
 
 $(info )
@@ -188,47 +191,72 @@ $(info )
 ifeq ($(WITHOMP),yes)
   $(info • Compileing with OpenMP)
   
-	CFLAGS 		+= -fopenmp -DWITHOMP
-	FFLAGS 		+= -fopenmp -DWITHOMP
-	FFTLINK 	+=
-	NVCCFLAGS += -Xcompiler -fopenmp -DWITHOMP
+  CFLAGS 		+= -fopenmp -DWITHOMP
+  FLAGS 		+= -fopenmp -DWITHOMP
+  
+  CXXFLAGS 		+= -fopenmp -DWITHOMP
+  LDFLAGS 		+= -fopenmp -DWITHOMP
+  
+  FFTLINK 		+=
+  NVCCFLAGS 	+= -Xcompiler -fopenmp -DWITHOMP
+  NVCLFLAGS		+= -Xcompiler -fopenmp -DWITHOMP
+endif
+
+ifeq ($(WITHNDARR),yes)
+  $(info • Compileing with Chris Debug libraries)
+
+  # Include and link information for FreeType	
+  FTCFLG = $(shell freetype-config --cflags)
+  FTLINK = $(shell freetype-config --libs)
+
+  LNDARR			+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
+  INDARR			+= -I$(SRC)/libs/build/include/ $(FTCFLG) 
+	
+  NVCCFLAGS	    += -DCBL $(INDARR)
+  NVCLFLAGS			+= -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
+  
+  CXXFLAGS			+= -DCBL $(INDARR)
+else
+  LNDARR =
+  INDARR =  
 endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
   $(info • Compileing with CUDA)
 
-  NVCCFLAGS		 +=-DCUDA -Xcompiler -fPIC
-  #NVCC_OBS 		 = cuda_accel_utils.cu.o cuda_accel_SumAndSearch.cu.o cuda_accel_Convolve.cu.o cuda_utils.cu.o
-  PRESTOLINK 	 += $(CUDALIBS)
-#  PRESTOLINK 	+= $(GLIBLINK)
-  CC 					  = $(NVCC) 
-  CXX					  = $(NVCC)
-  CLINKFLAGS 		= $(NVCLFLAGS)
-  CFLAGS 				= $(NVCCFLAGS)
-  
-  CFLAGS 			 += -I/usr/local/cuda/include/ -DCUDA
-  PRESTOOBJS 	 += $(NVCC_OBS)
-  LINKCOMMAND1  = $(NVCC) $(LIBCMD) -o
-
-  
   NVCC_SRCS 		= $(wildcard *.cu)
-	NVCC_OBS  		= $(patsubst %.cu, %.cu.o,  $(NVCC_SRCS)  )
+  NVCC_OBS  		= $(patsubst %.cu, %.cu.o,  $(NVCC_SRCS)  )
+  
+  NVCCFLAGS		 	+= -keep -DCUDA -Xcompiler -fPIC
+  NVCLFLAGS			+= -DCUDA -Xcompiler -fPIC
+  
+  CXXFLAGS 			+= -DCUDA $(CFLAGS)	$(CUDAINC)
+  LDFLAGS 			+= -DCUDA $(CUDAINC) $(CLINKFLAGS) 
+
+	CUACCL				= -lcuaccel$(POSTFIX)
+
+	GPUOUTP				= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+	
+#  PRESTOLINK 	 	+= $(CUDALIBS)
+#  PRESTOLINK 		+= $(GLIBLINK)
+#  CC 				= $(NVCC) 
+#  CXX				 = $(NVCC)
+#  CLINKFLAGS 		= $(NVCLFLAGS)
+#  CFLAGS 			= $(NVCCFLAGS)
+  
+#  CFLAGS 			 += -I/usr/local/cuda/include/ -DCUDA
+  
+#	PRESTOOBJS 	 	+= $(NVCC_OBS)
+#  LINKCOMMAND1  	= $(NVCC) $(LIBCMD) -o
 else
   NVCC      		= $(CC)
-  NVCC_OBS  		= 
+  NVCC_OBS  		=
   NVCLFLAGS 		= $(CLINKFLAGS)
+	GPUOUTP				=
 endif
 
-ifeq ($(WITHNDARR),yes)
-	# Include and link information for FreeType
-	FTCFLG = $(shell freetype-config --cflags)
-	FTLINK = $(shell freetype-config --libs)
 
-	LNDARR			+= -L/home/chris/projects/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
-	INDARR			+= -I$(SRC)/libs/build/include/ $(FTCFLG)
-else
-endif
 
 $(info )
 
@@ -240,8 +268,6 @@ VPATH = ../lib:../bin
 
 # When modifying the CLIG files, the is the location of the clig binary
 CLIG = clig
-
-CXXFLAGS = $(CFLAGS)
 
 INSTRUMENTOBJS = backend_common.o zerodm.o sigproc_fb.o psrfits.o
 
@@ -263,11 +289,17 @@ BINARIES = makedata makeinf mjd2cal realfft quicklook\
 #	dump_spigot_zerolag spigot2filterbank\
 #	spigotSband2filterbank GBT350filterbank\
 
-SLA_SRCS = $(wildcard slalib/*.f)
-SLA_SRCS := $(filter-out slalib/sla_test.f, $(SLA_SRCS))
-SLA_OBS  = $(patsubst %.f, %.o,  $(SLA_SRCS)  )
+SLA_SRCS	= $(wildcard slalib/*.f)
+SLA_SRCS	:= $(filter-out slalib/sla_test.f, $(SLA_SRCS))
+SLA_OBS		= $(patsubst %.f, %.o,  $(SLA_SRCS)  )
 
-all: libpresto slalib binaries
+libpresto		= $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
+libcuaccel	= $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+	
+all: libpresto slalib binaries $(GPUOUTP)
+	@echo ""
+	@echo "Done"	
+	@echo ""
 
 # Default indentation is K&R style with no-tabs,
 # an indentation level of 4 (default), and a line-length of 85
@@ -278,21 +310,28 @@ indent:
 prep:
 	touch *_cmd.c
 
-libpresto$(POSTFIX):  $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
+libpresto: $(libpresto)
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
+
+libcuaccel: $(libcuaccel)
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
 
 binaries: $(BINARIES)
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
 
 mpi: mpiprepsubband
 
-GPU: accelsearch$(POSTFIX) test_GPUaccel$(POSTFIX)
+GPU: $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
 
 slalib: slalib/sla_test test_sla
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
 
-test_GPUaccel$(POSTFIX): $(BINPATH)/test_GPUaccel$(POSTFIX)
+test_GPUaccel: $(BINPATH)/test_GPUaccel$(POSTFIX)
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
 
-accelsearch$(POSTFIX): $(BINPATH)/accelsearch$(POSTFIX)
-
-cuda: $(NVCC_OBS)
+accelsearch: $(BINPATH)/accelsearch$(POSTFIX)
+	@ # Make file cant handle blank tarkets so here is a radom comment =/
 
 ###############   Librays   ################
 	
@@ -301,9 +340,19 @@ $(LIBPATH)/libsla$(LIBSUFFIX): $(SLA_OBS)
 
 $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
 	@echo ""
-	@echo "Building libpresto"
+	@echo "Building libpresto$(POSTFIX)"	
 	$(LINKCOMMAND1) $@ $(PRESTOOBJS) $(FFTLINK)
+	@echo "Done"
+	@echo ""
 
+
+$(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
+	@echo ""
+	@echo "Building libcuaccel$(POSTFIX)"
+	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(NVCLFLAGS)
+	@echo "Done"
+	@echo ""
+	
 ###############   Tests   ################
 
 test_sla:
@@ -333,66 +382,69 @@ makewisdom:
 
 ###############  binaries   ################
 
-slalib/sla_test: $(LIBPATH)libsla$(LIBSUFFIX)
-	$(FC) -o slalib/sla_test slalib/sla_test.f -fno-second-underscore -L$(LIB) -lsla
+slalib/sla_test: $(LIBPATH)/libsla$(LIBSUFFIX)
+	$(FC) -o slalib/sla_test slalib/sla_test.f -fno-second-underscore -L$(LIBPATH) -lsla
 	
 mpiprepsubband: mpiprepsubband_cmd.c mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS)
 	mpicc $(CLINKFLAGS) -o $(PRESTO)/bin/$@ mpiprepsubband_cmd.o mpiprepsubband_utils.o mpiprepsubband.o $(INSTRUMENTOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-
-${BINPATH}/accelsearch$(POSTFIX): $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX) accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o
+${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o 
 	@echo ""
-	@echo "Building accelsearch$(POSTFIX)"
-	$(NVCC) $(NVCLFLAGS) -o $@ accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm
-
-$(BINPATH)/test_GPUaccel$(POSTFIX): $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX) accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o
+	@echo "Building accelsearch$(POSTFIX)"	
+	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm	
+	@echo "Done"	
 	@echo ""
-	@echo "Building test_GPUaccel$(POSTFIX)"
-	$(NVCC) $(NVCLFLAGS) -o $@ accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o $(LNDARR) $(PRESTOLINK) $(GLIBLINK) -lm
+	
+$(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o
+	@echo ""
+	@echo "Building test_GPUaccel"${POSTFIX}
+	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o  $(PRESTOLINK) $(GLIBLINK) -lm
+	@echo "Done"	
+	@echo ""
 
-check_parkes_raw: check_parkes_raw.o multibeam.o
+check_parkes_raw: check_parkes_raw.o multibeam.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ check_parkes_raw.o multibeam.o $(PRESTOLINK) -lm
 
-downsample: downsample_cmd.c downsample.o downsample_cmd.o
+downsample: downsample_cmd.c downsample.o downsample_cmd.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ downsample.o downsample_cmd.o $(PRESTOLINK) -lm
 
 split_parkes_beams: split_parkes_beams.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ split_parkes_beams.o
 
-test_multifiles: test_multifiles.o
+test_multifiles: test_multifiles.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ test_multifiles.o $(PRESTOLINK) -lm
 
-rfifind: rfifind_cmd.c rfifind_cmd.o rfifind.o rfi_utils.o rfifind_plot.o range_parse.o $(INSTRUMENTOBJS) $(PLOT2DOBJS)
+rfifind: rfifind_cmd.c rfifind_cmd.o rfifind.o rfi_utils.o rfifind_plot.o range_parse.o $(INSTRUMENTOBJS) $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@  $(INSTRUMENTOBJS) $(PLOT2DOBJS) rfifind.o rfi_utils.o rfifind_cmd.o rfifind_plot.o range_parse.o $(PRESTOLINK) $(PGPLOTLINK) -lcfitsio -lm
 
-prepdata: prepdata_cmd.c prepdata_cmd.o prepdata.o $(INSTRUMENTOBJS)
+prepdata: prepdata_cmd.c prepdata_cmd.o prepdata.o $(INSTRUMENTOBJS) $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ prepdata.o prepdata_cmd.o $(INSTRUMENTOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-prepsubband: prepsubband_cmd.c prepsubband_cmd.o prepsubband.o $(INSTRUMENTOBJS)
+prepsubband: prepsubband_cmd.c prepsubband_cmd.o prepsubband.o $(INSTRUMENTOBJS) $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ prepsubband.o prepsubband_cmd.o $(INSTRUMENTOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-prepfold: prepfold_cmd.c prepfold_cmd.o prepfold.o prepfold_utils.o prepfold_plot.o least_squares.o polycos.o readpar.o $(INSTRUMENTOBJS) $(PLOT2DOBJS)
+prepfold: prepfold_cmd.c prepfold_cmd.o prepfold.o prepfold_utils.o prepfold_plot.o least_squares.o polycos.o readpar.o $(INSTRUMENTOBJS) $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ prepfold.o prepfold_utils.o prepfold_plot.o prepfold_cmd.o least_squares.o polycos.o readpar.o $(PLOT2DOBJS) $(INSTRUMENTOBJS) $(LAPACKLINK) $(PRESTOLINK) $(PGPLOTLINK) -lcfitsio -lm
 
-dump_spigot_zerolag: dump_spigot_zerolag.o spigot.o
+dump_spigot_zerolag: dump_spigot_zerolag.o spigot.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dump_spigot_zerolag.o spigot.o $(PRESTOLINK) -lm
 
-spigot2filterbank: spigot2filterbank_cmd.c spigot2filterbank_cmd.o spigot2filterbank.o spigot.o sigproc_fb.o sla.o
+spigot2filterbank: spigot2filterbank_cmd.c spigot2filterbank_cmd.o spigot2filterbank.o spigot.o sigproc_fb.o sla.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ spigot2filterbank.o spigot.o sigproc_fb.o spigot2filterbank_cmd.o sla.o $(PRESTOLINK) -lsla -lm
 
-GBT350filterbank: GBT350filterbank.o spigot.o sigproc_fb.o
+GBT350filterbank: GBT350filterbank.o spigot.o sigproc_fb.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ GBT350filterbank.o spigot.o sigproc_fb.o $(PRESTOLINK) -lm
 
-spigotSband2filterbank: spigotSband2filterbank.o spigot.o sigproc_fb.o
+spigotSband2filterbank: spigotSband2filterbank.o spigot.o sigproc_fb.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ spigotSband2filterbank.o spigot.o sigproc_fb.o $(PRESTOLINK) -lm
 
-show_pfd: show_pfd_cmd.c show_pfd.o show_pfd_cmd.o prepfold_utils.o prepfold_plot.o least_squares.o range_parse.o $(PLOT2DOBJS)
+show_pfd: show_pfd_cmd.c show_pfd.o show_pfd_cmd.o prepfold_utils.o prepfold_plot.o least_squares.o range_parse.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ show_pfd.o show_pfd_cmd.o prepfold_utils.o prepfold_plot.o least_squares.o range_parse.o $(PLOT2DOBJS) $(LAPACKLINK) $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-makedata: com.o randlib.o makedata.o
+makedata: com.o randlib.o makedata.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ com.o randlib.o makedata.o $(PRESTOLINK) -lm
 
-makeinf: makeinf.o ioinf.o
+makeinf: makeinf.o ioinf.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ makeinf.o ioinf.o $(PRESTOLINK) -lm
 
 mjd2cal: djcl.o mjd2cal.o
@@ -401,34 +453,34 @@ mjd2cal: djcl.o mjd2cal.o
 cal2mjd: cldj.o cal2mjd.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ cldj.o cal2mjd.o -lm
 
-plotbincand: plotbincand.o $(PLOT2DOBJS)
+plotbincand: plotbincand.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) plotbincand.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-profile: profile_cmd.c profile_cmd.o profile.o $(PLOT2DOBJS)
+profile: profile_cmd.c profile_cmd.o profile.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) profile.o profile_cmd.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-psrorbit: psrorbit.o $(PLOT2DOBJS)
+psrorbit: psrorbit.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) psrorbit.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-testbinresp: testbinresp.o $(PLOT2DOBJS)
+testbinresp: testbinresp.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ testbinresp.o $(PLOT2DOBJS) $(PGPLOTLINK) $(PRESTOLINK) -lm
 
-quicklook: quicklook.o
+quicklook: quicklook.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ quicklook.o $(PRESTOLINK) -lm
 
-readfile: readfile_cmd.c readfile_cmd.o readfile.o $(READFILEOBJS) 
+readfile: readfile_cmd.c readfile_cmd.o readfile.o $(READFILEOBJS) $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ readfile.o readfile_cmd.o $(READFILEOBJS) $(PRESTOLINK) -lcfitsio -lm
 
-realfft: realfft_cmd.c realfft_cmd.o realfft.o
+realfft: realfft_cmd.c realfft_cmd.o realfft.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ realfft.o realfft_cmd.o $(PRESTOLINK) -lm
 
-rednoise: rednoise_cmd.c rednoise.o rednoise_cmd.o
+rednoise: rednoise_cmd.c rednoise.o rednoise_cmd.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ rednoise.o rednoise_cmd.o $(PRESTOLINK) -lm
 
-search_bin: search_bin_cmd.c search_bin_cmd.o search_bin.o
+search_bin: search_bin_cmd.c search_bin_cmd.o search_bin.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ search_bin.o search_bin_cmd.o $(PRESTOLINK) -lm
 
-search_rzw: search_rzw_cmd.c search_rzw_cmd.o search_rzw.o
+search_rzw: search_rzw_cmd.c search_rzw_cmd.o search_rzw.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ search_rzw.o search_rzw_cmd.o $(PRESTOLINK) -lm
 
 taperaw: taperaw.o
@@ -443,19 +495,19 @@ un_sc_td:
 swap_endian:
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ swap_endian.c
 
-window: window.o $(PLOT2DOBJS)
+window: window.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) window.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-zapbirds: zapbirds_cmd.c zapbirds_cmd.o zapbirds.o zapping.o $(PLOT2DOBJS)
+zapbirds: zapbirds_cmd.c zapbirds_cmd.o zapbirds.o zapping.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ zapbirds_cmd.o zapbirds.o zapping.o $(PLOT2DOBJS) $(PRESTOLINK) $(PGPLOTLINK) $(GLIBLINK) -lm
 
-explorefft: explorefft.o $(PLOT2DOBJS)
+explorefft: explorefft.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ explorefft.o $(PLOT2DOBJS) $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-exploredat: exploredat.o $(PLOT2DOBJS)
+exploredat: exploredat.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ exploredat.o $(PLOT2DOBJS) $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-weight_psrfits: weight_psrfits.o $(INSTRUMENTOBJS)
+weight_psrfits: weight_psrfits.o $(INSTRUMENTOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ weight_psrfits.o $(INSTRUMENTOBJS) $(PRESTOLINK)
 
 psrfits_dumparrays: psrfits_dumparrays.o
@@ -467,13 +519,13 @@ fitsdelrow: fitsdelrow.o
 fitsdelcol: fitsdelcol.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ fitsdelcol.o $(CFITSIOLINK)
 
-bary: bary.o
+bary: bary.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bary.o $(PRESTOLINK) -lm
 
-bincand: bincand_cmd.c bincand_cmd.o bincand.o
+bincand: bincand_cmd.c bincand_cmd.o bincand.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ bincand.o bincand_cmd.o $(PRESTOLINK) -lm
 
-dftfold: dftfold_cmd.c dftfold_cmd.o dftfold.o
+dftfold: dftfold_cmd.c dftfold_cmd.o dftfold.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dftfold.o dftfold_cmd.o $(PRESTOLINK) -lm
 
 shiftdata: shiftdata.o
@@ -482,10 +534,10 @@ shiftdata: shiftdata.o
 patchdata: patchdata.o
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ patchdata.o
 
-dat2sdat: dat2sdat.o
+dat2sdat: dat2sdat.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ dat2sdat.o $(PRESTOLINK) -lm
 
-sdat2dat: sdat2dat.o
+sdat2dat: sdat2dat.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ sdat2dat.o $(PRESTOLINK) -lm
 
 
@@ -504,17 +556,19 @@ mpiprepsubband.o: mpiprepsubband.c
 	mpicc $(CLINKFLAGS) -c mpiprepsubband.c
 
 test_GPUaccel.o: test_GPUaccel.cpp
-	$(CXX) $(CFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 
 ###############  Cleans   ################
 
 cleanGPU:
 	rm -f ../lib/libpresto*
+	rm -f ../lib/libcuaccel*
 	rm -f ../bin/test_GPUaccel*
 	rm -f ../bin/accelsearch*
 	rm -f cuda*.o
-	rm -f accelsearch.o
+	rm -f accelsearch.o 
 	rm -f accel_utils.o
+	rm -f test_GPUaccel.o
 	
 clean:
 	rm -f *.o *~ *#
@@ -522,9 +576,9 @@ clean:
 
 cleaner: clean
 	cd ../bin ; rm -f $(BINARIES)
-	rm -f $(PRESTO)/lib/libpresto* $(PRESTO)/lib/libsla.*
+	rm -f $(PRESTO)/lib/libpresto* $(PRESTO)/lib/libsla.* $(PRESTO)/lib/libcuaccel*
 	
-distclean: cleaner
+distclean: cleaner cleanGPU
 
 squeaky:  cleaner
 	rm -f *.dat *.fft *.inf fftw_wisdom.txt
