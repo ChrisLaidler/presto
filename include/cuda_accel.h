@@ -123,38 +123,7 @@ typedef cudaTextureObject_t fCplxTex;
 typedef struct fcomplexcu
 {
     float r, i;
-
-    /*
-    fcomplexcu* operator=(fcomplexcu a) {
-      r=a.r;
-      i=a.i;
-    }
-
-        fcomplexcu* operator=(float a)
-    {
-      r=a;
-      i=a;
-    }
-
-    bool operator==(fcomplexcu a)
-    {
-      if ( r==a.r && i == a.i)
-        return 1;
-      else
-        return 0;
-    }
-
-    bool operator==(float a)
-    {
-      if ( r==a && i == a )
-        return 1;
-      else
-        return 0;
-    }
-*/
 } fcomplexcu;
-
-
 
 /// Basic accel search candidate to be used in CUDA kernels
 /// Note this may not be the best choice on a GPU as it has a bad size
@@ -241,6 +210,20 @@ typedef struct tHarmList
 
 //------------- Data structures for, plains, stacks etc ----------------\\
 
+/** Detaisl of the number of bins of the full search
+ */
+typedef struct searchScale
+{
+    double searchRLow;                /// The value of the input r bin to start the search at
+    double searchRHigh;               /// The value of the input r bin to end   the search at
+
+    int rLow;                         /// The lowest  possible R this search could find, Including halfwidth, thus may be less than 0
+    int rHigh;                        /// The highest possible R this search could find, Including halfwidth
+
+    unsigned long long noInpR;        /// The maximum number of r input ( this is esentally  (rHigh - rLow) ) and me be longer than fft length becaus of halfwidth this requires the FFT to be padded!
+    unsigned long long noOutpR;       /// The maximum number of r bins the fundemental search will produce. This is ( searchRHigh - searchRLow ) / ( canidate resolution ) It may need to be scaled by numharmstages
+} searchScale;
+
 /** The size information of a f-∂f plain
  */
 typedef struct cuHarmInfo
@@ -286,12 +269,12 @@ typedef struct cuFFdot
     fCplxTex    datTex;               /// A texture holding the kernel data
     fCplxTex    powerTex;             /// A texture of the power data
 
-    size_t  numInpData[MAX_STEPS];    /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
-    size_t  numrs[MAX_STEPS];         /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input)
+    size_t  numInpData[MAX_STEPS];    /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input, including haldwidth)
+    size_t  numrs[MAX_STEPS];         /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input, excluding haldwidth)
     float   fullRLow[MAX_STEPS];      /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
     float   rLow[MAX_STEPS];          /// The low r value of the plain at input fft
     float   searchRlow[MAX_STEPS];    /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    int     ffdotPowWidth[MAX_STEPS]; /// The width of the final f-∂f plain
+    int     ffdotPowWidth[MAX_STEPS]; /// The width of the final f-∂f plain  // TODO: Check is this not the same as numrs
 
     float searchRlowPrev[MAX_STEPS];  /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
 
@@ -396,9 +379,7 @@ typedef struct cuStackList
 
     uint flag;                        /// CUDA accel search flags
 
-    int rLow;                         /// The lowest  possible R this search could find
-    int rHigh;                        /// The highest possible R this search could find
-    double searchRLow;                /// The value of the r bin to start the search at
+    searchScale*  SrchSz;             /// Details on o the size (in bins) of the search
 
     cudaStream_t inpStream;           /// CUDA stream for work on input data for the stack
     cudaStream_t strmSearch;          /// CUDA stream for summing and searching the data
