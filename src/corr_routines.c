@@ -292,8 +292,7 @@ int corr_complex2( corrData* corrd,
       return fftlen - 2 * numbetween * kern_half_width;
 }
 
-int corr_complex(
-                 fcomplex * data, int numdata, presto_datainf datainf,
+int corr_complex(fcomplex * data, int numdata, presto_datainf datainf,
                  fcomplex * kern, int numkern, presto_datainf kerninf,
                  fcomplex * result, int numresult, int lobin,
                  int numbetween, int kern_half_width, presto_optype optype)
@@ -342,10 +341,9 @@ int corr_complex(
   /*   'kerninf' to help out, the routine must be called with the    */
   /*   same values for 'kern_half_width' and 'numbetween' as well.   */
 {
-  static fcomplex *kernarray, *dataarray;
-  static int firsttime = 1, oldnumbetween, oldkern_half_width;
-  static int oldfftlen, oldnumdata, oldlobin;
-
+   static fcomplex *kernarray, *dataarray;
+   static int firsttime = 1, oldnumbetween, oldkern_half_width;
+   static int oldfftlen, oldnumdata, oldlobin;
    fcomplex *tmpdata = NULL, zeros = { 0.0, 0.0 };
    int ii, fftlen = 1, numbins, beginbin, endbin, padlo, padhi;
 
@@ -585,8 +583,6 @@ void stretch_fft(fcomplex * data, int numdata, fcomplex * result, int numresult)
    int numkern, numbetween, kern_half_width;
    fcomplex *kernel;
 
-   //corrData* corrd = initCorrData();
-
    numbetween = numresult / numdata;
    kern_half_width = r_resp_halfwidth(LOWACC);
    numkern = 2 * numbetween * kern_half_width;
@@ -594,13 +590,10 @@ void stretch_fft(fcomplex * data, int numdata, fcomplex * result, int numresult)
 
    /* Perform the correlation */
 
-   corr_complex(/*corrd,*/
-                data, numdata, RAW,
+   corr_complex(data, numdata, RAW,
                 kernel, numkern, RAW,
                 result, numresult, 0, numbetween, kern_half_width, CORR);
-
    vect_free(kernel);
-   //clearCorrData(corrd);
 }
 
 
