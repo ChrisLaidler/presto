@@ -412,7 +412,7 @@ int main(int argc, char *argv[])
 
   /* Start the main search loop */
 
-  FOLD // the main loop
+  FOLD //  -- Main Loop --
   {
     double startr = obs.rlo, lastr = 0, nextr = 0;
     ffdotpows *fundamental;
@@ -443,7 +443,7 @@ int main(int argc, char *argv[])
 
     nDarray<2, float> DFF_kernels;
 
-    int flags = FLAG_RETURN_ALL | CU_CAND_ARR ;// | FLAG_CUFFTCB_OUT;
+    int flags = FLAG_RETURN_ALL | CU_CAND_ARR ; // | FLAG_CUFFTCB_OUT;
 
     FOLD // Generate the GPU kernel
     {
@@ -600,11 +600,11 @@ int main(int argc, char *argv[])
             printf("  BAD!    Not even in the same realm.\n");
           else if ( ERR > 1e0   )
             printf("  Bad.  \n" );
-          else if ( ERR > 1e-3  )
+          else if ( ERR > 1e-4  )
             printf("  Bad.   But not that bad.\n");
           else if ( ERR > 1e-6 )
             printf("  Close  But not great. \n");
-          else if ( ERR > 1e-9 )
+          else if ( ERR > 1e-10 )
             printf("  GOOD  But a bit high.\n");
           else if ( ERR > 1e-15 )
             printf("  GOOD \n"  );
@@ -618,7 +618,7 @@ int main(int argc, char *argv[])
 
     char fname[1024];
 
-    if ( cmd->gpuP >= 0)
+    if ( cmd->gpuP >= 0) // -- Main Loop --
     {
       printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", noSteps, noKers);
 
@@ -644,6 +644,7 @@ int main(int argc, char *argv[])
       plotPowers.allocate();
 
       //#pragma omp parallel // Note the CPU version is not set up to be thread capable so can't really test multi-threading
+      FOLD
       {
         int tid = 0;  //omp_get_thread_num();
         cuStackList* trdStack = plainsj[tid];
@@ -656,7 +657,7 @@ int main(int argc, char *argv[])
         nDarray<2, float> **cpuPowers = new nDarray<2, float>*[trdStack->noSteps];
         nDarray<2, float> **gpuPowers = new nDarray<2, float>*[trdStack->noSteps];
 
-        FOLD // Initialise data structures to hold test data for comparisons
+        FOLD // Initialise data structures to hold test data for comparisons  .
         {
           int hh;
           for(hh = 0; hh < trdStack->noSteps; ++hh)
@@ -726,9 +727,12 @@ int main(int argc, char *argv[])
 
         //setYINDS( trdStack,  obs.numharmstages );
 
-        int firstStep = 0;
+        int firstStep 			= 0;
+        bool ends 					= false;
+        bool printDetails   = false;
+        bool printBadLines  = false;
 
-        while ( ss < maxxx ) // Loop over the steps
+        while ( ss < maxxx ) // -- Main Loop --
         {
 #pragma omp critical
           {
@@ -741,13 +745,14 @@ int main(int argc, char *argv[])
 
           if ( firstStep + trdStack->noSteps >= maxxx )
           {
-            trdStack->noSteps = maxxx - firstStep;
+            //trdStack->noSteps = maxxx - firstStep;
+            //setPlainPointers(trdStack);
             //setStkPointers(trdStack);
-            setPlainPointers(trdStack);
+
+            //break;
           }
 
-          int si;
-          for ( si = 0; si < trdStack->noSteps ; si ++)
+          for ( int si = 0; si < trdStack->noSteps ; si ++)
           {
             startrs[si] = obs.rlo + (firstStep+si) * ( master->accelLen * ACCEL_DR );
             lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
@@ -763,88 +768,9 @@ int main(int argc, char *argv[])
             //trdStack->d_candidates = &master->d_candidates[master->accelLen*obs.numharmstages*firstStep] ;
           }
 
-          FOLD // Copy data from device  .
-          {
-            ulong sz  = 0;
-            harm      = 0;
-
-            // Write data to page locked memory
-            for (int ss = 0; ss < trdStack->noStacks; ss++)
-            {
-              cuFfdotStack* cStack = &trdStack->stacks[ss];
-
-              // Synchronise
-              //cudaStreamWaitEvent(cStack->fftPStream, cStack->plnComp, 0);
-
-              for (int si = 0; si < cStack->noInStack; si++)
-              {
-                cuHarmInfo* cHInfo    = &trdStack->hInfos[harm];      // The current harmonic we are working on
-                cuFFdot*    plan      = &cStack->plains[si];          // The current plain
-
-
-
-                for (int step = 0; step < trdStack->noSteps; step++)
-                {
-                  int diff = plan->numrs[step] - cHInfo->numrs;
-                  if ( diff != 0 )
-                  {
-                    TMP
-                  }
-
-                  // Copy input data from GPU
-                  fcomplexcu *data = &trdStack->d_iData[sz];
-                  CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
-
-                  // Copy pain from GPU
-                  for( int y = 0; y < cHInfo->height; y++ )
-                  {
-                    fcomplexcu *cmplxData;
-                    float *powers;
-                    if ( trdStack->flag & FLAG_STP_ROW )
-                    {
-                      cmplxData = &plan->d_plainData[(y*trdStack->noSteps + step)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
-                      powers    = &plan->d_plainPowers[(y*trdStack->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
-                    }
-                    else if ( trdStack->flag & FLAG_STP_PLN )
-                    {
-                      cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
-                      powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
-                    }
-
-                    if ( trdStack->flag & FLAG_CUFFTCB_OUT )
-                    {
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                      /*
-                        for( int jj = 0; jj < plan->numrs[step]; jj++)
-                        {
-                          float *add = gpuPowers[step][harm].getP(jj*2+1,y);
-                          gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
-                        }
-                       */
-                    }
-                    else
-                    {
-                      //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                    }
-                  }
-
-                  sz += cStack->inpStride;
-                }
-                harm++;
-              }
-
-              // New events for Synchronsition (this event will ovrride the previous event)
-              cudaEventRecord(cStack->prepComp, cStack->fftIStream);
-              cudaEventRecord(cStack->plnComp, cStack->fftPStream);
-            }
-          }
-
-          //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"Error synchronising");
-
           FOLD // Now do an equivalent CPU search  .
           {
-            for ( si = 0; si < trdStack->noSteps ; si ++) // Loop over steps
+            for ( int si = 0; si < trdStack->noSteps ; si ++) // Loop over steps
             {
               startr  = startrs[si];
               lastr   = lastrs[si];
@@ -900,66 +826,130 @@ int main(int argc, char *argv[])
               }
               free_ffdotpows(fundamental);
             }
+
+            FOLD // Copy data from device  .
+            {
+              ulong sz  = 0;
+              harm      = 0;
+
+              // Write data to page locked memory
+              for (int ss = 0; ss < trdStack->noStacks; ss++)
+              {
+                cuFfdotStack* cStack = &trdStack->stacks[ss];
+
+                // Synchronise
+                //cudaStreamWaitEvent(cStack->fftPStream, cStack->plnComp, 0);
+                for (int si = 0; si < cStack->noInStack; si++)
+                {
+                  cuHarmInfo* cHInfo    = &trdStack->hInfos[harm];      // The current harmonic we are working on
+                  cuFFdot*    plan      = &cStack->plains[si];          // The current plain
+
+                  for (int step = 0; step < trdStack->noSteps; step++)
+                  {
+                    int diff = plan->numrs[step] - cHInfo->numrs;
+
+                    if ( diff != 0 )
+                    {
+                      TMP
+                    }
+
+                    // Copy input data from GPU
+                    fcomplexcu *data = &trdStack->d_iData[sz];
+                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
+
+                    // Copy pain from GPU
+                    for( int y = 0; y < cHInfo->height; y++ )
+                    {
+                      fcomplexcu *cmplxData;
+                      float *powers;
+                      if ( trdStack->flag & FLAG_STP_ROW )
+                      {
+                        cmplxData = &plan->d_plainData[(y*trdStack->noSteps + step)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
+                        powers    = &plan->d_plainPowers[(y*trdStack->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
+                      }
+                      else if ( trdStack->flag & FLAG_STP_PLN )
+                      {
+                        cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
+                        powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
+                      }
+
+                      if ( trdStack->flag & FLAG_CUFFTCB_OUT )
+                      {
+                        CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        /*
+                        for( int jj = 0; jj < plan->numrs[step]; jj++)
+                        {
+                          float *add = gpuPowers[step][harm].getP(jj*2+1,y);
+                          gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
+                        }
+                         */
+                      }
+                      else
+                      {
+                        //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
+                        CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      }
+                    }
+
+                    sz += cStack->inpStride;
+                  }
+                  harm++;
+                }
+
+                // New events for Synchronsition (this event will ovrride the previous event)
+                cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+                cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+              }
+            }
+
+            //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"Error synchronising");
+
+
           }
 
           FOLD // Print MSE  .
           {
-            for ( si = 0; si < trdStack->noSteps ; si ++) // Loop over steps
+            for ( int si = 0; si < trdStack->noSteps ; si ++) // Loop over steps
             {
-              printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
+              bool good = true;
+              bool bad = false;
+
+              if (printDetails)
+                printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
+
               for ( int harz = 0; harz < trdStack->noHarms; harz++ )
               {
                 basicStats stat = gpuInput[si][harz].getStats(true);
                 double MSE = gpuInput[si][harz].MSE(cpuInput[si][harz]);
                 double ERR =  MSE / stat.sigma ;
 
-                printf("   Input: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
-
-                if ( ERR > 1e-6  )
-                  badInp++;
-
-                if      ( ERR > 1e1   )
-                  printf("  BAD!    Not even in the same realm.\n");
-                else if ( ERR > 1e0   )
-                  printf("  Bad.  \n" );
-                else if ( ERR > 1e-3  )
-                  printf("  Bad.   But not that bad.\n");
-                else if ( ERR > 1e-6 )
-                  printf("  Close  But not great. \n");
-                else if ( ERR > 1e-9 )
-                  printf("  GOOD  But a bit high.\n");
-                else if ( ERR > 1e-15 )
-                  printf("  GOOD \n"  );
-                else if ( ERR > 1e-19 )
-                  printf("  GOOD  Very good.\n"  );
-                else
-                  printf("  Great \n");
-
-              }
-
-              if ( trdStack->flag & FLAG_CUFFTCB_OUT )
-              {
-                printf("\n");
-                for ( int harz = 0; harz < trdStack->noHarms; harz++ )
+                if ( ERR > 1e-10  )
                 {
-                  basicStats stat = gpuPowers[si][harz].getStats(true);
-                  double MSE = gpuPowers[si][harz].MSE(cpuPowers[si][harz]);
-                  double ERR =  MSE / stat.sigma ;
+                  if ( good && !printDetails )
+                    printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
 
-                  printf("  Powers: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
-                  if ( ERR > 1e-6  )
-                    badCplx++;
+                  good = false;
+                }
+                if ( ERR > 1e-6  )
+                {
+                  badInp++;
+                  bad = true;
+                }
+
+                if ( !good || printDetails )
+                {
+                  printf("   Input: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
                   if      ( ERR > 1e1   )
                     printf("  BAD!    Not even in the same realm.\n");
                   else if ( ERR > 1e0   )
                     printf("  Bad.  \n" );
-                  else if ( ERR > 1e-3  )
+                  else if ( ERR > 1e-4  )
                     printf("  Bad.   But not that bad.\n");
-                  else if ( ERR > 1e-6 )
+                  else if ( ERR > 1e-6  )
                     printf("  Close  But not great. \n");
-                  else if ( ERR > 1e-9 )
+                  else if ( ERR > 1e-10 )
                     printf("  GOOD  But a bit high.\n");
                   else if ( ERR > 1e-15 )
                     printf("  GOOD \n"  );
@@ -967,36 +957,108 @@ int main(int argc, char *argv[])
                     printf("  GOOD  Very good.\n"  );
                   else
                     printf("  Great \n");
+                }
 
-                  if ( harz == 1 && 0 )
+              }
+              if ( bad  )
+              {
+                for ( int harz = 0; harz < trdStack->noHarms; harz++ )
+                {
+                  printf("Harm: %02i\n", harz );
+                  printf("CPU: ");
+                  for ( int x = 0; x < 15; x++ )
                   {
-                    float *powArr     = (float*)plotPowers.getP(0,0);
+                    printf(" %9.6f ", cpuInput[si][harz].get(x,0));
+                  }
+                  printf("\n");
 
-                    int nX = gpuPowers[si][harz].ax(0)->noEls() ;
-                    int nY = gpuPowers[si][harz].ax(1)->noEls() ;
+                  printf("GPU: ");
+                  for ( int x = 0; x < 15; x++ )
+                  {
+                    printf(" %9.6f ", gpuInput[si][harz].get(x,0));
+                  }
+                  printf("\n");
+                }
+              }
 
-                    int width         = trdStack->hInfos[harz].numrs;
+              good = true;
+              bad  = false;
 
-                    // Copy CPU powers
-                    for(int y = 0; y < nY; y++ )
+              if ( trdStack->flag & FLAG_CUFFTCB_OUT )
+              {
+                if ( printDetails )
+                  printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
+
+                for ( int harz = 0; harz < trdStack->noHarms; harz++ )
+                {
+                  basicStats stat = gpuPowers[si][harz].getStats(true);
+                  double MSE = gpuPowers[si][harz].MSE(cpuPowers[si][harz]);
+                  double ERR =  MSE / stat.sigma ;
+
+                  if ( ERR > 1e-12 )
+                  {
+                    if ( good && !printDetails )
+                      printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
+
+                    good = false;
+                  }
+                  if ( ERR > 1e-6  )
+                  {
+                    badCplx++;
+                    bad = true;
+                  }
+
+                  if ( !good || printDetails )
+                  {
+                    printf("  Powers: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
+
+                    if      ( ERR > 1e1   )
+                      printf("  BAD!    Not even in the same realm.\n");
+                    else if ( ERR > 1e0   )
+                      printf("  Bad.  \n" );
+                    else if ( ERR > 1e-4  )
+                      printf("  Bad.   But not that bad.\n");
+                    else if ( ERR > 1e-6  )
+                      printf("  Close  But not great. \n");
+                    else if ( ERR > 1e-10 )
+                      printf("  GOOD  But a bit high.\n");
+                    else if ( ERR > 1e-15 )
+                      printf("  GOOD \n"  );
+                    else if ( ERR > 1e-19 )
+                      printf("  GOOD  Very good.\n"  );
+                    else
+                      printf("  Great \n");
+
+                    if ( !good && printDetails )
                     {
-                      memcpy(&powArr[y*width],gpuPowers[si][harz].getP(0,y), width*sizeof(float));
-                    }
-                    sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_GPU.png", firstStep+si+1, harz);
-                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
+                      float *powArr     = (float*)plotPowers.getP(0,0);
+
+                      int nX = gpuPowers[si][harz].ax(0)->noEls() ;
+                      int nY = gpuPowers[si][harz].ax(1)->noEls() ;
+
+                      int width         = trdStack->hInfos[harz].numrs;
+
+                      // Copy CPU powers
+                      for(int y = 0; y < nY; y++ )
+                      {
+                        memcpy(&powArr[y*width],gpuPowers[si][harz].getP(0,y), width*sizeof(float));
+                      }
+                      sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_GPU.png", firstStep+si+1, harz);
+                      draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
 
-                    // Copy CPU powers
-                    for(int y = 0; y < nY; y++ )
-                    {
-                      memcpy(&powArr[y*width],cpuPowers[si][harz].getP(0,y), width*sizeof(float));
+                      // Copy CPU powers
+                      for(int y = 0; y < nY; y++ )
+                      {
+                        memcpy(&powArr[y*width],cpuPowers[si][harz].getP(0,y), width*sizeof(float));
+                      }
+                      sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_CPU.png", firstStep+si+1, harz);
+                      draw2DArray6(fname, powArr, width, nY, width, nY*3);
                     }
-                    sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_CPU.png", firstStep+si+1, harz);
-                    draw2DArray6(fname, powArr, width, nY, width, nY*3);
                   }
                 }
 
-                if (0)
+                if ( bad )
                 {
                   for ( int harz = 0; harz < trdStack->noHarms; harz++ )
                   {
@@ -1014,43 +1076,57 @@ int main(int argc, char *argv[])
                       printf(" %9.6f ", gpuPowers[si][harz].get(x,0));
                     }
                     printf("\n");
-                    TMP;
                   }
-                  TMP;
                 }
               }
               else
               {
-                printf("\n");
+                if( printDetails )
+                  printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
+
                 for ( int harz = 0; harz < trdStack->noHarms; harz++ )
                 {
                   basicStats stat = gpuCmplx[si][harz].getStats(true);
                   double MSE = gpuCmplx[si][harz].MSE(cpuCmplx[si][harz]);
                   double ERR =  MSE / stat.sigma ;
 
-                  printf("   Cmplx: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
+                  if ( ERR > 1e-12  )
+                  {
+                    if ( good && !printDetails )
+                      printf("\n           ---- Step %03i of %03i ----\n",firstStep + si+1, maxxx);
 
+                    good = false;
+                  }
                   if ( ERR > 1e-6  )
+                  {
+                    bad = true;
                     badCplx++;
+                  }
 
-                  if      ( ERR > 1e1   )
-                    printf("  BAD!    Not even in the same realm.\n");
-                  else if ( ERR > 1e0   )
-                    printf("  Bad.  \n" );
-                  else if ( ERR > 1e-3  )
-                    printf("  Bad.   But not that bad.\n");
-                  else if ( ERR > 1e-6 )
-                    printf("  Close  But not great. \n");
-                  else if ( ERR > 1e-9 )
-                    printf("  GOOD  But a bit high.\n");
-                  else if ( ERR > 1e-15 )
-                    printf("  GOOD \n"  );
-                  else if ( ERR > 1e-19 )
-                    printf("  GOOD  Very good.\n"  );
-                  else
-                    printf("  Great \n");
+                  if ( !good || printDetails )
+                  {
+                    printf("   Cmplx: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdStack->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
-                  if ( harz == 1 && 0 )
+                    if      ( ERR > 1e1   )
+                      printf("  BAD!    Not even in the same realm.\n");
+                    else if ( ERR > 1e0   )
+                      printf("  Bad.  \n" );
+                    else if ( ERR > 1e-4  )
+                      printf("  Bad.   But not that bad.\n");
+                    else if ( ERR > 1e-6  )
+                      printf("  Close  But not great. \n");
+                    else if ( ERR > 1e-10 )
+                      printf("  GOOD  But a bit high.\n");
+                    else if ( ERR > 1e-15 )
+                      printf("  GOOD \n"  );
+                    else if ( ERR > 1e-19 )
+                      printf("  GOOD  Very good.\n"  );
+                    else
+                      printf("  Great \n");
+
+                  }
+
+                  if ( !good && 0 )
                   {
                     fcomplex* cmplx   = (fcomplex*)gpuCmplx[si][harz].getP(0,0);
                     float *powArr     = (float*)plotPowers.getP(0,0);
@@ -1104,27 +1180,25 @@ int main(int argc, char *argv[])
                   }
                 }
 
-                if (1)
+                if ( bad )
                 {
                   for ( int harz = 0; harz < trdStack->noHarms; harz++ )
                   {
                     printf("Harm: %02i\n", harz );
                     printf("CPU: ");
-                    for ( int x = 0; x < 10; x++ )
+                    for ( int x = 0; x < 15; x++ )
                     {
                       printf(" %9.6f ", cpuCmplx[si][harz].get(x,0));
                     }
                     printf("\n");
 
                     printf("GPU: ");
-                    for ( int x = 0; x < 10; x++ )
+                    for ( int x = 0; x < 15; x++ )
                     {
                       printf(" %9.6f ", gpuCmplx[si][harz].get(x,0));
                     }
                     printf("\n");
-                    TMP;
                   }
-                  TMP;
                 }
               }
             }
@@ -1153,10 +1227,11 @@ int main(int argc, char *argv[])
 
       if ( master->flag & CU_CAND_ARR )
       {
+        printf("\nCopying canidates from array to list.\n");
+
         nvtxRangePush("Add to list");
         int cdx;
 
-        int len = master->rHigh - master->rLow;
         long long numindep;
 
         double poww, sig, sigx, sigc, diff;
@@ -1168,19 +1243,18 @@ int main(int argc, char *argv[])
 
         cand* candidate = (cand*)master->h_candidates;
 
-        for (cdx = 0; cdx < len; cdx++)
+        for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)
         {
           poww        = candidate[cdx].power;
 
           if ( poww > 0 )
           {
-            printf("ADD %i/%i\n", cdx, len);
-
             numharm   = candidate[cdx].numharm;
             numindep  = obs.numindep[twon_to_index(numharm)];
             sig       = candidate[cdx].sig;
             rr        = candidate[cdx].r;
             zz        = candidate[cdx].z;
+
             candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
           }
         }
@@ -1190,9 +1264,6 @@ int main(int argc, char *argv[])
       if ( master->flag & CU_OUTP_DEVICE )
       {
         nvtxRangePush("Add to list");
-        int len = master->rHigh - master->rLow;
-
-        CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, master->retDataSize*maxxx, cudaMemcpyDeviceToHost), "Failed to copy data to device");
 
         int cdx;
         long long numindep;
@@ -1206,9 +1277,11 @@ int main(int argc, char *argv[])
 
         if ( master->retType == CU_SMALCAND &&  master->cndType == CU_FULLCAND )
         {
+          CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, master->SrchSz->noOutpR*sizeof(accelcandBasic), cudaMemcpyDeviceToHost), "Failed to copy data to device");
+
           accelcandBasic* bsk = (accelcandBasic*)master->h_retData;
 
-          for (cdx = 0; cdx < len; cdx++)
+          for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)
           {
             sig        = bsk[cdx].sigma;
 
@@ -1216,7 +1289,12 @@ int main(int argc, char *argv[])
             {
               numharm   = bsk[cdx].numharm;
               numindep  = obs.numindep[twon_to_index(numharm)];
-              rr        = cdx + master->rLow;
+
+              if ( master->flag  & FLAG_STORE_EXP )
+                rr      = master->SrchSz->searchRLow + cdx*ACCEL_DR;
+              else
+                rr      = master->SrchSz->searchRLow + cdx;
+
               zz        = bsk[cdx].z;
               candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
             }
@@ -1224,9 +1302,6 @@ int main(int argc, char *argv[])
         }
         nvtxRangePop();
       }
-
-      //if ( time1 != 0 )
-      //  printf("\n\nCopy %5.3f  Convolve %5.3f    %5.3f X  \n",time1 / 1000.0, time2 / 1000.0, time1/(double)time2 );
 
       cudaProfilerStop();
 
@@ -1239,18 +1314,15 @@ int main(int argc, char *argv[])
       printCands("CPU_Cands.csv", candsCPU);
       printCands("GPU_Cands.csv", candsGPU);
     }
-
   }
 
   printf("\n\nDone searching.\n");
   printf("   We got %lli bad input values.\n", badInp);
   printf("   We got %lli bad complex plains.\n\n", badCplx);
 
-  return (0);
-
   printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
-  if(0) /* Candidate list trimming and optimization */
+  if(1) /* Candidate list trimming and optimization */
   {
     int numcands;
     GSList *listptr;
