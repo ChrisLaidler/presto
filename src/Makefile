@@ -228,7 +228,7 @@ ifeq ($(WITH_CUDA),yes)
   NVCC_SRCS 		= $(wildcard *.cu)
   NVCC_OBS  		= $(patsubst %.cu, %.cu.o,  $(NVCC_SRCS)  )
   
-  NVCCFLAGS		 	+= -keep -DCUDA -Xcompiler -fPIC
+  NVCCFLAGS		 	+= -DCUDA -Xcompiler -fPIC
   NVCLFLAGS			+= -DCUDA -Xcompiler -fPIC
   
   CXXFLAGS 			+= -DCUDA $(CFLAGS)	$(CUDAINC)

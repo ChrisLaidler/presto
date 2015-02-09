@@ -1539,7 +1539,7 @@ void convolveStack(cuStackList* plains)
     char fname[1024];
     for (int i = 0; i< plains->noHarms; i++)
     {
-      sprintf(fname, "./%08.0f_pln_%02i_%04.02f_GPU.png", plains->rLow, i, plains->hInfos[plains->pIdx[i]].harmFrac);
+      sprintf(fname, "./%08.0f_pln_%02i_%04.02f_GPU.png", plains->plains->rLow[0], i, plains->hInfos[plains->pIdx[i]].harmFrac);
       drawPlainCmplx(plains->plains[plains->pIdx[i]].d_plainData, fname, plains->hInfos[plains->pIdx[i]].inpStride, plains->hInfos[plains->pIdx[i]].height );
     }
   }

@@ -76,7 +76,6 @@ fcomplex *complex_corr_conv(fcomplex * data, fcomplex * kernel,
    /* Perform the inverse FFT on the result and return */
 
    COMPLEXFFT(tmpdat, numdata, 1);
-
    return tmpdat;
 }
 

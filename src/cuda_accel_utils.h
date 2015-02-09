@@ -185,16 +185,11 @@ typedef struct cuSearchList
     iHarmList   yInds;          ///
     fHarmList   frac;           ///
     iHarmList   heights;        ///
-    iHarmList   widths;         ///
+    iHarmList   widths;         /// The width of usable rvalues in each plain
     iHarmList   strides;        ///
     iHarmList   ffdBuffre;      ///
     iHarmList   zMax;           ///
-    //iHarmList   fullRLow;       ///
     iHarmList   rLow;           ///
-
-    //fHarmList   idxSum;
-
-    double     searchRLow;      /// The value of the r bin to start the search at
 } cuSearchList;
 
 typedef struct cuSearchItem
