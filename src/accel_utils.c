@@ -1,7 +1,5 @@
 #include "accel.h"
 #include "accelsearch_cmd.h"
-#include <fcntl.h>
-#include <sys/mman.h>
 
 #if defined (__GNUC__)
 #  define inline __inline__
@@ -25,8 +23,7 @@
 #define index_to_twon(n) (1<<n)
 
 /* Return x such that 2**x = n */
-//static
-inline int twon_to_index(int n)
+static inline int twon_to_index(int n)
 {
    int x = 0;
 
@@ -231,7 +228,7 @@ void free_subharminfos(accelobs *obs, subharminfo **shis)
 }
 
 
-static accelcand *create_accelcand(float power, float sigma,
+accelcand *create_accelcand(float power, float sigma,
                                    int numharm, double r, double z)
 {
    accelcand *obj;
@@ -285,7 +282,6 @@ GSList *sort_accelcands(GSList * list)
 }
 
 
-// static Taken out by Chris Laidler for GPU accel search
 GSList *insert_new_accelcand(GSList * list, float power, float sigma,
                                     int numharm, double rr, double zz, int *added)
 /* Checks the current list to see if there is already */
@@ -307,23 +303,34 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
 
    while ((tmp_list->next) && (((accelcand *) (tmp_list->data))->r < rr)) {
       prev_list = tmp_list;
-      tmp_list = tmp_list->next;
+      tmp_list  = tmp_list->next;
    }
-   next_diff_r = fabs(rr - ((accelcand *) (tmp_list->data))->r);
+
+   if ( ((accelcand *) (tmp_list->data))->r >= rr ) {
+     // We have a Next canidate
+     next_diff_r = fabs(rr - ((accelcand *) (tmp_list->data))->r);
+   }
+   else if ( ((accelcand *) (tmp_list->data))->r < rr ) {
+     // There is no next so we are at the end of the list
+     next_diff_r  = ACCEL_CLOSEST_R + 1.0 ;
+     prev_list    = tmp_list ;
+     tmp_list     = NULL ;
+   }
+
    if (prev_list)
       prev_diff_r = fabs(rr - ((accelcand *) (prev_list->data))->r);
 
    /* Similar candidate(s) is(are) present */
 
-   if (prev_diff_r < ACCEL_CLOSEST_R) {
-      /* Overwrite the prev cand */
+   if (prev_diff_r < ACCEL_CLOSEST_R) { // Clost to prev
       if (((accelcand *) (prev_list->data))->sigma < sigma) {
+        /* Overwrite the prev cand */
          free_accelcand(prev_list->data, NULL);
          prev_list->data = (gpointer *) create_accelcand(power, sigma,
                                                          numharm, rr, zz);
          *added = 1;
       }
-      if (next_diff_r < ACCEL_CLOSEST_R) {
+      if (next_diff_r < ACCEL_CLOSEST_R) { // Close to next
          if (((accelcand *) (tmp_list->data))->sigma < sigma) {
             free_accelcand(tmp_list->data, NULL);
             if (*added) {
@@ -338,9 +345,9 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
             }
          }
       }
-   } else if (next_diff_r < ACCEL_CLOSEST_R) {
-      /* Overwrite the next cand */
+   } else if (next_diff_r < ACCEL_CLOSEST_R) { // Close to next
       if (((accelcand *) (tmp_list->data))->sigma < sigma) {
+         /* Overwrite the next cand */
          free_accelcand(tmp_list->data, NULL);
          tmp_list->data = (gpointer *) create_accelcand(power, sigma,
                                                         numharm, rr, zz);
@@ -350,15 +357,15 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
       new_list = g_slist_alloc();
       new_list->data = (gpointer *) create_accelcand(power, sigma, numharm, rr, zz);
       *added = 1;
-      if (!tmp_list->next &&
-          (((accelcand *) (tmp_list->data))->r < (rr - ACCEL_CLOSEST_R))) {
-         tmp_list->next = new_list;
-         return list;
-      }
-      if (prev_list) {
+      if ( prev_list && !tmp_list ) {
+        // Add to end
+        prev_list->next = new_list;
+      } else if ( prev_list && new_list ) {
+         // Add between
          prev_list->next = new_list;
          new_list->next = tmp_list;
-      } else {
+      } else if ( !prev_list && tmp_list ) {
+         // Add to Front
          new_list->next = list;
          return new_list;
       }
@@ -526,7 +533,8 @@ static void center_string(char *outstring, char *instring, int width)
 
    len = strlen(instring);
    if (width < len) {
-      //printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n", len, instring, width);
+      printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n",
+             len, instring, width);
    }
    tmp = memset(outstring, ' ', width);
    outstring[width] = '\0';
@@ -652,9 +660,9 @@ void output_fundamentals(fourierprops * props, GSList * list,
          for (jj = 0; jj < cand->numharm; jj++) {
             harm = cand->derivs[jj];
             if (obs->nph > 0.0)
-               amp = sqrt(harm.pow / obs->nph    );
+               amp = sqrt(harm.pow / obs->nph);
             else
-               amp = sqrt(harm.pow / harm.locpow );
+               amp = sqrt(harm.pow / harm.locpow);
             phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
             coherent_r += amp * cos(harm.phs + phscorr);
             coherent_i += amp * sin(harm.phs + phscorr);
@@ -958,13 +966,10 @@ ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
 
    /* Perform the correlations */
 
-   //corrData* corrd = initCorrData();
-
    result = gen_cmatrix(ffdot->numzs, ffdot->numrs);
    datainf = RAW;
    for (ii = 0; ii < ffdot->numzs; ii++) {
-      nrs = corr_complex(/*corrd,*/
-                         data, numdata, datainf,
+      nrs = corr_complex(data, numdata, datainf,
                          shi->kern[ii].data, fftlen, FFT,
                          result[ii], ffdot->numrs, binoffset,
                          ACCEL_NUMBETWEEN, binoffset, CORR);
@@ -973,7 +978,6 @@ ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
 
    // Always free data
    vect_free(data);
-   //clearCorrData(corrd);
 
    /* Convert the amplitudes to normalized powers */
 
@@ -1056,15 +1060,6 @@ void add_ffdotpows(ffdotpows * fundamental,
         for (jj = 0; jj < fundamental->numrs; jj++) {
             rind = subharmonic->rinds[jj];
             fundamental->powers[ii][jj] += subharmonic->powers[zind][rind];
-
-            if (ii == 100 && jj == 100 )
-               {
-                //printf("harm: %i  rLow: %f  is: %i ", harm_fract*16, step, ix);
-
-                 //if ( tid == 100 && trm == 100 && step == 0 )
-                   //printf("stage:\t %i \t harm:\t %02i \t Power:\t %15.7f \t sum:\t %15.7f \n", 0, 0,  subharmonic->powers[zind][rind],  fundamental->powers[ii][jj] );
-               }
-
         }
     }
 }
@@ -1177,9 +1172,8 @@ GSList *search_ffdotpows(ffdotpows * ffdot, int numharm,
             sig = candidate_sigma(pow, numharm, numindep);
             rr = (ffdot->rlo + jj * (double) ACCEL_DR) / (double) numharm;
             zz = (ffdot->zlo + ii * (double) ACCEL_DZ) / (double) numharm;
-
             cands = insert_new_accelcand(cands, pow, sig, numharm, rr, zz, &added);
-             if (added && !obs->dat_input)
+            if (added && !obs->dat_input)
                fprintf(obs->workfile,
                        "%-7.2f  %-7.4f  %-2d  %-14.4f  %-14.9f  %-10.4f\n",
                        pow, sig, numharm, rr, rr / obs->T, zz);
