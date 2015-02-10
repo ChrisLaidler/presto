@@ -355,17 +355,17 @@ $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
 	
 ###############   Tests   ################
 
-test_sla:
+test_sla: slalib/sla_test
 	@echo ""
 	@echo "Testing SLALIB:"
 	@slalib/sla_test
 
-timetest: 
+timetest: timetest
 	$(CC) -o $@ timetest.c
 	./timetest
 	rm -f timetest
 
-makewisdom:
+makewisdom: makewisdom
 	$(CC) $(CLINKFLAGS) -o $@ makewisdom.c $(FFTLINK)
 	./makewisdom
 	cp fftw_wisdom.txt $(PRESTO)/lib
