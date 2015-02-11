@@ -231,6 +231,9 @@ ifeq ($(WITH_CUDA),yes)
   NVCCFLAGS		 	+= -DCUDA -Xcompiler -fPIC
   NVCLFLAGS			+= -DCUDA -Xcompiler -fPIC
   
+  CFLAGS 				+= -DCUDA $(CUDAINC)
+  FLAGS 				+= -DCUDA $(CUDAINC)
+  
   CXXFLAGS 			+= -DCUDA $(CFLAGS)	$(CUDAINC)
   LDFLAGS 			+= -DCUDA $(CUDAINC) $(CLINKFLAGS) 
 
