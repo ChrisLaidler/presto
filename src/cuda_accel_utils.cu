@@ -4585,7 +4585,7 @@ void testzm()
   CUFFT_SAFE_CALL(cufftCreate(&plan),"Failed associating a CUFFT plan with FFT input stream\n");
 }
 
-void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, float* powers )
+void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers )
 {
   int gpuC = 0;
   int dev  = 0;
@@ -4593,8 +4593,8 @@ void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, f
   int nplains[10];
   int nsteps[10];
   int gpu[10];
-  nplains[0]=4;
-  nsteps[0]=4;
+  nplains[0]=2;
+  nsteps[0]=2;
   int width = 8;
   long long numindep[numharmstages];
   float powc[numharmstages];
@@ -4610,9 +4610,9 @@ void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, f
 
   fftInfo fftinf;
   fftinf.fft    = fft;
-  fftinf.nor    = noEls;
-  fftinf.rlow   = 0;
-  fftinf.rhi    = noEls;
+  fftinf.nor    = noBins;
+  fftinf.rlow   = startBin;
+  fftinf.rhi    = endBin;
 
   int numz      = (zMax / ACCEL_DZ) * 2 + 1;
 
@@ -4776,7 +4776,7 @@ void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, f
       {
         //trdStack->noSteps = maxxx - firstStep;
         //setPlainPointers(trdStack);
-        rest = maxxx - firstStep;
+        //rest = maxxx - firstStep;
       }
 
       int si;
@@ -5013,3 +5013,85 @@ void plotPlains(cuStackList* plains)
 #endif
 
 }
+
+/* Return x such that 2**x = n */
+//static
+inline int twon_to_index(int n)
+{
+  int x = 0;
+
+  while (n > 1) {
+    n >>= 1;
+    x++;
+  }
+  return x;
+}
+
+/*
+void generatePlain(fftInfo fft, long long loBin, long long hiBin, int zMax, int noHarms)
+{
+  int width = hiBin - loBin;
+  int gpuC = 0;
+  int dev  = 0;
+  int nplainsC = 5;
+  int nplains[10];
+  int nsteps[10];
+  int gpu[10];
+  nplains[0]=2;
+  nsteps[0]=2;
+  int numharmstages = twon_to_index(noHarms);
+  noHarms = 1 << numharmstages ;
+  long long numindep[numharmstages];
+  float powc[numharmstages];
+
+  int flags;
+
+  gpu[0] = 1;
+
+  cuStackList* kernels;             // List of stacks with the kernels, one for each device being used
+  cuStackList* master   = NULL;     // The first kernel stack created
+  int nPlains           = 0;        // The number of plains
+  int noKers            = 0;        // Real number of kernels/devices being used
+
+  fftInfo fftinf;
+  fftinf.fft    = fft;
+  fftinf.nor    = centerBin + width*2;
+  fftinf.rlow   = centerBin - width;
+  fftinf.rhi    = centerBin + width;
+
+  int ww =  twon_to_index(width);
+
+  int numz      = (zMax / ACCEL_DZ) * 2 + 1;
+
+  for (int ii = 0; ii < numharmstages; ii++) // Calculate numindep
+  {
+    powc[ii] = 0;
+
+    if (numz == 1)
+      numindep[ii] = (fftinf.rhi - fftinf.rlow) / (1<<ii);
+    else
+    {
+      numindep[ii] = (fftinf.rhi - fftinf.rlow) * (numz + 1) * (ACCEL_DZ / 6.95) / (1<<ii);
+    }
+  }
+
+  flags = FLAG_CUFFTCB_OUT ;
+
+  gpu[0] = 0;
+  kernels = new cuStackList;
+  int added = initHarmonics(kernels, master, numharmstages, zMax, fftinf, 0, 1, ww, 1, powc, numindep, flags, CU_FLOAT, CU_FLOAT, NULL );
+  cuStackList* stkLst = initStkList(kernels, 0, 0);
+
+  cuStackList* trdStack = stkLst;
+  double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
+  double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
+
+  startrs[0] = (centerBin - width) * noHarms ;
+  lastrs[0] = startrs[0] + master->accelLen * ACCEL_DR - ACCEL_DR;
+
+  max_ffdot_planeCU(trdStack, startrs, lastrs, 1, (fcomplexcu*)fftinf.fft, numindep, NULL);
+
+  nvtxRangePop();
+}
+*/
+

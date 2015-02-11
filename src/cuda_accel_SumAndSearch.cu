@@ -49,7 +49,7 @@ __device__ __constant__ long long  NUMINDEP[MAX_HARM_NO];
  * @param n
  * @return
  */
-inline int twon_to_index(int n)
+__host__ __device__ inline int twon_to_index(int n)
 {
   int x = 0;
 
@@ -3013,7 +3013,6 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
 */
 }
 
-
 /** Sum and Search - loop down - column max - multi-step .
  *
  * @param searchList
@@ -3261,8 +3260,8 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                         cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                       }
 
-                      //if ( (y+yPlus) == (searchList.heights.val[0]-1)/2 )
-                      if ( (y+yPlus) == 0 )
+                      if ( (y+yPlus) == (zeroHeight-1)/2.0 )
+                      //if ( (y+yPlus) == 0 )
                       {
                         powers[step][yPlus]        += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                       }
@@ -4310,23 +4309,17 @@ void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
 
         nvtxRangePush("CPU Process results");
 
-        plains->noResults=0;
-
-        int noOut = plains->retDataSize/sizeof(float);
-
         for ( int step = 0; step < plains->noSteps; step++ )
         {
-          int gIdx = plains->plains[plains->noHarms-1].searchRlowPrev[step] ;
+          int gIdx = plains->plains[0].searchRlowPrev[step] ;
 
           if ( plains->flag & FLAG_STORE_EXP )
-            gIdx =  ( plains->plains[plains->noHarms-1].searchRlowPrev[step] ) * ACCEL_RDR ;
+            gIdx =  ( plains->plains[0].searchRlowPrev[step] ) * ACCEL_RDR ;
 
-          float* gout = (float*)plains->h_candidates+noOut*step;
+          float* gWrite = (float*)plains->h_candidates + gIdx;
+          float* pRead = (float*)(plains->h_retData) + plains->hInfos->width*step;
 
-          memcpy(&gout[gIdx], (float*)(plains->h_retData + plains->hInfos->halfWidth*ACCEL_RDR), plains->plains->numrs[0]*sizeof(float));
-
-  #ifdef CBL
-  #endif
+          memcpy(gWrite, pRead, plains->plains->numrs[0]*sizeof(float));
         }
         nvtxRangePop();
 

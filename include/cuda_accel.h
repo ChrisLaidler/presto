@@ -168,12 +168,14 @@ typedef struct fftCnvlvInfo
 
 } fftCnvlvInfo;
 
+/** A structure to hold infromation on a raw fft
+ */
 typedef struct fftInfo
 {
-    double      rlow;
-    double      rhi;
-    int         nor;
-    fcomplex*   fft;
+    double      rlow;     /// The Low bin   (of intrest)
+    double      rhi;      /// The high bin  (of intrest)
+    int         nor;      /// The number of bins in the FFT
+    fcomplex*   fft;      /// An array of complexnumbers (nor long)
 } fftInfo;
 
 //------------- Arrays that can be passed to kernels -------------------\\
@@ -399,6 +401,15 @@ typedef struct cuStackList
 
 } cuStackList;
 
+typedef struct cuAccelInfo
+{
+    int             noDevices;          /// The number of devices (GPU's to use in the search)
+    int*            devId;              /// A list noDevices long of CUDA GPU device id's
+    cuStackList*    kernels;            /// A list noDevices long of convolution kernels: These hold: basic info, the adres of the convolution kernels on the GPU, the CUFFT plan.
+    int*            noStacks;           /// A list noDevices long of the number of
+    cuStackList**   stacks;            /// A list noDevices long of convolution kernels: These hold: basic info, the adres of the convolution kernels on the GPU, the CUFFT plan.
+
+} cuAccelInfo;
 
 //===================================== Function prototypes ===============================================\\
 
@@ -451,6 +462,6 @@ ExternC void setStkPointers(cuStackList* stkLst);
 
 ExternC void setPlainPointers(cuStackList* stkLst);
 
-ExternC void accelMax(fcomplex* fft, long long noEls, short zMax, short numharmstages, float* powers );
+ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers );
 
 #endif // CUDA_ACCEL_INCLUDED

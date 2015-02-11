@@ -20,9 +20,6 @@
 
 
 
-
-
-
 #undef FOLD
 #undef Fout
 
