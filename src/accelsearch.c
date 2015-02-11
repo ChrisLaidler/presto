@@ -54,6 +54,20 @@ static void print_percent_complete(int current, int number, char *what, int rese
    }
 }
 
+
+inline int twon_to_index(int n) // TODO: fix this to be called from one place (ie not static in c file)
+{
+  int x = 0;
+
+  while (n > 1)
+  {
+    n >>= 1;
+    x++;
+  }
+  return x;
+}
+
+
 int main(int argc, char *argv[])
 {
    int ii;
@@ -372,8 +386,6 @@ int main(int argc, char *argv[])
           int ss = 0;
           int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ; // The number of plains to make
           
-          //float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
-          
           if ( maxxx < 0 )
             maxxx = 0;
           
@@ -407,9 +419,8 @@ int main(int argc, char *argv[])
               
               if ( firstStep + trdStack->noSteps >= maxxx )
               {
-                //trdStack->noSteps = maxxx - firstStep;
-                //setPlainPointers(trdStack);
-                rest = maxxx - firstStep;
+								// TODO: there are a number of families we dont need to run see if we can use 'setPlainPointers(trdStack)'
+								// To see if we can do less work on the last step
               }
 
               int si;
@@ -450,92 +461,73 @@ int main(int argc, char *argv[])
             for ( pln = 0 ; pln < 2; pln++ )
             {
               search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
-              trdStack->mxSteps = rest;
             }
           }
           
           print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
 
-          /*
-          if ( master->flag & CU_CAND_SINGLE )
+          if ( master->flag & CU_CAND_ARR )
           {
+            printf("\nCopying canidates from array to list for optemisation.\n");
+
             nvtxRangePush("Add to list");
             int cdx;
-            int len = master->rHigh - master->rLow;
+
             long long numindep;
-            
+
             double poww, sig, sigx, sigc, diff;
             double gpu_p, gpu_q;
             double rr, zz;
             int added = 0;
             int numharm;
-
             poww = 0;
 
-            for (cdx = 0; cdx < len; cdx++)
+            cand* candidate = (cand*)master->h_candidates;
+
+            for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)  // Loop
             {
-              poww        = master->h_candidates[cdx].power;
+              poww        = candidate[cdx].power;
 
               if ( poww > 0 )
               {
-                double sig = master->h_candidates[cdx].sig;
-                int biggest = 1;
+                numharm   = candidate[cdx].numharm;
+                numindep  = obs.numindep[twon_to_index(numharm)];
+                sig       = candidate[cdx].sig;
+                rr        = candidate[cdx].r;
+                zz        = candidate[cdx].z;
 
-                int dx;
-                for ( dx = cdx - ACCEL_CLOSEST_R ; dx <= cdx + ACCEL_CLOSEST_R; dx++ )
+                candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+
+                if (added)
                 {
-                  if ( dx >= 0 && dx < len )
-                  {
-                    if ( master->h_candidates[dx].sig > sig )
-                    {
-                      biggest = 0;
-                      break;
-                    }
-                  }
+                  noCands++;
                 }
-
-                if ( biggest )
-                {
-                  numharm   = master->h_candidates[cdx].numharm;
-                  numindep  = obs.numindep[twon_to_index(numharm)];
-                  sig       = master->h_candidates[cdx].sig;
-                  rr        = master->h_candidates[cdx].r;
-                  zz        = master->h_candidates[cdx].z;
-                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-
-                  if (added)
-                  {
-                    noCands++;
-                  }
-                }
-              }            
+              }
             }
-
-            nvtxRangePop();
           }
-          */
 
+          /* TODO: fix this section using SrchSz paramiters
           if ( master->flag & CU_OUTP_DEVICE )
           {
             nvtxRangePush("Add to list"); 
             int len = master->rHigh - master->rLow;
-            
+
             CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, master->retDataSize*maxxx, cudaMemcpyDeviceToHost), "Failed to copy data to device");
-            
+
             int cdx; 
             long long numindep;
-            
+
             double poww, sig, sigx, sigc, diff;
             double gpu_p, gpu_q;
             double rr, zz;
             int added = 0;
             int numharm;
             poww = 0;
-            
+
             if ( master->retType == CU_SMALCAND &&  master->cndType == CU_FULLCAND )
             {
               accelcandBasic* bsk = (accelcandBasic*)master->h_retData;
-              
+
               for (cdx = 0; cdx < len; cdx++)
               {
                 sig        = bsk[cdx].sigma;
@@ -552,10 +544,10 @@ int main(int argc, char *argv[])
             }
             nvtxRangePop();
           }
-          
-          //cudaProfilerStop();
+          */
 
-          //cudaDeviceSynchronize();
+          //cudaProfilerStop(); // For profiling of only the 'critical' GPU section
+
           gettimeofday(&end, NULL);
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
           printf("  gpuTime %f\n", gpuTime/1000.0);
@@ -565,10 +557,10 @@ int main(int argc, char *argv[])
 #ifndef DEBUG
           printCands("GPU_Cands.csv", candsGPU);
 #endif
-          //cudaDeviceSynchronize();
         }
       }
-
+#else
+      fprintf(stderr,"ERROR: Not compiled with CUDA.\n");
 #endif
    }
 
