@@ -1668,29 +1668,28 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
   const int tid   = blockIdx.x  * (SS3_Y*SS3_X) +  bidx;          /// Global thread id (ie column)
   const int width = searchList.widths.val[0];                     /// The width of usable data
 
+
+
   if ( tid < width )
   {
     const int noHarms     = ( 1 << (noStages-1) ) ;
     const int nPowers     = 8 ; // (noStages)*2;      					// NB this is a configurable value, The number of powers to batch calculate together, *2 is a "random choice it would be this or noHarms
     const int zeroHeight  = searchList.heights.val[0];
-    const int oStride     = searchList.strides.val[0];          /// The stide of the output data
+    const int oStride     = searchList.strides.val[0];          /// The stride of the output data
+    int iy, ix;                                                 /// Global indices scaled to sub-plains
+    int y;
 
 #if TEMPLATE_SEARCH == 1
     accelcandBasic candLists[noStages][noSteps];
-
     int         inds[noSteps][noHarms];
     fcomplexcu* pData[noSteps][noHarms];
     float       powers[noSteps][nPowers];           						// registers to hold values to increase mem cache hits
 #else
     accelcandBasic candLists[noStages][MAX_STEPS];
-
     int         inds[MAX_STEPS][noHarms];
     fcomplexcu* pData[MAX_STEPS][noHarms];
     float       powers[MAX_STEPS][nPowers];         						// registers to hold values to increase mem cache hits
 #endif
-
-    int iy, ix;																									/// Global indiciec scaled to sub-plains
-    int y;									
 
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
@@ -1703,7 +1702,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 #endif
         for ( int step = 0; step < noSteps; step++)     				// Loop over steps
         {
-          int drlo = (int) ( ACCEL_RDR * rLows.arry[step] * searchList.frac.val[harm] + 0.5 ) * ACCEL_DR ;
+          int drlo =   (int) ( ACCEL_RDR * rLows.arry[step] * searchList.frac.val[harm] + 0.5 ) * ACCEL_DR ;
           float srlo = (int) ( ACCEL_RDR * ( rLows.arry[step] + tid * ACCEL_DR ) * searchList.frac.val[harm] + 0.5 ) * ACCEL_DR ;
 
           ix = (srlo - drlo) * ACCEL_RDR + searchList.ffdBuffre.val[harm] ;
@@ -1848,7 +1847,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
               iy        = YINDS[ searchList.yInds.val[harm] + trm ];
 
 #if TEMPLATE_SEARCH == 1
-              //#pragma unroll
+              #pragma unroll
 #endif
               for ( int step = 0; step < noSteps; step++)        // Loop over steps  .
               {
@@ -1938,7 +1937,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
     }
 
     // Write results back to DRAM and calculate sigma if needed
-    if      ( FLAGS & CU_OUTP_DEVICE   )
+    if      ( FLAGS & CU_OUTP_DEVICE && 0)
     {
 //#pragma unroll
       for ( int stage = 0 ; stage < noStages; stage++)
@@ -2788,8 +2787,8 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     if      ( FLAGS & FLAG_STP_ROW )
       add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_PLN )
-    //  add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+    else if ( FLAGS & FLAG_STP_PLN )
+      add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
     //else if ( FLAGS & FLAG_STP_STK )
     //  add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
     else
@@ -2802,8 +2801,8 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     if      ( FLAGS & FLAG_STP_ROW )
       add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_PLN )
-    //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+    else if ( FLAGS & FLAG_STP_PLN )
+      add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
     //else if ( FLAGS & FLAG_STP_STK )
     //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
     else
@@ -3013,7 +3012,7 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
 */
 }
 
-/** Sum and Search - loop down - column max - multi-step .
+/** Sum and Search - loop down - column max - multi-step  .
  *
  * @param searchList
  * @param d_cands
@@ -3691,51 +3690,51 @@ __global__ void add_and_searchCU4(cuSearchList searchList, accelcandBasic* d_can
    */
 }
 
-int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long long *numindep )
+int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long long *numindep )
 {
   int noHarms         = (1 << (numharmstages - 1) );
-
-  int szx = sizeof(int)*8;
-
-  if (stkLst->hInfos[0].height* (noHarms /*-1*/ ) > MAX_YINDS)
-  {
-    printf("ERROR! YINDS to small!");
-  }
-  int *indsY    = (int*) malloc(stkLst->hInfos[0].height * noHarms * sizeof(int));
-  int bace      = 0;
-  stkLst->hInfos[0].yInds = 0;
-  for (int ii = 0; ii< stkLst->noHarms; ii++)
-  {
-    if ( ii == 0 )
-    {
-      for (int j = 0; j< stkLst->hInfos[0].height; j++)
-      {
-        indsY[bace + j] = j;
-      }
-    }
-    else
-    {
-      for (int j = 0; j< stkLst->hInfos[0].height; j++)
-      {
-        int zz    = -stkLst->hInfos[0].zmax+ j* ACCEL_DZ;
-        int subz  = calc_required_z(stkLst->hInfos[ii].harmFrac, zz);
-        int zind  = index_from_z(subz, -stkLst->hInfos[ii].zmax);
-        if (zind< 0|| zind>= stkLst->hInfos[ii].height)
-        {
-          int Err = 0;
-          printf("ERROR! YINDS Wrong!");
-        }
-        indsY[bace + j] = zind;
-      }
-    }
-    stkLst->hInfos[ii].yInds = bace;
-    bace += stkLst->hInfos[0].height;
-  }
-
   void *dcoeffs;
 
-  cudaGetSymbolAddress((void **)&dcoeffs, YINDS);
-  CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice),                      "Copying Y indices to device");
+  FOLD // Calculate Y coefficients and copy to constant memory
+  {
+    if (batch->hInfos[0].height * (noHarms /*-1*/ ) > MAX_YINDS)
+    {
+      printf("ERROR! YINDS to small!");
+    }
+    int *indsY    = (int*) malloc(batch->hInfos[0].height * noHarms * sizeof(int));
+    int bace      = 0;
+    batch->hInfos[0].yInds = 0;
+    for (int ii = 0; ii< batch->noHarms; ii++)
+    {
+      if ( ii == 0 )
+      {
+        for (int j = 0; j< batch->hInfos[0].height; j++)
+        {
+          indsY[bace + j] = j;
+        }
+      }
+      else
+      {
+        for (int j = 0; j< batch->hInfos[0].height; j++)
+        {
+          int zz    = -batch->hInfos[0].zmax+ j* ACCEL_DZ;
+          int subz  = calc_required_z(batch->hInfos[ii].harmFrac, zz);
+          int zind  = index_from_z(subz, -batch->hInfos[ii].zmax);
+          if (zind< 0|| zind>= batch->hInfos[ii].height)
+          {
+            int Err = 0;
+            printf("ERROR! YINDS Wrong!");
+          }
+          indsY[bace + j] = zind;
+        }
+      }
+      batch->hInfos[ii].yInds = bace;
+      bace += batch->hInfos[0].height;
+    }
+
+    cudaGetSymbolAddress((void **)&dcoeffs, YINDS);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice),                      "Copying Y indices to device");
+  }
 
   if ( powcut )
   {
@@ -3745,7 +3744,7 @@ int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long lo
   else
   {
     float pw[numharmstages];
-    for ( int i = 0; i <numharmstages; i++)
+    for ( int i = 0; i < numharmstages; i++)
     {
       pw[i] = 0;
     }
@@ -3753,28 +3752,27 @@ int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long lo
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &pw, numharmstages * sizeof(float), cudaMemcpyHostToDevice),         "Copying power cutoff to device");
   }
 
-  cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP);
-  CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, numindep, numharmstages * sizeof(long long), cudaMemcpyHostToDevice),  "Copying stages to device");
-
-  //CUDA_SAFE_CALL(cudaMemcpyToSymbol(YINDS,    indsY,         bace * sizeof(int), cudaMemcpyHostToDevice), "Failed to copy Y indices to device memory.");
-  //cudaMemcpyToSymbol(POWERCUT, powcut,    numharmstages * sizeof(float));
-  //cudaMemcpyToSymbol(NUMINDEP, numindep,  numharmstages * sizeof(long long));
-
-  //for(int i = 0 ; i < 400; i ++)
+  if (numindep)
   {
-    //printf("%03i:  %-5i  %i \n", i, indsY[i], sizeof(int)*8 );
+    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, numindep, numharmstages * sizeof(long long), cudaMemcpyHostToDevice),  "Copying stages to device");
   }
+  else
+  {
+    long long numi[numharmstages];
+    for ( int i = 0; i < numharmstages; i++)
+    {
+      numi[i] = 0;
+    }
+    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &numi, numharmstages * sizeof(long long), cudaMemcpyHostToDevice),      "Copying stages to device");
 
-  //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"");
-
-  //print_YINDS<<<1,1>>>(400);
-
-  //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"");
+  }
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Error Preparing the constant memory.");
 }
 
-void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
+void sumAndSearch(cuFFdotBatch* plains, long long *numindep, GSList** cands)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
@@ -4075,7 +4073,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
         FOLD
         {
 #pragma omp critical
-          for ( int step = 0; step < plains->mxSteps; step++)         // Loop over steps
+          for ( int step = 0; step < plains->noSteps; step++)         // Loop over steps
           {
             for ( int stage = 0; stage < noStages; stage++ )
             {
@@ -4161,7 +4159,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
                           }
                           else
                           {
-                            fprintf(stderr,"ERROR: function %s requires storing full canidates.\n",__FUNCTION__);
+                            fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
                             exit(1);
                           }
                         }
@@ -4214,7 +4212,7 @@ void sumAndSearch(cuStackList* plains, long long *numindep, GSList** cands)
   nvtxRangePop();
 }
 
-void sumAndMax(cuStackList* plains, long long *numindep, float* powers)
+void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 

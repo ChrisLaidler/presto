@@ -4,9 +4,6 @@
 #include <cuda.h>
 #include <cufft.h>
 
-//#include <cuda_runtime.h>
-//#include <cuda_runtime_api.h>
-
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
@@ -35,6 +32,7 @@ extern "C"
 #define   MAX_YINDS     16000           /// The maximum number of y indices to store in constant memory
 #define   MAX_STEPS     8               /// The maximum number of steps
 #define   MAX_STKSZ     8               /// The maximum number of plains in a stack
+#define   MAX_GPUS      32              /// The maximum number GPU's
 
 //======================================== Debug Defines  ================================================\\
 
@@ -85,12 +83,12 @@ extern "C"
 #define     FLAG_CNV_ALL        ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
 
 #define     FLAG_STP_ROW        (1<<17)   /// Multi-step Row   interleaved        - This seams to be best in most cases
-#define     FLAG_STP_PLN        (1<<18)   /// Multi-step Plain interleaved
+#define     FLAG_STP_PLN        (1<<18)   /// Multi-step Plain interleaved        -
 #define     FLAG_STP_STK        (1<<19)   /// Multi-step Stack interleaved        - Preferably don't use this!
 #define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
 
 #define     FLAG_CUFFTCB_INP    (1<<24)   /// Use an input  callback to do the convolution      - I found this to be very slow
-#define     FLAG_CUFFTCB_OUT    (1<<25)   /// Use an output callback to create powers           - This is a simalr speed
+#define     FLAG_CUFFTCB_OUT    (1<<25)   /// Use an output callback to create powers           - This is a similar speed
 
 #define     FLAG_RETURN_ALL     (1<<26)   /// Return results for all stages of summing, default is only the final result
 #define     FLAG_STORE_ALL      (1<<28)   /// Store candidates for all stages of summing, default is only the final result
@@ -98,6 +96,7 @@ extern "C"
 
 // ----------- This is a list of the data types that can be passed or returned
 
+#define     CU_NONE             (0)       /// Nothing specified
 #define     CU_CMPLXF           (1<<1)    /// Complex float
 #define     CU_INT              (1<<2)    /// INT
 #define     CU_FLOAT            (1<<3)    /// Float
@@ -168,14 +167,14 @@ typedef struct fftCnvlvInfo
 
 } fftCnvlvInfo;
 
-/** A structure to hold infromation on a raw fft
+/** A structure to hold information on a raw fft
  */
 typedef struct fftInfo
 {
-    double      rlow;     /// The Low bin   (of intrest)
-    double      rhi;      /// The high bin  (of intrest)
+    double      rlo;      /// The Low bin   (of interest)
+    double      rhi;      /// The high bin  (of interest)
     int         nor;      /// The number of bins in the FFT
-    fcomplex*   fft;      /// An array of complexnumbers (nor long)
+    fcomplex*   fft;      /// An array of complex numbers (nor long)
 } fftInfo;
 
 //------------- Arrays that can be passed to kernels -------------------\\
@@ -210,21 +209,61 @@ typedef struct tHarmList
     cudaTextureObject_t val[MAX_HARM_NO];
 } tHarmList;
 
-//------------- Data structures for, plains, stacks etc ----------------\\
+//------------- Data structures for, plains, stacks, batches etc ----------------\\
 
-/** Detaisl of the number of bins of the full search
+/** Details of the number of bins of the full search
  */
 typedef struct searchScale
 {
     double searchRLow;                /// The value of the input r bin to start the search at
     double searchRHigh;               /// The value of the input r bin to end   the search at
 
-    int rLow;                         /// The lowest  possible R this search could find, Including halfwidth, thus may be less than 0
-    int rHigh;                        /// The highest possible R this search could find, Including halfwidth
+    long long rLow;                   /// The lowest  possible R this search could find, Including halfwidth, thus may be less than 0
+    long long rHigh;                  /// The highest possible R this search could find, Including halfwidth
 
-    unsigned long long noInpR;        /// The maximum number of r input ( this is esentally  (rHigh - rLow) ) and me be longer than fft length becaus of halfwidth this requires the FFT to be padded!
-    unsigned long long noOutpR;       /// The maximum number of r bins the fundemental search will produce. This is ( searchRHigh - searchRLow ) / ( canidate resolution ) It may need to be scaled by numharmstages
+    unsigned long long noInpR;        /// The maximum number of r input ( this is essentially  (rHigh - rLow) ) and me be longer than fft length because of halfwidth this requires the FFT to be padded!
+    unsigned long long noOutpR;       /// The maximum number of r bins the fundamental search will produce. This is ( searchRHigh - searchRLow ) / ( candidate resolution ) It may need to be scaled by numharmstages
 } searchScale;
+
+/** Details of the number of bins of the full search
+ */
+typedef struct stepVals
+{
+    double searchR_inp;                 /// The Search r bin
+
+    double goodR_inp[MAX_HARM_NO];      ///
+    double frstR_inp[MAX_HARM_NO];      /// The first r bin to copy from the input fft
+} stepVals;
+
+/** User specified search details
+ *
+ */
+typedef struct searchSpecs
+{
+//    int     noHarms;                  /// The number of harmonics in the family                 m
+    int     noHarmStages;             /// The number of stages of harmonic summing              m
+
+    int     zMax;                     /// The highest z drift of the fundamental
+    int     pWidth;                   /// The desired width of the plains
+    float   sigma;                    /// The cut off sigma
+    fftInfo fftInf;                   /// The details of the input fft - location size and area to search
+
+    int     flags;                    /// The search flags
+    int     normType;                 /// The type of normalisation to do
+
+    int     outType;                  /// The type of output                                    m
+    void*   outData;                  /// A pointer to the location to store candidates
+} searchSpecs;
+
+/** User specified GPU search details
+ */
+typedef struct gpuSpecs
+{
+    int     noDevices;                /// The number of devices (GPU's to use in the search)
+    int     devId[MAX_GPUS];          /// A list noDevices long of CUDA GPU device id's
+    int     noDevBatches[MAX_GPUS];   /// A list noDevices long of the number of batches on each device
+    int     noDevSteps[MAX_GPUS];     /// A list noDevices long of the number of steps each device wants to use
+} gpuSpecs;
 
 /** The size information of a f-∂f plain
  */
@@ -233,7 +272,7 @@ typedef struct cuHarmInfo
     size_t  height;                   /// The number if rows (Z's)
     size_t  width;                    /// The number of complex numbers in each kernel (2 floats)
 
-    int     halfWidth;                /// The kernel half width         - in plain units
+    int     halfWidth;                /// The kernel half width         - in input fft units ie needs to be multiply by ACCEL_RDR to get plain units
     int     numrs;                    /// The number of usable values   - in plain units NB: This number is actually dynamic this is just an upper bound rather use (numrs from cuFFdot)
 
     size_t  inpStride;                /// The x stride in complex numbers
@@ -255,7 +294,7 @@ typedef struct cuKernel
     fCplxTex    kerDatTex;            /// A texture holding the kernel data
 } cuKernel;
 
-/** A f-∂f plain
+/** A f-∂f plain  .
  * This could be a fundamental or harmonic
  * it holds basic information no memory addresses
  */
@@ -264,84 +303,90 @@ typedef struct cuFFdot
     cuHarmInfo* harmInf;              /// A pointer to the harmonic information for this plains
     cuKernel*   kernel;               /// A pointer to the kernel for this plain
 
+    // pointers to device data
     fcomplexcu* d_plainData;          /// A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
     float*      d_plainPowers;        /// A pointer to the powers for this stack
     fcomplexcu* d_iData;              /// A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
+    // Texture objects
     fCplxTex    datTex;               /// A texture holding the kernel data
     fCplxTex    powerTex;             /// A texture of the power data
 
-    size_t  numInpData[MAX_STEPS];    /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input, including haldwidth)
-    size_t  numrs[MAX_STEPS];         /// The number of input elements for this plain - (Number of R bins in the 'raw' FFT input, excluding haldwidth)
+    size_t  numInpData[MAX_STEPS];    /// The number of input elements for this plain                 - (Number of R bins in the 'raw' FFT input, including halfwidth)
+    size_t  numrs[MAX_STEPS];         /// The number of good bins in the plain in expanded units -        (Number of R bins in the 'raw' FFT input, excluding halfwidth)
+
     float   fullRLow[MAX_STEPS];      /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    float   rLow[MAX_STEPS];          /// The low r value of the plain at input fft
+    float   rLow[MAX_STEPS];          /// The r value of good bin - input fft units
     float   searchRlow[MAX_STEPS];    /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
     int     ffdotPowWidth[MAX_STEPS]; /// The width of the final f-∂f plain  // TODO: Check is this not the same as numrs
 
     float searchRlowPrev[MAX_STEPS];  /// The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-
 } cuFFdot;
 
 /** A stack of f-∂f plains that all have the same FFT width
  */
 typedef struct cuFfdotStack
 {
-    int noInStack;                    /// The number of plains in this stack
-    int startIdx;                     /// The 'global' offset of the first element of the stack
+    int     noInStack;                /// The number of plains in this stack
+    int     startIdx;                 /// The 'global' offset of the first element of the stack
+    size_t  width;                    /// The width of  the entire stack, for one step [ in complex numbers! ]
+    size_t  height;                   /// The height of the entire stack, for one step
+    size_t  inpStride;                /// The stride of the block of memory  [ in complex numbers! ]
+    size_t  pwrStride;                /// The stride of the block of memory  [ in complex numbers! ]
 
-    cudaStream_t cnvlStream;          /// CUDA stream for work on the stack
-    cudaStream_t inpStream;           /// CUDA stream for work on input data for the stack
-
-    size_t width;                     /// The width of  the entire stack, for one step [ in complex numbers! ]
-    size_t height;                    /// The height of the entire stack, for one step
-
-    size_t inpStride;                 /// The stride of the block of memory  [ in complex numbers! ]
-    size_t pwrStride;                 /// The stride of the block of memory  [ in complex numbers! ]
-
-    int startR[MAX_IN_STACK];         /// The heights of the individual plains assuming one step
-
-    int zUp[MAX_IN_STACK];            /// The heights of the individual plains
-    int zDn[MAX_IN_STACK];            /// The heights of the individual plains
-
+    // Sub data structures associated with this stack
     cuHarmInfo* harmInf;              /// A pointer to all the harmonic info's for this stack
     cuKernel*   kernels;              /// A pointer to all the kernels for this stack
     cuFFdot*    plains;               /// A pointer to all the pains for this stack
 
-    cufftHandle plnPlan;              /// A cufft plan to fft the entire stack
-    cufftHandle inpPlan;              /// A cufft plan to fft the input data for this stack
+    int startZ[MAX_IN_STACK];         /// The y 'start' of the plains in this stack - assuming one step
 
+    // All sub-kernel of the same width are subset of the largest harmonic
+    // Thus all plains in a stack can share one kernel these sub kernels are bounded by zDn and zUp
+    int zUp[MAX_IN_STACK];            /// The upper bound  (y or z) of the plains in the single kernel
+    int zDn[MAX_IN_STACK];            /// The lower bound  (y or z) of the plains in the single kernel
+
+    // CUFFT details
+    cufftHandle   plnPlan;            /// A cufft plan to fft the entire stack
+    cufftHandle   inpPlan;            /// A cufft plan to fft the input data for this stack
+    fftCnvlvInfo* d_cinf;             /// Convolve info structure on device
+
+    // pointers to memory
     fcomplexcu* d_kerData;            /// Kernel data for this stack
     fcomplexcu* d_plainData;          /// Plain data for this stack
     float*      d_plainPowers;        /// Powers for this stack
-
     fcomplexcu* d_iData;              /// Input data for this stack
     fcomplexcu* h_iData;              /// Paged locked input data for this stack
 
-    fftCnvlvInfo* d_cinf;             /// Convolve info structure on device
-
+    // Texture
     fCplxTex kerDatTex;               /// A texture holding the kernel data
 
+    // Events
     cudaEvent_t prepComp;             /// Preparation of the input data complete
     cudaEvent_t convComp;             /// Convolution complete
     cudaEvent_t plnComp;              /// Creation (convolution and FFT) of the complex plain complete
 
+    // Streams
     cudaStream_t fftPStream;          /// CUDA stream for summing and searching the data
     cudaStream_t fftIStream;          /// CUDA stream for summing and searching the data
+    cudaStream_t cnvlStream;          /// CUDA stream for work on the stack
+    cudaStream_t inpStream;           /// CUDA stream for work on input data for the stack
 } cuFfdotStack;
 
 /** A collection of f-∂f plain(s) and all its/their sub harmonics
  * This is a collection of stack(s) that make up a harmonic family of f-∂f plain(s)
- * And the device specific convolution kernels which is just another stack list
+ * And the device specific convolution kernels which is just another batch
  */
-typedef struct cuStackList
+typedef struct cuFFdotBatch
 {
-    size_t noStacks;                  /// The number of stacks in this stack list
-    size_t noHarms;                   /// The number of harmonics in the entire stack
-    size_t noSteps;                   /// The number of slices in the stack list
-    size_t mxSteps;                   /// The number of slices in the stack list
-    int noHarmStages;                 /// The number of stages of harmonic summing
+    searchSpecs* sInf;                 /// A pointer to the search info
 
-    int pIdx[MAX_HARM_NO];            /// The index of the plains in the Presto harmonic summing order
+    size_t noStacks;                  /// The number of stacks in this batch
+    size_t noHarms;                   /// The number of harmonics in the family                   m
+    size_t noSteps;                   /// The number of slices in the batch
+    int noHarmStages;                 /// The number of stages of harmonic summing                m
+
+    int pIdx[MAX_HARM_NO];            /// The index of the plains in the Presto harmonic summing order  m
 
     cuFfdotStack* stacks;             /// A list of the stacks
     cuHarmInfo*   hInfos;             /// A list of the harmonic informations
@@ -359,20 +404,19 @@ typedef struct cuStackList
 
     fcomplexcu* d_kerData;            /// Kernel data for all the stacks
     fcomplexcu* d_plainData;          /// Plain data for all the stacks
-    float*      d_plainPowers;        /// Powers for this stack
+    float*      d_plainPowers;        /// Powers for all the stack
 
-    int retType;                      /// The type of output
-    int cndType;                      /// The type of output
+    int retType;                      /// The type of output                                    m
+    int cndType;                      /// The type of output                                    m
     void* h_retData;                  /// The output
     void* d_retData;                  /// The output
     void* h_candidates;               /// Host memory for candidates
     void* d_candidates;               /// Host memory for candidates
 
-    int inType;                       /// The input data type
-    fcomplexcu* h_iData;              /// Pointer to page locked host memory of Input data for all the stacks
-    fcomplexcu* d_iData;              /// Input data for all the stacks - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
+    fcomplexcu* h_iData;              /// Pointer to page locked host memory of Input data for t
+    fcomplexcu* d_iData;              /// Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
-    int haveSearchResults;            /// Weather the the plain has been searched and there is canidate data to process
+    int haveSearchResults;            /// Weather the the plain has been searched and there is candidate data to process
     int haveConvData;                 /// Weather the the plain has convolved data ready for searching
 
     uint* d_candSem;                  /// Semaphore for writing to device candidate list
@@ -381,9 +425,9 @@ typedef struct cuStackList
 
     uint flag;                        /// CUDA accel search flags
 
-    searchScale*  SrchSz;             /// Details on o the size (in bins) of the search
+    searchScale*  SrchSz;             /// Details on o the size (in bins) of the search         m
 
-    cudaStream_t inpStream;           /// CUDA stream for work on input data for the stack
+    cudaStream_t inpStream;           /// CUDA stream for work on input data for the batch
     cudaStream_t strmSearch;          /// CUDA stream for summing and searching the data
 
     cudaEvent_t iDataCpyComp;         /// Copying input data to device
@@ -396,25 +440,83 @@ typedef struct cuStackList
 
     uint accelLen;                    /// The size to step through the input fft
 
-    CUcontext pctx;                   /// Context for the stack
+    CUcontext pctx;                   /// Context for the batch
     int device;                       /// The CUDA device to run on;
 
-} cuStackList;
+} cuFFdotBatch;
 
-typedef struct cuAccelInfo
+/** A struct to keep info on all the kernels and batches to use with cuda accel
+ */
+typedef struct cuMemInfo
 {
-    int             noDevices;          /// The number of devices (GPU's to use in the search)
-    int*            devId;              /// A list noDevices long of CUDA GPU device id's
-    cuStackList*    kernels;            /// A list noDevices long of convolution kernels: These hold: basic info, the adres of the convolution kernels on the GPU, the CUFFT plan.
-    int*            noStacks;           /// A list noDevices long of the number of
-    cuStackList**   stacks;            /// A list noDevices long of convolution kernels: These hold: basic info, the adres of the convolution kernels on the GPU, the CUFFT plan.
+    //int*            devId;              /// A list noDevices long of CUDA GPU device id's
+    //int*            noDevBatches;       /// A list noDevices long of the number of batches on each device
+    //int*            noDevSteps;         /// A list noDevices long of the number of steps each device wants to use
 
-} cuAccelInfo;
+    int             noDevices;          /// The number of devices (GPU's to use in the search)
+    cuFFdotBatch*   kernels;            /// A list noDevices long of convolution kernels: These hold: basic info, the address of the convolution kernels on the GPU, the CUFFT plan.
+
+    int             noBatches;          /// The total number of batches there across all devices
+    cuFFdotBatch*   batches;            /// A list noBatches long of convolution kernels: These hold: basic info, the address of the convolution kernels on the GPU, the CUFFT plan.
+
+    int             noSteps;            /// The total steps there are across all devices
+} cuMemInfo;
+
+/** User independent details  .
+ */
+typedef struct cuSearch
+{
+    searchSpecs*  sSpec;              /// Specifications of the search
+    gpuSpecs*     gSpec;              /// Specifications of the GPU's to use
+
+    cuMemInfo*    mInf;               /// The allocated Device and host memory and data structures to create plains including the kernels
+
+    // Some extra search details
+    int           noHarms;            /// The number of harmonics in the family                 m
+    int           noHarmStages;       /// The number of stages of harmonic summing              m
+    int           numZ;               /// The number of Z values
+    searchScale*  SrchSz;             /// Details on o the size (in bins) of the search         m
+    int*          pIdx;               /// The index of the plains in the Presto harmonic summing order  m
+    float*        powerCut;           /// The power cutoff
+    long long*    numindep;           /// The number of independent trials
+} cuSearch;
 
 //===================================== Function prototypes ===============================================\\
 
+/** Read the GPU details from clig command line
+ *
+ * @param cmd
+ * @return A pointer to the accel info struct to fill
+ */
+ExternC gpuSpecs readGPUcmd(Cmdline *cmd);
 
-/** Initialise the template structure and kernels for a multi-step stack list
+/** Read the GPU details from clig command line
+ *
+ * @param cmd
+ * @return A pointer to the accel info struct to fill
+ */
+ExternC searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs);
+
+ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+
+/**
+ *
+ * @param aInf            A pointer to the accelInfo structure to write details to
+ * @param fftinf          Details on the fft to 'search'
+ * @param numharmstages   The number of harmonic stages [number of harmonics = 2^(numharmstages-1) = (1<<(numharmstages-1)) ]
+ * @param zMax            The maximum and minimum drift to cover in a plain
+ * @param width           The width of the plains
+ * @param powcut
+ * @param numindep
+ * @param flags           The a combination of the bit flags to determine how to generate the plains
+ * @param candType        The data type of the candidates
+ * @param retType         The data type returned from the GPU
+ * @param out             An address of to store candidates in if it has already been allocated (can be NULL)
+ * @return                Returns the number of steps covered. Main details are written to aInf
+ */
+//ExternC int initCuAccel(cuMemInfo* aInf, fftInfo* fftinf, int numharmstages, int zMax, int width, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
+
+/** Initialise the template structure and kernels for a multi-step batches
  * This is called once per device
  *
  * @param stkLst            The data structure to fill
@@ -423,14 +525,15 @@ typedef struct cuAccelInfo
  * @param zmax              The ZMax of the primary harmonic
  * @param fftinf            The address and accel search info
  * @param device            The device to create the kernels on
- * @param device            The number of steps to use on the device
+ * @param noBatches         The desired number of batches to run on this device
+ * @param noSteps           The number of steps for each batch to use
  * @param width             The desired width of the primary harmonic in thousands
- * @param noThreads         The desired number of threads to run on this device
  * @param powcut            The value above which to return
  * @param numindep          The number of independent trials
- * @return
+ *
+ * @return The number batches set up for this should be noBatches. On failure returns 0
  */
-ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noSteps, int width, int noThreads, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
+//ExternC int initHarmonics(cuFFdotBatch* stkLst, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noBatches, int noSteps, int width, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
 
 /** Free all host and device memory allocated by initHarmonics(...)
  * If the stkLst is master, this will free any device independat memory
@@ -439,28 +542,28 @@ ExternC int initHarmonics(cuStackList* stkLst, cuStackList* master, int numharms
  * @param master            The master stak list
  * @param out               The candidate output, if none was specified this should be NULL
  */
-ExternC  void freeHarmonics(cuStackList* stkLst, cuStackList* master, void* out);
+//ExternC  void freeHarmonics(cuFFdotBatch* stkLst, cuFFdotBatch* master, void* out);
 
-/** Initialise a multi-step stack list from the device kernel
+/** Initialise a multi-step batch from the device kernel
  *
- * @param harms             The kernel to base this multi-step stack list
- * @param no                The index of this stack
- * @param of                The desired number of stacks on this device
+ * @param harms             The kernel to base this multi-step batch
+ * @param no                The index of this batch
+ * @param of                The desired number of batches on this device
  * @return
  */
-ExternC cuStackList* initStkList(cuStackList* harms, int no, int of);
+//ExternC cuFFdotBatch* initBatch(cuFFdotBatch* harms, int no, int of);
 
 /** Free device and host memory allocated by initStkList
  *
- * @param harms             The stack list to free
+ * @param harms             The batch to free
  */
-ExternC void freeStkList(cuStackList* stkLst);
+//ExternC void freeBatch(cuFFdotBatch* stkLst);
 
-ExternC void search_ffdot_planeCU(cuStackList* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
+ExternC void search_ffdot_planeCU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
 
-ExternC void setStkPointers(cuStackList* stkLst);
+ExternC void setStkPointers(cuFFdotBatch* stkLst);
 
-ExternC void setPlainPointers(cuStackList* stkLst);
+ExternC void setPlainPointers(cuFFdotBatch* stkLst);
 
 ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers );
 

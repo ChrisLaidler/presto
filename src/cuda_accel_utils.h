@@ -22,7 +22,7 @@ extern "C"
 #include "accel.h"
 }
 
-#define   TEMPLATE_CONVOLVE 0
+#define   TEMPLATE_CONVOLVE 1
 #define   TEMPLATE_SEARCH   0
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
@@ -367,6 +367,8 @@ __host__ __device__ static inline int index_from_z(float z, float loz)
 //template<uint FLAGS, typename sType, int noStages, typename stpType>
 __global__ void print_YINDS(int no);
 
+/** Write CUFFT s to device
+ */
 void copyCUFFT_LD_CB();
 
 /** Return the first value of 2^n >= x
@@ -388,9 +390,9 @@ float cuGetMedian(float *data, uint len);
 int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
 float* ffdot_planeCU(int harm, double searchRLow, double fullrhi, cuHarmInfo* hInf, int norm_type, fcomplexcu* fft, cuFfdot* ffdotPlain);
-//float* ffdot_planeCU2(cuStackList* plains, double searchRLow, float fullrhi, int norm_type, int search, fcomplexcu* fft);
+//float* ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, float fullrhi, int norm_type, int search, fcomplexcu* fft);
 
-ExternC int ffdot_planeCU2(cuStackList* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
+ExternC int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
 
 int add_ffdot_planeCU(int harm, cuHarmInfo* hInf, cuFfdot* fund, cuFfdot* ffdotPlain, double searchRLow);
 
@@ -410,11 +412,11 @@ void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height);
 double _GammaP (double n, double x);
 double _GammaQ (double n, double x);
 
-void printData_cu(cuStackList* stkLst, const int FLAGS, int harmonic, int nX = 10, int nY = 5, int sX = 0, int sY = 0);
+void printData_cu(cuFFdotBatch* stkLst, const int FLAGS, int harmonic, int nX = 10, int nY = 5, int sX = 0, int sY = 0);
 
 
-//int setYINDS( cuStackList* stkLst, int numharmstages );
-int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long long *numindep );
+//int setYINDS( cuFFdotBatch* stkLst, int numharmstages );
+int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long long *numindep );
 
 
 ///////////////////////////////////////////// Convolution Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -423,7 +425,7 @@ int setConstVals( cuStackList* stkLst, int numharmstages, float *powcut, long lo
  *
  * @param plains The plains to convolve
  */
-void convolveStack(cuStackList* plains);
+void convolveStack(cuFFdotBatch* plains);
 
 /*
 __global__ void convolveffdot(fcomplexcu *ffdot, const int width, const int stride, const int height, const fcomplexcu *data, const fcomplexcu *kernels);
@@ -475,15 +477,15 @@ ExternC void printCands(const char* fileName, GSList *candsCPU);
 
 ExternC void printContext();
 
-ExternC void setContext(cuStackList* stkList) ;
+ExternC void setContext(cuFFdotBatch* stkList) ;
 
 ExternC void testzm();
 
-void sumAndSearch(cuStackList* plains, long long* numindep, GSList** cands);
+void sumAndSearch(cuFFdotBatch* plains, long long* numindep, GSList** cands);
 
 /** A function to call a kernel to harmonicall sum a plan and retunr the max of each column
  *
  */
-void sumAndMax(cuStackList* plains, long long *numindep, float* powers);
+void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers);
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED

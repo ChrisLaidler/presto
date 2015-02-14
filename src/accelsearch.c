@@ -2,6 +2,8 @@
 
 /*#undef USEMMAP*/
 
+//#define CUDA // TMP
+
 #ifdef USEMMAP
 #include <unistd.h>
 #include <sys/mman.h>
@@ -90,9 +92,9 @@ int main(int argc, char *argv[])
    tott = times(&runtimes) / (double) CLK_TCK;
 
 #ifdef CUDA
-      gettimeofday(&start, NULL);       // Profiling
-      nvtxRangePush("Prep");
-      gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+   gettimeofday(&start, NULL);       // Profiling
+   nvtxRangePush("Prep");
+   gettimeofday(&start, NULL);       // Note could start the timer after kernel init
 #endif
 
    /* Call usage() if we have no command line arguments */
@@ -110,6 +112,14 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG
    showOptionValues();
+#endif
+
+#ifdef CUDA
+   if (cmd->lsgpuP)
+   {
+     listDevices();
+     return (0);
+   }
 #endif
 
    printf("\n\n");
@@ -252,8 +262,8 @@ int main(int argc, char *argv[])
         free_subharminfos(&obs, subharminfs);
 #endif
       } 
-      
-#ifdef CUDA
+
+#ifdef CUDA   // --=== The cuda Search == --
       if ( cmd->gpuP >= 0)
       {
         candsGPU = NULL;
@@ -262,8 +272,6 @@ int main(int argc, char *argv[])
 
         int noHarms = (1 << (obs.numharmstages - 1));
         
-        int flags = FLAG_RETURN_ALL | CU_CAND_ARR ;
-
         FOLD
         {
           //cudaDeviceSynchronize();          // This is only necessary for timing
@@ -272,119 +280,25 @@ int main(int argc, char *argv[])
           
           printf("\n------------------------\nDoing GPU Search 2\n------------------------\n"); 
 
-          int dev;
           long noCands = 0;
           
-          if ( cmd->gpuP ) // Determine the index and number of devices
-          { 
-            if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd every time clig is run!!!!
-            {
-              // Make a list of all devices
-              cmd->gpuC = getGPUCount();
-              cmd->gpu = (int*) malloc( cmd->gpuC * sizeof(int) );
-              for ( dev = 0 ; dev < cmd->gpuC; dev++ )
-                cmd->gpu[dev] = dev;
-            }
-          }
+          gpuSpecs      gSpec;
+          searchSpecs   sSpec;
+          cuSearch*     cuSrch;
+
+          gSpec       = readGPUcmd(cmd);
+          sSpec       = readSrchSpecs(cmd, &obs);
+          cuSrch      = initCuSearch(&sSpec, &gSpec, NULL);
+
+          cuFFdotBatch* master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+
+          printf("\nRunning GPU search with %i simultaneous f-∂f plains spread across %i device(s).\n\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
           
-          cuStackList* kernels;             // List of stacks with the kernels, one for each device being used
-          cuStackList* master   = NULL;     // The first kernel stack created
-          int nPlains           = 0;        // The number of plains
-          int noKers            = 0;        // Real number of kernels/devices being used
-          
-          fftInfo fftinf;
-          fftinf.fft    = obs.fft;
-          fftinf.nor    = obs.N;
-          fftinf.rlow   = obs.rlo;
-          fftinf.rhi    = obs.rhi;
-
-          FOLD // Create a kernel on each device
-          {
-            nvtxRangePush("Init Kernels");
-
-            kernels = (cuStackList*)malloc(cmd->gpuC*sizeof(cuStackList));        
-            int added; 
-            
-            for ( dev = 0 ; dev < cmd->gpuC; dev++ ) // Loop over devices  .
-            {
-              int no;
-              int noSteps;
-              if ( dev >= cmd->nplainsC )
-                no = cmd->nplains[cmd->nplainsC-1];
-              else
-                no = cmd->nplains[dev];
-              
-              if ( dev >= cmd->nplainsC )
-                noSteps = cmd->nsteps[cmd->nplainsC-1];
-              else
-                noSteps = cmd->nsteps[dev];
-
-              added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, cmd->width, no, obs.powcut, obs.numindep, flags, CU_FULLCAND, CU_SMALCAND, (void*)candsGPU);
-
-              if ( added && (master == NULL) )
-              {
-                master = &kernels[0];
-              }       
-              if ( added )
-              {
-                noKers++;
-              }
-              else
-              {
-                printf("Error: failed to set up a kernel on device %i, trying to continue... \n", cmd->gpu[dev]);              
-              }            
-            }
-
-            nvtxRangePop();
-          } 
-          
-          cuStackList* plainsj[noKers*5];   // List of pointers to each plain
-          int noSteps = 0;
-          
-          FOLD // Create plains for calculations
-          {
-            nvtxRangePush("Init Stacks");
-
-            int pln;
-            for ( dev = 0 ; dev < noKers; dev++)
-            {
-              int no;
-              if ( dev >= cmd->nplainsC )
-                no = cmd->nplains[cmd->nplainsC-1];
-              else
-                no = cmd->nplains[dev];
-              
-              for ( pln = 0 ; pln < no; pln++ )
-              {
-                plainsj[nPlains] = initStkList(&kernels[dev], pln, no-1);
-                
-                if ( plainsj[nPlains] == NULL)
-                {
-                  if (pln == 0 )
-                  {
-                    fprintf(stderr, "ERROR: Failed to create at least one stack for GPU search on device %i.\n", kernels[dev].device);
-                    return -1;
-                  }
-                  break;
-                } 
-                else
-                {
-                  noSteps += plainsj[nPlains]->noSteps;
-                  nPlains++;
-                }
-              }
-            }
-
-            nvtxRangePop();
-          }
-          
-          printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", noSteps, noKers);
-          
-          omp_set_num_threads(nPlains);
+          omp_set_num_threads(cuSrch->mInf->noBatches);
           
           startr = obs.rlo, lastr = 0, nextr = 0;
           int ss = 0;
-          int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ; // The number of plains to make
+          int maxxx = ( obs.highestbin - obs.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of plains to make
           
           if ( maxxx < 0 )
             maxxx = 0;
@@ -396,13 +310,13 @@ int main(int argc, char *argv[])
           {
             int tid = omp_get_thread_num();
             
-            cuStackList* trdStack = plainsj[tid];
+            cuFFdotBatch* trdBatch = &cuSrch->mInf->batches[tid];
             
-            double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
-            double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
-            size_t rest = trdStack->noSteps;
+            double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
+            double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
+            size_t rest = trdBatch->noSteps;
             
-            setContext(trdStack) ;
+            setContext(trdBatch) ;
             
             int firstStep = 0;
             
@@ -411,25 +325,25 @@ int main(int argc, char *argv[])
               #pragma omp critical
               {
                 firstStep = ss;
-                ss       += trdStack->noSteps;
+                ss       += trdBatch->noSteps;
               }
               
               if ( firstStep >= maxxx )
                 break;
               
-              if ( firstStep + trdStack->noSteps >= maxxx )
+              if ( firstStep + trdBatch->noSteps >= maxxx )
               {
-								// TODO: there are a number of families we dont need to run see if we can use 'setPlainPointers(trdStack)'
+								// TODO: there are a number of families we dont need to run see if we can use 'setPlainPointers(trdBatch)'
 								// To see if we can do less work on the last step
               }
 
               int si;
-              for ( si = 0; si < trdStack->noSteps ; si ++)
+              for ( si = 0; si < trdBatch->noSteps ; si ++)
               {
                 if ( si < rest )
                 {
-                  startrs[si] = obs.rlo + (firstStep+si) * ( master->accelLen * ACCEL_DR );
-                  lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
+                  startrs[si] = obs.rlo + (firstStep+si) * ( trdBatch->accelLen * ACCEL_DR );
+                  lastrs[si]  = startrs[si] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
                 }
                 else
                 {
@@ -437,20 +351,20 @@ int main(int argc, char *argv[])
                   lastrs[si]  = 0 ;
                 }
               }
-              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+              search_ffdot_planeCU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
               
-              if ( trdStack->flag & CU_OUTP_HOST )
+              if ( trdBatch->flag & CU_OUTP_HOST )
               {
                 // TODO: check the addressing below for new cases ie:FLAG_STORE_EXP FLAG_STORE_ALL
                 // TODO: to a type casting check here!
-                trdStack->d_candidates = &master->d_candidates[master->accelLen*obs.numharmstages*firstStep] ;
+                trdBatch->d_candidates = &master->d_candidates[trdBatch->accelLen*obs.numharmstages*firstStep] ;
               }
               
               print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
             }
             
             int si;
-            for ( si = 0; si < trdStack->noSteps ; si ++)
+            for ( si = 0; si < trdBatch->noSteps ; si ++)
             {
               startrs[si] = 0;
               lastrs[si]  = 0;
@@ -460,7 +374,7 @@ int main(int argc, char *argv[])
             int pln;
             for ( pln = 0 ; pln < 2; pln++ )
             {
-              search_ffdot_planeCU(trdStack, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+              search_ffdot_planeCU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
             }
           }
           
@@ -468,7 +382,7 @@ int main(int argc, char *argv[])
 
           if ( master->flag & CU_CAND_ARR )
           {
-            printf("\nCopying canidates from array to list for optemisation.\n");
+            printf("\nCopying candidates from array to list for optimisation.\n");
 
             nvtxRangePush("Add to list");
             int cdx;
@@ -506,7 +420,7 @@ int main(int argc, char *argv[])
             }
           }
 
-          /* TODO: fix this section using SrchSz paramiters
+          /* TODO: fix this section using SrchSz parameters
           if ( master->flag & CU_OUTP_DEVICE )
           {
             nvtxRangePush("Add to list"); 
@@ -567,7 +481,7 @@ int main(int argc, char *argv[])
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
 
-   if (1) // optimization
+   if (0) // optimization
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;

@@ -23,7 +23,7 @@ size_t getFreeRamCU()
 /** Get the amount of free RAM in bytes
  *
  */
-size_t getFreeRamCU()
+unsigned long getFreeRamCU()
 {
   struct sysinfo sys_info;
   if(sysinfo(&sys_info) != 0)
@@ -35,7 +35,7 @@ size_t getFreeRamCU()
     return sys_info.freeram + sys_info.bufferram;
 }
 #else
-size_t getFreeRamCU()
+unsigned long getFreeRamCU()
 {
   fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
