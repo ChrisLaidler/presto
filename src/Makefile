@@ -301,7 +301,7 @@ libcuaccel	= $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 	
 all: libpresto slalib binaries $(GPUOUTP)
 	@echo ""
-	@echo "Done"	
+	@echo "Done ALL"	
 	@echo ""
 
 # Default indentation is K&R style with no-tabs,
@@ -345,7 +345,7 @@ $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
 	@echo ""
 	@echo "Building libpresto$(POSTFIX)"	
 	$(LINKCOMMAND1) $@ $(PRESTOOBJS) $(FFTLINK)
-	@echo "Done"
+	@echo "Done libpresto$(POSTFIX)"
 	@echo ""
 
 
@@ -353,7 +353,7 @@ $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
 	@echo ""
 	@echo "Building libcuaccel$(POSTFIX)"
 	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(NVCLFLAGS)
-	@echo "Done"
+	@echo "Done libcuaccel$(POSTFIX)"
 	@echo ""
 	
 ###############   Tests   ################
@@ -395,14 +395,14 @@ ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) accelsearch_cmd.o acc
 	@echo ""
 	@echo "Building accelsearch$(POSTFIX)"	
 	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) accelsearch_cmd.o accel_utils.o accelsearch.o zapping.o $(PRESTOLINK) $(GLIBLINK) -lm	
-	@echo "Done"	
+	@echo "Done accelsearch$(POSTFIX)"	
 	@echo ""
 	
-$(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o
+$(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) accelsearch_cmd.o accel_utils.o test_GPUaccel$(POSTFIX).o zapping.o
 	@echo ""
 	@echo "Building test_GPUaccel"${POSTFIX}
-	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) accelsearch_cmd.o accel_utils.o test_GPUaccel.o zapping.o  $(PRESTOLINK) $(GLIBLINK) -lm
-	@echo "Done"	
+	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) accelsearch_cmd.o accel_utils.o test_GPUaccel$(POSTFIX).o zapping.o  $(PRESTOLINK) $(GLIBLINK) -lm
+	@echo "Done test_GPUaccel${POSTFIX}"	
 	@echo ""
 
 check_parkes_raw: check_parkes_raw.o multibeam.o $(libpresto)
@@ -558,7 +558,7 @@ mpiprepsubband_utils.o: mpiprepsubband_utils.c
 mpiprepsubband.o: mpiprepsubband.c
 	mpicc $(CLINKFLAGS) -c mpiprepsubband.c
 
-test_GPUaccel.o: test_GPUaccel.cpp
+test_GPUaccel$(POSTFIX).o: test_GPUaccel.cpp
 	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 
 ###############  Cleans   ################
@@ -568,6 +568,12 @@ cleanGPU:
 	rm -f ../lib/libcuaccel*
 	rm -f ../bin/test_GPUaccel*
 	rm -f ../bin/accelsearch*
+	rm -f cuda*.o
+	rm -f accelsearch.o 
+	rm -f accel_utils.o
+	rm -f test_GPUaccel.o
+	
+cudaclean:
 	rm -f cuda*.o
 	rm -f accelsearch.o 
 	rm -f accel_utils.o

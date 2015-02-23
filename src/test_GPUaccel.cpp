@@ -796,7 +796,6 @@ int main(int argc, char *argv[])
       gpuSpecs      gSpec;
       searchSpecs   sSpec;
 
-
       gSpec         = readGPUcmd(cmd);
       sSpec         = readSrchSpecs(cmd, &obs);
       sSpec.pWidth  = ACCEL_USELEN; // NB: must have same accellen for tests!
@@ -972,7 +971,7 @@ int main(int argc, char *argv[])
     if ( cmd->gpuP >= 0) // -- Main Loop --
     {
       int firstStep       = 0;
-      bool printDetails   = false;
+      bool printDetails   = true;
       bool printBadLines  = false;
 
       printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
@@ -999,9 +998,9 @@ int main(int argc, char *argv[])
         maxxx = 0;
 
       nDarray<2, float> plotPowers;
-      cuSrch->mInf->batches[0].hInfos[0].numrs;
+      //cuSrch->mInf->batches[0].hInfos[0].numrs;
 
-      plotPowers.addDim(master->hInfos[0].numrs,  0, master->hInfos[0].numrs  );
+      plotPowers.addDim(master->accelLen,  0, master->accelLen  );
       plotPowers.addDim(master->hInfos[0].height, 0, master->hInfos[0].height );
       plotPowers.allocate();
 
@@ -1079,6 +1078,7 @@ int main(int argc, char *argv[])
         while ( ss < maxxx ) // -- Main Loop --  .
         {
 #pragma omp critical
+          FOLD
           {
             firstStep = ss;
             ss       += trdBatch->noSteps;
@@ -1189,7 +1189,9 @@ int main(int argc, char *argv[])
 
                 for ( int step = 0; (step < trdBatch->noSteps) && ( firstStep+step < maxxx) ; step ++) // Loop over steps
                 {
-                  int diff = plan->numrs[step] - cHInfo->numrs;
+                  rVals*        rVal    = &((*trdBatch->rConvld)[step][harm]);
+                  //int diff = plan->numrs[step] - cHInfo->numrs;
+                  //int diff = plan->numrs[step] - cHInfo->numrs;
 
                   // Copy input data from GPU
                   fcomplexcu *data = &trdBatch->d_iData[sz];
@@ -1213,7 +1215,8 @@ int main(int argc, char *argv[])
 
                     if ( trdBatch->flag & FLAG_CUFFTCB_OUT )
                     {
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                       /*
                                  for( int jj = 0; jj < plan->numrs[step]; jj++)
                                  {
@@ -1225,7 +1228,8 @@ int main(int argc, char *argv[])
                     else
                     {
                       //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                     }
                   }
 
@@ -1293,22 +1297,25 @@ int main(int argc, char *argv[])
                 }
 
               }
-              if ( bad  )
+              if ( bad )
               {
+
                 for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
                 {
+                  int y = trdBatch->hInfos[harz].height - 1;
+
                   printf("Harm: %02i\n", harz );
                   printf("CPU: ");
                   for ( int x = 0; x < 15; x++ )
                   {
-                    printf(" %9.6f ", cpuInput[step][harz].get(x,0));
+                    printf(" %9.6f ", cpuInput[step][harz].get(x,y));
                   }
                   printf("\n");
 
                   printf("GPU: ");
                   for ( int x = 0; x < 15; x++ )
                   {
-                    printf(" %9.6f ", gpuInput[step][harz].get(x,0));
+                    printf(" %9.6f ", gpuInput[step][harz].get(x,y));
                   }
                   printf("\n");
                 }
@@ -1369,7 +1376,7 @@ int main(int argc, char *argv[])
                       int nX = gpuPowers[step][harz].ax(0)->noEls() ;
                       int nY = gpuPowers[step][harz].ax(1)->noEls() ;
 
-                      int width         = trdBatch->hInfos[harz].numrs;
+                      int width         = trdBatch->accelLen;
 
                       // Copy CPU powers
                       for(int y = 0; y < nY; y++ )
@@ -1467,7 +1474,7 @@ int main(int argc, char *argv[])
                     int nX = gpuPowers[step][harz].ax(0)->noEls() ;
                     int nY = gpuPowers[step][harz].ax(1)->noEls() ;
 
-                    int width         = trdBatch->hInfos[harz].numrs;
+                    int width         = trdBatch->accelLen;
 
                     // Calculate GPU powers
                     for(int y = 0; y < nY; y++ )
@@ -1656,6 +1663,7 @@ int main(int argc, char *argv[])
 
     }
   }
+
   printf("\n\nDone searching.\n");
   printf("   We got %lli bad input values.\n", badInp);
   printf("   We got %lli bad complex plains.\n\n", badCplx);
