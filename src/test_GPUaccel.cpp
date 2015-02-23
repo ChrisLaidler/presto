@@ -1656,6 +1656,7 @@ int main(int argc, char *argv[])
 
     }
   }
+
   printf("\n\nDone searching.\n");
   printf("   We got %lli bad input values.\n", badInp);
   printf("   We got %lli bad complex plains.\n\n", badCplx);
