@@ -1470,7 +1470,7 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
  * @param startR
  * @param zmax
  */
-__global__ void init_kernels_stack(float2* response, const int stack, const int fftlen, const int stride, const int maxh, cuStackHarms maxZa, iList startR, fList zmax)
+__global__ void init_kernels_stack(float2* response, const int fftlen, const int stride, const int maxh, const int noPlains, iList startR, fList zmax)
 {
   int cx, cy;                       /// The x and y index of this thread in the array
   int rx = -1;                      /// The x index of the value in the kernel
@@ -1481,14 +1481,14 @@ __global__ void init_kernels_stack(float2* response, const int stack, const int 
   cx = blockDim.x * blockIdx.x + threadIdx.x;// use BLOCKSIZE rather (its constant)
   cy = blockDim.y * blockIdx.y + threadIdx.y;// use BLOCKSIZE rather (its constant)
 
-  if ( cy >= maxZa.height || cx >= fftlen || cx < 0 )
+  if ( cy >= maxh || cx >= fftlen || cx < 0 )
   {
     // Out of bounds
     return;
   }
 
   // Calculate which plain in the stack we are working with
-  for ( int i = 0; i < maxZa.noInStack; i++ )
+  for ( int i = 0; i < noPlains; i++ )
   {
     if ( cy >= startR.val[i] && cy < startR.val[i + 1] )
     {
@@ -1782,7 +1782,7 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
         batch->hInfos[idx].halfWidth   = z_resp_halfwidth(batch->hInfos[idx].zmax, LOWACC);
         batch->hInfos[idx].width       = calc_fftlen3(batch->hInfos[idx].harmFrac, batch->hInfos[0].zmax, batch->accelLen);
         batch->hInfos[idx].stackNo     = noStacks;
-        batch->hInfos[idx].numrs       = ceil(batch->accelLen*batch->hInfos[idx].harmFrac);
+        //batch->hInfos[idx].numrs       = ceil(batch->accelLen*batch->hInfos[idx].harmFrac);
 
         if (prevWidth!= batch->hInfos[idx].width)
         {
@@ -1850,7 +1850,6 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
             int idx                         = round(harmFrac*noHarms);
             batch->hInfos[idx].stageOrder  = i;
             batch->pIdx[i]                 = idx;
-            //printf("%i/%i %6.4f Len %i\n",harm,harmtosum,stkLst->hInfos[idx].harmFrac,stkLst->hInfos[idx].width);
           }
         }
 
@@ -2031,7 +2030,7 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
       int hh = 1;
       for (int i = 0; i< batch->noStacks; i++)
       {
-        cuStackHarms cuStack;             // Data structure used to create the convolution kernels
+
         dim3 dimBlock, dimGrid;
         cuFfdotStack* cStack = &batch->stacks[i];
 
@@ -2039,11 +2038,6 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
 
         dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
         dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-
-        cuStack.noInStack   = cStack->noInStack;
-        cuStack.width       = cStack->width;
-        cuStack.stride      = cStack->inpStride;
-        cuStack.height      = cStack->height;
 
         // call the CUDA kernels
         if ( batch->flag & FLAG_CNV_1KER )
@@ -2065,16 +2059,22 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
         }
         else
         {
+          //cuStackHarms cuStack;             // Data structure used to create the convolution kernels
+          //cuStack.noInStack   = cStack->noInStack;
+          //cuStack.width       = cStack->width;
+          //cuStack.stride      = cStack->inpStride;
+          //cuStack.height      = cStack->height;
+
           iList startR;
           fList zmax;
           for (int j = 0; j< cStack->noInStack; j++)
           {
             startR.val[j]     = cStack->startZ[j];
             zmax.val[j]       = cStack->harmInf[j].zmax;
-            cuStack.start[j]  = cStack->startZ[j];
-            cuStack.zmax[j]   = cStack->harmInf[j].zmax;
+            //cuStack.start[j]  = cStack->startZ[j];
+            //cuStack.zmax[j]   = cStack->harmInf[j].zmax;
           }
-          startR.val[cStack->noInStack] = cuStack.height;
+          startR.val[cStack->noInStack] = cStack->height;
 
           FOLD // call the CUDA kernels
           {
@@ -2083,7 +2083,7 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
             dimGrid.y = ceil ( cStack->height / ( float ) dimBlock.y );
 
             // Call kernel
-            init_kernels_stack<<<dimGrid, dimBlock>>>((float2*) cStack->d_kerData, i, cStack->width, cStack->inpStride, cStack->height, cuStack, startR, zmax);
+            init_kernels_stack<<<dimGrid, dimBlock>>>((float2*) cStack->d_kerData, cStack->width, cStack->inpStride, cStack->height, cStack->noInStack , startR, zmax);
 
             // Run message
             CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
@@ -2176,6 +2176,7 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
 
       if ( DBG_PRNTKER02 ) // Draw the kernel
       {
+        /*
         char fname[1024];
         for (int i = 0; i< batch->noHarms; i++)
         {
@@ -2183,6 +2184,7 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
           drawPlainCmplx(batch->kernels[batch->pIdx[i]].d_kerData, fname, batch->hInfos[batch->pIdx[i]].inpStride, batch->hInfos[batch->pIdx[i]].height );
           CUDA_SAFE_CALL(cudaStreamSynchronize(0),"Printing debug info");
         }
+        */
       }
     }
     else                  // Copy kernels from master device
@@ -2905,6 +2907,43 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
         stkLst->h_powers = (float*) malloc(stkLst->hInfos[0].width * sizeof(float));
     }
 
+    FOLD  // Allocate R value lists  .
+    {
+      rVals*    l;
+      rVals**   ll;
+      int oSet;
+
+      l  = (rVals*)malloc(sizeof(rVals)*stkLst->noSteps*stkLst->noHarms*3);
+      oSet = 0;
+
+      ll = (rVals**)malloc(sizeof(rVals*)*stkLst->noSteps);
+      for(int step = 0; step < stkLst->noSteps; step++)
+      {
+        ll[step] = &l[oSet];
+        oSet+= stkLst->noHarms;
+      }
+      stkLst->rInput  = (rVals***)malloc(sizeof(rVals**));
+      *stkLst->rInput = ll;
+
+      ll = (rVals**)malloc(sizeof(rVals*)*stkLst->noSteps);
+      for(int step = 0; step < stkLst->noSteps; step++)
+      {
+        ll[step] = &l[oSet];
+        oSet+= stkLst->noHarms;
+      }
+      stkLst->rSearch  = (rVals***)malloc(sizeof(rVals**));
+      *stkLst->rSearch = ll;
+
+      ll = (rVals**)malloc(sizeof(rVals*)*stkLst->noSteps);
+      for(int step = 0; step < stkLst->noSteps; step++)
+      {
+        ll[step] = &l[oSet];
+        oSet+= stkLst->noHarms;
+      }
+      stkLst->rConvld  = (rVals***)malloc(sizeof(rVals**));
+      *stkLst->rConvld = ll;
+    }
+
     FOLD // Allocate device Memory for Plain Stack & input data (steps)  .
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
@@ -3151,7 +3190,7 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
 
           if ( stkLst->flag & FLAG_CUFFTCB_OUT )
           {
-            if ( stkLst->flag & FLAG_STP_ROW )
+            if      ( stkLst->flag & FLAG_STP_ROW )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width * stkLst->noSteps;
@@ -3164,8 +3203,8 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
               resDesc.res.pitch2D.height          = cPlain->harmInf->height * stkLst->noSteps ;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width;
 
-              resDesc.res.pitch2D.devPtr        = cPlain->d_plainPowers;
-              resDesc.res.pitch2D.pitchInBytes  = cStack->pwrStride * sizeof(float);
+              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
+              resDesc.res.pitch2D.pitchInBytes    = cStack->pwrStride * sizeof(float);
             }
             else
             {
@@ -3310,6 +3349,7 @@ void freeBatch(cuFFdotBatch* stkLst)
   //free(stkLst);
 }
 
+/*
 fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPlain)
 {
   dim3 dimBlock, dimGrid;
@@ -3354,13 +3394,7 @@ fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPla
     }
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Error allocating memory for input data\n");
-    /*
-     if (len > ffdotPlain->ffPowWidth)
-     {
-     printf("ERROR: allocated memory for ffdot powers is to small\n");
-     return 0;
-     }
-     */
+
   }
 
   CUDA_SAFE_CALL(cudaMemcpyAsync(ffdotPlain->dInpFFT, data, len* sizeof(fcomplexcu), cudaMemcpyHostToDevice, ffdotPlain->stream), "Failed to copy data to device");
@@ -3446,52 +3480,6 @@ fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPla
       CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
       //CUDA_SAFE_CALL(cudaStreamSynchronize(ffdotPlain->stream),"Error after kernel launch");
 
-      /*
-       std::vector<float> myvector (powpow, powpow+len);
-       std::sort (myvector.begin(), myvector.begin()+len);
-
-       printf("\n");
-       for ( int i =  len/2 - 10; i < len/2 + 10; i++ )
-       {
-       if (i == (len-1)/2)
-       printf("----- %11.2f \n", myvector[i]);
-       else
-       printf("%05i %11.2f \n", i, myvector[i]);
-       }
-       printf("\n");
-       */
-
-      /*
-       CUDA_SAFE_CALL(cudaStreamSynchronize(ffdotPlain->stream),"Error after kernel launch");
-
-       cudaDeviceSynchronize();
-
-       // Sort in thrust and find mean
-       thrust::device_ptr<float> dev_ptr  = thrust::device_pointer_cast(ffdotPlain->dPowers);
-       //thrust::device_ptr<float> dev_ptr2 = thrust::device_pointer_cast(&ffdotPlain->dPowers);
-       thrust::device_vector<float> d_vec(dev_ptr, dev_ptr + len+1);
-       thrust::fill(dev_ptr, dev_ptr + 100, (int) 9);
-
-       int v_[100];
-       thrust::copy(d_vec.begin(), d_vec.begin()+100, v_);
-
-       printf("\n");
-
-       for ( int i = 0; i < 100; i++)
-       printf("%10.15f\n",dev_ptr[0]);
-
-       thrust::sort(dev_ptr, dev_ptr+len);
-
-       for ( int i = 0; i < 100; i++)
-       printf("%10.15f\n",d_vec[0]);
-
-       // copy median to N+1 to be used by next kernel
-       double vall = 1/d_vec[(len-1)/2]/log(2.0);
-       d_vec[len] = 1/d_vec[(len-1)/2]/log(2.0);
-       //norm = 1.0 / sqrt(median(powers, numdata)/log(2.0))
-
-       //printf("ERROR: elements do not fit in one block, Have not implemented this yet!\n");
-       */
     }
   }
 
@@ -3542,19 +3530,9 @@ fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPla
     }
   }
 
-  /*  Draw results
-   if (ffdotPlain->harmFraction == 1 )
-   {
-   float *tmpp = (float*)malloc(len2*sizeof(float)*2);
-   CUDA_SAFE_CALL(cudaMemcpy ( tmpp, ffdotPlain->dSpreadFFT, len2*sizeof ( cufftComplex ), cudaMemcpyDeviceToHost ), "Failed to copy data to device");
-   char fname[1024];
-   sprintf(fname, "/home/chris/IData_%5.3f_0.png", ffdotPlain->harmFraction);
-   drawMean(fname, tmpp, len2*2, 1000, 500);
-   }
-   */
-
   return ffdotPlain->dSpreadFFT;
 }
+*/
 
 /*
 float* init_kernels_cu(int maxZ, int fftlen)
@@ -3646,6 +3624,7 @@ float* init_kernels_cu(int maxZ, int fftlen)
 }
  */
 
+/*
 void drawPlainPowers(cuFfdot* ffdotPlain, char* name)
 {
   CUDA_SAFE_CALL(cudaStreamSynchronize(ffdotPlain->stream), "Error after kernel launch");
@@ -3664,6 +3643,7 @@ void drawPlainPowers(cuFfdot* ffdotPlain, char* name)
   //draw2DArray6(name, tmpp, ffdotPlain->ffPowWidth, ffdotPlain->ffPowHeight, 4096, 1602);
   free(tmpp);
 }
+*/
 
 void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
 {
@@ -3676,6 +3656,7 @@ void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
   free(tmpp);
 }
 
+/*
 void  drawPlainCmlx(cuFfdot* ffdotPlain, char* name)
 {
   //int numtocopy = hInf[harm].width - 2 * hInf[harm].halfWidth*ACCEL_NUMBETWEEN;
@@ -3693,7 +3674,9 @@ void  drawPlainCmlx(cuFfdot* ffdotPlain, char* name)
   //draw2DArray6(name, tmpp, ffdotPlain->ffdotWidth* 2, ffdotPlain->ffdotHeight, 500, 500);
   free(tmpp);
 }
+*/
 
+/*
 void CPU_Norm_Spread(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, fcomplexcu* fft)
 {
   nvtxRangePush("CPU_Norm_Spread");
@@ -3707,41 +3690,15 @@ void CPU_Norm_Spread(cuFFdotBatch* plains, double searchRLow, double searchRHi, 
   FOLD // Copy raw input fft data to device
   {
     // Write data to page locked memory
-    for (int ss = 0; ss< plains->noStacks; ss++)
+    for (int ss = 0; ss < plains->noStacks; ss++)
     {
       cuFfdotStack* cStack = &plains->stacks[ss];
 
-      for (int si = 0; si< cStack->noInStack; si++)
+      for (int si = 0; si < cStack->noInStack; si++)
       {
         cuHarmInfo* cHInfo  = &plains->hInfos[harm];      // The current harmonic we are working on
 
-        drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow);
-        drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi);
-
-        binoffset = cHInfo->halfWidth;
-        lobin = (int) floor(drlo) - binoffset;
-        hibin = (int) ceil(drhi)  + binoffset;
-        numdata = hibin - lobin + 1;
-
-        numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-        if (harm == 0)
-          numrs = plains->accelLen;
-        else if (numrs % ACCEL_RDR)
-          numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-        int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-        if (numrs < numtocopy)
-          numtocopy = numrs;
-
-        //if (lobin < 0 )
-        //  start = -lobin;
-
-        nice_numdata = next2_to_n_cu(numdata);  // for FFTs
-
-        if ( nice_numdata > cStack->width )
-        {
-          fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
-          //exit(EXIT_FAILURE);
-        }
+        rVals* rVal = &((*plains->rInput)[step][harm]);
 
         if ( norm_type== 0 )  // Normal normalise
         {
@@ -3838,22 +3795,19 @@ void CPU_Norm_Spread(cuFFdotBatch* plains, double searchRLow, double searchRHi, 
 
   nvtxRangePop();
 }
+*/
 
-void CPU_Norm_Spread_mstep(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
+void CPU_Norm_Spread(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
 {
   nvtxRangePush("CPU_Norm_Spread_mstep");
-
-  int       lobin, hibin, binoffset, numdata, nice_numdata, numrs;
-  double    drlo, drhi;
 
   int harm = 0;
 
   FOLD // Copy raw input fft data to device
   {
-    // Write data to page locked memory
-    for (int ss = 0; ss < plains->noStacks; ss++)
+    for (int stack = 0; stack < plains->noStacks; stack++)
     {
-      cuFfdotStack* cStack = &plains->stacks[ss];
+      cuFfdotStack* cStack = &plains->stacks[stack];
       int sz = 0;
       for (int si = 0; si < cStack->noInStack; si++)
       {
@@ -3863,57 +3817,29 @@ void CPU_Norm_Spread_mstep(cuFFdotBatch* plains, double* searchRLow, double* sea
         {
           if ( !(searchRLow[step] == 0 &&  searchRHi[step] == 0) )
           {
-            drlo      = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[step]);
-            drhi      = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[step] );
-
-            binoffset = cHInfo->halfWidth;
-            lobin     = (int) floor(drlo) - binoffset;
-            hibin     = (int) ceil(drhi)  + binoffset;
-            numdata   = hibin - lobin + 1;
-
-            numrs     = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-
-            if (harm == 0)
-              numrs   = plains->accelLen;
-            else if (numrs % ACCEL_RDR)
-              numrs   = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-
-            int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-            if (numrs < numtocopy)
-              numtocopy = numrs;
-
-            //if (lobin < 0 )
-            //  start   = -lobin;
-
-            nice_numdata = next2_to_n_cu(numdata);  // for FFTs
-
-            if ( nice_numdata > cStack->width )
-            {
-              fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
-              //exit(EXIT_FAILURE);
-            }
+            rVals* rVal = &((*plains->rInput)[step][harm]);
 
             if ( norm_type== 0 )  // Normal normalise
             {
               double norm;    /// The normalising factor
 
               nvtxRangePush("Powers");
-              for (int ii = 0; ii < numdata; ii++)
+              for (int ii = 0; ii < rVal->numdata; ii++)
               {
-                if ( lobin+ii < 0 || lobin+ii  >= plains->SrchSz->searchRHigh ) // Zero Pad
+                if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= plains->SrchSz->searchRHigh ) // Zero Pad
                 {
                   plains->h_powers[ii] = 0;
                 }
                 else
-                  plains->h_powers[ii] = POWERCU(fft[(int)lobin+ii].r, fft[(int)lobin+ii].i);
+                  plains->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
               }
               nvtxRangePop();
 
               if ( DBG_INP01 )
               {
-                float* data = (float*)&fft[(int)lobin];
+                float* data = (float*)&fft[rVal->lobin];
                 int gx;
-                printf("\nGPU Input Data RAW FFTs [ Half width: %i  lowbin: %i  drlo: %.2f ] \n", binoffset, lobin, drlo);
+                printf("\nGPU Input Data RAW FFTs [ Half width: %i  lowbin: %i  drlo: %.2f ] \n", cHInfo->halfWidth, rVal->lobin, rVal->drlo);
 
                 for ( gx = 0; gx < 10; gx++)
                   printf("%.4f ",((float*)data)[gx]);
@@ -3921,15 +3847,15 @@ void CPU_Norm_Spread_mstep(cuFFdotBatch* plains, double* searchRLow, double* sea
               }
 
               nvtxRangePush("Median");
-              norm = 1.0 / sqrt(median(plains->h_powers, (numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
-              //norm = 1.0 / sqrt(median(&plains->h_powers[start], (numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion)
+              norm = 1.0 / sqrt(median(plains->h_powers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
+              //norm = 1.0 / sqrt(median(&plains->h_powers[start], (rVal->numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion)
               nvtxRangePop();
 
               // Normalise and spread
               nvtxRangePush("Write");
-              for (int ii = 0; ii < numdata && ii * ACCEL_NUMBETWEEN < cStack->inpStride; ii++)
+              for (int ii = 0; ii < rVal->numdata && ii * ACCEL_NUMBETWEEN < cStack->inpStride; ii++)
               {
-                if ( lobin+ii < 0  || lobin+ii  >= plains->SrchSz->searchRHigh )  // Zero Pad
+                if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= plains->SrchSz->searchRHigh )  // Zero Pad
                 {
                   cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = 0;
                   cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = 0;
@@ -3942,14 +3868,22 @@ void CPU_Norm_Spread_mstep(cuFFdotBatch* plains, double* searchRLow, double* sea
                     exit(EXIT_FAILURE);
                   }
 
-                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[(int)lobin+ ii].r * norm;
-                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[(int)lobin+ ii].i * norm;
+                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin+ ii].r * norm;
+                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin+ ii].i * norm;
                 }
               }
               nvtxRangePop();
             }
             else                  // or double-tophat normalisation
             {
+              int nice_numdata = next2_to_n_cu(rVal->numdata);  // for FFTs
+
+              if ( nice_numdata > cStack->width )
+              {
+                fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
+                //exit(EXIT_FAILURE);
+              }
+
               // Do the actual copy
               //memcpy(plains->h_powers, &fft[lobin], numdata * sizeof(fcomplexcu) );
 
@@ -3959,18 +3893,18 @@ void CPU_Norm_Spread_mstep(cuFFdotBatch* plains, double* searchRLow, double* sea
               //powers = gen_fvect(nice_numdata);
               for (int ii = 0; ii< nice_numdata; ii++)
               {
-                plains->h_powers[ii] = POWERCU(fft[(int)lobin+ii].r, fft[(int)lobin+ii].i);
+                plains->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
               }
               loc_powers = corr_loc_pow(plains->h_powers, nice_numdata);
 
               //memcpy(&plains->h_iData[sz], &fft[lobin], nice_numdata * sizeof(fcomplexcu) );
 
-              for (int ii = 0; ii< numdata; ii++)
+              for (int ii = 0; ii < rVal->numdata; ii++)
               {
                 float norm = invsqrt(loc_powers[ii]);
 
-                plains->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[(int)lobin+ ii].r* norm;
-                plains->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[(int)lobin+ ii].i* norm;
+                plains->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin+ ii].r* norm;
+                plains->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin+ ii].i* norm;
               }
 
               vect_free(loc_powers);  // I hate doing this!!!
@@ -3992,6 +3926,7 @@ void CPU_Norm_Spread_mstep(cuFFdotBatch* plains, double* searchRLow, double* sea
   nvtxRangePop();
 }
 
+/*
 void setStackRVals(cuFFdotBatch* plains, double* searchRLow, double* searchRHi)
 {
   int       hibin, binoffset;
@@ -4054,7 +3989,71 @@ void setStackRVals(cuFFdotBatch* plains, double* searchRLow, double* searchRHi)
     printf("                      |                       |                        |                       |                      \n" );
   }
 }
+*/
 
+void setStackRVals(cuFFdotBatch* plains, double* searchRLow, double* searchRHi)
+{
+  int       hibin, binoffset;
+  double    drlo, drhi;
+
+  int lobin;      /// The first bin to copy from the the input fft ( serachR scaled - halfwidth )
+  int numdata;    /// The number of input fft points to read
+  int numrs;      /// The number of good bins in the plain ( expanded units )
+
+  printf("                      |                       |                        |                       |                      \n" );
+
+  for (int harm = 0; harm < plains->noHarms; harm++)
+  {
+    cuHarmInfo* cHInfo    = &plains->hInfos[harm];      // The current harmonic we are working on
+    binoffset             = cHInfo->halfWidth;          //
+
+    for (int step = 0; step < plains->noSteps; step++)
+    {
+      rVals* rVal         = &((*plains->rInput)[step][harm]);
+
+      drlo                = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[step]);
+      drhi                = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[step] );
+
+      lobin               = (int) floor(drlo) - binoffset;
+      hibin               = (int) ceil(drhi)  + binoffset;
+
+      numdata             = hibin - lobin + 1;
+      numrs               = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+
+      if (harm == 0)
+        numrs = plains->accelLen;
+      else if (numrs % ACCEL_RDR)
+        numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+
+      rVal->drlo          = drlo;
+      rVal->lobin         = lobin;
+      rVal->numrs         = numrs;
+      rVal->numdata       = numdata;
+      rVal->expBin        = (lobin+binoffset)*ACCEL_RDR;
+
+      if( step == 1 )
+      {
+        double ExBin = searchRLow[step]*((float)ACCEL_RDR)*cHInfo->harmFrac ;
+
+        double ExBinR = floor( ExBin / 2.0) * 2.0 ;
+        double BsBinR = ExBinR / 2.0 ;
+        printf("searchR: %11.2f  |   drlo: %11.2f   |   ExBin: %11.2f   |   ExBinR: %9.0f   |   BsBinR: %11lli\n", searchRLow[step]*cHInfo->harmFrac, drlo, ExBin, ExBinR, rVal->expBin   );
+      }
+    }
+  }
+  printf("                      |                       |                        |                       |                      \n" );
+
+  TMP
+}
+
+void cycleRlists(cuFFdotBatch* plains)
+{
+  rVals*** tmp    = plains->rSearch;
+
+  plains->rSearch = plains->rConvld;
+  plains->rConvld = plains->rInput;
+  plains->rInput  = tmp;
+}
 
 /** Initialise input data for a f-∂f plain(s)  ready for convolution  .
  * This:
@@ -4068,433 +4067,478 @@ void setStackRVals(cuFFdotBatch* plains, double* searchRLow, double* searchRHi)
  * @param norm_type   The type of normalisation to perform
  * @param fft         The fft
  */
-void initInput(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
+void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
 {
+  //printf("Input\n");
+
   iHarmList lengths;
   iHarmList widths;
   cHarmList d_iDataList;
   cHarmList d_fftList;
-  int sz = 0;
-  int lobin, hibin, binoffset, numdata, numrs;
-  double drlo, drhi;
+
+  //int sz = 0;
+  //int lobin, hibin, binoffset, numdata, numrs;
+  //double drlo, drhi;
   dim3 dimBlock, dimGrid;
-  int harm = 0;
+  //int harm = 0;
 
-  nvtxRangePush("Input");
-
-  //printf("Input\n");
-
-  if      ( plains->flag & CU_INPT_SINGLE_G  )
+  if ( searchRLow[0] < searchRHi[0] ) // This is real data
   {
-    // Copy chunks of FFT data and normalise and spread using the GPU
+    nvtxRangePush("Input");
 
-    // Make sure the previous thread has complete reading from page locked memory
-    CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-    nvtxRangePush("Zero");
-    memset(plains->h_iData, 0, plains->inpDataSize*plains->noSteps);
-    nvtxRangePop();
+    setStackRVals(batch, searchRLow, searchRHi );
 
-    FOLD // Copy fft data to device
+    FOLD  // Normalise and spread and copy to batch memory  .
     {
-      // Write fft data segments to contiguous page locked memory
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      if      ( batch->flag & CU_INPT_SINGLE_G  )
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
+        // Copy chunks of FFT data and normalise and spread using the GPU
 
-        for (int si = 0; si< cStack->noInStack; si++)
+        if ( batch->noSteps > 1 ) // TODO: multi step
         {
-          cuHarmInfo* cHInfo = &plains->hInfos[harm];  // The current harmonic we are working on
-          cuFFdot* cPlain = &plains->plains[harm];     //
+          fprintf(stderr,"ERROR: CU_INPT_SINGLE_G has not been set up for multi-step.");
+          exit(EXIT_FAILURE);
+        }
 
-          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
-          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+        // Make sure the previous thread has complete reading from page locked memory
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: copying data to device");
+        nvtxRangePush("Zero");
+        memset(batch->h_iData, 0, batch->inpDataSize*batch->noSteps);
+        nvtxRangePop();
 
-          binoffset = cHInfo->halfWidth;
-          lobin = (int) floor(drlo) - binoffset;
-          hibin = (int)  ceil(drhi) + binoffset;
-          numdata = hibin - lobin + 1;
+        FOLD // Copy fft data to device
+        {
 
-          numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-          if (harm == 0)
+          for (int step = 0; step < batch->noSteps; step++)
           {
-            //numrs = ACCEL_USELEN;
-            numrs = plains->accelLen;
+            int harm = 0;
+            int sz = 0;
+
+            // Write fft data segments to contiguous page locked memory
+            for (int stack = 0; stack< batch->noStacks; stack++)
+            {
+              cuFfdotStack* cStack = &batch->stacks[stack];
+
+              for (int si = 0; si< cStack->noInStack; si++)
+              {
+                cuHarmInfo* cHInfo = &batch->hInfos[harm];  // The current harmonic we are working on
+                cuFFdot* cPlain = &batch->plains[harm];     //
+
+                rVals* rVal = &((*batch->rInput)[step][harm]);
+
+                /*
+                drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
+                drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+
+                binoffset = cHInfo->halfWidth;
+                lobin = (int) floor(drlo) - binoffset;
+                hibin = (int)  ceil(drhi) + binoffset;
+                numdata = hibin - lobin + 1;
+
+                numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+                if (harm == 0)
+                {
+                  //numrs = ACCEL_USELEN;
+                  numrs = plains->accelLen;
+                }
+                else if (numrs % ACCEL_RDR)
+                  numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+                int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
+                if (numrs < numtocopy)
+                  numtocopy = numrs;
+                 */
+
+                lengths.val[harm]       = rVal->numdata;
+                d_iDataList.val[harm]   = cPlain->d_iData;
+                widths.val[harm]        = cStack->width;
+
+                int start = 0;
+                if ( rVal->lobin < 0 )
+                  start = -rVal->lobin;
+
+                // Do the actual copy
+                memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start)* sizeof(fcomplexcu));
+
+                sz += cStack->inpStride;
+
+                harm++;
+              }
+            }
+
+            // Synchronisation
+            for (int stack = 0; stack < batch->noStacks; stack++)
+            {
+              cuFfdotStack* cStack = &batch->stacks[stack];
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+            }
+
+            // Copy to device
+            CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy data to device");
+
+            // Synchronisation
+            cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
+
+            CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
           }
-          else if (numrs % ACCEL_RDR)
-            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-          int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-          if (numrs < numtocopy)
-            numtocopy = numrs;
+        }
 
-          lengths.val[harm]       = numdata;
-          d_iDataList.val[harm]   = cPlain->d_iData;
-          widths.val[harm]        = cStack->width;
+        FOLD // Normalise and spread
+        {
+          // Blocks of 1024 threads ( the maximum number of threads per block )
+          dimBlock.x = NAS_DIMX;
+          dimBlock.y = NAS_DIMY;
+          dimBlock.z = 1;
 
-          int start = 0;
-          if ( lobin < 0 )
-            start = -lobin;
+          // One block per harmonic, thus we can sort input powers in Shared memory
+          dimGrid.x = batch->noHarms;
+          dimGrid.y = 1;
 
-          // Do the actual copy
-          memcpy(&plains->h_iData[sz+start], &fft[lobin+start], (numdata-start)* sizeof(fcomplexcu));
+          // Synchronisation
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
 
-          sz += cStack->inpStride;
+          // Call the kernel to normalise and spread the input data
+          normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), batch->inpStream>>>(d_iDataList, lengths, widths);
 
-          harm++;
+          // Synchronisation
+          cudaEventRecord(batch->normComp, batch->inpStream);
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
         }
       }
-
-      // Synchronisation
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      else if ( batch->flag & CU_INPT_HOST      )
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+        // Copy chunks of FFT data and normalise and spread using the GPU
+
+        if ( batch->noSteps > 1 ) // TODO: multi step
+        {
+          fprintf(stderr,"ERROR: CU_INPT_HOST has not been set up for multi-step.");
+          exit(EXIT_FAILURE);
+        }
+
+        // Make sure the previous thread has complete reading from page locked memory
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: copying data to device");
+        //nvtxRangePush("Zero");
+        //memset(plains->h_iData, 0, plains->inpDataSize);
+        CUDA_SAFE_CALL(cudaMemsetAsync(batch->d_iData, 0, batch->inpDataSize*batch->noSteps, batch->inpStream),"Initialising input data to 0");
+        //nvtxRangePop();
+
+        FOLD // Copy fft data to device
+        {
+          int harm = 0;
+          int sz = 0;
+
+          int step = 0; // TODO myltistep
+
+          // Write fft data segments to contiguous page locked memory
+          for (int ss = 0; ss< batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            // Synchronisation
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+
+            for (int si = 0; si< cStack->noInStack; si++)
+            {
+              cuHarmInfo* cHInfo  = &batch->hInfos[harm];  // The current harmonic we are working on
+              cuFFdot*    cPlain  = &batch->plains[harm];  //
+              rVals*      rVal    = &((*batch->rInput)[step][harm]);
+
+/*
+              drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
+              drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+
+              binoffset = cHInfo->halfWidth;
+              lobin     = (int) floor(drlo) - binoffset;
+              hibin     = (int)  ceil(drhi) + binoffset;
+              numdata   = hibin - lobin + 1;
+
+              numrs     = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+              if (harm == 0)
+              {
+                numrs = batch->accelLen;
+              }
+              else if (numrs % ACCEL_RDR)
+                numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+              int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
+              if (numrs < numtocopy)
+                numtocopy = numrs;
+*/
+
+              lengths.val[harm]       = rVal->numdata;
+              d_iDataList.val[harm]   = cPlain->d_iData;
+              widths.val[harm]        = cStack->width;
+
+              int start = 0;
+
+              if ( (rVal->lobin - batch->SrchSz->rLow)  < 0 )
+              {
+                // This should be unnecessary as rLow can be < 0 and h_iData is zero padded
+                start = -(rVal->lobin - batch->SrchSz->rLow);
+                CUDA_SAFE_CALL(cudaMemsetAsync(cPlain->d_iData, 0, start*sizeof(fcomplexcu), batch->inpStream),"Initialising input data to 0");
+              }
+
+              // Copy section to device
+              CUDA_SAFE_CALL(cudaMemcpyAsync(&cPlain->d_iData[start], &batch->h_iData[rVal->lobin-batch->SrchSz->rLow+start], (rVal->numdata-start)*sizeof(fcomplexcu), cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy data to device");
+
+              sz += cStack->inpStride;
+
+              if ( DBG_INP01 ) // Print debug info
+              {
+                printf("\nCPU Input Data RAW FFTs [ Half width: %i  lowbin: %i  drlo: %.2f ] \n", cHInfo->halfWidth, rVal->lobin, rVal->drlo);
+
+                printfData<<<1,1,0,batch->inpStream>>>((float*)cPlain->d_iData,10,1, cStack->inpStride);
+                CUDA_SAFE_CALL(cudaStreamSynchronize(batch->inpStream),"");
+              }
+
+              harm++;
+            }
+          }
+
+          // Synchronisation
+          //cudaEventRecord(plains->iDataCpyComp, batch->inpStream);
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
+        }
+
+        FOLD // Normalise and spread
+        {
+          // Blocks of 1024 threads ( the maximum number of threads per block )
+          dimBlock.x = NAS_DIMX;
+          dimBlock.y = NAS_DIMY;
+          dimBlock.z = 1;
+
+          // One block per harmonic, thus we can sort input powers in Shared memory
+          dimGrid.x = batch->noHarms;
+          dimGrid.y = 1;
+
+          // Call the kernel to normalise and spread the input data
+          normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), batch->inpStream>>>(d_iDataList, lengths, widths);
+
+          // Synchronisation
+          cudaEventRecord(batch->normComp, batch->inpStream);
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
+        }
       }
-
-      // Copy to device
-      CUDA_SAFE_CALL(cudaMemcpyAsync(plains->d_iData, plains->h_iData, plains->inpDataSize, cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-
-      // Synchronisation
-      cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
-    }
-
-    FOLD // Normalise and spread
-    {
-      // Blocks of 1024 threads ( the maximum number of threads per block )
-      dimBlock.x = NAS_DIMX;
-      dimBlock.y = NAS_DIMY;
-      dimBlock.z = 1;
-
-      // One block per harmonic, thus we can sort input powers in Shared memory
-      dimGrid.x = plains->noHarms;
-      dimGrid.y = 1;
-
-      // Synchronisation
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, plains->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-
-      // Call the kernel to normalise and spread the input data
-      normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_iDataList, lengths, widths);
-
-      // Synchronisation
-      cudaEventRecord(plains->normComp, plains->inpStream);
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
-    }
-  }
-  else if ( plains->flag & CU_INPT_HOST )
-  {
-    // Copy chunks of FFT data and normalise and spread using the GPU
-
-    // Make sure the previous thread has complete reading from page locked memory
-    CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-    //nvtxRangePush("Zero");
-    //memset(plains->h_iData, 0, plains->inpDataSize);
-    CUDA_SAFE_CALL(cudaMemsetAsync(plains->d_iData, 0, plains->inpDataSize*plains->noSteps, plains->inpStream),"Initialising input data to 0");
-    //nvtxRangePop();
-
-    FOLD // Copy fft data to device
-    {
-      // Write fft data segments to contiguous page locked memory
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      else if ( batch->flag & CU_INPT_DEVICE    )
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
+        // Copy chunks of FFT data and normalise and spread using the GPU
+
+        if ( batch->noSteps > 1 ) // TODO: multi step  .
+        {
+          fprintf(stderr,"ERROR: CU_INPT_DEVICE has not been set up for multi-step.");
+          exit(EXIT_FAILURE);
+        }
+
+        // Make sure the previous thread has complete reading from page locked memory
+        //CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
+        //nvtxRangePush("Zero");
+        //memset(plains->h_iData, 0, plains->inpDataSize);
+        //nvtxRangePop();
+
+        FOLD // Setup parameters
+        {
+          int harm  = 0;
+          int step  = 0; // TODO multistep
+          int sz    = 0;
+
+          for (int ss = 0; ss< batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            for (int si = 0; si< cStack->noInStack; si++)
+            {
+              cuHarmInfo* cHInfo  = &batch->hInfos[harm];  // The current harmonic we are working on
+              cuFFdot*    cPlain  = &batch->plains[harm];     //
+              rVals*      rVal    = &((*batch->rInput)[step][harm]);
+
+              /*
+              drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
+              drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
+
+              binoffset = cHInfo->halfWidth;
+              lobin = (int) floor(drlo) - binoffset;
+              hibin = (int)  ceil(drhi) + binoffset;
+              numdata = hibin - lobin + 1;
+
+              numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+              if (harm == 0)
+              {
+                numrs = batch->accelLen;
+              }
+              else if (numrs % ACCEL_RDR)
+                numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+              int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
+              if (numrs < numtocopy)
+                numtocopy = numrs;
+*/
+
+              lengths.val[harm]     = rVal->numdata;
+              d_iDataList.val[harm] = cPlain->d_iData;
+              widths.val[harm]      = cStack->width;
+              if ( rVal->lobin-batch->SrchSz->rLow < 0 )
+              {
+                // NOTE could use an offset parameter here
+                printf("ERROR: Input data index out of bounds.\n");
+                exit(EXIT_FAILURE);
+              }
+              d_fftList.val[harm]   = &batch->d_iData[rVal->lobin-batch->SrchSz->rLow];
+
+              sz += cStack->inpStride;
+
+              harm++;
+            }
+          }
+        }
+
+        FOLD // Normalise and spread
+        {
+          // Blocks of 1024 threads ( the maximum number of threads per block )
+          dimBlock.x = NAS_DIMX;
+          dimBlock.y = NAS_DIMY;
+          dimBlock.z = 1;
+
+          // One block per harmonic, thus we can sort input powers in Shared memory
+          dimGrid.x = batch->noHarms;
+          dimGrid.y = 1;
+
+          // Synchronisation
+          for (int ss = 0; ss< batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+          }
+
+          // Call the kernel to normalise and spread the input data
+          normAndSpreadBlksDevice<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), batch->inpStream>>>(d_fftList, d_iDataList, lengths, widths);
+
+          // Synchronisation
+          cudaEventRecord(batch->normComp, batch->inpStream);
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
+        }
+      }
+      else if ( batch->flag & CU_INPT_SINGLE_C  )
+      {
+        // Copy chunks of FFT data and normalise and spread using the CPU
+
+        // Make sure the previous thread has complete reading from page locked memory
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: copying data to device");
+        nvtxRangePush("Zero");
+        memset(batch->h_iData, 0, batch->inpDataSize*batch->noSteps);
+        nvtxRangePop();
+
+        CPU_Norm_Spread(batch, searchRLow, searchRHi, norm_type, fft);
 
         // Synchronisation
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-
-        for (int si = 0; si< cStack->noInStack; si++)
+        for (int ss = 0; ss< batch->noStacks; ss++)
         {
-          cuHarmInfo* cHInfo  = &plains->hInfos[harm];  // The current harmonic we are working on
-          cuFFdot* cPlain     = &plains->plains[harm];  //
-
-          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
-          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
-
-          binoffset = cHInfo->halfWidth;
-          lobin     = (int) floor(drlo) - binoffset;
-          hibin     = (int)  ceil(drhi) + binoffset;
-          numdata   = hibin - lobin + 1;
-
-          numrs     = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-          if (harm == 0)
-          {
-            numrs = plains->accelLen;
-          }
-          else if (numrs % ACCEL_RDR)
-            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-          int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-          if (numrs < numtocopy)
-            numtocopy = numrs;
-
-          lengths.val[harm]       = numdata;
-          d_iDataList.val[harm]   = cPlain->d_iData;
-          widths.val[harm]        = cStack->width;
-
-          int start = 0;
-
-          if ( (lobin - plains->SrchSz->rLow)  < 0 )
-          {
-            // This should be unnecessary as rLow can be < 0 and h_iData is zero padded
-            start = -(lobin - plains->SrchSz->rLow);
-            CUDA_SAFE_CALL(cudaMemsetAsync(cPlain->d_iData, 0, start*sizeof(fcomplexcu), plains->inpStream),"Initialising input data to 0");
-          }
-
-          // Copy section to device
-          CUDA_SAFE_CALL(cudaMemcpyAsync(&cPlain->d_iData[start], &plains->h_iData[lobin-plains->SrchSz->rLow+start], (numdata-start)*sizeof(fcomplexcu), cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-
-          sz += cStack->inpStride;
-
-          if ( DBG_INP01 ) // Print debug info
-          {
-            printf("\nCPU Input Data RAW FFTs [ Half width: %i  lowbin: %i  drlo: %.2f ] \n", cHInfo->halfWidth, lobin, drlo);
-
-            printfData<<<1,1,0,plains->inpStream>>>((float*)cPlain->d_iData,10,1, cStack->inpStride);
-            CUDA_SAFE_CALL(cudaStreamSynchronize(plains->inpStream),"");
-          }
-
-          harm++;
+          cuFfdotStack* cStack = &batch->stacks[ss];
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
         }
+
+        // Copy to device
+        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize*batch->noSteps, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy data to device");
+
+        // Synchronisation
+        cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
+        cudaEventRecord(batch->normComp, batch->inpStream);
+
+        CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
       }
-
-      // Synchronisation
-      //cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
     }
 
-    FOLD // Normalise and spread
+    if ( DBG_INP03 ) // Print debug info  .
     {
-      // Blocks of 1024 threads ( the maximum number of threads per block )
-      dimBlock.x = NAS_DIMX;
-      dimBlock.y = NAS_DIMY;
-      dimBlock.z = 1;
-
-      // One block per harmonic, thus we can sort input powers in Shared memory
-      dimGrid.x = plains->noHarms;
-      dimGrid.y = 1;
-
-      // Call the kernel to normalise and spread the input data
-      normAndSpreadBlks<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_iDataList, lengths, widths);
-
-      // Synchronisation
-      cudaEventRecord(plains->normComp, plains->inpStream);
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
-    }
-  }
-  else if ( plains->flag & CU_INPT_DEVICE    )
-  {
-    // Copy chunks of FFT data and normalise and spread using the GPU
-
-    // Make sure the previous thread has complete reading from page locked memory
-    //CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-    //nvtxRangePush("Zero");
-    //memset(plains->h_iData, 0, plains->inpDataSize);
-    //nvtxRangePop();
-
-    FOLD // Setup parameters
-    {
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      for (int ss = 0; ss< batch->noHarms && true; ss++)
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-
-        for (int si = 0; si< cStack->noInStack; si++)
+        cuFFdot* cPlain     = &batch->plains[ss];
+        printf("\nGPU Input Data pre FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
+        printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
+        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
+        for (int ss = 0; ss< batch->noStacks; ss++)
         {
-          cuHarmInfo* cHInfo = &plains->hInfos[harm];  // The current harmonic we are working on
-          cuFFdot* cPlain = &plains->plains[harm];     //
-
-          drlo = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[0]);
-          drhi = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[0]);
-
-          binoffset = cHInfo->halfWidth;
-          lobin = (int) floor(drlo) - binoffset;
-          hibin = (int)  ceil(drhi) + binoffset;
-          numdata = hibin - lobin + 1;
-
-          numrs = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
-          if (harm == 0)
-          {
-            numrs = plains->accelLen;
-          }
-          else if (numrs % ACCEL_RDR)
-            numrs = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
-          int numtocopy = cHInfo->width - 2 * cHInfo->halfWidth * ACCEL_NUMBETWEEN;
-          if (numrs < numtocopy)
-            numtocopy = numrs;
-
-          lengths.val[harm]     = numdata;
-          d_iDataList.val[harm] = cPlain->d_iData;
-          widths.val[harm]      = cStack->width;
-          if ( lobin-plains->SrchSz->rLow < 0 )
-          {
-            // NOTE could use an offset parameter here
-            printf("ERROR: Input data index out of bounds.\n");
-            exit(EXIT_FAILURE);
-          }
-          d_fftList.val[harm]   = &plains->d_iData[lobin-plains->SrchSz->rLow];
-
-          sz += cStack->inpStride;
-
-          harm++;
+          cuFfdotStack* cStack = &batch->stacks[ss];
+          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
         }
       }
     }
 
-    FOLD // Normalise and spread
+    FOLD // fft the input data  .
     {
-      // Blocks of 1024 threads ( the maximum number of threads per block )
-      dimBlock.x = NAS_DIMX;
-      dimBlock.y = NAS_DIMY;
-      dimBlock.z = 1;
+      // I tested doing the FFT's on the CPU and its way to slow! so go GPU!
+      // TODO: I could make this a flag
 
-      // One block per harmonic, thus we can sort input powers in Shared memory
-      dimGrid.x = plains->noHarms;
-      dimGrid.y = 1;
-
-      // Synchronisation
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      for (int ss = 0; ss< batch->noStacks; ss++)
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-      }
+        cuFfdotStack* cStack = &batch->stacks[ss];
 
-      // Call the kernel to normalise and spread the input data
-      normAndSpreadBlksDevice<<<dimGrid, dimBlock, (lengths.val[0]+1)*sizeof(float), plains->inpStream>>>(d_fftList, d_iDataList, lengths, widths);
+        // Synchronise
+        cudaStreamWaitEvent(cStack->fftIStream, batch->normComp, 0);
 
-      // Synchronisation
-      cudaEventRecord(plains->normComp, plains->inpStream);
+        CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
 
-      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");
-    }
-  }
-  else if ( plains->flag & CU_INPT_SINGLE_C  )
-  {
-    // Copy chunks of FFT data and normalise and spread using the CPU
-
-    // Make sure the previous thread has complete reading from page locked memory
-    CUDA_SAFE_CALL(cudaEventSynchronize(plains->iDataCpyComp), "ERROR: copying data to device");
-    nvtxRangePush("Zero");
-    memset(plains->h_iData, 0, plains->inpDataSize*plains->noSteps);
-    nvtxRangePop();
-
-    CPU_Norm_Spread_mstep(plains, searchRLow, searchRHi, norm_type, fft);
-
-    // Synchronisation
-    for (int ss = 0; ss< plains->noStacks; ss++)
-    {
-      cuFfdotStack* cStack = &plains->stacks[ss];
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(plains->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
-    }
-
-    // Copy to device
-    CUDA_SAFE_CALL(cudaMemcpyAsync(plains->d_iData, plains->h_iData, plains->inpDataSize*plains->noSteps, cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-
-    /*
-    for (int ss = 0; ss< plains->noStacks; ss++)
-    {
-      cuFfdotStack* cStack = &plains->stacks[ss];
-      CUDA_SAFE_CALL(cudaMemcpyAsync(cStack->d_iData, cStack->h_iData, cStack->inpStride*plains->noSteps*sizeof(fcomplex), cudaMemcpyHostToDevice, plains->inpStream), "Failed to copy data to device");
-    }
-     */
-
-    // Synchronisation
-    cudaEventRecord(plains->iDataCpyComp, plains->inpStream);
-    cudaEventRecord(plains->normComp, plains->inpStream);
-
-    CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
-  }
-
-  if ( DBG_INP03 ) // Print debug info  .
-  {
-    for (int ss = 0; ss< plains->noHarms && true; ss++)
-    {
-      cuFFdot* cPlain     = &plains->plains[ss];
-      printf("\nGPU Input Data pre FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-      printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
-      CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-      for (int ss = 0; ss< plains->noStacks; ss++)
-      {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
-      }
-    }
-  }
-
-  FOLD // fft the input data  .
-  {
-    // I tested doing the FFT's on the CPU and its way to slow! so go GPU!
-    // TODO: I could make this a flag
-
-    for (int ss = 0; ss< plains->noStacks; ss++)
-    {
-      cuFfdotStack* cStack = &plains->stacks[ss];
-
-      // Synchronise
-      cudaStreamWaitEvent(cStack->fftIStream, plains->normComp, 0);
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
-
-      // Do the FFT
+        // Do the FFT
 #pragma omp critical
-      {
-        CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
-        CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+        {
+          CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
+          CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
 
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+        }
+
+        // Synchronise
+        cudaEventRecord(cStack->prepComp, cStack->fftIStream);
       }
 
-      // Synchronise
-      cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+      CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
     }
 
-    CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
-  }
-
-  if ( DBG_INP04 ) // Print debug info  .
-  {
-    for (int ss = 0; ss< plains->noHarms && true; ss++)
+    if ( DBG_INP04 ) // Print debug info  .
     {
-      cuFFdot* cPlain     = &plains->plains[ss];
-      printf("\nGPU Input Data post FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-      printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
-      CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-      for (int ss = 0; ss< plains->noStacks; ss++)
+      for (int ss = 0; ss< batch->noHarms && true; ss++)
       {
-        cuFfdotStack* cStack = &plains->stacks[ss];
-        CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
+        cuFFdot* cPlain     = &batch->plains[ss];
+        printf("\nGPU Input Data post FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
+        printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
+        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
+        for (int ss = 0; ss< batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
+        }
       }
     }
-  }
 
-  nvtxRangePop();
+    batch->haveInput = 1;
+
+    nvtxRangePop();
+  }
 }
 
 void search_ffdot_planeCU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands)
 {
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering search_ffdot_planeCU.");
 
-  if ( searchRLow[0] < searchRHi[0] ) // Initialise input data
+  FOLD // Initialise input data  .
   {
     initInput(plains, searchRLow, searchRHi, norm_type, fft);
   }
 
-  FOLD // Sum & Search
+  FOLD // Sum & Search  .
   {
-    //printf("Sum & Search\n");
     sumAndSearch(plains, numindep, cands);
   }
 
-  if ( searchRLow[0] < searchRHi[0] ) // Convolve & FFT
+  FOLD // Convolve & FFT  .
   {
-    //printf("Convolve & FFT\n");
     convolveStack(plains);
   }
 
   // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
-  setStackRVals(plains, searchRLow, searchRHi);
+  //setStackRVals(plains, searchRLow, searchRHi);
+  cycleRlists(plains);
 }
-
 
 void max_ffdot_planeCU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft, long long* numindep, float* powers)
 {
@@ -4518,9 +4562,9 @@ void max_ffdot_planeCU(cuFFdotBatch* plains, double* searchRLow, double* searchR
   }
 
   // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
-  setStackRVals(plains, searchRLow, searchRHi);
+  //setStackRVals(plains, searchRLow, searchRHi);
+  cycleRlists(plains);
 }
-
 
 int selectDevice(int device, int print)
 {
@@ -4558,7 +4602,6 @@ int selectDevice(int device, int print)
   return ((deviceProp.major<< 4)+ deviceProp.minor);
 }
 
-
 void printCands(const char* fileName, GSList *cands)
 {
   if ( cands == NULL  )
@@ -4586,7 +4629,6 @@ void printCands(const char* fileName, GSList *cands)
   }
 }
 
-
 void printContext()
 {
   int currentDevvice;
@@ -4603,7 +4645,6 @@ void printContext()
 
   printf("Thread %02i  currentDevvice: %i Context %p \n", trd, currentDevvice, pctx);
 }
-
 
 void setContext(cuFFdotBatch* stkList)
 {
@@ -4631,13 +4672,11 @@ void setContext(cuFFdotBatch* stkList)
   //printf("Thread %02i  Context %p \n", omp_get_thread_num(), pctx);
 }
 
-
 void testzm()
 {
   cufftHandle plan;
   CUFFT_SAFE_CALL(cufftCreate(&plan),"Failed associating a CUFFT plan with FFT input stream\n");
 }
-
 
 gpuSpecs gSpec(int devID = -1 )
 {
@@ -4665,7 +4704,6 @@ gpuSpecs gSpec(int devID = -1 )
   return gSpec;
 }
 
-
 /*
 cuMemInfo* newcuMemInfo( int noDevs = 1 )
 {
@@ -4688,7 +4726,6 @@ cuMemInfo* newcuMemInfo( int noDevs = 1 )
   return bInf;
 }
 */
-
 
 /*
 cuMemInfo* oneDevice(int dev, fftInfo* fftinf, int numharmstages=3, int zMax=200, int width=8, int noBatches = 2, int noSteps = 4, int flags = 0, int candType = CU_FULLCAND, int retType = CU_SMALCAND, void* out = NULL)
@@ -4723,7 +4760,6 @@ cuMemInfo* oneDevice(int dev, fftInfo* fftinf, int numharmstages=3, int zMax=200
   return bInf;
 }
 */
-
 
 /**  Read the GPU details from clig command line
  *
@@ -4774,9 +4810,10 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   // Defaults for accel search
   sSpec.flags         |= FLAG_RETURN_ALL ;
-  sSpec.flags         |=  CU_CAND_ARR ;
+  sSpec.flags         |= CU_CAND_ARR ;
   sSpec.flags         |= FLAG_STP_ROW ;  //   FLAG_STP_ROW    FLAG_STP_PLN
-  //sSpec.flags         |= FLAG_CUFFTCB_OUT ;
+  sSpec.flags         |= FLAG_PLN_TEX ;
+  sSpec.flags         |= FLAG_CUFFTCB_OUT ;
 
   sSpec.outType       = CU_FULLCAND ;
 
@@ -5219,7 +5256,7 @@ void plotPlains(cuFFdotBatch* plains)
         cuHarmInfo   *cHInfo  = &plains->hInfos[harm];
         cuFfdotStack *cStack  = &plains->stacks[cHInfo->stackNo];
         cuFFdot*      cPlain  = &plains->plains[harm];
-
+        rVals*        rVal    = &((*plains->rInput)[step][harm]);
 
         for( int y = 0; y < cHInfo->height; y++ )
         {
@@ -5240,10 +5277,12 @@ void plotPlains(cuFFdotBatch* plains)
 
           cmplxData += cHInfo->halfWidth*2;
           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlain->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlain->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           if ( plains->flag & FLAG_CUFFTCB_OUT )
           {
-            CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlain->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+            //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlain->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+            CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
             /*
       for( int jj = 0; jj < plan->numrs[step]; jj++)
       {

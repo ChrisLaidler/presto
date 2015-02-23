@@ -107,12 +107,110 @@ typedef struct fList
     float val[MAX_IN_STACK];
 } fList;
 
+//---------- LONG -------- \\
+
+typedef struct long08
+{
+    long val[8];
+} long08;
+
+typedef struct long16
+{
+    long val[16];
+} long16;
+
+typedef struct long32
+{
+    long val[32];
+} long32;
+
+typedef struct long64
+{
+    long val[64];
+} long64;
+
+typedef struct long128
+{
+    long val[128];
+} long128;
+
+
+//---------- INT -------- \\
+
+typedef struct int08
+{
+    int val[8];
+} int08;
+
+typedef struct int16
+{
+    int val[16];
+} int16;
+
+typedef struct int32
+{
+    int val[32];
+} int32;
+
+typedef struct int64
+{
+    int val[64];
+} int64;
+
+typedef struct int128
+{
+    int val[128];
+} int128;
+
+
+//---------- FLOAT -------- \\
+
+typedef struct float08
+{
+    float val[8];
+} float08;
+
+typedef struct float16
+{
+    float val[16];
+} float16;
+
+typedef struct float32
+{
+    float val[32];
+} float32;
+
+typedef struct float64
+{
+    float val[64];
+} float64;
+
+typedef struct float128
+{
+    float val[128];
+} float128;
+
 extern long long time1;       /// Global variable used for timing
 extern long long time2;       /// Global variable used for timing
 extern long long time3;       /// Global variable used for timing
 extern long long time4;       /// Global variable used for timing
 
+typedef struct cuSearchList
+{
+    tHarmList   texs;           ///
+    cHarmList   datas;          ///
+    fsHarmList  powers;         ///
+    iHarmList   yInds;          ///
+    fHarmList   frac;           ///
+    iHarmList   heights;        ///
+    iHarmList   widths;         /// The width of usable r values in each plain
+    iHarmList   strides;        ///
+    iHarmList   ffdBuffre;      ///
+    iHarmList   zMax;           ///
+    iHarmList   rLow;           ///
+} cuSearchList;
 
+/*
 typedef struct cuFfdot
 {
     cudaStream_t stream;        // CUDA stream
@@ -154,7 +252,7 @@ typedef struct cuFfdot
     //int plan1D;         // cufft plan of length width and height
     //int halfWidth;      // The kernel half width
     //fcomplexcu* data;   // The kernels themselves
-    //unsigned short *rinds; /* Table of indices for Fourier Freqs */
+    //unsigned short *rinds;
 } cuFfdot;
 
 typedef struct cuFfdotStackStr
@@ -177,20 +275,7 @@ typedef struct cuStackHarms
     float frac[MAX_IN_STACK];    /// The heights of the individual plains
 } cuStackHarms;
 
-typedef struct cuSearchList
-{
-    tHarmList   texs;           ///
-    cHarmList   datas;          ///
-    fsHarmList  powers;         ///
-    iHarmList   yInds;          ///
-    fHarmList   frac;           ///
-    iHarmList   heights;        ///
-    iHarmList   widths;         /// The width of usable rvalues in each plain
-    iHarmList   strides;        ///
-    iHarmList   ffdBuffre;      ///
-    iHarmList   zMax;           ///
-    iHarmList   rLow;           ///
-} cuSearchList;
+
 
 typedef struct cuSearchItem
 {
@@ -212,12 +297,14 @@ typedef struct cuSearchItem
     //double     searchRLow;      /// The value of the r bin to start the search at
 } cuSearchItem;
 
+*/
 
 //typedef  cuSearchItem[2]  schb;
 //typedef  cuSearchItem[4]  sch4;
 //typedef  cuSearchItem[8]  sch8;
 //typedef  cuSearchItem[16] sch16;
 
+/*
 typedef struct sch1
 {
     cuSearchItem arry[1];
@@ -242,6 +329,7 @@ typedef struct sch16
 {
     cuSearchItem arry[16];
 } sch16;
+*/
 
 typedef struct f01
 {
@@ -288,6 +376,7 @@ typedef struct fMax
      float arry[MAX_STEPS];
 } fMax;
 
+/*
 typedef struct cuFfdot10
 {
     cuFfdot arr[MAX_HARM_NO];
@@ -303,7 +392,7 @@ typedef struct primaryInf
   int height;
   int ffdBuffre;
 } primaryInf;
-
+*/
 
 //__device__ __constant__ int        YINDS[MAX_YINDS];
 //__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
@@ -317,6 +406,7 @@ typedef struct primaryInf
 //__device__ uint g_max                     = 0;
 
 //cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
+
 
 /** Create the stacks to do the
  *
@@ -378,7 +468,7 @@ void copyCUFFT_LD_CB();
 //#ifdef _cplusplus
 //extern "C"
 //#endif
-fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPlain);
+//fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPlain);
 
 float cuGetMedian(float *data, uint len);
 
@@ -389,31 +479,30 @@ float cuGetMedian(float *data, uint len);
 //int init_harms(cuSubharminfo* hInf, int noHarms, accelobs * obs);
 int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
-float* ffdot_planeCU(int harm, double searchRLow, double fullrhi, cuHarmInfo* hInf, int norm_type, fcomplexcu* fft, cuFfdot* ffdotPlain);
+//float* ffdot_planeCU(int harm, double searchRLow, double fullrhi, cuHarmInfo* hInf, int norm_type, fcomplexcu* fft, cuFfdot* ffdotPlain);
 //float* ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, float fullrhi, int norm_type, int search, fcomplexcu* fft);
 
 ExternC int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
 
-int add_ffdot_planeCU(int harm, cuHarmInfo* hInf, cuFfdot* fund, cuFfdot* ffdotPlain, double searchRLow);
+//int add_ffdot_planeCU(int harm, cuHarmInfo* hInf, cuFfdot* fund, cuFfdot* ffdotPlain, double searchRLow);
 
-int add_ffdot_planeCU2(cuFfdot* fund, int firstSub, int noSubs, cuHarmInfo* hInf, double searchRLow);
+//int add_ffdot_planeCU2(cuFfdot* fund, int firstSub, int noSubs, cuHarmInfo* hInf, double searchRLow);
 
-int add_and_search(cuFfdot* plains, int stages, cuHarmInfo* hInf, double searchRLow, int copyBack, int search);
+//int add_and_search(cuFfdot* plains, int stages, cuHarmInfo* hInf, double searchRLow, int copyBack, int search);
 
 /*
 template<int noStages, int canMethoud>
 __global__ void add_and_searchCU3(cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base);
 */
 
-void drawPlainPowers(cuFfdot* ffdotPlain, char* name);
-void drawPlainCmlx(cuFfdot* ffdotPlain, char* name);
-void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height);
+//void drawPlainPowers(cuFfdot* ffdotPlain, char* name);
+//void drawPlainCmlx(cuFfdot* ffdotPlain, char* name);
+//void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height);
 
 double _GammaP (double n, double x);
 double _GammaQ (double n, double x);
 
 void printData_cu(cuFFdotBatch* stkLst, const int FLAGS, int harmonic, int nX = 10, int nY = 5, int sX = 0, int sY = 0);
-
 
 //int setYINDS( cuFFdotBatch* stkLst, int numharmstages );
 int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long long *numindep );
