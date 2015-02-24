@@ -1948,7 +1948,7 @@ int initHarmonics(cuFFdotBatch* batch, cuFFdotBatch* master, int numharmstages, 
               batch->pwrDataSize   += cStack->pwrStride * cStack->height;            // At this point stride is still in bytes
               cStack->pwrStride     /= sizeof(float);
             }
-            cStack->inpStride       /= sizeof(cufftComplex);                          // Set stride to number of complex numbers rather that bytes
+            cStack->inpStride       /= sizeof(cufftComplex);                         // Set stride to number of complex numbers rather that bytes
 
           }
           prev                      += cStack->noInStack;
@@ -2960,12 +2960,12 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
       else
       {
         // Allocate device memory
-        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_iData,        stkLst->inpDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
-        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_plainData,    stkLst->plnDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
+        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_iData,          stkLst->inpDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
+        CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_plainData,      stkLst->plnDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
 
         if ( stkLst->flag & FLAG_CUFFTCB_OUT )
         {
-          CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_plainPowers,     stkLst->pwrDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
+          CUDA_SAFE_CALL(cudaMalloc((void** )&stkLst->d_plainPowers,  stkLst->pwrDataSize*stkLst->noSteps ), "Failed to allocate device memory for kernel stack.");
           //stkLst->d_plainPowers = (float*)stkLst->d_plainData; // We can just re-use the plain data <- UMMMMMMMMM? No we can't!!
         }
       }
@@ -3156,9 +3156,15 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Create textures for the f-∂f plains  .
   {
+    if ( (stkLst->flag&FLAG_TEX_INTERP) && !( (stkLst->flag&FLAG_CUFFTCB_OUT) && (stkLst->flag&FLAG_PLN_TEX) ) )
+    {
+      fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation\n");
+      stkLst->flag ^= FLAG_TEX_INTERP;
+    }
+
     if ( stkLst->flag & FLAG_PLN_TEX )
     {
-      cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
+      cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
 
       struct cudaTextureDesc texDesc;
       memset(&texDesc, 0, sizeof(texDesc));
@@ -3167,10 +3173,14 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
       texDesc.readMode          = cudaReadModeElementType;
       texDesc.normalizedCoords  = 0;
 
-      if ( stkLst->flag & FLAG_CUFFTCB_OUT)
-        texDesc.filterMode        = cudaFilterModeLinear;
+      if ( stkLst->flag & FLAG_TEX_INTERP )
+      {
+        texDesc.filterMode        = cudaFilterModeLinear;   /// Liner interpolation
+      }
       else
+      {
         texDesc.filterMode        = cudaFilterModePoint;
+      }
 
       for (int i = 0; i< stkLst->noStacks; i++)
       {
@@ -3185,36 +3195,47 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
         {
           cuFFdot* cPlain = &cStack->plains[j];
 
-          resDesc.res.pitch2D.height          = cPlain->harmInf->height * stkLst->noSteps ;
-          resDesc.res.pitch2D.width           = cPlain->harmInf->width;
-
-          if ( stkLst->flag & FLAG_CUFFTCB_OUT )
+          if ( stkLst->flag & FLAG_CUFFTCB_OUT ) // float input
           {
             if      ( stkLst->flag & FLAG_STP_ROW )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width * stkLst->noSteps;
-
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * stkLst->noSteps * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
-              resDesc.res.pitch2D.pitchInBytes    = cStack->pwrStride * sizeof(float)*stkLst->noSteps;
             }
             else if ( stkLst->flag & FLAG_STP_PLN )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height * stkLst->noSteps ;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width;
-
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
-              resDesc.res.pitch2D.pitchInBytes    = cStack->pwrStride * sizeof(float);
             }
             else
             {
               // Error
             }
           }
-          else
+          else // Implies complex numbers
           {
-            resDesc.res.pitch2D.devPtr        = cPlain->d_plainData;
-            resDesc.res.pitch2D.pitchInBytes  = cStack->inpStride * sizeof(fcomplex);
+            if      ( stkLst->flag & FLAG_STP_ROW )
+            {
+              resDesc.res.pitch2D.height          = cPlain->harmInf->height;
+              resDesc.res.pitch2D.width           = cPlain->harmInf->width * stkLst->noSteps * 2;
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * stkLst->noSteps * 2* sizeof(float);
+              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
+            }
+            else if ( stkLst->flag & FLAG_STP_PLN )
+            {
+              resDesc.res.pitch2D.height          = cPlain->harmInf->height * stkLst->noSteps ;
+              resDesc.res.pitch2D.width           = cPlain->harmInf->width * 2;
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
+              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
+            }
+            else
+            {
+              // Error
+            }
           }
 
           CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlain->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plain data.");
@@ -4000,7 +4021,7 @@ void setStackRVals(cuFFdotBatch* plains, double* searchRLow, double* searchRHi)
   int numdata;    /// The number of input fft points to read
   int numrs;      /// The number of good bins in the plain ( expanded units )
 
-  printf("                      |                       |                        |                       |                      \n" );
+  //printf("                      |                       |                        |                       |                      \n" );
 
   for (int harm = 0; harm < plains->noHarms; harm++)
   {
@@ -4037,13 +4058,12 @@ void setStackRVals(cuFFdotBatch* plains, double* searchRLow, double* searchRHi)
 
         double ExBinR = floor( ExBin / 2.0) * 2.0 ;
         double BsBinR = ExBinR / 2.0 ;
-        printf("searchR: %11.2f  |   drlo: %11.2f   |   ExBin: %11.2f   |   ExBinR: %9.0f   |   BsBinR: %11lli\n", searchRLow[step]*cHInfo->harmFrac, drlo, ExBin, ExBinR, rVal->expBin   );
+        //printf("searchR: %11.2f  |   drlo: %11.2f   |   ExBin: %11.2f   |   ExBinR: %9.0f   |   BsBinR: %11lli\n", searchRLow[step]*cHInfo->harmFrac, drlo, ExBin, ExBinR, rVal->expBin   );
       }
     }
   }
-  printf("                      |                       |                        |                       |                      \n" );
-
-  TMP
+  //printf("                      |                       |                        |                       |                      \n" );
+  //TMP
 }
 
 void cycleRlists(cuFFdotBatch* plains)
@@ -4536,7 +4556,6 @@ void search_ffdot_planeCU(cuFFdotBatch* plains, double* searchRLow, double* sear
   }
 
   // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
-  //setStackRVals(plains, searchRLow, searchRHi);
   cycleRlists(plains);
 }
 
@@ -4812,7 +4831,8 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_RETURN_ALL ;
   sSpec.flags         |= CU_CAND_ARR ;
   sSpec.flags         |= FLAG_STP_ROW ;  //   FLAG_STP_ROW    FLAG_STP_PLN
-  sSpec.flags         |= FLAG_PLN_TEX ;
+  //sSpec.flags         |= FLAG_PLN_TEX ;
+  //sSpec.flags         |= FLAG_TEX_INTERP ;
   sSpec.flags         |= FLAG_CUFFTCB_OUT ;
 
   sSpec.outType       = CU_FULLCAND ;

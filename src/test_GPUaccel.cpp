@@ -505,12 +505,12 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
         printf("\n");
 
         if(gpu1)
-          printf("      below  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
+          printf("       below  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
 
         printf("CPU candidate r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f   Not found in GPU candidates.\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
 
         if (gpu2)
-          printf("      above  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->numharm, gpu2->sigma, gpu2->power );
+          printf("       above  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->numharm, gpu2->sigma, gpu2->power );
 
         gpuMissed++;
       }
@@ -537,8 +537,8 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
 
             printf("\n");
             printf("↑ %5.3f GPU candidate has a higher sigma by %.3f \n", rr1, gpu1->sigma - cpu1R->sigma);
-            printf("        CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1R->r, cpu1R->z, cpu1R->sigma, cpu1R->power );
-            printf("        GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->sigma, gpu1->power );
+            printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1R->r, cpu1R->z, cpu1R->sigma, cpu1R->power );
+            printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->sigma, gpu1->power );
           }
         }
         else if (r2 < r1 )
@@ -553,8 +553,8 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
 
             printf("\n");
             printf("↑ %5.3f GPU candidate has a higher sigma by %.3f \n", rr2, gpu2->sigma - cpu2R->sigma);
-            printf("        CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2R->r, cpu2R->z, cpu2R->sigma, cpu2R->power );
-            printf("        GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->sigma, gpu2->power );
+            printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2R->r, cpu2R->z, cpu2R->sigma, cpu2R->power );
+            printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->sigma, gpu2->power );
           }
         }
         else
@@ -572,14 +572,14 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
         if ( r1 < r2 )
         {
           printf("↓ %5.3f GPU candidate has a lower sigma by %.3f \n", r1, s1);
-          printf("        CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
-          printf("        GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
+          printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
+          printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
         }
         else
         {
           printf("↓ %5.3f GPU candidate has a lower sigma by %.3f \n", r2, s2);
-          printf("        CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
-          printf("        GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->numharm, gpu2->sigma, gpu2->power );
+          printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
+          printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->numharm, gpu2->sigma, gpu2->power );
         }
       }
 
@@ -638,12 +638,12 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
         printf("\n");
 
         if(cpu1)
-          printf("      below  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
+          printf("       below  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
 
         printf("GPU candidate r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f   Not found in CPU candidates.\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
 
         if (cpu2)
-          printf("      above  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2->r, cpu2->z, cpu2->numharm, cpu2->sigma, cpu2->power );
+          printf("       above  r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2->r, cpu2->z, cpu2->numharm, cpu2->sigma, cpu2->power );
       }
       else if ( minr > ratio )
       {
@@ -653,14 +653,14 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
         if ( r1 < r2 )
         {
           printf("  %5.3f GPU candidate is significantly higher that all covered CPU candidates.\n", r1);
-          printf("        CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
-          printf("        GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
+          printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1->r, cpu1->z, cpu1->numharm, cpu1->sigma, cpu1->power );
+          printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
         }
         else
         {
           printf("  %5.3f GPU candidate is significantly higher that all covered CPU candidates\n", r2);
-          printf("        CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2->r, cpu2->z, cpu2->numharm, cpu2->sigma, cpu2->power );
-          printf("        GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
+          printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2->r, cpu2->z, cpu2->numharm, cpu2->sigma, cpu2->power );
+          printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->numharm, gpu1->sigma, gpu1->power );
         }
       }
       gpul = gpul->next;
@@ -668,12 +668,12 @@ void compareCands(GSList *candsCPU, GSList *candsGPU )
   }
 
   printf("\nSummary:\n");
-  printf("%4i (%4.2f%%) Similar candidates were found\n",silar+superseede,(silar+superseede)/(float)cpuCands*100.0);
-  //printf("%4i (%4.2f%%) CPU candidates that were 'coverd' by the GPU list.\n",superseede,superseede/(float)cpuCands*100.0);
-  printf("%4i (%4.2f%%) Missed by GPU  <- These may be due to the way the dynamic list is created. Check CU_CAND_ARR.csv.\n",gpuMissed,gpuMissed/(float)cpuCands*100.0);
-  printf("%4i (%4.2f%%) Missed by CPU  <- These may be due to the way the dynamic list is created.\n",cpuMissed,cpuMissed/(float)cpuCands*100.0);
-  printf("%4i (%4.2f%%) Where the GPU sigma was significantly better that the CPU.\n",gpuBetterThanCPU, gpuBetterThanCPU/(float)cpuCands*100.0);
-  printf("%4i (%4.2f%%) Where the CPU sigma was significantly better that the GPU.\n",cpuBetterThanGPU, cpuBetterThanGPU/(float)cpuCands*100.0);
+  printf("%4i (%05.2f%%) Similar candidates were found\n",silar+superseede,(silar+superseede)/(float)cpuCands*100.0);
+  printf("%4i (%05.2f%%) CPU candidates that were 'covered' by the GPU list.\n",superseede,superseede/(float)cpuCands*100.0);
+  printf("%4i (%05.2f%%) Missed by GPU  <- These may be due to the way the dynamic list is created. Check CU_CAND_ARR.csv.\n",gpuMissed,gpuMissed/(float)cpuCands*100.0);
+  printf("%4i (%05.2f%%) Missed by CPU  <- These may be due to the way the dynamic list is created.\n",cpuMissed,cpuMissed/(float)cpuCands*100.0);
+  printf("%4i (%05.2f%%) Where the GPU sigma was significantly better that the CPU.\n",gpuBetterThanCPU, gpuBetterThanCPU/(float)cpuCands*100.0);
+  printf("%4i (%05.2f%%) Where the CPU sigma was significantly better that the GPU.\n",cpuBetterThanGPU, cpuBetterThanGPU/(float)cpuCands*100.0);
   printf("\n");
 }
 
@@ -971,7 +971,7 @@ int main(int argc, char *argv[])
     if ( cmd->gpuP >= 0) // -- Main Loop --
     {
       int firstStep       = 0;
-      bool printDetails   = true;
+      bool printDetails   = false;
       bool printBadLines  = false;
 
       printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
@@ -1034,13 +1034,15 @@ int main(int argc, char *argv[])
               gpuPowers[step] = new nDarray<2, float>[trdBatch->noHarms];
             }
 
-            for (int stage = 0; stage < obs.numharmstages; stage++) // allocate arrays
+            //for (int stage = 0; stage < obs.numharmstages; stage++) // allocate arrays
             {
-              int harmtosum = 1 << stage;
-              for (int harm = 1; harm <= harmtosum; harm += 2)
+              //int harmtosum = 1 << stage;
+              //for (int harm = 1; harm <= harmtosum; harm += 2)
+              for (int harm = 0; harm < cuSrch->noHarms; harm++ )
               {
-                float frac = (float)(harm)/(float)harmtosum;
-                int idx = noHarms - frac * noHarms;
+                //float frac = (float)(harm)/(float)harmtosum;
+                //int idx = noHarms - frac * noHarms;
+                int idx = trdBatch->pIdx[harm];
 
                 cuHarmInfo *hinf  = &cuSrch->mInf->kernels[0].hInfos[idx];
 
@@ -1117,6 +1119,8 @@ int main(int argc, char *argv[])
               startr  = startrs[step];
               lastr   = lastrs[step];
 
+              //printf("\n Step %04i \n",step);
+
               fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, &cpuInput[step][0], &cpuCmplx[step][0], &cpuPowers[step][0] );
 
               candsCPU    = search_ffdotpows(fundamental, 1, &obs, candsCPU);
@@ -1127,7 +1131,7 @@ int main(int argc, char *argv[])
                 ffdotpows *subharmonic;
 
                 // Copy the fundamental's ffdot plane to the full in-core one
-                if (obs.inmem)
+                if  (obs.inmem)
                 {
                   if (cmd->otheroptP)
                     fund_to_ffdotplane_trans(fundamental, &obs);
@@ -1591,7 +1595,7 @@ int main(int argc, char *argv[])
         pFile = fopen ("CU_CAND_ARR.csv","w");
         fprintf (pFile, "idx;rr;zz;sig;harm\n");
 
-        for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)  // Loop
+        for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)  // Loop  .
         {
           poww        = candidate[cdx].power;
 
@@ -1660,7 +1664,6 @@ int main(int argc, char *argv[])
       gettimeofday(&end, NULL);
       gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
       cands = candsGPU;
-
     }
   }
 
@@ -1672,7 +1675,7 @@ int main(int argc, char *argv[])
 
   printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
 
-  if(1) /* Candidate list trimming and optimization */
+  if(0) /* Candidate list trimming and optimization */
   {
     int numcands;
     GSList *listptr;

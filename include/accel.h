@@ -19,6 +19,8 @@
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
 
+#define ACCEL_USELEN 7734 // Added to equalise CPU and GPU
+
 
 #undef FOLD
 #undef Fout

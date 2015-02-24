@@ -48,6 +48,8 @@ extern "C"
 //#define ACCEL_USELEN 6990     // 8K    up to zmax=500
 //#define ACCEL_USELEN 1200     // 4K    up to zmax=1200
 
+#define CHUNKSZ         8                     ///< The size of a sum and search chunk
+
 #define SS_X            16                    // X Thread Block
 #define SS_Y            16                    // Y Thread Block
 #define SS_X_TILES      3                     // X No. tiles covered by 1 Thread block
@@ -189,6 +191,46 @@ typedef struct float128
 {
     float val[128];
 } float128;
+
+//------------- Arrays that can be passed to kernels -------------------\\
+
+typedef struct iHarmList
+{
+    int val[MAX_HARM_NO];
+    __host__ __device__ inline int operator [](const int idx) { return val[idx]; }
+} iHarmList;
+
+typedef struct fHarmList
+{
+    float val[MAX_HARM_NO];
+    __host__ __device__ inline float operator [](const int idx) { return val[idx]; }
+} fHarmList;
+
+typedef struct fsHarmList
+{
+    float* val[MAX_HARM_NO];
+    __host__ __device__ inline float* operator [](const int idx) { return val[idx]; }
+} fsHarmList;
+
+typedef struct dHarmList
+{
+    double val[MAX_HARM_NO];
+    __host__ __device__ inline double operator [](const int idx) { return val[idx]; }
+} dHarmList;
+
+typedef struct cHarmList
+{
+    fcomplexcu* __restrict__ val[MAX_HARM_NO];
+    __host__ __device__ inline fcomplexcu* operator [](const int idx) { return val[idx]; }
+} cHarmList;
+
+typedef struct tHarmList
+{
+    cudaTextureObject_t val[MAX_HARM_NO];
+    __host__ __device__ inline cudaTextureObject_t operator [](const int idx) { return val[idx]; }
+} tHarmList;
+
+
 
 extern long long time1;       /// Global variable used for timing
 extern long long time2;       /// Global variable used for timing

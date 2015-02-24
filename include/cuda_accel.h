@@ -71,9 +71,6 @@ extern "C"
 #define     CU_CAND_LST         (1<<8)    ///< Candidates are stored in a list   (usually a dynamic linked list)
 #define     CU_CAND_ARR         (1<<9)    ///< Candidates are stored in an array (requires more memory)
 
-#define     FLAG_PLN_TEX        (1<<10)   ///< Use texture memory to access the d-∂d plains during sum and search (non interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-
-#define     FLAG_CNV_TEX        (1<<11)   ///< Use texture memory for convolution  - May give advantage on pre-Fermi generation which we don't really care about
 #define     FLAG_CNV_1KER       (1<<12)   ///< Use minimal kernel                  - ie Only the kernel of largest plain in each stack
 #define     FLAG_CNV_OVLP       (1<<13)   ///< Use the overlap kernel              - I found this slower that the alternative
 
@@ -87,8 +84,12 @@ extern "C"
 #define     FLAG_STP_STK        (1<<19)   ///< Multi-step Stack interleaved        - Preferably don't use this!
 #define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
 
-#define     FLAG_CUFFTCB_INP    (1<<24)   ///< Use an input  callback to do the convolution      - I found this to be very slow
-#define     FLAG_CUFFTCB_OUT    (1<<25)   ///< Use an output callback to create powers           - This is a similar speed
+#define     FLAG_CUFFTCB_INP    (1<<21)   ///< Use an input  callback to do the convolution      - I found this to be very slow
+#define     FLAG_CUFFTCB_OUT    (1<<22)   ///< Use an output callback to create powers           - This is a similar speed
+
+#define     FLAG_CNV_TEX        (1<<23)   ///< Use texture memory for convolution  - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_PLN_TEX        (1<<24)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_INTERP     (1<<25)   ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFTCB_OUT and FLAG_PLN_TEX
 
 #define     FLAG_RETURN_ALL     (1<<26)   ///< Return results for all stages of summing, default is only the final result
 #define     FLAG_STORE_ALL      (1<<28)   ///< Store candidates for all stages of summing, default is only the final result
@@ -111,6 +112,7 @@ extern "C"
 ///< Defines for safe calling usable in C
 #define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
 #define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
+
 
 //======================================== Type defines ==================================================\\
 
@@ -176,43 +178,6 @@ typedef struct fftInfo
     fcomplex*   fft;      ///< An array of complex numbers (nor long)
 } fftInfo;
 
-//------------- Arrays that can be passed to kernels -------------------\\
-
-typedef struct iHarmList
-{
-    int val[MAX_HARM_NO];
-    __host__ __device__ inline int operator [](const int idx) { return val[idx]; }
-} iHarmList;
-
-typedef struct fHarmList
-{
-    float val[MAX_HARM_NO];
-    __host__ __device__ inline float operator [](const int idx) { return val[idx]; }
-} fHarmList;
-
-typedef struct fsHarmList
-{
-    float* val[MAX_HARM_NO];
-    __host__ __device__ inline float* operator [](const int idx) { return val[idx]; }
-} fsHarmList;
-
-typedef struct dHarmList
-{
-    double val[MAX_HARM_NO];
-    __host__ __device__ inline double operator [](const int idx) { return val[idx]; }
-} dHarmList;
-
-typedef struct cHarmList
-{
-    fcomplexcu* __restrict__ val[MAX_HARM_NO];
-    __host__ __device__ inline fcomplexcu* operator [](const int idx) { return val[idx]; }
-} cHarmList;
-
-typedef struct tHarmList
-{
-    cudaTextureObject_t val[MAX_HARM_NO];
-    __host__ __device__ inline cudaTextureObject_t operator [](const int idx) { return val[idx]; }
-} tHarmList;
 
 //------------- Data structures for, plains, stacks, batches etc ----------------\\
 
@@ -328,7 +293,7 @@ typedef struct cuFFdot
     //float   searchRlow[MAX_STEPS];    ///< The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
     //int     ffdotPowWidth[MAX_STEPS]; ///< The width of the final f-∂f plain  // TODO: Check is this not the same as numrs
 
-    float searchRlowPrev[MAX_STEPS];  ///< The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
+    //float searchRlowPrev[MAX_STEPS];  ///< The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
 } cuFFdot;
 
 /** A stack of f-∂f plains that all have the same FFT width
@@ -401,8 +366,8 @@ typedef struct cuFFdotBatch
     cuKernel*     kernels;            ///< A list of the kernels
     cuFFdot*      plains;             ///< A list of the plains
 
-    cHarmList iDataLst;               ///< A list of the input data allocated in memory
-    iHarmList iDataLens;              ///< A list of the input data allocated in memory
+    //cHarmList iDataLst;               ///< A list of the input data allocated in memory
+    //iHarmList iDataLens;              ///< A list of the input data allocated in memory
 
     int inpDataSize;                  ///< The size of the input data memory in bytes for one step
     int plnDataSize;                  ///< The size of the complex plain data memory in bytes for one step
