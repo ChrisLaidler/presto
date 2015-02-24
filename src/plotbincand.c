@@ -168,17 +168,12 @@ int main(int argc, char *argv[])
 
    /* Interpolate the minifft and convert to power spectrum */
 
-   //corrData* corrd = initCorrData();
-
-   corr_complex(/*corrd,*/
-                minifft, binprops.nfftbins / 2, RAW,
+   corr_complex(minifft, binprops.nfftbins / 2, RAW,
                 kernel, binprops.nfftbins, FFT,
                 spread, binprops.nfftbins, kern_half_width,
                 numbetween, kern_half_width, CORR);
    for (ii = 0; ii < binprops.nfftbins; ii++)
       spreadpow[ii] = POWER(spread[ii].r, spread[ii].i);
-
-   //clearCorrData(corrd);
 
    /* Plot the initial data set */
 

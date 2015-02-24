@@ -290,11 +290,6 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
    delta = -1.0 / numbetween;
 
    for (ii = 0, r = startr; ii < numkern; ii++, r += delta) {
-     if( ii == numkern/2.0 )
-     {
-       int tmp = 0;
-     }
-
       yy = r * zd;
       zz = yy + z * zd;
       xx = pibyz * r * r;

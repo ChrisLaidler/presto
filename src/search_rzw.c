@@ -303,8 +303,6 @@ int main(int argc, char *argv[])
 
       /*  Do the f-fdot plane correlations: */
 
-      //corrData* corrd = initCorrData();
-
       for (zct = 0; zct < nz; zct++) {
 
          /* Calculate percentage complete */
