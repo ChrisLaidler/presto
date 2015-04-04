@@ -22,6 +22,8 @@ extern "C"
 #include "accel.h"
 }
 
+#pragma once
+
 #define   TEMPLATE_CONVOLVE 1
 #define   TEMPLATE_SEARCH   0
 
@@ -29,7 +31,7 @@ extern "C"
 
 #define   SEMFREE       2147483647            /// The value to indicate that a semaphore is free
 
-//#define   CU_MAX_BLOCK_SIZE   1024	
+//#define   CU_MAX_BLOCK_SIZE   1024
 #define   CU_MAX_BLOCK_SIZE   2048            //  2K FFT's
 //#define   CU_MAX_BLOCK_SIZE   4096          //  4K FFT's
 //#define   CU_MAX_BLOCK_SIZE   8192          //  8K FFT's
@@ -48,7 +50,7 @@ extern "C"
 //#define ACCEL_USELEN 6990     // 8K    up to zmax=500
 //#define ACCEL_USELEN 1200     // 4K    up to zmax=1200
 
-#define CHUNKSZ         8                     ///< The size of a sum and search chunk
+#define CHUNKSZ         12                    // Added by run time script
 
 #define SS_X            16                    // X Thread Block
 #define SS_Y            16                    // Y Thread Block
@@ -71,15 +73,15 @@ extern "C"
 #define SS4_NB          1                     // Added by auto-tune script
 
 #define CNV_DIMX        16                    // X Thread Block
-#define CNV_DIMY        8                     // Y Thread Block 
+#define CNV_DIMY        8                     // Y Thread Block
 #define CNV_WORK        4
 
 /** Details o the Normalise and spread kernel
  * Should be as large as possible usually 32x32
  * NOTE: If compiled in debug mode it may be necessary to drop NAS_DIMY to 16
  *       else you may get Error "too many resources requested for launch"
- */ 
-#define NAS_DIMX        32                    // Normalise and spread X dimension 
+ */
+#define NAS_DIMX        32                    // Normalise and spread X dimension
 #define NAS_DIMY        16                    // Normalise and spread Y dimension
 #define NAS_NTRD        (NAS_DIMX*NAS_DIMY)   // Normalise and spread thread per block
 
@@ -93,6 +95,11 @@ extern "C"
 
 #define BS_DIM        1024    // compute 3.x +
 //#define BS_DIM        576   // compute 2.x
+
+
+
+#define POWERR(r,i) (r)*(r)+(i)*(i)
+
 
 typedef struct fcmplxB
 {
@@ -110,6 +117,11 @@ typedef struct fList
 } fList;
 
 //---------- LONG -------- \\
+
+typedef struct long04
+{
+    long val[4];
+} long04;
 
 typedef struct long08
 {
@@ -208,8 +220,8 @@ typedef struct fHarmList
 
 typedef struct fsHarmList
 {
-    float* val[MAX_HARM_NO];
-    __host__ __device__ inline float* operator [](const int idx) { return val[idx]; }
+    float* __restrict__ val[MAX_HARM_NO];
+    __host__ __device__ inline float* __restrict__ operator [](const int idx) { return val[idx]; }
 } fsHarmList;
 
 typedef struct dHarmList
@@ -450,6 +462,9 @@ typedef struct primaryInf
 //cuHarmInfo* createsubharminfos(int numharmstages, int zmax, accelobs* obs);
 
 
+
+//-------------------------  Prototypes  -------------------------------\\
+
 /** Create the stacks to do the
  *
  * @param numharmstages
@@ -501,7 +516,7 @@ __global__ void print_YINDS(int no);
 
 /** Write CUFFT s to device
  */
-void copyCUFFT_LD_CB();
+void copyCUFFT_LD_CB(cuFFdotBatch* batch);
 
 /** Return the first value of 2^n >= x
  */

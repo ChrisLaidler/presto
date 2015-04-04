@@ -92,6 +92,8 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
    int binsperside, kern_half_width;
    fcomplex ans;
 
+   //printf("\nget_localpower3d   r: %12.5f   z: %12.5f   w: %12.5f\n", r, z, w );
+
    binsperside = NUMLOCPOWAVG / 2;
    kern_half_width = w_resp_halfwidth(z, w, LOWACC);
 
@@ -123,10 +125,12 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
 
    /* Perform the summation */
 
+   //printf("Below\n");
    for (freq = lo1; freq < hi1; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
    }
+   //printf("Above\n");
    for (freq = lo2; freq < hi2; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
@@ -135,6 +139,57 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
    return sum;
 }
 
+
+float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double w)
+{
+  double powargr, powargi, sum = 0.0;
+  double lo1, lo2, hi1, hi2, freq;
+  int binsperside, kern_half_width,ii;
+  fcomplex ans;
+
+  //printf("\nget_localpower3d   r: %12.5f   z: %12.5f   w: %12.5f\n", r, z, w );
+
+  binsperside = NUMLOCPOWAVG / 2;
+  kern_half_width = w_resp_halfwidth(z, w, LOWACC);
+
+  /* Set the bounds of our summation */
+
+  lo1 = r - DELTAAVGBINS - binsperside - kern_half_width - 10;
+  hi1 = r + DELTAAVGBINS + binsperside + kern_half_width + 10;
+
+  /* Make sure we don't try to read non-existant data */
+
+  if (lo1 < 0.0)
+    lo1 = 0.0;
+  if (hi1 < 0.0)
+    hi1 = 0.0;
+  if (lo1 > numdata)
+    lo1 = (double) numdata;
+  if (hi1 > numdata)
+    hi1 = (double) numdata;
+
+  int numamps = hi1 - lo1;
+
+  float *powers, medianv, norm;
+
+  powers = gen_fvect(numamps);
+
+  /* Step through the input FFT and create powers */
+  for (ii = 0; ii < numamps; ii++) {
+    float powargr, powargi;
+    powers[ii] = POWER(data[(int)lo1+ii].r, data[(int)lo1+ii].i);
+  }
+
+  /* Calculate initial values */
+  medianv = median(powers, numamps);
+  //norm = 1.0 / sqrt(median/log(2.0));
+  norm = sqrt(medianv/log(2.0));
+
+  //printf("Norm factor %8.3f\n",norm);
+
+  return norm;
+
+}
 
 void get_derivs3d(fcomplex * data, int numdata, double r,
                   double z, double w, double localpower, rderivs * result)
@@ -161,6 +216,8 @@ void get_derivs3d(fcomplex * data, int numdata, double r,
    double powargr, powargi, radargr, radargi, radtmp, pwr[5], phs[5];
    int ii, kern_half_width;
    fcomplex ans;
+
+   //printf("get_derivs3d\n");
 
    /* Read the powers and phases: */
 

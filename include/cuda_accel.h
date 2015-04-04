@@ -3,6 +3,7 @@
 
 #include <cuda.h>
 #include <cufft.h>
+#include <cufftXt.h>
 
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
@@ -66,7 +67,8 @@ extern "C"
 #define     CU_OUTP_HOST        (1<<5)    ///< Write all candidates to page locked host memory : This requires a lot of memory
 #define     CU_OUTP_SINGLE      (1<<6)    ///< Only get candidates from the current plain - This seams to be best in most cases
 #define     CU_OUTP_ALL         ( CU_OUTP_DEVICE | CU_OUTP_HOST | CU_OUTP_SINGLE )
-#define     FLAG_SAS_SIG        (1<<7)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+
+#define     FLAG_SAS_SIG        (1<<7)    ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
 #define     CU_CAND_LST         (1<<8)    ///< Candidates are stored in a list   (usually a dynamic linked list)
 #define     CU_CAND_ARR         (1<<9)    ///< Candidates are stored in an array (requires more memory)
@@ -159,7 +161,7 @@ typedef struct fftCnvlvInfo
     int     width;
     int     noSteps;
     int     noPlains;
-    float*  d_plainPowers;
+    //float*  d_plainPowers;
 
     int heights[MAX_STKSZ];
     int top[MAX_STKSZ];
@@ -206,8 +208,6 @@ typedef struct rVals
     long long   expBin;   ///< The index of the expanded bin of the first good value
 } rVals;
 
-//typedef rVals[MAX_STEPS][MAX_HARM_NO] rVlalsList;
-
 /** User specified search details
  *
  */
@@ -246,7 +246,6 @@ typedef struct cuHarmInfo
     size_t  width;                    ///< The number of complex numbers in each kernel (2 floats)
 
     int     halfWidth;                ///< The kernel half width         - in input fft units ie needs to be multiply by ACCEL_RDR to get plain units
-    //int     numrs;                    ///< The number of usable values   - in plain units NB: This number is actually dynamic this is just an upper bound rather use (numrs from cuFFdot)
 
     size_t  inpStride;                ///< The x stride in complex numbers
 
@@ -284,16 +283,6 @@ typedef struct cuFFdot
     // Texture objects
     fCplxTex    datTex;               ///< A texture holding the kernel data
     fCplxTex    powerTex;             ///< A texture of the power data
-
-    //size_t  numInpData[MAX_STEPS];    ///< The number of input elements for this plain                 - (Number of R bins in the 'raw' FFT input, including halfwidth)
-    //size_t  numrs[MAX_STEPS];         ///< The number of good bins in the plain in expanded units -        (Number of R bins in the 'raw' FFT input, excluding halfwidth)
-
-    //float   fullRLow[MAX_STEPS];      ///< The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    //float   rLow[MAX_STEPS];          ///< The r value of good bin - input fft units
-    //float   searchRlow[MAX_STEPS];    ///< The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
-    //int     ffdotPowWidth[MAX_STEPS]; ///< The width of the final f-∂f plain  // TODO: Check is this not the same as numrs
-
-    //float searchRlowPrev[MAX_STEPS];  ///< The low r bin of the input data used ( Note: the 0 index is [floor(rLow) - halfwidth * DR] )
 } cuFFdot;
 
 /** A stack of f-∂f plains that all have the same FFT width
@@ -336,7 +325,9 @@ typedef struct cuFfdotStack
 
     // Events
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
+    cudaEvent_t convInit;             ///< Convolution complete
     cudaEvent_t convComp;             ///< Convolution complete
+    cudaEvent_t invFFTinit;           ///< Creation (convolution and FFT) of the complex plain complete
     cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
 
     // Streams
@@ -366,14 +357,11 @@ typedef struct cuFFdotBatch
     cuKernel*     kernels;            ///< A list of the kernels
     cuFFdot*      plains;             ///< A list of the plains
 
-    //cHarmList iDataLst;               ///< A list of the input data allocated in memory
-    //iHarmList iDataLens;              ///< A list of the input data allocated in memory
-
     int inpDataSize;                  ///< The size of the input data memory in bytes for one step
+    int retDataSize;                  ///< The size of data to return in bytes for one step
     int plnDataSize;                  ///< The size of the complex plain data memory in bytes for one step
     int pwrDataSize;                  ///< The size of the powers  plain data memory in bytes for one step
     int kerDataSize;                  ///< The size of the plain data memory in bytes for one step
-    int retDataSize;                  ///< The size of data to return in bytes for one step
 
     fcomplexcu* d_kerData;            ///< Kernel data for all the stacks
     fcomplexcu* d_plainData;          ///< Plain data for all the stacks
@@ -395,6 +383,9 @@ typedef struct cuFFdotBatch
 
     uint* d_candSem;                  ///< Semaphore for writing to device candidate list
 
+    cufftCallbackLoadC    h_ldCallbackPtr;
+    cufftCallbackStoreC   h_stCallbackPtr;
+
     float* h_powers;                  ///< Powers used for running double-tophat local-power normalisation
 
     uint flag;                        ///< CUDA accel search flags
@@ -407,7 +398,10 @@ typedef struct cuFFdotBatch
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
     cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t normComp;             ///< Normalise and spread input data
+
+    cudaEvent_t searchInit;           ///< Sum & Search start
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
+
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
 
     int noResults;                    ///< The number of results from the previous search
@@ -419,18 +413,18 @@ typedef struct cuFFdotBatch
     rVals*** rSearch;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
 
     CUcontext pctx;                   ///< Context for the batch
-    int device;                       ///< The CUDA device to run on;
+    int device;                       ///< The CUDA device to run on
 
+    float searchTime;
+    float convTime;
+    float InvFFTTime;
+    float InpFFTTime;
 } cuFFdotBatch;
 
-/** A struct to keep info on all the kernels and batches to use with cuda accel
+/** A struct to keep info on all the kernels and batches to use with cuda accel  .
  */
 typedef struct cuMemInfo
 {
-    //int*            devId;              ///< A list noDevices long of CUDA GPU device id's
-    //int*            noDevBatches;       ///< A list noDevices long of the number of batches on each device
-    //int*            noDevSteps;         ///< A list noDevices long of the number of steps each device wants to use
-
     int             noDevices;          ///< The number of devices (GPU's to use in the search)
     cuFFdotBatch*   kernels;            ///< A list noDevices long of convolution kernels: These hold: basic info, the address of the convolution kernels on the GPU, the CUFFT plan.
 

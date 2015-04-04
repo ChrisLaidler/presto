@@ -18,8 +18,7 @@
 // #define ACCEL_USELEN 3850 // This works up to zmax=100 to use 4K FFTs
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
-
-#define ACCEL_USELEN 7734 // Added to equalise CPU and GPU
+#define ACCEL_USELEN 3638       // Added by run time script for 4K FFT's at a ZMAZ of 200
 
 
 #undef FOLD
@@ -27,6 +26,7 @@
 
 #define   FOLD  if (1)                   /// A simple marker used for folding blocks of code in NSIGHT
 #define   Fout  if (0)                   /// A simple marker used for folding blocks of code in NSIGHT
+#define   FOUT  if (0)
 
 /* Stepsize in Fourier Freq */
 #define ACCEL_NUMBETWEEN 2
@@ -133,7 +133,7 @@ void create_accelobs(accelobs *obs, infodata *idata,
 GSList *sort_accelcands(GSList *list);
 GSList *eliminate_harmonics(GSList *cands, int *numcands);
 void deredden(fcomplex *fft, int numamps);
-void optimize_accelcand(accelcand *cand, accelobs *obs);
+void optimize_accelcand(accelcand *cand, accelobs *obs,int nn);
 void output_fundamentals(fourierprops *props, GSList *list, 
 			 accelobs *obs, infodata *idata);
 void output_harmonics(GSList *list, accelobs *obs, infodata *idata);
@@ -161,5 +161,6 @@ void free_accelobs(accelobs *obs);
 
 //static
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
+GSList *insert_accelcand(GSList * list, accelcand *cand);
 
 #endif // _ACECEL_H

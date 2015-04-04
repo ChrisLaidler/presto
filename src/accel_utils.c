@@ -1,5 +1,8 @@
 #include "accel.h"
 #include "accelsearch_cmd.h"
+#include "cuda_utils.h"
+#include "cuda.h"
+//#include "cudart.h"
 
 #if defined (__GNUC__)
 #  define inline __inline__
@@ -281,6 +284,28 @@ GSList *sort_accelcands(GSList * list)
    return g_slist_sort(list, compare_accelcand_sigma);
 }
 
+GSList *insert_accelcand(GSList * list, accelcand *cand)
+{
+  if (!list)
+  {
+    GSList* new_list = g_slist_alloc();
+     new_list->data = (gpointer *) cand;
+     return new_list;
+  }
+  else
+  {
+    GSList *tail = list;
+    while (tail->next)
+    {
+      tail = tail->next;
+    }
+    GSList* new_list = g_slist_alloc();
+    new_list->data = (gpointer *)cand;
+    tail->next = new_list;
+  }
+
+  return list;
+}
 
 GSList *insert_new_accelcand(GSList * list, float power, float sigma,
                                     int numharm, double rr, double zz, int *added)
@@ -307,7 +332,7 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
    }
 
    if ( ((accelcand *) (tmp_list->data))->r >= rr ) {
-     // We have a Next canidate
+     // We have a Next candidate
      next_diff_r = fabs(rr - ((accelcand *) (tmp_list->data))->r);
    }
    else if ( ((accelcand *) (tmp_list->data))->r < rr ) {
@@ -322,7 +347,7 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
 
    /* Similar candidate(s) is(are) present */
 
-   if (prev_diff_r < ACCEL_CLOSEST_R) { // Clost to prev
+   if (prev_diff_r < ACCEL_CLOSEST_R) { // Close to prev
       if (((accelcand *) (prev_list->data))->sigma < sigma) {
         /* Overwrite the prev cand */
          free_accelcand(prev_list->data, NULL);
@@ -382,8 +407,14 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
    int ii, maxharm = 16, numremoved = 0;
    double tooclose = 1.5;
 
+   int nn = 0;
+
+   float rat;
+   FILE *pFile = fopen ("eliminate_harmonics.log","w");
+
    currentptr = cands;
    while (currentptr->next) {
+       fprintf(pFile, "Cand  %03i \n",nn++);
       current_cand = (accelcand *) (currentptr->data);
       otherptr = currentptr->next;
       do {
@@ -392,6 +423,7 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
          for (ii = 1; ii <= maxharm; ii++) {
             if (fabs(current_cand->r / ii - other_cand->r) < tooclose) {
                remove = 1;
+               rat = 1.0/(float)ii;
                break;
             }
          }
@@ -399,6 +431,7 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
             for (ii = 1; ii <= maxharm; ii++) {
                if (fabs(current_cand->r * ii - other_cand->r) < tooclose) {
                   remove = 1;
+                  rat = ii;
                   break;
                }
             }
@@ -406,33 +439,36 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
          /* Check a few other common harmonic ratios  */
          /* Hopefully this isn't being overzealous... */
          if (remove == 0 &&
-             ((fabs(current_cand->r * 3.0 / 2.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 5.0 / 2.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 2.0 / 3.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 4.0 / 3.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 5.0 / 3.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 3.0 / 4.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 5.0 / 4.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 2.0 / 5.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 3.0 / 5.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 4.0 / 5.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 5.0 / 6.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 2.0 / 7.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 3.0 / 7.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 4.0 / 7.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 3.0 / 8.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 5.0 / 8.0 - other_cand->r) < tooclose) ||
-              (fabs(current_cand->r * 2.0 / 9.0 - other_cand->r) < tooclose) ||
+             ((fabs(current_cand->r * 3.0 / 2.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 5.0 / 2.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 2.0 / 3.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 4.0 / 3.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 5.0 / 3.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 3.0 / 4.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 5.0 / 4.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 2.0 / 5.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 3.0 / 5.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 4.0 / 5.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 5.0 / 6.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 2.0 / 7.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 3.0 / 7.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 4.0 / 7.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 3.0 / 8.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 5.0 / 8.0  - other_cand->r) < tooclose) ||
+              (fabs(current_cand->r * 2.0 / 9.0  - other_cand->r) < tooclose) ||
               (fabs(current_cand->r * 3.0 / 10.0 - other_cand->r) < tooclose) ||
               (fabs(current_cand->r * 2.0 / 11.0 - other_cand->r) < tooclose) ||
               (fabs(current_cand->r * 3.0 / 11.0 - other_cand->r) < tooclose) ||
               (fabs(current_cand->r * 2.0 / 13.0 - other_cand->r) < tooclose) ||
               (fabs(current_cand->r * 3.0 / 13.0 - other_cand->r) < tooclose) ||
               (fabs(current_cand->r * 2.0 / 15.0 - other_cand->r) < tooclose))) {
+
+             rat = other_cand->r / (float)current_cand->r ;
             remove = 1;
          }
          /* Remove the "other" cand */
          if (remove) {
+            fprintf(pFile, "remove %15.2f h[%02i] (%6.2f)  - x %5.2f -  %15.2f h[%02i] (%6.2f) \n", current_cand->r, current_cand->numharm, current_cand->sigma, rat, other_cand->r, other_cand->numharm, other_cand->sigma );
             numremoved++;
             toocloseptr = otherptr;
             otherptr = otherptr->next;
@@ -450,17 +486,21 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
    if (numremoved) {
        printf("Removed %d likely harmonically related candidates.\n", numremoved);
    }
+
+   fclose(pFile);
    return cands;
 }
 
 
 // FIXME: this shouldn't be a #define, or it shouldn't be here
-void optimize_accelcand(accelcand * cand, accelobs * obs)
+void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
 {
    int ii;
    int *r_offset;
    fcomplex **data;
    double r, z;
+
+   printf("\n%4i  optimize_accelcand  harm %2i   r %10.3f   z %10.3f  pow: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power );
 
    cand->pows = gen_dvect(cand->numharm);
    cand->hirs = gen_dvect(cand->numharm);
@@ -469,11 +509,14 @@ void optimize_accelcand(accelcand * cand, accelobs * obs)
    data = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
    cand->derivs = (rderivs *) malloc(sizeof(rderivs) * cand->numharm);
 
-   if (obs->use_harmonic_polishing) {
-       if (obs->mmap_file || obs->dat_input) {
-           for(ii=0;ii<cand->numharm;ii++) {
-               r_offset[ii]=obs->lobin;
-               data[ii] = obs->fft;
+   if (obs->use_harmonic_polishing)
+   {
+       if (obs->mmap_file || obs->dat_input)
+       {
+           for(ii=0;ii<cand->numharm;ii++)
+           {
+               r_offset[ii]   = obs->lobin;
+               data[ii]       = obs->fft;
            }
            max_rz_arr_harmonics(data,
                                 cand->numharm,
@@ -484,7 +527,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs)
                                 &r,
                                 &z,
                                 cand->derivs,
-                                cand->pows);
+                                cand->pows,nn);
        } else {
            max_rz_file_harmonics(obs->fftfile,
                                  cand->numharm,
@@ -494,7 +537,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs)
                                  &r,
                                  &z,
                                  cand->derivs,
-                                 cand->pows);
+                                 cand->pows,nn);
        }
        for(ii=0;ii<cand->numharm;ii++) {
            cand->hirs[ii]=(r+obs->lobin)*(ii+1);
@@ -523,6 +566,10 @@ void optimize_accelcand(accelcand * cand, accelobs * obs)
 
    cand->sigma = candidate_sigma(cand->power, cand->numharm,
                                  obs->numindep[twon_to_index(cand->numharm)]);
+
+   //cand->r = r+obs->lobin;
+   //cand->z = z;
+
 }
 
 
@@ -644,12 +691,15 @@ void output_fundamentals(fourierprops * props, GSList * list,
    /* Print the fundamentals */
 
    for (ii = 0; ii < numcands; ii++) {
-      width = widths;
-      error = errors;
-      cand = (accelcand *) (listptr->data);
-      calc_rzwerrs(props + ii, obs->T, &errs);
 
-      {                         /* Calculate the coherently summed power */
+     width = widths;
+     error = errors;
+     cand = (accelcand *) (listptr->data);
+     //if ( ii == 16 )
+     {
+       calc_rzwerrs(props + ii, obs->T, &errs);
+
+       {                         /* Calculate the coherently summed power */
          double coherent_r = 0.0, coherent_i = 0.0;
          double phs0, phscorr, amp;
          rderivs harm;
@@ -658,57 +708,59 @@ void output_fundamentals(fourierprops * props, GSList * list,
          /* Better to irfft them and check the amplitude */
          phs0 = cand->derivs[0].phs;
          for (jj = 0; jj < cand->numharm; jj++) {
-            harm = cand->derivs[jj];
-            if (obs->nph > 0.0)
-               amp = sqrt(harm.pow / obs->nph);
-            else
-               amp = sqrt(harm.pow / harm.locpow);
-            phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
-            coherent_r += amp * cos(harm.phs + phscorr);
-            coherent_i += amp * sin(harm.phs + phscorr);
+           harm = cand->derivs[jj];
+           if (obs->nph > 0.0)
+             amp = sqrt(harm.pow / obs->nph);
+           else
+             amp = sqrt(harm.pow / harm.locpow);
+           phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
+           coherent_r += amp * cos(harm.phs + phscorr);
+           coherent_i += amp * sin(harm.phs + phscorr);
          }
          coherent_pow = coherent_r * coherent_r + coherent_i * coherent_i;
-      }
+       }
 
-      sprintf(tmpstr, "%-4d", ii + 1);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
+       sprintf(tmpstr, "%-4d", ii + 1);
+       center_string(ctrstr, tmpstr, *width++);
+       error++;
+       fprintf(obs->workfile, "%s  ", ctrstr);
 
-      sprintf(tmpstr, "%.2f", cand->sigma);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
+       sprintf(tmpstr, "%.2f", cand->sigma);
+       center_string(ctrstr, tmpstr, *width++);
+       error++;
+       fprintf(obs->workfile, "%s  ", ctrstr);
 
-      sprintf(tmpstr, "%.2f", cand->power);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
+       sprintf(tmpstr, "%.2f", cand->power);
+       center_string(ctrstr, tmpstr, *width++);
+       error++;
+       fprintf(obs->workfile, "%s  ", ctrstr);
 
-      sprintf(tmpstr, "%.2f", coherent_pow);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
+       sprintf(tmpstr, "%.2f", coherent_pow);
+       center_string(ctrstr, tmpstr, *width++);
+       error++;
+       fprintf(obs->workfile, "%s  ", ctrstr);
 
-      sprintf(tmpstr, "%d", cand->numharm);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
+       sprintf(tmpstr, "%d", cand->numharm);
+       center_string(ctrstr, tmpstr, *width++);
+       error++;
+       fprintf(obs->workfile, "%s  ", ctrstr);
 
-      write_val_with_err(obs->workfile, errs.p * 1000.0, errs.perr * 1000.0,
-                         *error++, *width++);
-      write_val_with_err(obs->workfile, errs.f, errs.ferr, *error++, *width++);
-      write_val_with_err(obs->workfile, props[ii].r, props[ii].rerr,
-                         *error++, *width++);
-      write_val_with_err(obs->workfile, errs.fd, errs.fderr, *error++, *width++);
-      write_val_with_err(obs->workfile, props[ii].z, props[ii].zerr,
-                         *error++, *width++);
-      accel = props[ii].z * SOL / (obs->T * obs->T * errs.f);
-      accelerr = props[ii].zerr * SOL / (obs->T * obs->T * errs.f);
-      write_val_with_err(obs->workfile, accel, accelerr, *error++, *width++);
-      fprintf(obs->workfile, "  %.20s\n", notes + ii * 20);
-      fflush(obs->workfile);
-      listptr = listptr->next;
+       write_val_with_err(obs->workfile, errs.p * 1000.0, errs.perr * 1000.0,
+           *error++, *width++);
+       write_val_with_err(obs->workfile, errs.f, errs.ferr, *error++, *width++);
+       write_val_with_err(obs->workfile, props[ii].r, props[ii].rerr,
+           *error++, *width++);
+       write_val_with_err(obs->workfile, errs.fd, errs.fderr, *error++, *width++);
+       write_val_with_err(obs->workfile, props[ii].z, props[ii].zerr,
+           *error++, *width++);
+       accel = props[ii].z * SOL / (obs->T * obs->T * errs.f);
+       accelerr = props[ii].zerr * SOL / (obs->T * obs->T * errs.f);
+       write_val_with_err(obs->workfile, accel, accelerr, *error++, *width++);
+       fprintf(obs->workfile, "  %.20s\n", notes + ii * 20);
+       fflush(obs->workfile);
+     }
+     listptr = listptr->next;
+
    }
    fprintf(obs->workfile, "\n\n");
    free(notes);
@@ -717,48 +769,48 @@ void output_fundamentals(fourierprops * props, GSList * list,
 
 void output_harmonics(GSList * list, accelobs * obs, infodata * idata)
 {
-   int ii, jj, numcols = 13, numcands;
-   int widths[13] = { 5, 4, 5, 15, 11, 18, 13, 12, 9, 12, 10, 10, 20 };
-   int errors[13] = { 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 2, 2, 0 };
-   char tmpstr[30], ctrstr[30], notes[21], *command;
-   accelcand *cand;
-   GSList *listptr;
-   fourierprops props;
-   rzwerrs errs;
-   static char *titles1[] = { "", "", "", "Power /", "Raw",
+  int ii, jj, numcols = 13, numcands;
+  int widths[13] = { 5, 4, 5, 15, 11, 18, 13, 12, 9, 12, 10, 10, 20 };
+  int errors[13] = { 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 2, 2, 0 };
+  char tmpstr[30], ctrstr[30], notes[21], *command;
+  accelcand *cand;
+  GSList *listptr;
+  fourierprops props;
+  rzwerrs errs;
+  static char *titles1[] = { "", "", "", "Power /", "Raw",
       "FFT 'r'", "Pred 'r'", "FFT 'z'", "Pred 'z'",
       "Phase", "Centroid", "Purity", ""
-   };
-   static char *titles2[] = { "Cand", "Harm", "Sigma", "Loc Pow", "Power",
+  };
+  static char *titles2[] = { "Cand", "Harm", "Sigma", "Loc Pow", "Power",
       "(bin)", "(bin)", "(bins)", "(bins)",
       "(rad)", "(0-1)", "<p> = 1", "Notes"
-   };
+  };
 
-   numcands = g_slist_length(list);
-   listptr = list;
+  numcands = g_slist_length(list);
+  listptr = list;
 
-   /* Print the header */
+  /* Print the header */
 
-   for (ii = 0; ii < numcols - 1; ii++) {
-      center_string(ctrstr, titles1[ii], widths[ii]);
-      fprintf(obs->workfile, "%s  ", ctrstr);
-   }
-   center_string(ctrstr, titles1[ii], widths[ii]);
-   fprintf(obs->workfile, "%s\n", ctrstr);
-   for (ii = 0; ii < numcols - 1; ii++) {
-      if (obs->nph > 0.0 && ii == 3)    /*  HAAACK!!! */
-         center_string(ctrstr, "NumPhot", widths[ii]);
-      else
-         center_string(ctrstr, titles2[ii], widths[ii]);
-      fprintf(obs->workfile, "%s  ", ctrstr);
-   }
-   center_string(ctrstr, titles2[ii], widths[ii]);
-   fprintf(obs->workfile, "%s\n", ctrstr);
-   for (ii = 0; ii < numcols - 1; ii++) {
-      memset(tmpstr, '-', widths[ii]);
-      tmpstr[widths[ii]] = '\0';
-      fprintf(obs->workfile, "%s--", tmpstr);
-   }
+  for (ii = 0; ii < numcols - 1; ii++) {
+    center_string(ctrstr, titles1[ii], widths[ii]);
+    fprintf(obs->workfile, "%s  ", ctrstr);
+  }
+  center_string(ctrstr, titles1[ii], widths[ii]);
+  fprintf(obs->workfile, "%s\n", ctrstr);
+  for (ii = 0; ii < numcols - 1; ii++) {
+    if (obs->nph > 0.0 && ii == 3)    /*  HAAACK!!! */
+      center_string(ctrstr, "NumPhot", widths[ii]);
+    else
+      center_string(ctrstr, titles2[ii], widths[ii]);
+    fprintf(obs->workfile, "%s  ", ctrstr);
+  }
+  center_string(ctrstr, titles2[ii], widths[ii]);
+  fprintf(obs->workfile, "%s\n", ctrstr);
+  for (ii = 0; ii < numcols - 1; ii++) {
+    memset(tmpstr, '-', widths[ii]);
+    tmpstr[widths[ii]] = '\0';
+    fprintf(obs->workfile, "%s--", tmpstr);
+  }
    memset(tmpstr, '-', widths[ii]);
    tmpstr[widths[ii]] = '\0';
    fprintf(obs->workfile, "%s\n", tmpstr);
@@ -1225,9 +1277,18 @@ void deredden(fcomplex * fft, int numamps)
       for (ii = 0; ii < lastbuflen; ii++) {
          lineval = mean_old + slope * (lineoffset - ii);
          scaleval = 1.0 / sqrt(lineval);
+
+         //float powargr, powargi;
+         //double ppos = POWER(fft[fixedoffset + ii].r, fft[fixedoffset + ii].i);
+
+         //printf("%i\t%e\t%e\n", fixedoffset + ii, lineval, ppos);
          fft[fixedoffset + ii].r *= scaleval;
          fft[fixedoffset + ii].i *= scaleval;
+
+         //double pp2 = POWER(fft[fixedoffset + ii].r, fft[fixedoffset + ii].i);
+         //printf("%i\t%e\t%e\t%e\n", fixedoffset + ii, lineval, ppos, pp2);
       }
+      //printf("-\n", lineoffset - ii,scaleval);
 
       /* Update our values */
       fixedoffset += lastbuflen;
@@ -1256,6 +1317,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 {
    int ii, rootlen, input_shorts = 0;
 
+   if(1)
    {
       int hassuffix = 0;
       char *suffix;
@@ -1368,30 +1430,61 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
    sprintf(obs->workfilenm, "%s_ACCEL_%d.txtcand", obs->rootfilenm, cmd->zmax);
 
    /* Open the FFT file if it exists appropriately */
-   if (!obs->dat_input) {
-      obs->fftfile = chkfopen(cmd->argv[0], "rb");
-      obs->numbins = chkfilelen(obs->fftfile, sizeof(fcomplex));
-      if (usemmap) {
+   if (!obs->dat_input)
+   {
+     obs->fftfile = chkfopen(cmd->argv[0], "rb");
+     obs->numbins = chkfilelen(obs->fftfile, sizeof(fcomplex));
+     if (usemmap)
+     {
+       unsigned long freeRam = getFreeRamCU();
+       if ( freeRam*0.6 > obs->numbins*sizeof(fcomplex) )
+       {
+         fseek ( obs->fftfile , 0 , SEEK_SET );
+         obs->fft = (fcomplex*)malloc( obs->numbins*sizeof(fcomplex) );
+
+         printf("Reading input FFT into memory.  This may take a while... ");
+         fflush(stdout);
+         size_t num = fread(obs->fft, sizeof(fcomplex), obs->numbins, obs->fftfile);
+         fclose(obs->fftfile);
+         obs->fftfile = NULL;
+         printf("done.\n");
+
+         /* De-redden it */
+         printf("Removing red-noise... ");
+         fflush(stdout);
+         deredden(obs->fft, obs->numbins);
+         printf("done.\n");
+       }
+       else
+       {
+         // Use memmap
          fclose(obs->fftfile);
          obs->fftfile = NULL;
          printf("Memory mapping the input FFT.  This may take a while...\n");
          obs->mmap_file = open(cmd->argv[0], O_RDONLY);
-         if (obs->mmap_file == -1) {
-            perror("\nError in open() in accel_utils.c");
-            printf("\n");
-            exit(-1);
+
+         if (obs->mmap_file == -1)
+         {
+           perror("\nError in open() in accel_utils.c");
+           printf("\n");
+           exit(-1);
          }
+
          obs->fft = (fcomplex *) mmap(0, sizeof(fcomplex) * obs->numbins, PROT_READ,
-                                      MAP_SHARED, obs->mmap_file, 0);
-         if (obs->fft == MAP_FAILED) {
-            perror("\nError in mmap() in accel_utils.c");
-            printf("Falling back to a non-mmaped approach\n");
-            obs->fftfile = chkfopen(cmd->argv[0], "rb");
-            obs->mmap_file = 0;
+             MAP_SHARED, obs->mmap_file, 0);
+         if (obs->fft == MAP_FAILED)
+         {
+           perror("\nError in mmap() in accel_utils.c");
+           printf("Falling back to a non-mmaped approach\n");
+           obs->fftfile = chkfopen(cmd->argv[0], "rb");
+           obs->mmap_file = 0;
          }
-      } else {
-         obs->mmap_file = 0;
-      }
+       }
+     }
+     else
+     {
+       obs->mmap_file = 0;
+     }
    }
 
    /* Determine the other parameters */
@@ -1420,6 +1513,12 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
           obs->norm_type = 0;
           printf("Normalizing powers using median-blocks.\n\n");
       } else {
+
+        /* De-redden it */
+        //printf("Removing red-noise...");
+        //deredden(obs->fft, obs->numbins);
+        //printf("done.\n\n");
+
           obs->norm_type = 0;
           printf("Normalizing powers using median-blocks (default).\n\n");
       }

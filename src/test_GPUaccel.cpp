@@ -1708,7 +1708,7 @@ int main(int argc, char *argv[])
       for (ii = 0; ii < numcands; ii++) {
         print_percent_complete(ii, numcands, "optimization", 0);
         cand = (accelcand *) (listptr->data);
-        optimize_accelcand(cand, &obs);
+        optimize_accelcand(cand, &obs, ii+1);
         listptr = listptr->next;
       }
       print_percent_complete(ii, numcands, "optimization", 0);

@@ -248,6 +248,8 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
    double s, c, pibyz, cons, delta;
    fcomplex *response;
 
+   //printf("gen_z_response( roffset %13.6f,  numbetween %02i,  z %13.8f,  numkern %5i ) \n", roffset, numbetween, z, numkern );
+
    /* Check that the arguments are OK */
 
    if (roffset < 0.0 || roffset >= 1.0) {
@@ -271,7 +273,8 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
    /* If z~=0 use the normal Fourier interpolation kernel */
 
    absz = fabs(z);
-   if (absz < 1E-4) {
+   if (absz < 1E-4)
+   {
       response = gen_r_response(roffset, numbetween, numkern);
       return response;
    }
@@ -280,32 +283,34 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
 
    /* Begin the calculations */
 
-   startr = roffset - (0.5 * z);
-   startroffset = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
-   signz = (z < 0.0) ? -1 : 1;
-   zd = signz * SQRT2 / sqrt(absz);
-   cons = zd / 2.0;
-   pibyz = PI / z;
-   startr += numkern / (double) (2 * numbetween);
-   delta = -1.0 / numbetween;
+   startr         = roffset - (0.5 * z);
+   startroffset   = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
+   signz          = (z < 0.0) ? -1 : 1;
+   zd             = signz * SQRT2 / sqrt(absz);
+   cons           = zd / 2.0;
+   pibyz          = PI / z;
+   startr         += numkern / (double) (2 * numbetween);
+   delta          = -1.0 / numbetween;
 
-   for (ii = 0, r = startr; ii < numkern; ii++, r += delta) {
-      yy = r * zd;
-      zz = yy + z * zd;
-      xx = pibyz * r * r;
-      c = cos(xx);
-      s = sin(xx);
+   for (ii = 0, r = startr; ii < numkern; ii++, r += delta)
+   {
+      yy  = r * zd;
+      zz  = yy + z * zd;
+      xx  = pibyz * r * r;
+      c   = cos(xx);
+      s   = sin(xx);
       fresnl(yy, &fressy, &frescy);
       fresnl(zz, &fressz, &frescz);
-      tmprl = signz * (frescz - frescy);
-      tmpim = fressy - fressz;
-      response[ii].r = ((tmp = tmprl) * c - tmpim * s) * cons;
-      response[ii].i = -(tmp * s + tmpim * c) * cons;
+      tmprl           = signz * (frescz - frescy);
+      tmpim           = fressy - fressz;
+      response[ii].r  = ((tmprl) * c - tmpim * s) * cons;
+      response[ii].i  = -(tmprl  * s + tmpim * c) * cons;
    }
 
    /* Correct for divide by zero when the roffset and z is close to zero */
 
-   if (startroffset < 1E-3 && absz < 1E-3) {
+   if (startroffset < 1E-3 && absz < 1E-3)
+   {
       zz = z * z;
       xx = startroffset * startroffset;
       numkernby2 = numkern / 2;
@@ -313,8 +318,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
       response[numkernby2].i = -0.5235987755982988731 * z;
       response[numkernby2].r += startroffset * 1.6449340668482264365 * z;
       response[numkernby2].i += startroffset * (PI - 0.5167712780049970029 * zz);
-      response[numkernby2].r += xx * (-6.579736267392905746
-                                      + 0.9277056288952613070 * zz);
+      response[numkernby2].r += xx * (-6.579736267392905746 + 0.9277056288952613070 * zz);
       response[numkernby2].i += xx * (3.1006276680299820175 * z);
    }
    return response;

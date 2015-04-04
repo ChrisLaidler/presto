@@ -451,6 +451,8 @@ double get_localpower3d(fcomplex *data, int numdata, double r, \
   /*   'w' is the Fourier Frequency 2nd derivative (change in the */
   /*       Fourier f-dot during the observation).                 */
 
+float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double w);
+
 void get_derivs3d(fcomplex *data, int numdata, double r, \
 		  double z, double w, double localpower, \
 		  rderivs *result);
@@ -1173,7 +1175,7 @@ void max_rz_arr_harmonics(fcomplex * data[], int num_harmonics,
                             int r_offset[],
                             int numdata, double rin, double zin,
                             double *rout, double *zout, rderivs derivs[],
-                            double power[]);
+                            double power[], int nn);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
 
@@ -1181,7 +1183,7 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
                              int lobin,
                              double rin, double zin,
                              double *rout, double *zout, rderivs derivs[],
-                             double maxpow[]);
+                             double maxpow[], int nn);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power of the candidate in 'fftfile'.       */
 

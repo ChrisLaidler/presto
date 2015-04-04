@@ -108,7 +108,11 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals);
  *
  * @return number of bytes of free RAM
  **/
-size_t getFreeRamCU();
+ExternC unsigned long getFreeRamCU();
+
+//ExternC void ffdot(float* powers, fcomplexcu* fft, int noHarms, float centR, float centZ, float rSZ, float zSZ, int noR, int noZ);
+//ExternC void ffdot(float* powers, fcomplex* fft, int noHarms, float centR, float centZ, float rSZ, float zSZ, int noR, int noZ);
+ExternC void ffdot(float* powers, fcomplex* fft, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ);
 
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
 ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);

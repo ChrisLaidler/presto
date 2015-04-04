@@ -169,8 +169,8 @@ void rz_interp(fcomplex * data, int numdata, double r, double z,
 
    /* Split 'r' into integer and fractional parts */
 
-   fracfreq = modf(r, &dintfreq);
-   intfreq = (int) dintfreq;
+   fracfreq   = modf(r, &dintfreq);
+   intfreq    = (int) dintfreq;
 
    /* Return immediately if 'r' is close to an           */
    /* integer frequency and z is very close to zero      */
@@ -190,8 +190,8 @@ void rz_interp(fcomplex * data, int numdata, double r, double z,
 
    /* Generate the response function */
 
-   numkern = 2 * kern_half_width;
-   response = gen_z_response(fracfreq, 1, z, numkern);
+   numkern    = 2 * kern_half_width;
+   response   = gen_z_response(fracfreq, 1, z, numkern);
 
    /* Determine the summation boundaries */
 
