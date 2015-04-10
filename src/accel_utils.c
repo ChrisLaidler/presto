@@ -1437,7 +1437,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
      if (usemmap)
      {
        unsigned long freeRam = getFreeRamCU();
-       if ( freeRam*0.6 > obs->numbins*sizeof(fcomplex) )
+       freeRam = 0;
+
+       if ( freeRam * 0.6 > obs->numbins*sizeof(fcomplex) )
        {
          fseek ( obs->fftfile , 0 , SEEK_SET );
          obs->fft = (fcomplex*)malloc( obs->numbins*sizeof(fcomplex) );

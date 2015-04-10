@@ -865,7 +865,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
      //float f3 = no*res;
      int tp = 10 ;
 
-     ffdot(gpuPows, data[0], 1, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
+     //ffdot(gpuPows, data[0], 1, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
 
      //no   = 20;
      //res  = 0.1;
@@ -1023,8 +1023,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
 
 
      // Plot combined
-     system("python ~/bin/plt.py");
-     //system("python ~/bin/pltSwrm2.py");
+     system("python ~/bin/bin/plt.py");
+     //system("python ~/bin/bin/pltSwrm2.py");
 
      double d1 = bstGrd[0] - smlPnt[1][0];
      double d2 = bstGrd[1] - smlPnt[1][1];
@@ -1069,7 +1069,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
          // Plot swarm
          if(swrm)
          {
-           system("python ~/bin/pltSwrm2.py");
+           system("python ~/bin/bin/pltSwrm2.py");
          }
        }
      }
