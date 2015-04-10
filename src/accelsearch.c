@@ -330,9 +330,9 @@ int main(int argc, char *argv[])
 
            print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
-//#ifndef DEBUG
+#ifndef DEBUG
 #pragma omp parallel
-//#endif
+#endif
            {
              int tid = omp_get_thread_num();
 

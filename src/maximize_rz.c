@@ -1029,8 +1029,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
 
 
      // Plot combined
-     system("python ~/bin/plt.py");
-     //system("python ~/bin/pltSwrm2.py");
+     system("python ~/bin/bin/plt.py");
+     //system("python ~/bin/bin/pltSwrm2.py");
 
      double d1 = bstGrd[0] - smlPnt[1][0];
      double d2 = bstGrd[1] - smlPnt[1][1];

@@ -651,7 +651,9 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
                     if ( batch->flag & FLAG_SAS_SIG )
                       sig     = poww;
                     else
+                    {
                       sig     = candidate_sigma(poww, numharm, numindep[stage]);
+                    }
 
                     rr = rVal->drlo + x *  ACCEL_DR ;
 
