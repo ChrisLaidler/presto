@@ -69,7 +69,6 @@ inline int twon_to_index(int n) // TODO: fix this to be called from one place (i
   return x;
 }
 
-
 int main(int argc, char *argv[])
 {
    int ii;
@@ -170,9 +169,9 @@ int main(int argc, char *argv[])
    char candsFile[1024];
    sprintf(candsFile,"%s_hs%02i_zmax%06.1f_sig%06.3f.unoptcands", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
    FILE *file;
-   if ( file = fopen(candsFile, "rb") ) // Read candidates from previous search
+   if ( file = fopen(candsFile, "rb") && 0 ) 	// Read candidates from previous search  .
    {
-     printf("\nReading raw candies from previous search.\n");
+     printf("\nReading raw candies from \"%s\" previous search.\n", candsFile);
      int numcands;
      fread( &numcands, sizeof(numcands), 1, file );
      int nc = 0;
@@ -189,12 +188,12 @@ int main(int argc, char *argv[])
      }
      fclose(file);
    }
-   else
+   else                                       // Run Search  .
    {
 
      /* Start the main search loop */
 
-     FOLD // the main loop
+     FOLD // the main loop  .
      {
        double startr = obs.rlo, lastr = 0, nextr = 0;
        ffdotpows *fundamental;
@@ -290,7 +289,7 @@ int main(int argc, char *argv[])
        }
 
 #ifdef CUDA   // --=== The cuda Search == --  .
-       if ( cmd->gpuP >= 0)
+       if ( cmd->gpuP > 0 )
        {
          candsGPU = NULL;
 
@@ -425,15 +424,15 @@ int main(int argc, char *argv[])
 
              cand* candidate = (cand*)master->h_candidates;
 
-             FILE * pFile;
-             int n;
-             char name [100];
-             sprintf(name,"%s_hs%02i_zmax%06.1f_sig%06.3f_CU_CAND_ARR.csv", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
+             //FILE * pFile;
+             //int n;
+             //char name [100];
+             //sprintf(name,"%s_hs%02i_zmax%06.1f_sig%06.3f_CU_CAND_ARR.csv", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
 
-             pFile = fopen (name,"w");
+             //pFile = fopen (name,"w");
+             //fprintf (pFile, "idx;rr;zz;sig;power;harm\n");
 
-             fprintf (pFile, "idx;rr;zz;sig;power;harm\n");
-
+             printf("\n");
              for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)  // Loop
              {
                poww        = candidate[cdx].power;
@@ -447,14 +446,17 @@ int main(int argc, char *argv[])
                  zz        = candidate[cdx].z;
 
                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-                 fprintf (pFile, "%i;%.2f;%.2f;%.2f;%.2f;%i\n",cdx,rr, zz,sig,poww,numharm);
-                 //if (added)
+                 //fprintf (pFile, "%i;%.2f;%.2f;%.2f;%.2f;%i\n",cdx,rr, zz,sig,poww,numharm);
+                 if (added)
                  {
                    noCands++;
+                   //printf("Cand %04i   x %6i  Pow: %8.2f  Sig: %6.2f  harm: %i  r %6.2f  z: %6.2f \n",noCands, cdx, poww, sig, numharm, rr, zz);
                  }
+
                }
              }
-             fclose (pFile);
+             printf("\n");
+             //fclose (pFile);
            }
 
            /* TODO: fix this section using SrchSz parameters
@@ -505,11 +507,11 @@ int main(int argc, char *argv[])
            cands = candsGPU;
            printf("GPU found %li candidates, %i unique..\n",noCands, g_slist_length(cands) );
 
-//#ifdef DEBUG
+#ifdef DEBUG
            char name [100];
            sprintf(name,"%s_hs%02i_zmax%06.1f_sig%06.3f_GPU_Cands.csv", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
            printCands(name, candsGPU);
-//#endif
+#endif
          }
        }
 #else
@@ -520,7 +522,7 @@ int main(int argc, char *argv[])
      if ( file = fopen(candsFile, "wb") )
      {
        int numcands = g_slist_length(cands);
-       printf("\nWriting %i raw candies from previous search.\n",numcands);
+       printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
        fwrite( &numcands, sizeof(numcands), 1, file );
 
        GSList *tmpLst = cands;
@@ -535,24 +537,16 @@ int main(int argc, char *argv[])
        }
 
        fclose(file);
-
-       if (nc != numcands )
-       {
-         // ERROR
-         int tmp = 0;
-       }
-
-
      }
      else
      {
-       // ERROR
+       fprintf(stderr,"ERROR: unable to open \"%s\" to write candidates.\n",candsFile);
      }
 
      printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
    }
 
-   if (1) // optimization
+   if (1) // optimization  .
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;
@@ -652,14 +646,15 @@ int main(int argc, char *argv[])
 #endif
    }
 
-#ifdef CUDA
+#ifdef CUDA // Timing message
       printf("\n Timing:  Prep: %9.06f  CPU: %9.06f  GPU: %9.06f [%6.2f x]  Optimization: %9.06f \n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
+
+#ifdef TIMING
       int batch;
       float InpFFT  = 0;
       float convT   = 0;
       float InvFFT  = 0;
       float ss      = 0;
-
       for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
       {
         printf("          Input FFT: %9.06f  Convolve %9.06f  InvFFT: %9.06f  Sum&Search: %9.06f\n", cuSrch->mInf->batches[batch].InpFFTTime * 1e-3, cuSrch->mInf->batches[batch].convTime * 1e-3, cuSrch->mInf->batches[batch].InvFFTTime * 1e-3, cuSrch->mInf->batches[batch].searchTime * 1e-3 );
@@ -669,6 +664,8 @@ int main(int argc, char *argv[])
         ss      += cuSrch->mInf->batches[batch].searchTime;
       }
       printf("\n          Input FFT: %9.06f  Convolve %9.06f  InvFFT: %9.06f  Sum&Search: %9.06f\n\n", InpFFT * 1e-3, convT * 1e-3, InvFFT * 1e-3, ss * 1e-3 );
+#endif
+
 #endif
 
    /* Finish up */

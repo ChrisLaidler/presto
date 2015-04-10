@@ -25,6 +25,12 @@ size_t getFreeRamCU()
  */
 unsigned long getFreeRamCU()
 {
+  long pages = sysconf(_SC_PHYS_PAGES);
+  long freePages = sysconf(_SC_AVPHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+
+  //return freePages*page_size;
+
   struct sysinfo sys_info;
   if(sysinfo(&sys_info) != 0)
   {
@@ -32,7 +38,9 @@ unsigned long getFreeRamCU()
     return 0;
   }
   else
-    return sys_info.freeram + sys_info.bufferram;
+  {
+    return (sys_info.freeram + sys_info.bufferram )* sys_info.mem_unit ;
+  }
 }
 #else
 unsigned long getFreeRamCU()

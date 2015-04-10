@@ -25,7 +25,7 @@ extern "C"
 #pragma once
 
 #define   TEMPLATE_CONVOLVE 1
-#define   TEMPLATE_SEARCH   0
+#define   TEMPLATE_SEARCH   1
 
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
@@ -50,7 +50,7 @@ extern "C"
 //#define ACCEL_USELEN 6990     // 8K    up to zmax=500
 //#define ACCEL_USELEN 1200     // 4K    up to zmax=1200
 
-#define CHUNKSZ         12                    // Added by run time script
+#define CHUNKSZ         8                     // Added by run time script
 
 #define SS_X            16                    // X Thread Block
 #define SS_Y            16                    // Y Thread Block
@@ -76,7 +76,7 @@ extern "C"
 #define CNV_DIMY        8                     // Y Thread Block
 #define CNV_WORK        4
 
-/** Details o the Normalise and spread kernel
+/** Details of the Normalise and spread kernel
  * Should be as large as possible usually 32x32
  * NOTE: If compiled in debug mode it may be necessary to drop NAS_DIMY to 16
  *       else you may get Error "too many resources requested for launch"
@@ -84,8 +84,6 @@ extern "C"
 #define NAS_DIMX        32                    // Normalise and spread X dimension
 #define NAS_DIMY        16                    // Normalise and spread Y dimension
 #define NAS_NTRD        (NAS_DIMX*NAS_DIMY)   // Normalise and spread thread per block
-
-//#define SS              3
 
 #define MAX_CANDS_PER_BLOCK 6000000
 
@@ -95,7 +93,6 @@ extern "C"
 
 #define BS_DIM        1024    // compute 3.x +
 //#define BS_DIM        576   // compute 2.x
-
 
 
 #define POWERR(r,i) (r)*(r)+(i)*(i)

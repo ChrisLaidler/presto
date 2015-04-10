@@ -3034,19 +3034,27 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
         sprintf(tmpStr,"%i.%i.1.%i Stack Convolve", stkLst->device, no, i);
         nvtxNameCudaStreamA(cStack->cnvlStream, tmpStr);
 
+
+
+#ifdef TIMING
+				// in  events
+        CUDA_SAFE_CALL(cudaEventCreate(&cStack->invFFTinit), 	"Creating convolution complete event");
+        CUDA_SAFE_CALL(cudaEventCreate(&cStack->convInit), 		"Creating convolution complete event");
+
+				// out events (with timing)
+				CUDA_SAFE_CALL(cudaEventCreate(&cStack->prepComp), 		"Creating input data preparation complete event");
+        CUDA_SAFE_CALL(cudaEventCreate(&cStack->convComp), 		"Creating convolution complete event");
+        CUDA_SAFE_CALL(cudaEventCreate(&cStack->plnComp),    	"Creating convolution complete event");
+#else
+				// out events (withought timing)
         CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->prepComp, cudaEventDisableTiming), "Creating input data preparation complete event");
+        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->convComp, cudaEventDisableTiming), "Creating convolution complete event");
+        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->plnComp,  cudaEventDisableTiming), "Creating complex plain creation complete event");
 
-
-        //CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->plnComp,  cudaEventDisableTiming), "Creating complex plain creation complete event");
-        CUDA_SAFE_CALL(cudaEventCreate(&cStack->invFFTinit), "Creating convolution complete event");
-        CUDA_SAFE_CALL(cudaEventCreate(&cStack->plnComp), "Creating convolution complete event");
-
-        CUDA_SAFE_CALL(cudaEventCreate(&cStack->convInit), "Creating convolution complete event");
-        CUDA_SAFE_CALL(cudaEventCreate(&cStack->convComp), "Creating convolution complete event");
-
-        //CUDA_SAFE_CALL(cudaEventRecord(cStack->convComp, cStack->cnvlStream), "Recording convolution complete event");
-        //CUDA_SAFE_CALL(cudaEventRecord(cStack->convComp, stkLst->inpStream ), "Recording convolution complete event");
-        //CUDA_SAFE_CALL(cudaEventRecord(cStack->prepComp, cStack->cnvlStream), "Recording convolution complete event");
+        CUDA_SAFE_CALL(cudaEventRecord(cStack->convComp, cStack->cnvlStream), "Recording convolution complete event");
+        CUDA_SAFE_CALL(cudaEventRecord(cStack->convComp, stkLst->inpStream ), "Recording convolution complete event");
+        CUDA_SAFE_CALL(cudaEventRecord(cStack->prepComp, cStack->cnvlStream), "Recording convolution complete event");
+#endif
       }
 
       if ( 0 )
@@ -3068,10 +3076,13 @@ int initBatch(cuFFdotBatch* stkLst, cuFFdotBatch* kernel, int no, int of)
     CUDA_SAFE_CALL(cudaEventCreateWithFlags(&stkLst->iDataCpyComp,   cudaEventDisableTiming ), "Creating input event iDataCpyComp.");
     CUDA_SAFE_CALL(cudaEventCreateWithFlags(&stkLst->candCpyComp,    cudaEventDisableTiming ), "Creating input event candCpyComp.");
     CUDA_SAFE_CALL(cudaEventCreateWithFlags(&stkLst->normComp,       cudaEventDisableTiming ), "Creating input event normComp.");
+    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&stkLst->searchComp,     cudaEventDisableTiming ), "Creating input event searchComp.");
     CUDA_SAFE_CALL(cudaEventCreateWithFlags(&stkLst->processComp,    cudaEventDisableTiming ), "Creating input event processComp.");
-
+#ifdef TIMING
+		CUDA_SAFE_CALL(cudaEventCreate(&stkLst->searchComp), "Creating input event searchComp.");
     CUDA_SAFE_CALL(cudaEventCreate(&stkLst->searchInit), "Creating input event searchInit.");
-    CUDA_SAFE_CALL(cudaEventCreate(&stkLst->searchComp), "Creating input event searchComp.");
+#endif
+
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams and events for the batch.");
   }
@@ -3779,7 +3790,6 @@ void CPU_Norm_Spread(cuFFdotBatch* plains, double searchRLow, double searchRHi, 
 void CPU_Norm_Spread(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
 {
   nvtxRangePush("CPU_Norm_Spread");
-  //printf("CPU_Norm_Spread\n");
 
   int harm = 0;
 

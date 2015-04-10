@@ -8,8 +8,6 @@
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
-//#define CBL   // REMOVE
-
 #ifdef __cplusplus
 #define ExternC extern "C"
 #else
@@ -25,6 +23,8 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#undef TIMING
 
 //=========================================== Defines ====================================================\\
 
@@ -325,10 +325,12 @@ typedef struct cuFfdotStack
 
     // Events
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
-    cudaEvent_t convInit;             ///< Convolution complete
     cudaEvent_t convComp;             ///< Convolution complete
-    cudaEvent_t invFFTinit;           ///< Creation (convolution and FFT) of the complex plain complete
     cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
+#ifdef TIMING
+    cudaEvent_t convInit;             ///< Convolution complete
+    cudaEvent_t invFFTinit;           ///< Creation (convolution and FFT) of the complex plain complete
+#endif
 
     // Streams
     cudaStream_t fftPStream;          ///< CUDA stream for summing and searching the data
@@ -398,10 +400,10 @@ typedef struct cuFFdotBatch
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
     cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t normComp;             ///< Normalise and spread input data
-
+#ifdef TIMING
     cudaEvent_t searchInit;           ///< Sum & Search start
+#endif
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
-
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
 
     int noResults;                    ///< The number of results from the previous search
@@ -415,10 +417,13 @@ typedef struct cuFFdotBatch
     CUcontext pctx;                   ///< Context for the batch
     int device;                       ///< The CUDA device to run on
 
+#ifdef TIMING
     float searchTime;
     float convTime;
     float InvFFTTime;
     float InpFFTTime;
+#endif
+
 } cuFFdotBatch;
 
 /** A struct to keep info on all the kernels and batches to use with cuda accel  .

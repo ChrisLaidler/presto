@@ -299,8 +299,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
        noBatches  = 3;
        scale      = 4;
      }
-     noInBatch  = 16  ;
-     noBatches  = 04  ;
+     noInBatch  = 32  ;
+     noBatches  = 2  ;
      //scale = 32;
 
      velocityMax    = scale / 20.0;
@@ -315,6 +315,9 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
      int ixc;
      float noTet          = 1.0 ;
      const int maxErr     = 4  ;
+
+     // set PSO parameters to the ‘standard’ values suggested in [14]:w= 0.729844 and C1 = C2 = 1.49618.
+     //[14J Kennedy, M. Clerc, 2006. <http://www.particleswarm.info/Standard_PSO_2006.c>.]
 
      double a = 0.8;
      double b = 0.4;
@@ -826,17 +829,20 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
      if ( num_harmonics == 4 )
      {
        no = 50;
+       no   = 40;
      }
      if ( num_harmonics == 8 )
      {
        no = 60;
+       no   = 40;
      }
      if ( num_harmonics == 16)
      {
        no = 80;
+       no   = 40;
      }
 
-     //no   = 16*4;
+     //no   = 50;
 
      double mx    = MAX(fabs(lrgPnt[0][0]-lrgPnt[1][0]), fabs(lrgPnt[0][1]-lrgPnt[1][1])/ZSCALE);
      double res   = MAX(szDiff/(float)no,mx*1.1/(float)no);
@@ -865,7 +871,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
      //float f3 = no*res;
      int tp = 10 ;
 
-     ffdot(gpuPows, data[0], 1, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
+     //ffdot(gpuPows, data[0], 1, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
 
      //no   = 20;
      //res  = 0.1;
@@ -1069,7 +1075,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
          // Plot swarm
          if(swrm)
          {
-           system("python ~/bin/pltSwrm2.py");
+           //system("python ~/bin/pltSwrm2.py");
          }
        }
      }

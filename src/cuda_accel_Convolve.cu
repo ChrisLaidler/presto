@@ -411,7 +411,7 @@ __global__ void convolveffdot41(const fcomplexcu* __restrict__ kernels, const fc
         inpDat2[step].i        /= (float) width ;
       }
 
-      const int datTerm   = pln*noSteps;                /// Plain dependent term for addressing input data
+      const int datTerm   = pln*noSteps;                	/// Plain dependent term for addressing input data
       const int plainStrt = pHeight*noSteps*stride;       /// The stack index of the start of the plain
       //__restrict__ fcomplexcu* kern    = kerDat.val[plnNo];
       //if ( FLAGS & FLAG_STP_PLN )
@@ -1365,9 +1365,10 @@ void convolveStack(cuFFdotBatch* batch)
             iHarmList zUp;
             iHarmList zDn;
 
-
             // Timing event
+#ifdef TIMING
             CUDA_SAFE_CALL(cudaEventRecord(cStack->convInit, cStack->cnvlStream),"Recording event: convInit");
+#endif
 
             for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
             {
@@ -1405,10 +1406,12 @@ void convolveStack(cuFFdotBatch* batch)
 
             FOLD // Timing
             {
+#ifdef TIMING
               float time;
               cudaEventElapsedTime(&time, cStack->convInit, cStack->convComp);
-    #pragma omp atomic
+#pragma omp atomic
               batch->convTime += time;
+#endif
             }
           }
         }
@@ -1553,8 +1556,10 @@ void convolveStack(cuFFdotBatch* batch)
           // Synchronise
           cudaStreamWaitEvent(cStack->fftPStream, cStack->convComp, 0);
 
-          // Synchronise
+          // Timing
+#ifdef TIMING
           cudaEventRecord(cStack->invFFTinit, cStack->fftPStream);
+#endif
 
 #pragma omp critical
           FOLD // Call the inverse CUFFT  .
