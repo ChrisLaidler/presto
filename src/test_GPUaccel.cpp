@@ -256,11 +256,13 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
 
   for (ii = 0; ii < ffdot->numzs; ii++)
   {
+
     nrs = corr_complex2(corrd,
         data, numdata, datainf,
         shi->kern[ii].data, fftlen, FFT,
         result[ii], ffdot->numrs, binoffset,
         ACCEL_NUMBETWEEN, binoffset, CORR);
+
     if (datainf == RAW )
     {
       if ( fftlen != (*input)(0)->len()/2.0 )
@@ -1244,7 +1246,7 @@ int main(int argc, char *argv[])
 
               // New events for Synchronisation (this event will override the previous event)
               cudaEventRecord(cStack->prepComp, cStack->fftIStream);
-              cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+              cudaEventRecord(cStack->plnComp,  cStack->fftPStream);
             }
           }
 
@@ -1303,7 +1305,6 @@ int main(int argc, char *argv[])
               }
               if ( bad )
               {
-
                 for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
                 {
                   int y = trdBatch->hInfos[harz].height - 1;
@@ -1546,6 +1547,8 @@ int main(int argc, char *argv[])
                 }
               }
             }
+
+            int tmp = 0;
           }
 
           print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);

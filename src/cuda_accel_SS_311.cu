@@ -823,8 +823,8 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
       {
         if      ( FLAGS & FLAG_STP_ROW )
           add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
-        //else if ( FLAGS & FLAG_STP_PLN )
-          //add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN>  (dimGrid, dimBlock, stream, batch);
+        else if ( FLAGS & FLAG_STP_PLN )
+          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN>  (dimGrid, dimBlock, stream, batch);
         //else if ( FLAGS & FLAG_STP_STK )
         //  add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, stream, batch);
         else
@@ -833,7 +833,6 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
           exit(EXIT_FAILURE);
         }
       }
-      /*
       else
       {
         if      ( FLAGS & FLAG_STP_ROW )
@@ -848,6 +847,5 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
           exit(EXIT_FAILURE);
         }
       }
-      */
     }
   }

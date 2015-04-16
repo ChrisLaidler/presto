@@ -395,6 +395,7 @@ typedef struct cuFFdotBatch
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search         m
 
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the batch
+    cudaStream_t convStream;          ///< CUDA stream for convolving
     cudaStream_t strmSearch;          ///< CUDA stream for summing and searching the data
 
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
@@ -403,6 +404,7 @@ typedef struct cuFFdotBatch
 #ifdef TIMING
     cudaEvent_t searchInit;           ///< Sum & Search start
 #endif
+    cudaEvent_t convComp;             ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
 

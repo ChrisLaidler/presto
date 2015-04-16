@@ -148,6 +148,21 @@ typedef struct long128
 
 //---------- INT -------- \\
 
+typedef struct int01
+{
+    int val[1];
+} int01;
+
+typedef struct int02
+{
+    int val[2];
+} int02;
+
+typedef struct int04
+{
+    int val[4];
+} int04;
+
 typedef struct int08
 {
     int val[8];
@@ -511,18 +526,9 @@ __host__ __device__ static inline int index_from_z(float z, float loz)
 //template<uint FLAGS, typename sType, int noStages, typename stpType>
 __global__ void print_YINDS(int no);
 
-/** Write CUFFT s to device
+/** Write CUFFT call backs to device
  */
 void copyCUFFT_LD_CB(cuFFdotBatch* batch);
-
-/** Return the first value of 2^n >= x
- */
-//__host__ __device__ long long next2_to_n(long long x);
-
-//#ifdef _cplusplus
-//extern "C"
-//#endif
-//fcomplexcu* prepFFTdata(fcomplexcu *data, uint len, uint len2, cuFfdot* ffdotPlain);
 
 float cuGetMedian(float *data, uint len);
 
@@ -558,54 +564,28 @@ double _GammaQ (double n, double x);
 
 void printData_cu(cuFFdotBatch* stkLst, const int FLAGS, int harmonic, int nX = 10, int nY = 5, int sX = 0, int sY = 0);
 
-//int setYINDS( cuFFdotBatch* stkLst, int numharmstages );
 int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long long *numindep );
+int setConstVals_Fam_Order( cuFFdotBatch* batch );
 
 
 ///////////////////////////////////////////// Convolution Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-/** Convolve plain(s) with kernel(s) and do the inverse FFT
- *
- * @param plains The plains to convolve
+/** Convolve and inverse FFT the complex f-∂f plain using FFT callback
+ * @param plains
  */
-void convolveStack(cuFFdotBatch* plains);
+void convolveBatchCUFFT(cuFFdotBatch* batch );
 
-/*
-__global__ void convolveffdot(fcomplexcu *ffdot, const int width, const int stride, const int height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-__global__ void convolveffdot2(fcomplexcu *ffdot, uint width, uint stride, uint height, fcomplexcu *data, fcomplexcu *kernels, uint number);
-
-__global__ void convolveffdot3(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-__global__ void convolveffdot35(fcomplexcu *ffdot, uint width, uint stride, const uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-__global__ void convolveffdot37(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-__global__ void convolveffdot36(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex);
-
-template <int noBatch>
-__global__ void convolveffdot38(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-template<uint FLAGS, uint no>
-__global__ void convolveffdot4(const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex);
-
-__host__ void convolveffdot41_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, uint noSteps, uint noPlns, uint FLAGS );
-
-template<uint FLAGS>
-__global__ void convolveffdot5(const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, iHarmList widths, iHarmList strides, iHarmList heights, uint no, uint hh, uint noSteps, uint step );
-
-template<uint FLAGS, uint no>
-__global__ void convolveffdot6(const fcomplexcu *kernels, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint hh, fCplxTex kerTex, iHarmList zUp, iHarmList zDn );
-
-__host__ void convolveffdot7_f(dim3 dimBlock, dim3 dimGrid, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps, const uint noPlns, uint FLAGS );
-*/
+/** Convolve and inverse FFT the complex f-∂f plain
+ * This assumes the input data is ready and on the device
+ * This creates a complex f-∂f plain
+ */
+void convolveBatch(cuFFdotBatch* batch);
 
 //////////////////////////////////////////////////////////// \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 
-//__host__
 __host__ __device__ double incdf (double p, double q );
-//__device__ double incdf (double p, double q );
+
 
 /** Select the GPU to use
  * @param device The device to use

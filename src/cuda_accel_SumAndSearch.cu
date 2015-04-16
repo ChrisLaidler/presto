@@ -36,9 +36,9 @@ __device__ __constant__ float      YINDS_F[MAX_YINDS];
 __device__ __constant__ float      POWERCUT[MAX_HARM_NO];
 __device__ __constant__ float      NUMINDEP[MAX_HARM_NO];
 
-__device__ __constant__ int        HEIGHT[MAX_HARM_NO];
-__device__ __constant__ int        STRIDE[MAX_HARM_NO];
-__device__ __constant__ int        HWIDTH[MAX_HARM_NO];
+__device__ __constant__ int        HEIGHT[MAX_HARM_NO];         ///< Plain heights in stage order
+__device__ __constant__ int        STRIDE[MAX_HARM_NO];         ///< Plain strides in stage order
+__device__ __constant__ int        HWIDTH[MAX_HARM_NO];         ///< Plain half width in stage order
 
 //====================================== Constant variables  ===============================================\\
 
