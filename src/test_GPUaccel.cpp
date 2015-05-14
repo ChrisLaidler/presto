@@ -1104,7 +1104,7 @@ int main(int argc, char *argv[])
 
           FOLD // Call the CUDA search  .
           {
-            search_ffdot_planeCU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
 
             if ( trdBatch->flag & CU_OUTP_HOST )
             {
@@ -1565,7 +1565,7 @@ int main(int argc, char *argv[])
           // Finish searching the plains, this is required because of the out of order asynchronous calls
           for ( int  pln = 0 ; pln < 2; pln++ )
           {
-            search_ffdot_planeCU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
           }
         }
       }

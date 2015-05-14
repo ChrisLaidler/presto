@@ -82,12 +82,6 @@ static const char *_cudaGetErrorEnum(cufftResult error)
 }
 #endif
 
-
-//__device__ __constant__ int        YINDS[MAX_YINDS];
-//__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
-//__device__ __constant__ long long  NUMINDEP[MAX_HARM_NO];
-
-
 // Defines for GPU Architecture types (using the SM version to determine the # of cores per SM)
 typedef struct
 {
@@ -110,8 +104,6 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals);
  **/
 ExternC unsigned long getFreeRamCU();
 
-//ExternC void ffdot(float* powers, fcomplexcu* fft, int noHarms, float centR, float centZ, float rSZ, float zSZ, int noR, int noZ);
-//ExternC void ffdot(float* powers, fcomplex* fft, int noHarms, float centR, float centZ, float rSZ, float zSZ, int noR, int noZ);
 ExternC void ffdot(float* powers, fcomplex* fft, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ);
 
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);

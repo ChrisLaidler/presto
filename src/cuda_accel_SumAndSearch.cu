@@ -482,7 +482,6 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
   if ( batch->haveSearchResults || batch->haveConvData ) // previous plain has data data so sum and search
   {
     nvtxRangePush("Add & Search");
-
     //printf("Sum & Search\n");
 
     int noStages = log(batch->noHarms)/log(2) + 1;
@@ -499,109 +498,60 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
       }
     }
 
-    if ( batch->haveSearchResults ) // Timing  .
-    {
-      // A blocking synchronisation to ensure results are ready to be proceeded by the host
-      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-
-#ifdef TIMING
-      FOLD // Timing
-      {
-        float time;
-        cudaError_t ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
-
-        if ( ret == cudaErrorNotReady )
-        {
-          //printf("Not ready\n");
-        }
-        else
-        {
-          //printf("    ready\n");
-#pragma omp atomic
-          batch->searchTime += time;
-        }
-
-        // Convolve this entire stack in one block
-        for (int ss = 0; ss < batch->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &batch->stacks[ss];
-
-          ret = cudaEventElapsedTime(&time, cStack->convInit, cStack->convComp);
-          if ( ret == cudaErrorNotReady )
-          {
-            //printf("Not ready\n");
-          }
-          else
-          {
-            //printf("    ready\n");
-  #pragma omp atomic
-            batch->convTime += time;
-          }
-
-          ret = cudaEventElapsedTime(&time, cStack->invFFTinit, cStack->plnComp);
-          if ( ret == cudaErrorNotReady )
-          {
-            //printf("Not ready\n");
-          }
-          else
-          {
-            //printf("    ready\n");
-  #pragma omp atomic
-            batch->InvFFTTime += time;
-          }
-        }
-      }
-#endif
-    }
-
     if ( batch->haveConvData ) // Sum & search  .
     {
       FOLD // Call the main sum & search kernel  .
       {
         //printf("Call the templated kernel\n");
 
-        // Timing event
-#ifdef TIMING
-        CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
-#endif
-
-        if ( (batch->flag & CU_OUTP_SINGLE) || (batch->flag & CU_OUTP_HOST) ) // Call the templated kernel  .
+        FOLD // Timing event  .
         {
-          dimBlock.x  = SS3_X;
-          dimBlock.y  = SS3_Y;
+#ifdef TIMING
+          CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
+#endif
+        }
 
-          float bw    = SS3_X * SS3_Y;
-          float ww    = batch->accelLen / ( bw );
-
-
-          dimGrid.x   = ceil(ww);
-          dimGrid.y   = 1;
-
-          if ( batch->retType & CU_SMALCAND )
+        FOLD // // Call the SS kernel  .
+        {
+          if ( (batch->flag & CU_OUTP_SINGLE) || (batch->flag & CU_OUTP_HOST) ) // Call the templated kernel  .
           {
-            //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
-            //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
-            //if ( (batch->flag&FLAG_CUFFTCB_OUT) && (batch->flag&FLAG_PLN_TEX) )
+            dimBlock.x  = SS3_X;
+            dimBlock.y  = SS3_Y;
+
+            float bw    = SS3_X * SS3_Y;
+            float ww    = batch->accelLen / ( bw );
+
+            dimGrid.x   = ceil(ww);
+            dimGrid.y   = 1;
+
+            if ( batch->retType & CU_SMALCAND )
             {
-              add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
+              //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
+              //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
+              //if ( (batch->flag&FLAG_CUFFTCB_OUT) && (batch->flag&FLAG_PLN_TEX) )
+              {
+                add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
+              }
+            }
+            else
+            {
+              fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+              exit(EXIT_FAILURE);
             }
           }
           else
           {
-            fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+            fprintf(stderr,"ERROR: function %s is not setup to handle this type of output for GPU accel search\n",__FUNCTION__);
             exit(EXIT_FAILURE);
           }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
         }
-        else
+
+        FOLD // Synchronisation  .
         {
-          fprintf(stderr,"ERROR: function %s is not setup to handle this type of output for GPU accel search\n",__FUNCTION__);
-          exit(EXIT_FAILURE);
+          CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
         }
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
-
-        // Event
-        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
       }
     }
 
@@ -609,12 +559,11 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
     {
       if ( batch->flag & CU_OUTP_SINGLE )
       {
-        //printf("Process previous results\n");
-
         // A blocking synchronisation to ensure results are ready to be proceeded by the host
-        //CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
 
         nvtxRangePush("CPU Process results");
+        //printf("Process previous results\n");
 
         batch->noResults=0;
 
@@ -746,6 +695,13 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
         cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
         cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
 
+        FOLD // Timing event  .
+        {
+#ifdef TIMING
+          CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->strmSearch),"Recording event: candCpyInit");
+#endif
+        }
+
         CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
 
         CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
@@ -758,6 +714,135 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
 
     nvtxRangePop();
   }
+
+#ifdef TIMING // Timing
+
+  if ( batch->haveSearchResults )
+  {
+    // A blocking synchronisation to ensure results are ready to be proceeded by the host
+    CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+
+    float time;         // Time in ms of the thing
+    cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+    FOLD // Convolution timing  .
+    {
+      if ( batch->flag & FLAG_CNV_FAM )   // Convolution was done on the entire batch  .
+      {
+        ret = cudaEventElapsedTime(&time, batch->convInit, batch->convComp);
+        if ( ret == cudaErrorNotReady )
+        {
+          //printf("Not ready\n");
+        }
+        else
+        {
+          //printf("    ready\n");
+#pragma omp atomic
+          batch->convTime[0] += time;
+        }
+      }
+      else                                // Convolution was on a per stack basis  .
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->convInit, cStack->convComp);
+          if ( ret == cudaErrorNotReady )
+          {
+            //printf("Not ready\n");
+          }
+          else
+          {
+            //printf("    ready\n");
+#pragma omp atomic
+            batch->convTime[ss] += time;
+          }
+        }
+      }
+    }
+
+    FOLD // Inverse FFT timing  .
+    {
+      for (int ss = 0; ss < batch->noStacks; ss++)
+      {
+        cuFfdotStack* cStack = &batch->stacks[ss];
+
+        cudaError_t e1 = cudaEventQuery(cStack->invFFTinit);
+        cudaError_t e2 = cudaEventQuery(cStack->plnComp);
+
+        if ( ss == 0 )
+        {
+          printf("\n");
+          if ( e1 == cudaSuccess )
+          {
+            printf(" e1 Good\n");
+          }
+          else
+          {
+            printf(" e1 Bad\n");
+          }
+
+          if ( e2 == cudaSuccess )
+          {
+            printf(" e2 Good\n");
+          }
+          else
+          {
+            printf(" e2 Bad\n");
+          }
+        }
+
+        ret = cudaEventElapsedTime(&time, cStack->invFFTinit, cStack->plnComp);
+        if ( ret == cudaErrorNotReady )
+        {
+          printf("Not ready\n");
+        }
+        else
+        {
+          printf("    ready\n");
+#pragma omp atomic
+          batch->InvFFTTime[ss] += time;
+
+          if ( ss == 0 )
+            printf("\nInvFFT: %f ms\n",time);
+        }
+      }
+    }
+
+    FOLD // Search Timing  .
+    {
+      ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
+
+      if ( ret == cudaErrorNotReady )
+      {
+        //printf("Not ready\n");
+      }
+      else
+      {
+        //printf("    ready\n");
+#pragma omp atomic
+        batch->searchTime[0] += time;
+      }
+    }
+
+    FOLD // Copy D2H  .
+    {
+      ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
+
+      if ( ret == cudaErrorNotReady )
+      {
+        //printf("Not ready\n");
+      }
+      else
+      {
+        //printf("    ready\n");
+#pragma omp atomic
+        batch->copyD2HTime[0] += time;
+      }
+    }
+  }
+#endif
 }
 
 void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
@@ -857,6 +942,10 @@ void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
       {
         // A blocking synchronisation to ensure results are ready to be proceeded by the host
         CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+
+
+
+
 
         nvtxRangePush("CPU Process results");
 

@@ -213,8 +213,8 @@ ifeq ($(WITHNDARR),yes)
 
   LNDARR			+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
   INDARR			+= -I$(SRC)/libs/build/include/ $(FTCFLG) 
-	
-  NVCCFLAGS	    += -DCBL $(INDARR)
+
+  NVCCFLAGS	+= -DCBL $(INDARR)
   NVCLFLAGS			+= -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
   
   CXXFLAGS			+= -DCBL $(INDARR)
@@ -584,15 +584,15 @@ $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
 
 ###############  Cleans   ################
 
-cleanGPU:
+cleanTIMING:
+	rm -rf build/debug/accelsearch*.o build/debug/cuda_accel_Convolve.cu.o build/debug/cuda_accel_input.cu.o build/debug/cuda_accel_SumAndSearch.cu.o build/debug/cuda_accel_utils.cu.o
+	rm -rf build/release/accelsearch*.o build/release/cuda_accel_Convolve.cu.o build/release/cuda_accel_input.cu.o build/release/cuda_accel_SumAndSearch.cu.o build/release/cuda_accel_utils.cu.o
+
+cleanGPU: cudaclean
 	rm -f ../lib/libpresto*
 	rm -f ../lib/libcuaccel*
 	rm -f ../bin/test_GPUaccel*
 	rm -f ../bin/accelsearch*
-	rm -f cuda*.o
-	rm -f accelsearch.o 
-	rm -f accel_utils.o
-	rm -f test_GPUaccel.o
 
 cudaclean:
 	rm -f build/debug/cuda*.o

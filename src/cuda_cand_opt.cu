@@ -294,7 +294,6 @@ __global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noHarms, int halfw
   }
 }
 
-
 void ffdot(float* powers, fcomplex* fft, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ)
 {
   double log2 = log(2.0);

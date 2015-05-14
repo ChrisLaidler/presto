@@ -25,6 +25,10 @@ extern "C"
 #endif
 
 #undef TIMING
+#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
+
+#undef SYNCHRONOUS
+//#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
 
 //=========================================== Defines ====================================================\\
 
@@ -197,15 +201,15 @@ typedef struct searchScale
     unsigned long long noOutpR;       ///< The maximum number of r bins the fundamental search will produce. This is ( searchRHigh - searchRLow ) / ( candidate resolution ) It may need to be scaled by numharmstages
 } searchScale;
 
-/** Details of the number of bins of the full search
+/** Details of the section/step of the input FFT
  */
 typedef struct rVals
 {
-    double      drlo;     ///< The R value of the first usable bin of the plain
-    long long   lobin;    ///< The first bin to copy from the the input fft ( serachR scaled - halfwidth )
-    long        numdata;  ///< The number of input fft points to read
-    long        numrs;    ///< The number of good bins in the plain ( expanded units )
-    long long   expBin;   ///< The index of the expanded bin of the first good value
+    double      drlo;           ///< The value of the first usable bin of the plain (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    long long   lobin;          ///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
+    long        numdata;        ///< The number of input FFT points to read
+    long        numrs;          ///< The number of good bins in the plain ( expanded units )
+    long long   expBin;         ///< The index of the expanded bin of the first good value
 } rVals;
 
 /** User specified search details
@@ -327,14 +331,15 @@ typedef struct cuFfdotStack
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
     cudaEvent_t convComp;             ///< Convolution complete
     cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
-#ifdef TIMING
-    cudaEvent_t convInit;             ///< Convolution complete
-    cudaEvent_t invFFTinit;           ///< Creation (convolution and FFT) of the complex plain complete
-#endif
+//#ifdef TIMING
+    cudaEvent_t convInit;             ///< Convolution starting
+    cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
+    cudaEvent_t inpFFTinit;           ///< Start of the input FFT
+//#endif
 
     // Streams
-    cudaStream_t fftPStream;          ///< CUDA stream for summing and searching the data
-    cudaStream_t fftIStream;          ///< CUDA stream for summing and searching the data
+    cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
+    cudaStream_t fftIStream;          ///< CUDA stream to CUFFT the input data
     cudaStream_t cnvlStream;          ///< CUDA stream for work on the stack
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the stack
 } cuFfdotStack;
@@ -398,12 +403,17 @@ typedef struct cuFFdotBatch
     cudaStream_t convStream;          ///< CUDA stream for convolving
     cudaStream_t strmSearch;          ///< CUDA stream for summing and searching the data
 
+    //#ifdef TIMING
+    cudaEvent_t iDataCpyInit;         ///< Copying input data to device
+    cudaEvent_t candCpyInit;          ///< Finished reading candidates from the device
+    cudaEvent_t searchInit;           ///< Sum & Search start
+    cudaEvent_t convInit;             ///< Start of convolve of entire batch
+    //#endif
+
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
     cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t normComp;             ///< Normalise and spread input data
-#ifdef TIMING
-    cudaEvent_t searchInit;           ///< Sum & Search start
-#endif
+
     cudaEvent_t convComp;             ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
@@ -419,16 +429,18 @@ typedef struct cuFFdotBatch
     CUcontext pctx;                   ///< Context for the batch
     int device;                       ///< The CUDA device to run on
 
-#ifdef TIMING
-    float searchTime;
-    float convTime;
-    float InvFFTTime;
-    float InpFFTTime;
-#endif
+//#ifdef TIMING
+    float* copyH2DTime;
+    float* InpFFTTime;
+    float* convTime;
+    float* InvFFTTime;
+    float* searchTime;
+    float* copyD2HTime;
+//#endif
 
 } cuFFdotBatch;
 
-/** A struct to keep info on all the kernels and batches to use with cuda accel  .
+/** A struct to keep info on all the kernels and batches to use with cuda accelsearch  .
  */
 typedef struct cuMemInfo
 {
@@ -463,14 +475,14 @@ typedef struct cuSearch
 
 //===================================== Function prototypes ===============================================\\
 
-/** Read the GPU details from clig command line
+/** Read the GPU details from clig command line  .
  *
  * @param cmd
  * @return A pointer to the accel info struct to fill
  */
 ExternC gpuSpecs readGPUcmd(Cmdline *cmd);
 
-/** Read the GPU details from clig command line
+/** Read the GPU details from clig command line  .
  *
  * @param cmd
  * @return A pointer to the accel info struct to fill
@@ -539,11 +551,7 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
  */
 //ExternC void freeBatch(cuFFdotBatch* stkLst);
 
-ExternC void search_ffdot_planeCU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
-
-ExternC void setStkPointers(cuFFdotBatch* stkLst);
-
-ExternC void setPlainPointers(cuFFdotBatch* stkLst);
+ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
 
 ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers );
 

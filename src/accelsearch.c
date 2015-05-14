@@ -2,7 +2,7 @@
 
 /*#undef USEMMAP*/
 
-//#define CUDA // TMP
+#define CUDA // TMP
 
 #ifdef USEMMAP
 #include <unistd.h>
@@ -27,7 +27,6 @@
 #include "dmalloc.h"
 #endif
 
-//extern float calc_median_powers(fcomplex * amplitudes, int numamps);
 extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
 
 static void print_percent_complete(int current, int number, char *what, int reset)
@@ -55,7 +54,6 @@ static void print_percent_complete(int current, int number, char *what, int rese
       }
    }
 }
-
 
 inline int twon_to_index(int n) // TODO: fix this to be called from one place (ie not static in c file)
 {
@@ -193,12 +191,12 @@ int main(int argc, char *argv[])
 
      /* Start the main search loop */
 
-     FOLD // the main loop  .
+     FOLD // the CPU and GPU main loop  .
      {
        double startr = obs.rlo, lastr = 0, nextr = 0;
        ffdotpows *fundamental;
 
-       if ( cmd->cpuP )
+       if ( cmd->cpuP ) // CPU search  .
        {
 #ifdef CUDA // Profiling  .
          nvtxRangePush("CPU");
@@ -273,10 +271,13 @@ int main(int argc, char *argv[])
              obs.highestbin - obs.rlo, "search", 0);
 
 #ifdef CUDA  // Profiling  .
+
+         // Basic timing
          gettimeofday(&end, NULL);
          cupTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-         printf("  cupTime %f\n", cupTime/1000.0);
+
          cands = candsCPU;
+         printf("GPU found %i are unique. In %.4f ms\n", g_slist_length(candsCPU), cupTime/1000.0 );
 
          nvtxRangePop();
 
@@ -288,7 +289,7 @@ int main(int argc, char *argv[])
 #endif
        }
 
-#ifdef CUDA   // --=== The cuda Search == --  .
+#ifdef CUDA   // --=== The GPU Search == --  .
        if ( cmd->gpuP > 0 )
        {
          candsGPU = NULL;
@@ -298,11 +299,11 @@ int main(int argc, char *argv[])
 
          int noHarms = (1 << (obs.numharmstages - 1));
 
-         FOLD
+         FOLD   // Contains main GPU loop  .
          {
            //cudaDeviceSynchronize();          // This is only necessary for timing
            gettimeofday(&start, NULL);       // Profiling
-           //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
+           //cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
 
            printf("\n------------------------\nDoing GPU Search \n------------------------\n");
 
@@ -333,6 +334,7 @@ int main(int argc, char *argv[])
 #ifndef DEBUG
 #pragma omp parallel
 #endif
+           FOLD  // Main GPU loop  .
            {
              int tid = omp_get_thread_num();
 
@@ -345,13 +347,15 @@ int main(int argc, char *argv[])
              setContext(trdBatch) ;
 
              int firstStep = 0;
+             int step;
 
-             while ( ss < maxxx )
+             while ( ss < maxxx )  // Main GPU loop  .
              {
 #pragma omp critical
                {
                  firstStep = ss;
                  ss       += trdBatch->noSteps;
+                 //printf("\n\nStep %04i thread %02i processing %02i steps\n", firstStep, tid, trdBatch->noSteps);
                }
 
                if ( firstStep >= maxxx )
@@ -361,23 +365,26 @@ int main(int argc, char *argv[])
                {
                  // TODO: there are a number of families we don't need to run see if we can use 'setPlainPointers(trdBatch)'
                  // To see if we can do less work on the last step
+                 int tmp = 0;
                }
 
-               int si;
-               for ( si = 0; si < trdBatch->noSteps ; si ++)
+               // Set start r-vals for all steps in this batch
+               for ( step = 0; step < trdBatch->noSteps ; step ++)
                {
-                 if ( si < rest )
+                 if ( step < rest )
                  {
-                   startrs[si] = obs.rlo + (firstStep+si) * ( trdBatch->accelLen * ACCEL_DR );
-                   lastrs[si]  = startrs[si] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+                   startrs[step] = obs.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+                   lastrs[step]  = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
                  }
                  else
                  {
-                   startrs[si] = 0 ;
-                   lastrs[si]  = 0 ;
+                   startrs[step] = 0 ;
+                   lastrs[step]  = 0 ;
                  }
                }
-               search_ffdot_planeCU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+
+               // Initiate the CUDA search for the batch
+               search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
 
                if ( trdBatch->flag & CU_OUTP_HOST )
                {
@@ -389,22 +396,22 @@ int main(int argc, char *argv[])
                print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
              }
 
-             int si;
-             for ( si = 0; si < trdBatch->noSteps ; si ++)
+             // Set r values to 0 so as to not process details
+             for ( step = 0; step < trdBatch->noSteps ; step ++)
              {
-               startrs[si] = 0;
-               lastrs[si]  = 0;
+               startrs[step] = 0;
+               lastrs[step]  = 0;
              }
 
              // Finish searching the plains, this is required because of the out of order asynchronous calls
-             int pln;
-             for ( pln = 0 ; pln < 2; pln++ )
+             for ( step = 0 ; step < 2; step++ )
              {
-               search_ffdot_planeCU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+               search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
              }
            }
 
            print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
+           printf("\n");
 
            if ( master->flag & CU_CAND_ARR )
            {
@@ -424,15 +431,6 @@ int main(int argc, char *argv[])
 
              cand* candidate = (cand*)master->h_candidates;
 
-             //FILE * pFile;
-             //int n;
-             //char name [100];
-             //sprintf(name,"%s_hs%02i_zmax%06.1f_sig%06.3f_CU_CAND_ARR.csv", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
-
-             //pFile = fopen (name,"w");
-             //fprintf (pFile, "idx;rr;zz;sig;power;harm\n");
-
-             printf("\n");
              for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)  // Loop
              {
                poww        = candidate[cdx].power;
@@ -446,17 +444,12 @@ int main(int argc, char *argv[])
                  zz        = candidate[cdx].z;
 
                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-                 //fprintf (pFile, "%i;%.2f;%.2f;%.2f;%.2f;%i\n",cdx,rr, zz,sig,poww,numharm);
                  if (added)
                  {
                    noCands++;
-                   //printf("Cand %04i   x %6i  Pow: %8.2f  Sig: %6.2f  harm: %i  r %6.2f  z: %6.2f \n",noCands, cdx, poww, sig, numharm, rr, zz);
                  }
-
                }
              }
-             printf("\n");
-             //fclose (pFile);
            }
 
            /* TODO: fix this section using SrchSz parameters
@@ -501,11 +494,12 @@ int main(int argc, char *argv[])
 
            //cudaProfilerStop(); // For profiling of only the 'critical' GPU section
 
+           // Basic timing
            gettimeofday(&end, NULL);
            gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-           printf("  gpuTime %f\n", gpuTime/1000.0);
+
            cands = candsGPU;
-           printf("GPU found %li candidates, %i unique..\n",noCands, g_slist_length(cands) );
+           printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
 #ifdef DEBUG
            char name [100];
@@ -650,20 +644,58 @@ int main(int argc, char *argv[])
       printf("\n Timing:  Prep: %9.06f  CPU: %9.06f  GPU: %9.06f [%6.2f x]  Optimization: %9.06f \n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
 #ifdef TIMING
-      int batch;
-      float InpFFT  = 0;
-      float convT   = 0;
-      float InvFFT  = 0;
-      float ss      = 0;
+      int batch, stack;
+      float copyH2DT  = 0;
+      float InpFFT    = 0;
+      float convT     = 0;
+      float InvFFT    = 0;
+      float ss        = 0;
+      float copyD2HT  = 0;
+
+      printf("\n===============================================================================================================\n");
+      printf("\nAdvanced timing, all times are in ms\n");
+
       for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
       {
-        printf("          Input FFT: %9.06f  Convolve %9.06f  InvFFT: %9.06f  Sum&Search: %9.06f\n", cuSrch->mInf->batches[batch].InpFFTTime * 1e-3, cuSrch->mInf->batches[batch].convTime * 1e-3, cuSrch->mInf->batches[batch].InvFFTTime * 1e-3, cuSrch->mInf->batches[batch].searchTime * 1e-3 );
-        InpFFT  += cuSrch->mInf->batches[batch].InpFFTTime;
-        convT   += cuSrch->mInf->batches[batch].convTime;
-        InvFFT  += cuSrch->mInf->batches[batch].InvFFTTime;
-        ss      += cuSrch->mInf->batches[batch].searchTime;
+        printf("Batch %02i\n",batch);
+
+        float l_copyH2DT  = 0;
+        float l_InpFFT    = 0;
+        float l_convT     = 0;
+        float l_InvFFT    = 0;
+        float l_ss        = 0;
+        float l_copyD2HT  = 0;
+
+        printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input FFT", "Convolve", "Inverse FFT", "Sum & Search", "Copy D2H" );
+
+        for (stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
+        {
+          cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
+
+          printf(" Stack %02i\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\n", stack, batches->copyH2DTime[stack], batches->InpFFTTime[stack], batches->convTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->copyD2HTime[stack]  );
+
+          l_copyH2DT  += batches->copyH2DTime[stack];
+          l_InpFFT    += batches->InpFFTTime[stack];
+          l_convT     += batches->convTime[stack];
+          l_InvFFT    += batches->InvFFTTime[stack];
+          l_ss        += batches->searchTime[stack];
+          l_copyD2HT  += batches->copyD2HTime[stack];
+        }
+
+        printf("          \t-----------------------------------------------------------------------------------------------\n");
+        printf("          \t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\n", l_copyH2DT, l_InpFFT, l_convT, l_InvFFT, l_ss, l_copyD2HT );
+
+        copyH2DT  += l_copyH2DT;
+        InpFFT    += l_InpFFT;
+        convT     += l_convT;
+        InvFFT    += l_InvFFT;
+        ss        += l_ss;
+        copyD2HT  += l_copyD2HT;
       }
-      printf("\n          Input FFT: %9.06f  Convolve %9.06f  InvFFT: %9.06f  Sum&Search: %9.06f\n\n", InpFFT * 1e-3, convT * 1e-3, InvFFT * 1e-3, ss * 1e-3 );
+      printf("          \t-----------------------------------------------------------------------------------------------\n");
+      printf("Total     \t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\n", copyH2DT, InpFFT, convT, InvFFT, ss, copyD2HT );
+
+      printf("\n===============================================================================================================\n");
 #endif
 
 #endif
