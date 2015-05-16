@@ -5,7 +5,6 @@
 #include <omp.h>
 
 
-
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 #include <nvToolsExt.h>
@@ -864,7 +863,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           }
           else
           {
-            fprintf(stderr, "ERROR: GPU %i has insufficient free memory to store all candidates on device.\n");
+            fprintf(stderr, "ERROR: GPU %i has insufficient free memory to store all candidates on device.\n", kernel->device);
             return 0;
           }
         }
@@ -1497,18 +1496,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Create timing arrays
     {
-      float* copyH2DTime;
-      float* InpNorm;
-      float* InpFFTTime;
-      float* convTime;
-      float* InvFFTTime;
-      float* searchTime;
-      float* resultTime;
-      float* copyD2HTime;
-
 #ifdef TIMING
       batch->copyH2DTime  = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->InpNorm   = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->InpNorm      = (float*)malloc(batch->noStacks*sizeof(float));
       batch->InpFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
       batch->convTime     = (float*)malloc(batch->noStacks*sizeof(float));
       batch->InvFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
@@ -2895,8 +2885,6 @@ void generatePlain(fftInfo fft, long long loBin, long long hiBin, int zMax, int 
 void printBitString(uint val)
 {
   printf("Value %015i : ", val);
-
-  uint vv = ( 1 << 0 );
 
   for ( int i = 0; i < 32; i++)
   {

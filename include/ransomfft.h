@@ -37,7 +37,7 @@ typedef fcomplex rawtype;
     #define COMPLEXFFT    fftwcall
     #include "fftw3.h"
     void fftwcall(fcomplex *indata, long nn, int isign);
-    void read_wisdom(void);
+    void read_wisdom();
   #elif defined USESGIFFT
     #define COMPLEXFFT    sgifftcall
     #include "fft.h"

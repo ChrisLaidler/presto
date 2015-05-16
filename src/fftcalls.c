@@ -3,7 +3,7 @@
 //#if defined USEFFTW
 #ifdef USEFFTW
 
-void read_wisdom(void)
+void read_wisdom()
 {
     FILE *wisdomfile;
     static char wisdomfilenm[120];
