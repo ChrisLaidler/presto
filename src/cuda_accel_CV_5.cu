@@ -1,8 +1,9 @@
 #include "cuda_accel_CV.h"
 
-/** Convolution kernel - Convolve an entire batch with convolution kernel
+/** Convolution kernel - Convolve an entire batch with convolution kernel  .
  * Each thread loops down a column of the plains and convolves input with kernel and writes result to plain
  */
+/*
 template<uint FLAGS, typename hType, int noHars>
 __global__ void convolveffdot5_ok(const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, iHarmList widths, iHarmList strides, iHarmList heights, uint no, uint hh, uint noSteps, uint step )
 {
@@ -52,7 +53,6 @@ __global__ void convolveffdot5_ok(const fcomplexcu *kernels, const fcomplexcu *d
         ker           =  kernels[tid];
         tid          += stride;
 
-
         // Convolve
         ffdot[idx].r = (dat.r * ker.r + dat.i * ker.i);
         ffdot[idx].i = (dat.i * ker.r - dat.r * ker.i);
@@ -79,25 +79,21 @@ __global__ void convolveffdot5_ok(const fcomplexcu *kernels, const fcomplexcu *d
     }
   }
 }
+*/
 
 
 template<uint FLAGS, int noSteps>
-__global__ void convolveffdot5_k(const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, int noHars)
+__global__ void convolveffdot5_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ datas, fcomplexcu* __restrict__ ffdot, int noPlains)
 {
   const int ix = blockIdx.x * CNV_DIMX * CNV_DIMY + CNV_DIMX * threadIdx.y + threadIdx.x;
 
-  //int iy        = 0;
-  //int heightSum = 0;
-  //int height    = 0;
-
-  fcomplexcu dat[noSteps];
+  fcomplexcu input[noSteps];
 
   // Stride
-  //kernels += ix;
   ffdot   += ix;
   datas   += ix;
 
-  for (int n = 0; n < noHars; n++)            // Loop over plains
+  for (int n = 0; n < noPlains; n++)                  // Loop over plains  .
   {
     const int stride   = STRIDE_FAM_ORDER[n];
     const int height   = HEIGHT_FAM_ORDER[n];
@@ -105,30 +101,31 @@ __global__ void convolveffdot5_k(const fcomplexcu *kernels, const fcomplexcu *da
 
     if ( ix < stride )
     {
-      // read input into registers
-      for (int step = 0; step < noSteps; step++) // Loop over plains
+      // read input for each step into registers
+      for (int step = 0; step < noSteps; step++)      // Loop over plains  .
       {
-        dat[step]      = datas[step*stride];
+        input[step]      = datas[step*stride];
 
         // Normalise
-        dat[step].r   /= (float) stride ;
-        dat[step].i   /= (float) stride ;
+        input[step].r   /= (float) stride ;
+        input[step].i   /= (float) stride ;
       }
 
       // Stride input data
       datas        += stride*noSteps;
 
-      for (int iy = 0; iy < height; iy++)
+      for (int iy = 0; iy < height; iy++)           // Loop over individual plain  .
       {
-        const int PlnStride = iy*stride;
+        const int plnOffset = iy*stride;
+        const int PlnStride = height*stride;
 
         // Convolve and write data
-        for (int step = 0; step < noSteps; step++) // Loop over steps
+        for (int step = 0; step < noSteps; step++)  // Loop over steps  .
         {
           // Convolve
           fcomplexcu val;
-          val.r = (dat[step].r * ker->r + dat[step].i * ker->i);
-          val.i = (dat[step].i * ker->r - dat[step].r * ker->i);
+          val.r = (input[step].r * ker->r + input[step].i * ker->i);
+          val.i = (input[step].i * ker->r - input[step].r * ker->i);
 
           if      ( FLAGS & FLAG_STP_ROW )
           {
@@ -137,22 +134,21 @@ __global__ void convolveffdot5_k(const fcomplexcu *kernels, const fcomplexcu *da
           }
           else if ( FLAGS & FLAG_STP_PLN )
           {
-            ffdot[PlnStride + stride+height ] = val;
+            ffdot[plnOffset + step*PlnStride ] = val;
           }
         }
 
-        // Stride kernel to next "row"
+        // Stride kernel to next row
         ker += stride;
       }
 
-      if ( FLAGS & FLAG_STP_PLN ) // Stride output pointer to next plain
+      if ( FLAGS & FLAG_STP_PLN ) 	                // Stride output pointer to next plain  .
       {
         ffdot += noSteps*height*stride;
       }
     }
   }
 }
-
 
 template<int FLAGS>
 __host__  void convolveffdot5_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch)
@@ -201,14 +197,10 @@ __host__  void convolveffdot5_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
     }
     default:
     {
-      fprintf(stderr, "ERROR: convolveffdot5 has not been templated for %i steps\n", batch->noSteps);
+      fprintf(stderr, "ERROR: convolveffdot5 has not been templated for %lu steps\n", batch->noSteps);
       exit(EXIT_FAILURE);
     }
   }
-
-  cudaDeviceSynchronize();
-
-  int tmp = 0;
 }
 
 __host__  void convolveffdot5_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch)

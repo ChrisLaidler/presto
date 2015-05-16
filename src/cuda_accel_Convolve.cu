@@ -9,7 +9,7 @@ __device__ __constant__ fcomplexcu*   KERNEL_FAM_ORDER[MAX_HARM_NO];        ///<
 
 __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
-  /*
+
   fftCnvlvInfo *inf = (fftCnvlvInfo*)callerInfo;
 
   const int strd = inf->stride * inf->noSteps;
@@ -39,7 +39,6 @@ __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *cal
   return out;
 
   //return ((cufftComplex*)dataIn)[offset];
-   */
 }
 
 __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
@@ -139,18 +138,27 @@ void convolveBatch(cuFFdotBatch* batch)
   if ( batch->haveInput )
   {
     nvtxRangePush("Convolve & FFT");
-    //printf("Convolve & FFT\n");
+#ifdef STPMSG
+    printf("\tConvolve & FFT\n");
+#endif
 
     dim3 dimBlock, dimGrid;
 
     if ( batch->flag & FLAG_CUFFTCB_INP )  	// Do the convolution using a CUFFT callback  .
     {
+#ifdef STPMSG
+    printf("\t\tConvolve with CUFFT\n");
+#endif
       convolveBatchCUFFT( batch );
     }
     else                                    // Do the convolution and FFT separately  .
     {
       FOLD // Convolve  .
       {
+#ifdef STPMSG
+    printf("\t\tConvolve\n");
+#endif
+
         dimBlock.x = CNV_DIMX;   // in my experience 16 is almost always best (half warp)
         dimBlock.y = CNV_DIMY;   // in my experience 16 is almost always best (half warp)
 
@@ -253,11 +261,20 @@ void convolveBatch(cuFFdotBatch* batch)
               if ( batch->flag & FLAG_CNV_OVLP )
               {
                 // NOTE: convolveffdot41 seams faster and has been adapted for multi-step
-                convolveffdot7_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, batch->noSteps, cStack->noInStack, batch->flag );
+                convolveffdot71_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, batch->noSteps, cStack->noInStack, batch->flag );
+                //convolveffdot72_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
               }
               else
               {
-                convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, batch->noSteps, cStack->noInStack, batch->flag );
+                if( batch->flag & FLAG_RAND_1 )
+                {
+                  convolveffdot43_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
+                }
+                else
+                {
+                  convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, batch->noSteps, cStack->noInStack, batch->flag );
+                }
+
               }
 
               // Run message
@@ -388,6 +405,10 @@ void convolveBatch(cuFFdotBatch* batch)
       FOLD // Inverse FFT the  f-∂f plain  .
       {
 
+#ifdef STPMSG
+    printf("\t\tInverse FFT\n");
+#endif
+
 #ifdef SYNCHRONOUS
       cuFfdotStack* pStack = NULL;
 #endif
@@ -417,17 +438,17 @@ void convolveBatch(cuFFdotBatch* batch)
 #endif
           }
 
-          FOLD // Timing  .
-          {
-#ifdef TIMING
-            cudaEventRecord(cStack->invFFTinit, cStack->fftPStream);
-#endif
-          }
-
           FOLD // Call the inverse CUFFT  .
           {
 #pragma omp critical
             {
+              FOLD // Timing  .
+              {
+#ifdef TIMING
+                cudaEventRecord(cStack->invFFTinit, cStack->fftPStream);
+#endif
+              }
+
               if ( batch->flag & FLAG_CUFFTCB_OUT ) // Set the CUFFT callback to calculate and store powers  .
               {
                 //cufftCallbackLoadC hostCopyOfCallbackPtr;
@@ -439,16 +460,16 @@ void convolveBatch(cuFFdotBatch* batch)
 
               CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
               CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
-            }
-          }
 
-          FOLD // Synchronisation  .
-          {
-            cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+              FOLD // Synchronisation  .
+              {
+                cudaEventRecord(cStack->plnComp, cStack->fftPStream);
 
 #ifdef SYNCHRONOUS
-            pStack = cStack;
+                pStack = cStack;
 #endif
+              }
+            }
           }
         }
       }

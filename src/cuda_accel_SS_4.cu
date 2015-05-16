@@ -116,7 +116,7 @@ __global__ void add_and_searchCU4(cuSearchList searchList, accelcandBasic* d_can
           can.numharm = numharm;
           can.sigma   = powerThread[0];
           can.z       = z[0];
-          if ( canMethoud & FLAG_SAS_SIG )
+          if ( canMethoud & FLAG_SIG_GPU )
           {
             // Calculate sigma value
             can.sigma   = (float)candidate_sigma_cu(powerThread[0], numharm, numtrials);
@@ -211,7 +211,7 @@ __global__ void add_and_searchCU4(cuSearchList searchList, accelcandBasic* d_can
         can.numharm = numharm;
         can.sigma   = powerThread[0];
         can.z       = z[0];
-        if ( canMethoud & FLAG_SAS_SIG )
+        if ( canMethoud & FLAG_SIG_GPU )
         {
           // Calculate sigma value
           can.sigma   = (float)candidate_sigma_cu(powerThread[0], numharm, numtrials);

@@ -6,16 +6,16 @@ OS = Linux
 #OS = OSX
 
 # yes / no
-WITH_CUDA 	= yes
-WITHOMP 		= yes
-WITHNDARR 	= yes
+WITH_CUDA  = yes
+WITHOMP    = yes
+WITHNDARR  = yes
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
 OS_ARCH    = $(shell uname -m)
 ARCH_FLAGS =
 
-BINPATH				 = $(PRESTO)/bin
-LIBPATH				 = $(PRESTO)/lib
+BINPATH    = $(PRESTO)/bin
+LIBPATH    = $(PRESTO)/lib
 
 PRESTOOBJS_BASE = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 	characteristics.o cldj.o chkio.o corr_prep.o corr_routines.o\
@@ -67,6 +67,7 @@ PGPLOTLINK = -L$(PGPLOT_DIR) -lcpgplot -lpgplot $(X11LINK) $(PNGLINK)
 # Include and link information for the FFTW 3.X single-precision library
 FFTINC := $(shell pkg-config --cflags fftw3f)
 FFTLINK := $(shell pkg-config --libs fftw3f)
+
 
 # Include and link information for the GLIB 2.0 library
 GLIBINC := $(shell pkg-config --cflags glib-2.0)
@@ -122,8 +123,8 @@ CLINKFLAGS = $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
 #        FFLAGs.  Certain compilers (i.e. on Intel Macs) will
 #        cause errors for the code in least_squares.f
-FFLAGS = -g -fPIC
-FLINKFLAGS = $(FFLAGS)
+FFLAGS       = -g -fPIC
+FLINKFLAGS   = $(FFLAGS)
 LINKCOMMAND1 = $(CC) $(LIBCMD) -o
 LINKCOMMAND2 = ar rcs
 
@@ -131,22 +132,22 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ######## CUDA flags
 
-ARCH=
+ARCH =
 #ARCH += -gencode arch=compute_20,code=sm_21
 ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
 ARCH += -gencode arch=compute_50,code=sm_50
 
-CUDA_PATH	= /usr/local/cuda
+CUDA_PATH  = /usr/local/cuda
 
-CUDALIBS	= -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
-CUDAINC	 	= -I$(CUDA_PATH)/include
+CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
+CUDAINC    = -I$(CUDA_PATH)/include
 
-NVCCFLAGS	= $(CUDAINC) $(ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
-NVCCFLAGS	+= -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
+NVCCFLAGS  = $(CUDAINC) $(ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
+NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
 
-NVCLFLAGS	= $(CUDAINC) $(ARCH) $(CUDALIBS)  
-NVCLFLAGS	+= -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
+NVCLFLAGS  = $(CUDAINC) $(ARCH) $(CUDALIBS)  
+NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
 
 $(info )
 
@@ -154,16 +155,16 @@ $(info )
 ifeq ($(DEBUG),1)
   $(info Compiling in debug mode)
 
-  CFLAGS 		+= -O0 -ggdb  -DDEBUG
-  LFLAGS 		+= -O0 -ggdb
+  CFLAGS        += -O0 -ggdb  -DDEBUG
+  LFLAGS        += -O0 -ggdb
   
-  NVCCFLAGS += -g -G -O0 -DDEBUG
-  NVCLFLAGS += -g -G -O0
+  NVCCFLAGS     += -g -G -O0 -DDEBUG
+  NVCLFLAGS     += -g -G -O0
 
-  DEBUG_TARGET	=debug
-  POSTFIX				=_debug
-  export DEBUG	=1    
-  OBJDIR				=build/debug/
+  DEBUG_TARGET  =debug
+  POSTFIX       =_debug
+  export DEBUG  =1    
+  OBJDIR        =build/debug/
 else  
   $(info Compileing in release mode)
   
@@ -181,10 +182,10 @@ else
 #  NVCCFLAGS += -Xptxas -dlcm=ca
   NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
   
-  DEBUG_TARGET	=release
-  POSTFIX				=
-  export DEBUG	=0
-  OBJDIR				=build/release/
+  DEBUG_TARGET   =release
+  POSTFIX        =
+  export DEBUG   =0
+  OBJDIR         =build/release/
 endif
 
 $(info )
@@ -193,55 +194,55 @@ $(info )
 ifeq ($(WITHOMP),yes)
   $(info • Compileing with OpenMP)
   
-  CFLAGS 		+= -fopenmp -DWITHOMP
-  FLAGS 		+= -fopenmp -DWITHOMP
+  CFLAGS      += -fopenmp -DWITHOMP
+  FLAGS       += -fopenmp -DWITHOMP
   
-  CXXFLAGS 		+= -fopenmp -DWITHOMP
-  LDFLAGS 		+= -fopenmp -DWITHOMP
+  CXXFLAGS    += -fopenmp -DWITHOMP
+  LDFLAGS     += -fopenmp -DWITHOMP
   
-  FFTLINK 		+=
-  NVCCFLAGS 	+= -Xcompiler -fopenmp -DWITHOMP
-  NVCLFLAGS		+= -Xcompiler -fopenmp -DWITHOMP
+  FFTLINK     +=
+  NVCCFLAGS   += -Xcompiler -fopenmp -DWITHOMP
+  NVCLFLAGS   += -Xcompiler -fopenmp -DWITHOMP
 endif
 
 ifeq ($(WITHNDARR),yes)
   $(info • Compileing with Chris Debug libraries)
 
   # Include and link information for FreeType	
-  FTCFLG = $(shell freetype-config --cflags)
-  FTLINK = $(shell freetype-config --libs)
+  FTCFLG     = $(shell freetype-config --cflags)
+  FTLINK     = $(shell freetype-config --libs)
 
-  LNDARR			+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
-  INDARR			+= -I$(SRC)/libs/build/include/ $(FTCFLG) 
+  LNDARR     += -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
+  INDARR     += -I$(SRC)/libs/build/include/ $(FTCFLG) 
 
-  NVCCFLAGS	+= -DCBL $(INDARR)
-  NVCLFLAGS			+= -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
+  NVCCFLAGS  += -DCBL $(INDARR)
+  NVCLFLAGS  += -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
   
-  CXXFLAGS			+= -DCBL $(INDARR)
+  CXXFLAGS   += -DCBL $(INDARR)
 else
-  LNDARR =
-  INDARR =  
+  LNDARR     =
+  INDARR     =  
 endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
   $(info • Compileing with CUDA)
 
-  NVCC_SRCS 		= $(wildcard *.cu)
-  NVCC_OBS  		= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
+  NVCC_SRCS  = $(wildcard *.cu)
+  NVCC_OBS   = $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
   
-  NVCCFLAGS		 	+= -DCUDA -Xcompiler -fPIC
-  NVCLFLAGS			+= -DCUDA -Xcompiler -fPIC
+  NVCCFLAGS  += -DCUDA -Xcompiler -fPIC
+  NVCLFLAGS  += -DCUDA -Xcompiler -fPIC
   
-  CFLAGS 				+= -DCUDA $(CUDAINC)
-  FLAGS 				+= -DCUDA $(CUDAINC)
+  CFLAGS     += -DCUDA $(CUDAINC)
+  FLAGS      += -DCUDA $(CUDAINC)
   
-  CXXFLAGS 			+= -DCUDA $(CFLAGS)	$(CUDAINC)
-  LDFLAGS 			+= -DCUDA $(CUDAINC) $(CLINKFLAGS) 
+  CXXFLAGS   += -DCUDA $(CFLAGS)	$(CUDAINC)
+  LDFLAGS    += -DCUDA $(CUDAINC) $(CLINKFLAGS) 
 
-	CUACCL				= -lcuaccel$(POSTFIX)
+  CUACCL     = -lcuaccel$(POSTFIX)
 
-	GPUOUTP				= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+  GPUOUTP    = $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 	
 #  PRESTOLINK 	 	+= $(CUDALIBS)
 #  PRESTOLINK 		+= $(GLIBLINK)
@@ -255,10 +256,10 @@ ifeq ($(WITH_CUDA),yes)
 #	PRESTOOBJS 	 	+= $(NVCC_OBS)
 #  LINKCOMMAND1  	= $(NVCC) $(LIBCMD) -o
 else
-  NVCC      		= $(CC)
-  NVCC_OBS  		=
-  NVCLFLAGS 		= $(CLINKFLAGS)
-	GPUOUTP				=
+  NVCC           = $(CC)
+  NVCC_OBS       =
+  NVCLFLAGS      = $(CLINKFLAGS)
+  GPUOUTP        =
 endif
 
 $(info )
@@ -323,27 +324,28 @@ prep:
 	touch *_cmd.c
 
 libpresto: $(libpresto)
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 libcuaccel: $(libcuaccel)
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 binaries: $(BINARIES)
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 mpi: mpiprepsubband
 
-GPU: $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+GPU: $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX)
+	@ #$(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 slalib: slalib/sla_test test_sla
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 test_GPUaccel: $(BINPATH)/test_GPUaccel$(POSTFIX)
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 accelsearch: $(BINPATH)/accelsearch$(POSTFIX)
-	@ # Make file cant handle blank tarkets so here is a radom comment =/
+	@ # Make file cant handle blank targets so here is a radom comment =/
 
 ###############   Librays   ################
 	
@@ -361,7 +363,7 @@ $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
 $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
 	@echo ""
 	@echo "Building libcuaccel$(POSTFIX)"
-	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(NVCLFLAGS)
+	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(FFTLINK) $(NVCLFLAGS)
 	@echo "Done libcuaccel$(POSTFIX)"
 	@echo ""
 	
@@ -403,15 +405,15 @@ mpiprepsubband: mpiprepsubband_cmd.c $(OBJDIR)mpiprepsubband_cmd.o $(OBJDIR)mpip
 ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o 
 	@echo ""
 	@echo "Building accelsearch$(POSTFIX)"	
-	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(PRESTOLINK) $(GLIBLINK) -lm	
-	@echo "Done accelsearch$(POSTFIX)"	
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
+	@echo "Done accelsearch$(POSTFIX)"
 	@echo ""
 	
 $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o
 	@echo ""
 	@echo "Building test_GPUaccel"${POSTFIX}
-	$(NVCC) $(NVCLFLAGS) -o $@ $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o  $(PRESTOLINK) $(GLIBLINK) -lm
-	@echo "Done test_GPUaccel${POSTFIX}"	
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(NVCC_OBS) $(PRESTOLINK) $(GLIBLINK) -lm
+	@echo "Done test_GPUaccel${POSTFIX}"
 	@echo ""
 
 check_parkes_raw: $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(libpresto)

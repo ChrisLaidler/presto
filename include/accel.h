@@ -18,10 +18,12 @@
 // #define ACCEL_USELEN 3850 // This works up to zmax=100 to use 4K FFTs
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
+#undef  ACCEL_USELEN
 #define ACCEL_USELEN 3638       // Added by run time script for 4K FFT's at a ZMAZ of 200
 
 
 #undef FOLD
+#undef FOUT
 #undef Fout
 
 #define   FOLD  if (1)                   /// A simple marker used for folding blocks of code in NSIGHT

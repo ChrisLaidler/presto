@@ -293,7 +293,7 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
               const short numharm                 = ( 1 << stage );
               candLists[stage].numharm      = numharm;
 
-              if ( FLAGS & FLAG_SAS_SIG && FALSE)
+              if ( FLAGS & FLAG_SIG_GPU && FALSE)
               {
                 // Calculate sigma value
                 long long numtrials               = NUMINDEP[stage];
@@ -548,7 +548,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
             //const short numharm                 = ( 1 << stage );
             //candLists[stage][step].numharm      = numharm;
 
-            if ( (FLAGS & FLAG_SAS_SIG) && FALSE)             // Calculate the actual sigma value on the GPU
+            if ( (FLAGS & FLAG_SIG_GPU) && FALSE)             // Calculate the actual sigma value on the GPU
             {
               const int numharm                 = ( 1 << stage );
               // Calculate sigma value

@@ -1070,8 +1070,6 @@ __global__ void sumPlains(float* fund, int fWidth, int fStride, int fHeight, flo
   }
 }
 
-
-
 float cuGetMedian(float *data, uint len)
 {
   dim3 dimBlock, dimGrid;
@@ -1101,7 +1099,7 @@ float cuGetMedian(float *data, uint len)
     //printf ( "Calling kernel %i %i %i (%i %i %i)\n", dimGrid.x, dimGrid.y, dimGrid.z, dimBlock.x, dimBlock.y, dimBlock.z );
     median1Block<<<dimGrid, dimBlock>>>(dArrayA, len, &dArrayA[len], noBatch);
 
-    // Run message
+    FOLD // Run message
     {
       result = cudaGetLastError();  // This determines whether the kernel was launched
 
@@ -1146,7 +1144,14 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, double* searchRLow, double* searchRHi,
     for (int stack = 0; stack < batch->noStacks; stack++)
     {
       cuFfdotStack* cStack = &batch->stacks[stack];
+
       int sz = 0;
+
+#ifdef TIMING // Timing  .
+      struct timeval start, end;
+      gettimeofday(&start, NULL);
+#endif
+
       for (int si = 0; si < cStack->noInStack; si++)
       {
         cuHarmInfo* cHInfo  = &batch->hInfos[harm];      // The current harmonic we are working on
@@ -1252,7 +1257,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, double* searchRLow, double* searchRHi,
 
             // I tested doing the FFT's on the CPU and its drastically faster doing it on the GPU, and can often be done synchronously -- Chris L
             //nvtxRangePush("CPU FFT");
-            //COMPLEXFFT((fcomplex *)&plains->h_iData[sz], numdata*ACCEL_NUMBETWEEN, -1);
+            //COMPLEXFFT((fcomplex *)&batch->h_iData[sz], numdata*ACCEL_NUMBETWEEN, -1);
             //nvtxRangePop();
           }
 
@@ -1260,6 +1265,13 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, double* searchRLow, double* searchRHi,
         }
         harm++;
       }
+
+#ifdef TIMING // Timing  .
+      gettimeofday(&end, NULL);
+
+      float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+      batch->InpNorm[stack] += v1;
+#endif
     }
   }
 
@@ -1351,7 +1363,8 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
   dim3 dimBlock, dimGrid;
 
 
-#ifdef TIMING // Timing
+#ifdef TIMING // Timing  .
+  struct timeval start, end;
 
   if ( batch->haveSearchResults )
   {
@@ -1381,20 +1394,26 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
     FOLD // Input FFT timing  .
     {
-      for (int ss = 0; ss < batch->noStacks; ss++)
+      if ( !(batch->flag & CU_INPT_CPU_FFT) )
       {
-        cuFfdotStack* cStack = &batch->stacks[ss];
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
 
-        ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
-        if ( ret == cudaErrorNotReady )
-        {
-          //printf("Not ready\n");
-        }
-        else
-        {
-          //printf("    ready\n");
+          ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
+          if ( ret == cudaErrorNotReady )
+          {
+            //printf("Not ready\n");
+          }
+          else
+          {
+            //printf("    ready\n");
 #pragma omp atomic
-          batch->InpFFTTime[ss] += time;
+            batch->InpFFTTime[ss] += time;
+
+            //if ( ss == 0 )
+            //  printf("\nFFT: %f ms\n",time);
+          }
         }
       }
     }
@@ -1402,11 +1421,12 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
   }
 #endif
 
-
   if ( searchRLow[0] < searchRHi[0] ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
     nvtxRangePush("Input");
-    //printf("Input\n");
+#ifdef STPMSG
+    printf("\tInput\n");
+#endif
 
     setStackRVals(batch, searchRLow, searchRHi );
 
@@ -1425,12 +1445,11 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         // Make sure the previous thread has complete reading from page locked memory
         CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: copying data to device");
 
-
         nvtxRangePush("Zero");
         memset(batch->h_iData, 0, batch->inpDataSize*batch->noSteps);
         nvtxRangePop();
 
-        FOLD // Copy fft data to device
+        FOLD // Copy fft data to device  .
         {
           for (int step = 0; step < batch->noSteps; step++)
           {
@@ -1523,7 +1542,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         CUDA_SAFE_CALL(cudaMemsetAsync(batch->d_iData, 0, batch->inpDataSize*batch->noSteps, batch->inpStream),"Initialising input data to 0");
         //nvtxRangePop();
 
-        FOLD // Copy fft data to device
+        FOLD // Copy fft data to device  .
         {
           int harm = 0;
           int sz = 0;
@@ -1601,7 +1620,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
           CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
         }
 
-        FOLD // Normalise and spread
+        FOLD // Normalise and spread  .
         {
           // Blocks of 1024 threads ( the maximum number of threads per block )
           dimBlock.x = NAS_DIMX;
@@ -1637,10 +1656,10 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         //memset(plains->h_iData, 0, plains->inpDataSize);
         //nvtxRangePop();
 
-        FOLD // Setup parameters
+        FOLD // Setup parameters  .
         {
           int harm  = 0;
-          int step  = 0; // TODO multistep
+          int step  = 0; // TODO multi-step
           int sz    = 0;
 
           for (int ss = 0; ss< batch->noStacks; ss++)
@@ -1692,7 +1711,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
           }
         }
 
-        FOLD // Normalise and spread
+        FOLD // Normalise and spread  .
         {
           // Blocks of 1024 threads ( the maximum number of threads per block )
           dimBlock.x = NAS_DIMX;
@@ -1732,13 +1751,52 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
         CPU_Norm_Spread(batch, searchRLow, searchRHi, norm_type, fft);
 
-        FOLD // Synchronisation
+        FOLD // CPU FFT  .
         {
+          if ( batch->flag & CU_INPT_CPU_FFT )
+          {
+#ifdef STPMSG
+          printf("\t\tCPU FFT Input\n");
+#endif
+
+#pragma omp critical
+            {
+              for (int stack = 0; stack < batch->noStacks; stack++)
+              {
+                cuFfdotStack* cStack = &batch->stacks[stack];
+
+#ifdef TIMING // Timing  .
+                gettimeofday(&start, NULL);
+#endif
+
+                nvtxRangePush("CPU FFT");
+                fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iData, (fftwf_complex*)cStack->h_iData);
+                nvtxRangePop();
+
+#ifdef TIMING // Timing  .
+                gettimeofday(&end, NULL);
+
+                float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+                //printf("Input FFT stack %02i  %15.2f \n", stack, v1);
+                batch->InpFFTTime[stack] += v1;
+#endif
+
+              }
+            }
+          }
+        }
+
+        FOLD // Synchronisation  .
+        {
+          // Wait for per stack convolutions to finish
           for (int ss = 0; ss< batch->noStacks; ss++)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
             CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
           }
+
+          // Wait for batch convolution to finish
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
 
 #ifdef TIMING
           cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
@@ -1746,14 +1804,29 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
         }
 
-        // Copy to device
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize*batch->noSteps, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
+        FOLD // Copy to device  .
+        {
+#ifdef STPMSG
+          printf("\t\tCopy to device\n");
+#endif
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize*batch->noSteps, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
+        }
 
-        // Synchronisation
-        cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
-        cudaEventRecord(batch->normComp, batch->inpStream);
+        FOLD // Synchronisation  .
+        {
+          cudaEventRecord(batch->normComp, batch->inpStream);
+          cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
 
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
+          if ( batch->flag & CU_INPT_CPU_FFT )
+          {
+            for (int ss = 0; ss < batch->noStacks; ss++)
+            {
+              cuFfdotStack* cStack = &batch->stacks[ss];
+              cudaEventRecord(cStack->prepComp, batch->inpStream);
+            }
+          }
+        }
       }
     }
 
@@ -1773,64 +1846,66 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       }
     }
 
-    FOLD // fft the input data  .
+    FOLD // fft the input on the GPU data  .
     {
-      // I tested doing the FFT's on the CPU and its way to slow! so go GPU!
-      // TODO: I could make this a flag
-
-#ifdef SYNCHRONOUS
-      cuFfdotStack* pStack = NULL;
-#endif
-
-      for (int ss = 0; ss< batch->noStacks; ss++)
+      if ( !(batch->flag & CU_INPT_CPU_FFT) )
       {
-        cuFfdotStack* cStack = &batch->stacks[ss];
+#ifdef STPMSG
+          printf("\t\tGPU FFT\n");
+#endif
+#ifdef SYNCHRONOUS
+        cuFfdotStack* pStack = NULL;
+#endif
 
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
-
-        FOLD // Synchronisation  .
+        for (int ss = 0; ss< batch->noStacks; ss++)
         {
-          cudaStreamWaitEvent(cStack->fftIStream, batch->normComp, 0);
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
+
+          FOLD // Synchronisation  .
+          {
+            cudaStreamWaitEvent(cStack->fftIStream, batch->normComp, 0);
+            cudaStreamWaitEvent(cStack->fftIStream, batch->iDataCpyComp, 0);
 
 #ifdef SYNCHRONOUS
-          // Wait for the search to complete before FFT'ing the next set of input
-          cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
+            // Wait for the search to complete before FFT'ing the next set of input
+            cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
 
-          // Wait for previous FFT to complete
-          if ( pStack != NULL )
-            cudaStreamWaitEvent(cStack->fftIStream, pStack->prepComp, 0);
+            // Wait for previous FFT to complete
+            if ( pStack != NULL )
+              cudaStreamWaitEvent(cStack->fftIStream, pStack->prepComp, 0);
 #endif
-        }
+          }
 
-        FOLD // Timing  .
-        {
-#ifdef TIMING
-          cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
-#endif
-        }
-
-        FOLD // Do the FFT  .
-        {
-#pragma omp critical
+          FOLD // Do the FFT  .
           {
-            CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
-            CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+#pragma omp critical
+            {
 
-            CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+#ifdef TIMING
+                cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
+#endif
+
+              CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
+              CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+
+              CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+
+              FOLD // Synchronisation  .
+              {
+                cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+
+#ifdef SYNCHRONOUS
+                pStack = cStack;
+#endif
+
+              }
+            }
           }
         }
-
-        FOLD // Synchronisation  .
-        {
-          cudaEventRecord(cStack->prepComp, cStack->fftIStream);
-
-#ifdef SYNCHRONOUS
-          pStack = cStack;
-#endif
-        }
+        CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
       }
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
     }
 
     if ( DBG_INP04 ) // Print debug info  .

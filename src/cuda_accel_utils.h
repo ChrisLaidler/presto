@@ -73,8 +73,8 @@ extern "C"
 #define SS4_NB          1                     // Added by auto-tune script
 
 #define CNV_DIMX        16                    // X Thread Block
-#define CNV_DIMY        8                     // Y Thread Block
-#define CNV_WORK        4
+#define CNV_DIMY        4                     // Y Thread Block
+#define CNV_WORK        12                    // The number of values to load into SM
 
 /** Details of the Normalise and spread kernel
  * Should be as large as possible usually 32x32
@@ -82,7 +82,7 @@ extern "C"
  *       else you may get Error "too many resources requested for launch"
  */
 #define NAS_DIMX        32                    // Normalise and spread X dimension
-#define NAS_DIMY        16                    // Normalise and spread Y dimension
+#define NAS_DIMY        32                    // Normalise and spread Y dimension
 #define NAS_NTRD        (NAS_DIMX*NAS_DIMY)   // Normalise and spread thread per block
 
 #define MAX_CANDS_PER_BLOCK 6000000
@@ -97,11 +97,6 @@ extern "C"
 
 #define POWERR(r,i) (r)*(r)+(i)*(i)
 
-
-typedef struct fcmplxB
-{
-    fcomplexcu dat[CNV_WORK];
-} fcmplxB ;
 
 typedef struct iList
 {
@@ -438,6 +433,11 @@ ExternC void setPlainPointers(cuFFdotBatch* batch);
  */
 ExternC void setBatchPointers(cuFFdotBatch* batch);
 
+/** Print a integer in binary
+ *
+ * @param val The value to print
+ */
+void printBitString(uint val);
 
 
 

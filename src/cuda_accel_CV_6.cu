@@ -1,6 +1,6 @@
 #include "cuda_accel_CV.h"
 
-/** Convolution kernel - Convolve a stack - using a 1 plain convolution kernel
+/** Convolution kernel - Convolve a stack - using a 1 plain convolution kernel  .
  * Split the stack into overlapping sections and read the shared kernel values once and convolve with all relevant values
  * NOTE: does not with multi step stacks
  */

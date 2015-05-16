@@ -28,16 +28,19 @@ extern "C"
 #define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
 
 #undef SYNCHRONOUS
-//#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
+#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
+
+#undef STPMSG
+//#define STPMSG            // Uncomment to set to print out debug step
 
 //=========================================== Defines ====================================================\\
 
-#define   MAX_IN_STACK  10              ///< NOTE: this is 1 to big to handle the init problem
-#define   MAX_HARM_NO   16              ///< The maximum number of harmonics handled by a accel search
-#define   MAX_YINDS     8000            ///< The maximum number of y indices to store in constant memory
-#define   MAX_STEPS     8               ///< The maximum number of steps
-#define   MAX_STKSZ     8               ///< The maximum number of plains in a stack
-#define   MAX_GPUS      32              ///< The maximum number GPU's
+#define   MAX_IN_STACK  10      ///< NOTE: this is 1 to big to handle the init problem
+#define   MAX_HARM_NO   16      ///< The maximum number of harmonics handled by a accel search
+#define   MAX_YINDS     8000    ///< The maximum number of y indices to store in constant memory
+#define   MAX_STEPS     8       ///< The maximum number of steps
+#define   MAX_STKSZ     8       ///< The maximum number of plains in a stack
+#define   MAX_GPUS      32      ///< The maximum number GPU's
 
 //======================================== Debug Defines  ================================================\\
 
@@ -67,15 +70,17 @@ extern "C"
 #define     CU_INPT_SINGLE      (CU_INPT_SINGLE_G|CU_INPT_SINGLE_C)   ///< Prepare input data one step at a time
 #define     CU_INPT_ALL         ( CU_INPT_DEVICE | CU_INPT_HOST | CU_INPT_SINGLE_G | CU_INPT_SINGLE_C  )
 
-#define     CU_OUTP_DEVICE      (1<<4)    ///< Write all candidates to the device memory : This requires a lot of device memory
-#define     CU_OUTP_HOST        (1<<5)    ///< Write all candidates to page locked host memory : This requires a lot of memory
-#define     CU_OUTP_SINGLE      (1<<6)    ///< Only get candidates from the current plain - This seams to be best in most cases
+#define     CU_INPT_CPU_FFT     (1<<4)    ///< Do the FFT on the CPU
+
+#define     CU_OUTP_DEVICE      (1<<5)    ///< Write all candidates to the device memory : This requires a lot of device memory
+#define     CU_OUTP_HOST        (1<<6)    ///< Write all candidates to page locked host memory : This requires a lot of memory
+#define     CU_OUTP_SINGLE      (1<<7)    ///< Only get candidates from the current plain - This seams to be best in most cases
 #define     CU_OUTP_ALL         ( CU_OUTP_DEVICE | CU_OUTP_HOST | CU_OUTP_SINGLE )
 
-#define     FLAG_SAS_SIG        (1<<7)    ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define     FLAG_SIG_GPU        (1<<8)    ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     CU_CAND_LST         (1<<8)    ///< Candidates are stored in a list   (usually a dynamic linked list)
-#define     CU_CAND_ARR         (1<<9)    ///< Candidates are stored in an array (requires more memory)
+#define     CU_CAND_LST         (1<<9)    ///< Candidates are stored in a list   (usually a dynamic linked list)
+#define     CU_CAND_ARR         (1<<10)   ///< Candidates are stored in an array (requires more memory)
 
 #define     FLAG_CNV_1KER       (1<<12)   ///< Use minimal kernel                  - ie Only the kernel of largest plain in each stack
 #define     FLAG_CNV_OVLP       (1<<13)   ///< Use the overlap kernel              - I found this slower that the alternative
@@ -101,6 +106,9 @@ extern "C"
 #define     FLAG_STORE_ALL      (1<<28)   ///< Store candidates for all stages of summing, default is only the final result
 #define     FLAG_STORE_EXP      (1<<29)   ///< Store expanded candidates
 
+#define     FLAG_RAND_1         (1<<30)   ///< Random Flag 1
+#define     FLAG_RAND_2         (1<<31)   ///< Random Flag 2
+
 // ----------- This is a list of the data types that can be passed or returned
 
 #define     CU_NONE             (0)       ///< Nothing specified
@@ -110,7 +118,7 @@ extern "C"
 #define     CU_POWERZ           (1<<4)    ///< A value and a z bin         accelcand2
 #define     CU_SMALCAND         (1<<5)    ///< A compressed candidate      accelcandBasic
 #define     CU_FULLCAND         (1<<6)    ///< Full detailed candidate     cand
-#define     CU_GSList           (1<<7)    ///
+#define     CU_GSList           (1<<7)    ///<
 
 
 //========================================== Macros ======================================================\\
@@ -151,8 +159,8 @@ typedef struct accelcandBasic
 typedef struct cand
 {
     float   power;
-    double  r;
-    double  sig;
+    double  r;            /// TODO: Should this be a double?
+    double  sig;          /// TODO: Should this be a double?
     float   z;
     int     numharm;
 } cand;
@@ -317,6 +325,9 @@ typedef struct cuFfdotStack
     cufftHandle   inpPlan;            ///< A cufft plan to fft the input data for this stack
     fftCnvlvInfo* d_cinf;             ///< Convolve info structure on device
 
+    // FFTW details
+    fftwf_plan  inpPlanFFTW;          ///< A FFTW plan to fft the input data for this stack
+
     // pointers to memory
     fcomplexcu* d_kerData;            ///< Kernel data for this stack
     fcomplexcu* d_plainData;          ///< Plain data for this stack
@@ -331,11 +342,11 @@ typedef struct cuFfdotStack
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
     cudaEvent_t convComp;             ///< Convolution complete
     cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
-//#ifdef TIMING
+
+    // TIMING events
     cudaEvent_t convInit;             ///< Convolution starting
     cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
     cudaEvent_t inpFFTinit;           ///< Start of the input FFT
-//#endif
 
     // Streams
     cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
@@ -353,11 +364,11 @@ typedef struct cuFFdotBatch
     searchSpecs* sInf;                ///< A pointer to the search info
 
     size_t noStacks;                  ///< The number of stacks in this batch
-    size_t noHarms;                   ///< The number of harmonics in the family                   m
+    size_t noHarms;                   ///< The number of harmonics in the family
     size_t noSteps;                   ///< The number of slices in the batch
-    int noHarmStages;                 ///< The number of stages of harmonic summing                m
+    int noHarmStages;                 ///< The number of stages of harmonic summing
 
-    int pIdx[MAX_HARM_NO];            ///< The index of the plains in the Presto harmonic summing order  m
+    int pIdx[MAX_HARM_NO];            ///< The index of the plains in the Presto harmonic summing order
 
     cuFfdotStack* stacks;             ///< A list of the stacks
     cuHarmInfo*   hInfos;             ///< A list of the harmonic informations
@@ -374,8 +385,8 @@ typedef struct cuFFdotBatch
     fcomplexcu* d_plainData;          ///< Plain data for all the stacks
     float*      d_plainPowers;        ///< Powers for all the stack
 
-    int retType;                      ///< The type of output                                    m
-    int cndType;                      ///< The type of output                                    m
+    int retType;                      ///< The type of output
+    int cndType;                      ///< The type of output
     void* h_retData;                  ///< The output
     void* d_retData;                  ///< The output
     void* h_candidates;               ///< Host memory for candidates
@@ -397,25 +408,23 @@ typedef struct cuFFdotBatch
 
     uint flag;                        ///< CUDA accel search flags
 
-    searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search         m
+    searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the batch
     cudaStream_t convStream;          ///< CUDA stream for convolving
     cudaStream_t strmSearch;          ///< CUDA stream for summing and searching the data
 
-    //#ifdef TIMING
+    // TIMING events
     cudaEvent_t iDataCpyInit;         ///< Copying input data to device
     cudaEvent_t candCpyInit;          ///< Finished reading candidates from the device
     cudaEvent_t searchInit;           ///< Sum & Search start
     cudaEvent_t convInit;             ///< Start of convolve of entire batch
-    //#endif
 
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
-    cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t normComp;             ///< Normalise and spread input data
-
     cudaEvent_t convComp;             ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
+    cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
 
     int noResults;                    ///< The number of results from the previous search
@@ -429,14 +438,14 @@ typedef struct cuFFdotBatch
     CUcontext pctx;                   ///< Context for the batch
     int device;                       ///< The CUDA device to run on
 
-//#ifdef TIMING
-    float* copyH2DTime;
-    float* InpFFTTime;
-    float* convTime;
-    float* InvFFTTime;
-    float* searchTime;
-    float* copyD2HTime;
-//#endif
+    float* copyH2DTime;               ///< Array of floats from timing one for each stack
+    float* InpNorm;                   ///< Array of floats from timing one for each stack
+    float* InpFFTTime;                ///< Array of floats from timing one for each stack
+    float* convTime;                  ///< Array of floats from timing one for each stack
+    float* InvFFTTime;                ///< Array of floats from timing one for each stack
+    float* searchTime;                ///< Array of floats from timing one for each stack
+    float* resultTime;                ///< Array of floats from timing one for each stack
+    float* copyD2HTime;               ///< Array of floats from timing one for each stack
 
 } cuFFdotBatch;
 
@@ -554,5 +563,13 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
 ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
 
 ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers );
+
+/** Print the flag values in text
+ *
+ * @param flags
+ */
+ExternC void printFlags(uint flags);
+
+ExternC void printCommandLine(int argc, char *argv[]);
 
 #endif // CUDA_ACCEL_INCLUDED

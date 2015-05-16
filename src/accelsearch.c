@@ -329,7 +329,11 @@ int main(int argc, char *argv[])
            if ( maxxx < 0 )
              maxxx = 0;
 
+#ifndef STPMSG
            print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
+#else
+           printf("GPU loop will process %i steps\n", maxxx);
+#endif
 
 #ifndef DEBUG
 #pragma omp parallel
@@ -342,7 +346,7 @@ int main(int argc, char *argv[])
 
              double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
              double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
-             size_t rest = trdBatch->noSteps;
+             size_t   rest    = trdBatch->noSteps;
 
              setContext(trdBatch) ;
 
@@ -355,7 +359,10 @@ int main(int argc, char *argv[])
                {
                  firstStep = ss;
                  ss       += trdBatch->noSteps;
-                 //printf("\n\nStep %04i thread %02i processing %02i steps\n", firstStep, tid, trdBatch->noSteps);
+
+#ifdef STPMSG
+                 printf("\nStep %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, trdBatch->noSteps);
+#endif
                }
 
                if ( firstStep >= maxxx )
@@ -393,7 +400,9 @@ int main(int argc, char *argv[])
                  trdBatch->d_candidates = &master->d_candidates[trdBatch->accelLen*obs.numharmstages*firstStep] ;
                }
 
+#ifndef STPMSG
                print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
+#endif
              }
 
              // Set r values to 0 so as to not process details
@@ -492,7 +501,7 @@ int main(int argc, char *argv[])
           }
             */
 
-           //cudaProfilerStop(); // For profiling of only the 'critical' GPU section
+           //ccd udaProfilerStop(); // For profiling of only the 'critical' GPU section
 
            // Basic timing
            gettimeofday(&end, NULL);
@@ -500,6 +509,9 @@ int main(int argc, char *argv[])
 
            cands = candsGPU;
            printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
+
+           printCommandLine(argc,argv);
+           printFlags(master->flag);
 
 #ifdef DEBUG
            char name [100];
@@ -513,28 +525,31 @@ int main(int argc, char *argv[])
 #endif
      }
 
-     if ( file = fopen(candsFile, "wb") )
+     FOLD // Write candidates to unoptcands file  .
      {
-       int numcands = g_slist_length(cands);
-       printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
-       fwrite( &numcands, sizeof(numcands), 1, file );
-
-       GSList *tmpLst = cands;
-       int nc = 0;
-       while (tmpLst)
+       if ( file = fopen(candsFile, "wb") )
        {
-         accelcand* newCnd = tmpLst->data;
+         int numcands = g_slist_length(cands);
+         printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
+         fwrite( &numcands, sizeof(numcands), 1, file );
 
-         fwrite( newCnd, sizeof(accelcand), 1, file );
-         tmpLst = tmpLst->next;
-         nc++;
+         GSList *tmpLst = cands;
+         int nc = 0;
+         while (tmpLst)
+         {
+           accelcand* newCnd = tmpLst->data;
+
+           fwrite( newCnd, sizeof(accelcand), 1, file );
+           tmpLst = tmpLst->next;
+           nc++;
+         }
+
+         fclose(file);
        }
-
-       fclose(file);
-     }
-     else
-     {
-       fprintf(stderr,"ERROR: unable to open \"%s\" to write candidates.\n",candsFile);
+       else
+       {
+         fprintf(stderr,"ERROR: unable to open \"%s\" to write candidates.\n",candsFile);
+       }
      }
 
      printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
@@ -640,19 +655,22 @@ int main(int argc, char *argv[])
 #endif
    }
 
-#ifdef CUDA // Timing message
-      printf("\n Timing:  Prep: %9.06f  CPU: %9.06f  GPU: %9.06f [%6.2f x]  Optimization: %9.06f \n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
+#ifdef CUDA // Timing message  .
+      printf("\n Timing:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
-#ifdef TIMING
+#ifdef TIMING  // Advanced timing massage  .
+
       int batch, stack;
       float copyH2DT  = 0;
+      float InpNorm   = 0;
       float InpFFT    = 0;
       float convT     = 0;
       float InvFFT    = 0;
       float ss        = 0;
+      float resultT   = 0;
       float copyD2HT  = 0;
 
-      printf("\n===============================================================================================================\n");
+      printf("\n===========================================================================================================================================\n");
       printf("\nAdvanced timing, all times are in ms\n");
 
       for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
@@ -660,42 +678,52 @@ int main(int argc, char *argv[])
         printf("Batch %02i\n",batch);
 
         float l_copyH2DT  = 0;
+        float l_InpNorm   = 0;
         float l_InpFFT    = 0;
         float l_convT     = 0;
         float l_InvFFT    = 0;
         float l_ss        = 0;
+        float l_resultT   = 0;
         float l_copyD2HT  = 0;
 
-        printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input FFT", "Convolve", "Inverse FFT", "Sum & Search", "Copy D2H" );
+        printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input Norm", "Input FFT", "Convolve", "Inverse FFT", "Sum & Search", "Sigma calcs", "Copy D2H" );
 
         for (stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
         {
           cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
 
-          printf(" Stack %02i\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\n", stack, batches->copyH2DTime[stack], batches->InpFFTTime[stack], batches->convTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->copyD2HTime[stack]  );
+          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->InpNorm[stack], batches->InpFFTTime[stack], batches->convTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
 
           l_copyH2DT  += batches->copyH2DTime[stack];
+          l_InpNorm   += batches->InpNorm[stack];
           l_InpFFT    += batches->InpFFTTime[stack];
           l_convT     += batches->convTime[stack];
           l_InvFFT    += batches->InvFFTTime[stack];
           l_ss        += batches->searchTime[stack];
+          l_resultT   += batches->resultTime[stack];
           l_copyD2HT  += batches->copyD2HTime[stack];
         }
 
-        printf("          \t-----------------------------------------------------------------------------------------------\n");
-        printf("          \t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\n", l_copyH2DT, l_InpFFT, l_convT, l_InvFFT, l_ss, l_copyD2HT );
+        if ( cuSrch->mInf->noBatches > 1 )
+        {
+          printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
+          printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", l_copyH2DT, l_InpNorm, l_InpFFT, l_convT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
+        }
 
         copyH2DT  += l_copyH2DT;
+        InpNorm   += l_InpNorm;
         InpFFT    += l_InpFFT;
         convT     += l_convT;
         InvFFT    += l_InvFFT;
         ss        += l_ss;
+        resultT   += l_resultT;
         copyD2HT  += l_copyD2HT;
       }
-      printf("          \t-----------------------------------------------------------------------------------------------\n");
-      printf("Total     \t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\t%9.06f\n", copyH2DT, InpFFT, convT, InvFFT, ss, copyD2HT );
+      printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
+      printf("Total\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, convT, InvFFT, ss, resultT, copyD2HT );
 
-      printf("\n===============================================================================================================\n");
+      printf("\n===========================================================================================================================================\n");
+
 #endif
 
 #endif
@@ -708,7 +736,7 @@ int main(int argc, char *argv[])
       printf("  %d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
 
    printf("\nTiming summary:\n");
-   tott = times(&runtimes) / (double) CLK_TCK - tott;
+   tott = times(&runtimes)   / (double) CLK_TCK - tott;
    utim = runtimes.tms_utime / (double) CLK_TCK;
    stim = runtimes.tms_stime / (double) CLK_TCK;
    ttim = utim + stim;
@@ -719,11 +747,11 @@ int main(int argc, char *argv[])
    printf("Final candidates in binary format are in '%s'.\n", obs.candnm);
    printf("Final Candidates in a text format are in '%s'.\n\n", obs.accelnm);
 
-#ifndef DEBUG
-#ifdef CUDA
+//#ifndef DEBUG
+//#ifdef CUDA
    cudaDeviceReset();
-#endif
-#endif
+//#endif
+//#endif
 
    free_accelobs(&obs);
    g_slist_foreach(cands, free_accelcand, NULL);

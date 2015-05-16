@@ -306,7 +306,7 @@ __global__ void add_and_searchCU32(cuSearchList searchList, accelcandBasic* d_ca
               const short numharm                 = ( 1 << stage );
               candLists[stage].numharm      = numharm;
 
-              if ( FLAGS & FLAG_SAS_SIG && FALSE)
+              if ( FLAGS & FLAG_SIG_GPU && FALSE)
               {
                 // Calculate sigma value
                 long long numtrials               = NUMINDEP[stage];

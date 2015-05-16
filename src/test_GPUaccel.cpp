@@ -789,7 +789,7 @@ int main(int argc, char *argv[])
 
     nDarray<2, float> DFF_kernels;
 
-    cudaDeviceSynchronize();          // This is only necessary for timing
+    //cudaDeviceSynchronize();          // This is only necessary for timing
     gettimeofday(&start, NULL);       // Profiling
     cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
 
@@ -1663,7 +1663,7 @@ int main(int argc, char *argv[])
 
       cudaProfilerStop();
 
-      cudaDeviceSynchronize();
+      //cudaDeviceSynchronize();
       gettimeofday(&end, NULL);
       gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
       cands = candsGPU;

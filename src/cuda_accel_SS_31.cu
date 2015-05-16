@@ -353,7 +353,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             //const short numharm                 = ( 1 << stage );
             //candLists[stage][step].numharm      = numharm;
 
-            if ( (FLAGS & FLAG_SAS_SIG) && FALSE)             // Calculate the actual sigma value on the GPU
+            if ( (FLAGS & FLAG_SIG_GPU) && FALSE)             // Calculate the actual sigma value on the GPU
             {
               const int numharm                 = ( 1 << stage );
               // Calculate sigma value
@@ -536,14 +536,14 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     if( FLAGS & FLAG_PLN_TEX )
     {
-      if ( FLAGS & FLAG_SAS_SIG )
+      if ( FLAGS & FLAG_SIG_GPU )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.\n", noPlns);
@@ -567,14 +567,14 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     else
     {
-      if ( FLAGS & FLAG_SAS_SIG )
+      if ( FLAGS & FLAG_SIG_GPU )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
@@ -601,14 +601,14 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     if( FLAGS & FLAG_PLN_TEX )
     {
-      if ( FLAGS & FLAG_SAS_SIG )
+      if ( FLAGS & FLAG_SIG_GPU )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -632,14 +632,14 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     else
     {
-      if ( FLAGS & FLAG_SAS_SIG )
+      if ( FLAGS & FLAG_SIG_GPU )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -666,14 +666,14 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   {
     if( FLAGS & FLAG_PLN_TEX )
     {
-      if ( FLAGS & FLAG_SAS_SIG )
+      if ( FLAGS & FLAG_SIG_GPU )
       {
         if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
@@ -697,14 +697,14 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
     }
     else
     {
-      if ( FLAGS & FLAG_SAS_SIG )
+      if ( FLAGS & FLAG_SIG_GPU )
       {
         if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SAS_SIG | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SAS_SIG | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SAS_SIG | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
+          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
         else
         {
           fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);

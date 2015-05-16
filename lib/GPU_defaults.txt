@@ -1,5 +1,38 @@
 
-FLAG_CNV_STK    //  FLAG_CNV_FAM   FLAG_CNV_STK   FLAG_CNV_PLN
+####### memory #######
 
-FLAG_STP_PLN    //   FLAG_STP_ROW    FLAG_STP_PLN
+# FLAG_STP_ROW  FLAG_STP_PLN
+FLAG_STP_ROW
 
+######## Input #######
+
+# CU_INPT_CPU_FFT  
+#CU_INPT_CPU_FFT
+
+# CU_INPT_SINGLE_G  CU_INPT_SINGLE_C
+CU_INPT_SINGLE_C
+
+
+###### Convolve ######
+
+# FLAG_CNV_FAM   FLAG_CNV_STK   FLAG_CNV_PLN
+FLAG_CNV_STK
+
+# Other Convolve methoud
+# FLAG_CNV_OVLP
+#FLAG_CNV_OVLP
+
+####### FFT ##########
+
+FLAG_CUFFTCB_OUT
+
+
+###### output ########
+
+# CU_OUTP_SINGLE   CU_OUTP_HOST   CU_OUTP_DEVICE
+CU_OUTP_SINGLE
+
+
+
+FLAG_RAND_1
+#FLAG_RAND_2
