@@ -82,7 +82,7 @@ extern "C"
  *       else you may get Error "too many resources requested for launch"
  */
 #define NAS_DIMX        32                    // Normalise and spread X dimension
-#define NAS_DIMY        32                    // Normalise and spread Y dimension
+#define NAS_DIMY        16                    // Normalise and spread Y dimension
 #define NAS_NTRD        (NAS_DIMX*NAS_DIMY)   // Normalise and spread thread per block
 
 #define MAX_CANDS_PER_BLOCK 6000000
@@ -90,10 +90,8 @@ extern "C"
 #define BLOCKSIZE     16
 #define BLOCK1DSIZE   BLOCKSIZE*BLOCKSIZE
 
-
 #define BS_DIM        1024    // compute 3.x +
 //#define BS_DIM        576   // compute 2.x
-
 
 #define POWERR(r,i) (r)*(r)+(i)*(i)
 
@@ -109,6 +107,16 @@ typedef struct fList
 } fList;
 
 //---------- LONG -------- \\
+
+typedef struct long01
+{
+    long val[1];
+} long01;
+
+typedef struct long02
+{
+    long val[2];
+} long02;
 
 typedef struct long04
 {

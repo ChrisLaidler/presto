@@ -27,6 +27,11 @@ extern "C"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
+#ifdef CBL
+#include <unistd.h>
+#include "log.h"
+#endif
+
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
   //printf("\n");
@@ -1388,6 +1393,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       if ( batch->flag & CU_INPT_SINGLE_C ) // Allocate memory for normalisation
         batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float));
+
+      // DEBUG TODO: Remove below!!!!
+      if ( batch->flag & CU_INPT_SINGLE_G )
+        batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float));
     }
 
     FOLD  // Allocate R value lists  .
@@ -1597,16 +1606,19 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 #ifdef TIMING
           // in  events
+          CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    "Creating input normalisation event");
           CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinit),  "Creating input FFT initialisation event");
           CUDA_SAFE_CALL(cudaEventCreate(&cStack->invFFTinit), 	"Creating inverse FFT initialisation event");
           CUDA_SAFE_CALL(cudaEventCreate(&cStack->convInit), 		"Creating convolution initialisation event");
 
           // out events (with timing)
+          CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),    "Creating input normalisation event");
           CUDA_SAFE_CALL(cudaEventCreate(&cStack->prepComp), 		"Creating input data preparation complete event");
           CUDA_SAFE_CALL(cudaEventCreate(&cStack->convComp), 		"Creating convolution complete event");
           CUDA_SAFE_CALL(cudaEventCreate(&cStack->plnComp),    	"Creating convolution complete event");
 #else
           // out events (without timing)
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp, cudaEventDisableTiming), "Creating input data preparation complete event");
           CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->prepComp, cudaEventDisableTiming), "Creating input data preparation complete event");
           CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->convComp, cudaEventDisableTiming), "Creating convolution complete event");
           CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->plnComp,  cudaEventDisableTiming), "Creating complex plain creation complete event");
@@ -1846,7 +1858,7 @@ void freeBatch(cuFFdotBatch* batch)
     // Create the plains structures
     free(batch->plains);
 
-    FOLD // Create timing arrays
+    FOLD // Create timing arrays  .
     {
 #ifdef TIMING
       free(batch->copyH2DTime);
@@ -1879,7 +1891,7 @@ void freeBatch(cuFFdotBatch* batch)
     }
   }
 
-  FOLD // Set up CUFFT call back stuff
+  FOLD // Set up CUFFT call back stuff  .
   {
     if ( (batch->flag & FLAG_CUFFTCB_INP) || (batch->flag & FLAG_CUFFTCB_OUT) )
     {
@@ -2175,11 +2187,11 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
       gpul.noDevBatches[dev] = cmd->nbatch[dev];
 
 #ifdef TIMING
-  if ( gpul.noDevBatches[dev] > 1 )
-  {
-    //fprintf(stderr,"WARING: Compiled in timing mode, user requested %i batches but will only process 1 on device %i.\n", gpul.noDevBatches[dev], gpul.devId[dev] );
-    //gpul.noDevBatches[dev] = 1;
-  }
+    if ( gpul.noDevBatches[dev] > 1 )
+    {
+      //fprintf(stderr,"WARING: Compiled in timing mode, user requested %i batches but will only process 1 on device %i.\n", gpul.noDevBatches[dev], gpul.devId[dev] );
+      //gpul.noDevBatches[dev] = 1;
+    }
 #endif
 
     if ( dev >= cmd->nstepsC )
@@ -2227,14 +2239,22 @@ int readAccelDefalts(int *flags)
       else if ( strncmp(line,"CU_INPT_SINGLE_G",  16) == 0 )
       {
         (*flags) &= ~CU_INPT_ALL;
-        (*flags) |= CU_INPT_SINGLE_G;
+        (*flags) |=  CU_INPT_SINGLE_G;
+        (*flags) &= ~CU_INPT_CPU_FFT;
         printf(" CU_INPT_SINGLE_G \n");
       }
 
       else if ( strncmp(line,"CU_INPT_CPU_FFT",   15) == 0 )
       {
-        (*flags) |= CU_INPT_CPU_FFT;
-        printf(" CU_INPT_CPU_FFT \n");
+        if ( (*flags) | CU_INPT_SINGLE_G )
+        {
+          printf(" Cannot do CPU input FFT's with CU_INPT_SINGLE_G\n");
+        }
+        else
+        {
+          (*flags) |= CU_INPT_CPU_FFT;
+          printf(" CU_INPT_CPU_FFT \n");
+        }
       }
 
       else if ( strncmp(line,"CU_OUTP_DEVICE", 		14) == 0 )
@@ -3003,4 +3023,261 @@ void printCommandLine(int argc, char *argv[])
     printf("%s ",argv[i]);
   }
   printf("\n");
+}
+
+
+void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime )
+{
+  //#ifdef CBL
+
+  searchSpecs*  sSpec;              ///< Specifications of the search
+  gpuSpecs*     gSpec;              ///< Specifications of the GPU's to use
+
+  cuMemInfo*    mInf;               ///< The allocated Device and host memory and data structures to create plains including the kernels
+
+  cuFFdotBatch* batch;
+
+  sSpec   = cuSrch->sSpec;
+  gSpec   = cuSrch->gSpec;
+  mInf    = cuSrch->mInf;
+  batch   = cuSrch->mInf->batches;
+
+  char hostname[1024];
+  gethostname(hostname, 1024);
+
+  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo ;
+
+  // get the current time
+  time_t rawtime;
+  tm * ptm;
+  time ( &rawtime );
+  ptm = gmtime ( &rawtime );
+
+  Logger* cvsLog = new Logger(fname, 1);
+  cvsLog->sedCsvDeliminator('\t');
+
+  cvsLog->csvWrite("Obs N","#","%7.3f",obs->N*1e-6);
+  cvsLog->csvWrite("R bins","#","%7.3f",noRR*1e-6);
+  cvsLog->csvWrite("Harms","#","%2li",cuSrch->noHarms);
+  cvsLog->csvWrite("Z max","#","%03i",sSpec->zMax);
+  cvsLog->csvWrite("sigma","#","%4.2f",sSpec->sigma);
+  cvsLog->csvWrite("ACCEL_LEN","#","%5i",ACCEL_USELEN);
+  cvsLog->csvWrite("Width","#","%4i",sSpec->pWidth);
+  cvsLog->csvWrite("Step Sz","#","%5i",batch->accelLen);
+  cvsLog->csvWrite("Stride","#","%5i",batch->hInfos->inpStride);
+  cvsLog->csvWrite("Steps","#","%2i",batch->noSteps);
+  cvsLog->csvWrite("Batches","#","%2i",mInf->noBatches);
+  cvsLog->csvWrite("Devices","#","%2i",mInf->noDevices);
+
+  cvsLog->csvWrite("Prep","s","%9.4f", prepTime * 1e-6);
+  cvsLog->csvWrite("CPU", "s","%9.4f", cupTime * 1e-6);
+  cvsLog->csvWrite("GPU", "s","%9.4f", gpuTime * 1e-6);
+  cvsLog->csvWrite("Opt", "s","%9.4f", optTime * 1e-6);
+
+
+#ifdef TIMING  // Advanced timing massage  .
+
+  float copyH2DT  = 0;
+  float InpNorm   = 0;
+  float InpFFT    = 0;
+  float convT     = 0;
+  float InvFFT    = 0;
+  float ss        = 0;
+  float resultT   = 0;
+  float copyD2HT  = 0;
+
+  for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
+  {
+    float l_copyH2DT  = 0;
+    float l_InpNorm   = 0;
+    float l_InpFFT    = 0;
+    float l_convT     = 0;
+    float l_InvFFT    = 0;
+    float l_ss        = 0;
+    float l_resultT   = 0;
+    float l_copyD2HT  = 0;
+
+    for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
+    {
+      cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
+
+      l_copyH2DT  += batches->copyH2DTime[stack];
+      l_InpNorm   += batches->InpNorm[stack];
+      l_InpFFT    += batches->InpFFTTime[stack];
+      l_convT     += batches->convTime[stack];
+      l_InvFFT    += batches->InvFFTTime[stack];
+      l_ss        += batches->searchTime[stack];
+      l_resultT   += batches->resultTime[stack];
+      l_copyD2HT  += batches->copyD2HTime[stack];
+    }
+
+    copyH2DT  += l_copyH2DT;
+    InpNorm   += l_InpNorm;
+    InpFFT    += l_InpFFT;
+    convT     += l_convT;
+    InvFFT    += l_InvFFT;
+    ss        += l_ss;
+    resultT   += l_resultT;
+    copyD2HT  += l_copyD2HT;
+  }
+
+  cvsLog->csvWrite("copyH2D","ms","%12.6f", copyH2DT);
+  cvsLog->csvWrite("InpNorm","ms","%12.6f", InpNorm);
+  cvsLog->csvWrite("InpFFT","ms","%12.6f", InpFFT);
+  cvsLog->csvWrite("Conv","ms","%12.6f", convT);
+  cvsLog->csvWrite("InvFFT","ms","%12.6f", InvFFT);
+  cvsLog->csvWrite("Sum & Srch","ms","%12.6f", ss);
+  cvsLog->csvWrite("result","ms","%12.6f", resultT);
+  cvsLog->csvWrite("copyD2H","ms","%12.6f", copyD2HT);
+
+#endif
+
+#ifdef TIMING
+  cvsLog->csvWrite("TIMING","s","1");
+#else
+  cvsLog->csvWrite("TIMING","s","0");
+#endif
+
+#ifdef SYNCHRONOUS
+  cvsLog->csvWrite("SYNC","s","1");
+#else
+  cvsLog->csvWrite("SYNC","s","0");
+#endif
+
+#ifdef DEBUG
+  cvsLog->csvWrite("DEBUG","s","1");
+#else
+  cvsLog->csvWrite("DEBUG","s","0");
+#endif
+
+  cvsLog->csvWrite("Time","-","%04i/%02i/%02i %02i:%02i:%02i", 1900 + ptm->tm_year, ptm->tm_mon, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
+  cvsLog->csvWrite("hostname","s","%s",hostname);
+
+  FOLD  // Flags  .
+  {
+    uint flags = batch->flag;
+
+    char flagStr[1024];
+
+    strClear(flagStr);
+    if ( flags & CU_INPT_DEVICE )
+      sprintf(flagStr, "%s", "DEVICE");
+    if ( flags & CU_INPT_HOST )
+      sprintf(flagStr, "%s", "HOST");
+    if ( flags & CU_INPT_SINGLE_C )
+      sprintf(flagStr, "%s", "SINGLE_C");
+    if ( flags & CU_INPT_SINGLE_G )
+      sprintf(flagStr, "%s", "SINGLE_G");
+    cvsLog->csvWrite("INP","flag","%s", flagStr);
+
+
+    strClear(flagStr);
+    if ( flags & CU_INPT_CPU_FFT )
+      sprintf(flagStr, "%s", "CU_INPT_CPU_FFT");
+    cvsLog->csvWrite("INP FFT","flag","%s", flagStr);
+
+
+    strClear(flagStr);
+    if ( flags & CU_OUTP_DEVICE )
+      sprintf(flagStr, "%s", "DEVICE");
+    if ( flags & CU_OUTP_HOST )
+      sprintf(flagStr, "%s", "HOST");
+    if ( flags & CU_OUTP_SINGLE )
+      sprintf(flagStr, "%s", "SINGLE");
+    cvsLog->csvWrite("OUT","flag","%s", flagStr);
+
+
+    strClear(flagStr);
+    if ( flags & FLAG_SIG_GPU )
+      sprintf(flagStr, "%s", "GPU_SIG");
+    cvsLog->csvWrite("SIG","flag","%s", flagStr);
+
+
+    strClear(flagStr);
+    if ( flags & CU_CAND_LST )
+      sprintf(flagStr, "%s", "CAND_LST");
+    cvsLog->csvWrite("INP","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & CU_CAND_ARR )
+      sprintf(flagStr, "%s", "CAND_ARR");
+    cvsLog->csvWrite("CANG","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_CNV_1KER )
+      sprintf(flagStr, "%s", "FLAG_CNV_1KER");
+    cvsLog->csvWrite("INP","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_CNV_OVLP )
+      sprintf(flagStr, "%s", "FLAG_CNV_OVLP");
+    cvsLog->csvWrite("CNV_OVLP","flag","%s", flagStr);
+
+
+    strClear(flagStr);
+    if ( flags & FLAG_CNV_PLN )
+      sprintf(flagStr, "%s", "PLN");
+    if ( flags & FLAG_CNV_STK )
+      sprintf(flagStr, "%s", "STK");
+    if ( flags & FLAG_CNV_FAM )
+      sprintf(flagStr, "%s", "FAM");
+    cvsLog->csvWrite("CNV","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_STP_ROW )
+      sprintf(flagStr, "%s", "ROW");
+    if ( flags & FLAG_STP_PLN )
+      sprintf(flagStr, "%s", "PLN");
+    if ( flags & FLAG_STP_STK )
+      sprintf(flagStr, "%s", "STK");
+    cvsLog->csvWrite("STP","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_CUFFTCB_INP )
+      sprintf(flagStr, "%s", "CUFFT_CB_INP");
+    cvsLog->csvWrite("CUFFTCB_INP","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_CUFFTCB_OUT )
+      sprintf(flagStr, "%s", "CUFFT_CB_OUT");
+    cvsLog->csvWrite("CUFFTCB_OUT","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_CNV_TEX )
+      sprintf(flagStr, "%s", "CNV_TEX");
+    cvsLog->csvWrite("CNV_TEX","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_PLN_TEX )
+      sprintf(flagStr, "%s", "PLN_TEX");
+    cvsLog->csvWrite("PLN_TEX","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_TEX_INTERP )
+      sprintf(flagStr, "%s", "TEX_INTERP");
+    cvsLog->csvWrite("TEX_INTERP","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_RETURN_ALL )
+      sprintf(flagStr, "%s", "RETURN_ALL");
+    if ( flags & FLAG_STORE_ALL )
+      sprintf(flagStr, "%s", "STORE_ALL");
+    if ( flags & FLAG_STORE_EXP )
+      sprintf(flagStr, "%s", "STORE_EXP");
+    cvsLog->csvWrite("RETURN","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_RAND_1 )
+      sprintf(flagStr, "%s", "RAND_1");
+    cvsLog->csvWrite("RAND1","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_RAND_2 )
+      sprintf(flagStr, "%s", "RAND_2");
+    cvsLog->csvWrite("RAND2","flag","%s", flagStr);
+  }
+
+  cvsLog->csvEndLine();
+
+  //#endif
 }

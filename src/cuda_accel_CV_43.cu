@@ -1,6 +1,6 @@
 #include "cuda_accel_CV.h"
 
-/** Convolution kernel - Convolve a stack with a kernel - multi-step  .
+/** Convolution kernel - Convolve a stack with a kernel - multi-step - uses shared memory to store sections of the kernel  .
  * Each thread loops down a column of the plain
  * Reads the input and convolves it with the kernel and writes result to plain
  */
@@ -85,9 +85,6 @@ __global__ void convolveffdot43_k(const fcomplexcu* __restrict__ kernels, const 
         }
         */
 
-        //Fout
-        {
-
         for (int plainY = p0; plainY < p1; plainY++)            // Loop over the individual plain  .
         {
           int offsetPart1;
@@ -133,8 +130,6 @@ __global__ void convolveffdot43_k(const fcomplexcu* __restrict__ kernels, const 
         }
 
         pHeight += plnHeight * noSteps * stride;
-      }
-
       }
     }
   }
@@ -203,7 +198,6 @@ __host__  void convolveffdot43_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream
 template<int FLAGS>
 __host__  void convolveffdot43_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
 {
-
   switch (batch->noSteps)
   {
     case 1:

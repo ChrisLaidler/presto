@@ -737,6 +737,11 @@ __host__ void add_and_searchCU311_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
       add_and_searchCU311_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
       break;
     }
+    case 8:
+    {
+      add_and_searchCU311_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     default:
       fprintf(stderr, "ERROR: add_and_searchCU311 has not been templated for %i steps\n", noSteps);
       exit(EXIT_FAILURE);

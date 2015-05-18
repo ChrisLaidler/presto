@@ -5,7 +5,7 @@
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
-//#include <cub/cub.cuh>
+
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
@@ -17,6 +17,7 @@ extern "C"
 
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
+
 
 //======================================= Constant memory =================================================\\
 
@@ -48,6 +49,10 @@ __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *cal
  * @return
  */
 __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
+/** Convolution kernel - Just write 0 to all locations
+ */
+__host__  void convolveffdot00_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 
 /** Convolution kernel - One thread per f-∂f pixel
  */

@@ -258,23 +258,29 @@ void convolveBatch(cuFFdotBatch* batch)
 
             FOLD // call kernel(s)  .
             {
-              if ( batch->flag & FLAG_CNV_OVLP )
+              if ( batch->flag & FLAG_RAND_2 )
               {
-                // NOTE: convolveffdot41 seams faster and has been adapted for multi-step
-                convolveffdot71_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, batch->noSteps, cStack->noInStack, batch->flag );
-                //convolveffdot72_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
+                convolveffdot00_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
               }
               else
               {
-                if( batch->flag & FLAG_RAND_1 )
+                if ( batch->flag & FLAG_CNV_OVLP )
                 {
-                  convolveffdot43_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
+                  // NOTE: convolveffdot41 seams faster and has been adapted for multi-step
+                  convolveffdot71_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, batch->noSteps, cStack->noInStack, batch->flag );
+                  //convolveffdot72_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
                 }
                 else
                 {
-                  convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, batch->noSteps, cStack->noInStack, batch->flag );
+                  if( batch->flag & FLAG_RAND_1 )
+                  {
+                    convolveffdot43_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
+                  }
+                  else
+                  {
+                    convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, batch->noSteps, cStack->noInStack, batch->flag );
+                  }
                 }
-
               }
 
               // Run message

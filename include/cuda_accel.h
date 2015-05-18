@@ -339,20 +339,24 @@ typedef struct cuFfdotStack
     fCplxTex kerDatTex;               ///< A texture holding the kernel data
 
     // Events
+    cudaEvent_t normComp;             ///< Normalisation of input data
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
     cudaEvent_t convComp;             ///< Convolution complete
     cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
 
     // TIMING events
+    cudaEvent_t normInit;             ///< Convolution starting
+    cudaEvent_t inpFFTinit;           ///< Start of the input FFT
     cudaEvent_t convInit;             ///< Convolution starting
     cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
-    cudaEvent_t inpFFTinit;           ///< Start of the input FFT
+
 
     // Streams
-    cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
+    cudaStream_t inpStream;           ///< CUDA stream for work on input data for the stack
     cudaStream_t fftIStream;          ///< CUDA stream to CUFFT the input data
     cudaStream_t cnvlStream;          ///< CUDA stream for work on the stack
-    cudaStream_t inpStream;           ///< CUDA stream for work on input data for the stack
+    cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
+
 } cuFfdotStack;
 
 /** A collection of f-∂f plain(s) and all its/their sub harmonics
@@ -410,6 +414,7 @@ typedef struct cuFFdotBatch
 
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
+    // Streams
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the batch
     cudaStream_t convStream;          ///< CUDA stream for convolving
     cudaStream_t strmSearch;          ///< CUDA stream for summing and searching the data
@@ -420,6 +425,7 @@ typedef struct cuFFdotBatch
     cudaEvent_t searchInit;           ///< Sum & Search start
     cudaEvent_t convInit;             ///< Start of convolve of entire batch
 
+    // Synchronisation events
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
     cudaEvent_t normComp;             ///< Normalise and spread input data
     cudaEvent_t convComp;             ///< Sum & Search complete (candidates ready for reading)
@@ -438,6 +444,8 @@ typedef struct cuFFdotBatch
     CUcontext pctx;                   ///< Context for the batch
     int device;                       ///< The CUDA device to run on
 
+    // TIMING values
+    float* kerGenTime;                ///< Array of floats from timing one for each stack
     float* copyH2DTime;               ///< Array of floats from timing one for each stack
     float* InpNorm;                   ///< Array of floats from timing one for each stack
     float* InpFFTTime;                ///< Array of floats from timing one for each stack
@@ -571,5 +579,7 @@ ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long 
 ExternC void printFlags(uint flags);
 
 ExternC void printCommandLine(int argc, char *argv[]);
+
+ExternC void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime);
 
 #endif // CUDA_ACCEL_INCLUDED

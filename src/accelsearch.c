@@ -658,6 +658,8 @@ int main(int argc, char *argv[])
 #ifdef CUDA // Timing message  .
       printf("\n Timing:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
+      writeLogEntry("/home/chris/accelsearch_log.csv",&obs, cuSrch, prepTime, cupTime, gpuTime, optTime);
+
 #ifdef TIMING  // Advanced timing massage  .
 
       int batch, stack;
@@ -723,6 +725,7 @@ int main(int argc, char *argv[])
       printf("Total\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, convT, InvFFT, ss, resultT, copyD2HT );
 
       printf("\n===========================================================================================================================================\n");
+
 
 #endif
 
