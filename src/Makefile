@@ -404,7 +404,7 @@ mpiprepsubband: mpiprepsubband_cmd.c $(OBJDIR)mpiprepsubband_cmd.o $(OBJDIR)mpip
 ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o 
 	@echo ""
 	@echo "Building accelsearch$(POSTFIX)"	
-	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(NVCC_OBS) $(PRESTOLINK) $(GLIBLINK) -lm $(FFTLINK)
 	@echo "Done accelsearch$(POSTFIX)"
 	@echo ""
 	

@@ -183,7 +183,7 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Block ID - flat index
   const int bSz = blockDim.x  * blockDim.y;                     /// Block size
 
-  // DEBUG
+  // DEBUG //TMP
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
 
   __shared__ float lower[32];
@@ -199,12 +199,7 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
   uint noSections   = ceilf(arrayLength/(float)bufferSz);
   uint noBatches    = ceilf(bufferSz/(float)(bSz) );
 
-  if ( tid == 0 )
-  {
-    printf("%02i  noBatches: %.2f  sections %.2f   \n", bid, bufferSz/(float)(bSz), arrayLength/(float)bufferSz );
-  }
-
-  const float secs  = 32;
+  const float secs  = 16;
 
   uint subLen       = bufferSz * 2 / secs;
   uint subStart     = bufferSz / 2 - bufferSz/secs;
@@ -268,6 +263,11 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
   {
     noBatches  = ceilf(subLen/(float)(bSz) );
 
+    if ( tid == 0 )
+    {
+      printf("%02i  noBatches: %.2f  sections %.2f  subStart %ui  subLen: %ui \n", bid, subLen/(float)(bSz), arrayLength/(float)bufferSz, subStart, subLen );
+    }
+
     FOLD // Load section into shared memory  .
     {
       __syncthreads();
@@ -329,6 +329,11 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
           if ( upper[sec] < minUpper )
             minUpper = upper[sec];
         }
+
+        if ( tid == 0 )
+        {
+          printf("%02i maxLower %.6i  minUpper %.6f", bid, maxLower, minUpper);
+        }
       }
     }
 
@@ -339,15 +344,28 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
       noBatches  = ceilf(len/(float)(bSz) );
       for ( int batch = 0; batch < noBatches; batch++)
       {
-        if ( smBuffer[batch*bSz + tid] == maxLower )
-        {
-          atomicMax(&locLower, batch*bSz + tid);
-        }
+        int idx = batch*bSz + tid;
 
-        if ( smBuffer[batch*bSz + tid] == minUpper )
+        if ( idx < len )
         {
-          atomicMin(&locUpper, batch*bSz + tid);
+          if ( smBuffer[idx] == maxLower )
+          {
+            printf("%02i tid %02i  maxLower = %i \n", bid, tid, idx );
+            atomicMax(&locLower, idx);
+          }
+
+          if ( smBuffer[idx] == minUpper )
+          {
+            printf("%02i tid %02i  locUpper = %i \n", bid, tid, idx );
+            atomicMin(&locUpper, idx);
+          }
         }
+      }
+
+      __syncthreads(); // TMP
+      if ( tid == 0 )
+      {
+        printf("%02i locLower %i  locUpper %i", bid, locLower, locUpper);
       }
     }
 
@@ -420,10 +438,10 @@ __global__ void normAndSpread(fcomplexcu* data, stpType lens)
       {
         int idx = batch*bSz+tid;
 
-        if ( batch*bSz+tid < width )
+        if ( idx < width )
         {
-          fcomplexcu val = data[batch*bSz+tid];
-          sData[batch*bSz+tid] = val.r*val.r+val.i*val.i;
+          fcomplexcu val = data[idx];
+          sData[idx] = val.r*val.r+val.i*val.i;
         }
       }
     }
@@ -506,7 +524,8 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
 
           printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
 
-          iLen.val[stp] = rVal->numdata ;
+          if (stp < noInput ) // TMP
+            iLen.val[stp] = rVal->numdata ;
         }
         stp++;
       }
