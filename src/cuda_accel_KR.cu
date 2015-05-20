@@ -126,7 +126,7 @@ __device__ int z_resp_halfwidth(double z)
   return m;
 }
 
-/** Generate a complex response function for Fourier interpolation.
+/** Generate a complex response function for Fourier interpolation  .
  *
  * This is a CUDA "copy" of gen_r_response in responce.c
  *
@@ -180,7 +180,7 @@ __device__ inline void gen_r_response(int kx, double roffset, float numbetween, 
   }
 }
 
-/** Generate the complex response value for Fourier f-dot interpolation.
+/** Generate the complex response value for Fourier f-dot interpolation  .
  *
  * This is based on gen_z_response in responce.c
  *
@@ -193,7 +193,7 @@ __device__ inline void gen_r_response(int kx, double roffset, float numbetween, 
  * @param rr            A pointer to the real part of the complex response for kx
  * @param ri            A pointer to the imaginary part of the complex response for kx
  */
-__device__ inline void gen_z_response (int rx, float z,  double absz, float numbetween, int numkern, float* rr, float* ri)
+__device__ inline void gen_z_response(int rx, float z,  double absz, float numbetween, int numkern, float* rr, float* ri)
 {
   int signz;
   double zd, r, xx, yy, zz, startr, startroffset;
@@ -246,7 +246,7 @@ __device__ inline void gen_z_response (int rx, float z,  double absz, float numb
   }
 }
 
-/** Create the convolution kernel for one f-∂f plain
+/** Create the convolution kernel for one f-∂f plain  .
  *
  *  This is "copied" from gen_z_response in respocen.c
  *
@@ -305,7 +305,7 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
   }
 }
 
-/** Create the convolution kernel for an entire stack
+/** Create the convolution kernel for an entire stack  .
  *
  * @param response
  * @param stack

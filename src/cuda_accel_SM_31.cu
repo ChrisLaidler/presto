@@ -6,7 +6,7 @@
  * @param searchList
  * @param d_cands
  * @param d_sem
- * @param base          Used in CU_OUTP_DEVICE
+ * @param base
  * @param noSteps
  */
 #if TEMPLATE_SEARCH == 1
@@ -279,7 +279,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
       }
     }
 
-    if ( FLAGS & CU_OUTP_SINGLE )
+    FOLD //  Write results
     {
 #if TEMPLATE_SEARCH == 1
 #pragma unroll
@@ -426,11 +426,9 @@ __host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
   if        ( FLAGS & FLAG_CUFFTCB_OUT )
   {
     if      ( FLAGS & FLAG_STP_ROW )
-      add_and_maxCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_PLN )
-    //  add_and_maxCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_STK )
-    //  add_and_maxCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+      add_and_maxCU31_p<FLAG_CUFFTCB_OUT | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+    else if ( FLAGS & FLAG_STP_PLN )
+      add_and_maxCU31_p<FLAG_CUFFTCB_OUT | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_maxCU31 has not been templated for flag combination. \n" );
@@ -440,11 +438,9 @@ __host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
   else
   {
     if      ( FLAGS & FLAG_STP_ROW )
-      add_and_maxCU31_p<CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_PLN )
-    //  add_and_maxCU31_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_STK )
-    //  add_and_maxCU31_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+      add_and_maxCU31_p< FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+    else if ( FLAGS & FLAG_STP_PLN )
+      add_and_maxCU31_p< FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_maxCU31 has not been templated for flag combination. \n" );

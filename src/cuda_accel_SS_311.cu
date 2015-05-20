@@ -366,11 +366,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
             candLists[stage][step].sigma = 0 ;
-
-            if ( FLAGS & CU_OUTP_SINGLE )
-            {
-              d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
-            }
+            d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
           }
         }
       }
@@ -483,58 +479,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
       }
     }
 
-    // Write results back to DRAM and calculate sigma if needed  .
-    if      ( FLAGS & CU_OUTP_DEVICE && 0)
-    {
-      /*
-//#pragma unroll
-      for ( int stage = 0 ; stage < noStages; stage++)
-      {
-        const short numharm = 1 << stage;
-
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
-        for ( int step = 0; step < noSteps; step++)         // Loop over steps
-        {
-          if  ( candLists[stage][step].sigma >  POWERCUT[stage] )
-          {
-            //float rLow    = rLows.arry[step] * searchList.frac.val[harm];
-            //float diff    = rLow - (int)rLow;
-            //float idxS    = 0.5  + diff*ACCEL_RDR ;
-
-            int idx =  (int)(( rLows.arry[step] + tid * (double) ACCEL_DR ) / (double)numharm ) - base ;
-            if ( idx >= 0 )
-            {
-              long long numtrials             = NUMINDEP[stage];
-              candLists[stage][step].numharm  = numharm;
-              //candLists[stage][step].z      = ( candLists[stage].z*(double) ACCEL_DZ - searchList.zMax.val[0]  )  / (double)numharm ;
-              candLists[stage][step].sigma    = (float)candidate_sigma_cu(candLists[stage][step].sigma, numharm, numtrials);
-
-              FOLD // Atomic write to global list
-              {
-                volatile bool done = false;
-                while (!done)
-                {
-                  volatile int prev = atomicCAS(&d_sem[idx], UINT_MAX, tid );
-                  if ( prev == UINT_MAX )
-                  {
-                    if ( candLists[stage][step].sigma > d_cands[idx].sigma )
-                    {
-                      d_cands[idx]              = candLists[stage][step];
-                    }
-                    d_sem[idx]                  = UINT_MAX;
-                    done = true;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      */
-    }
-    else if ( FLAGS & CU_OUTP_SINGLE )
+    FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
 //#pragma unroll
       for ( int step = 0; step < noSteps; step++)             // Loop over steps
@@ -789,17 +734,14 @@ __host__ void add_and_searchCU311_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
 __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const uint FLAGS = batch->flag;
-    /*
-    if          ( FLAGS & FLAG_PLN_TEX)
+
     {
       if        ( FLAGS & FLAG_CUFFTCB_OUT )
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU311_p<FLAG_PLN_TEX | FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
+          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU311_p<FLAG_PLN_TEX | FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN>  (dimGrid, dimBlock, stream, batch);
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU311_p<FLAG_PLN_TEX | FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, stream, batch);
+          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | FLAG_STP_PLN>  (dimGrid, dimBlock, stream, batch);
         else
         {
           fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
@@ -809,43 +751,9 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
       else
       {
         if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU311_p<FLAG_PLN_TEX | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
+          add_and_searchCU311_p<FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
         else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU311_p<FLAG_PLN_TEX | CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, stream, batch);
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU311_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, stream, batch);
-        else
-        {
-          fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    else
-      */
-    {
-      if        ( FLAGS & FLAG_CUFFTCB_OUT )
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN>  (dimGrid, dimBlock, stream, batch);
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU311_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, stream, batch);
-        else
-        {
-          fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU311_p<CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU311_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, stream, batch);
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU311_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, stream, batch);
+          add_and_searchCU311_p<FLAG_STP_PLN> (dimGrid, dimBlock, stream, batch);
         else
         {
           fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );

@@ -1,5 +1,10 @@
 #include "cuda_accel_IN.h"
 
+/** XOR swap two integer values
+ *
+ * @param a integer a
+ * @param b integer b
+ */
 __device__ inline void swap(int & a, int & b)
 {
   a = a ^ b;
@@ -7,6 +12,12 @@ __device__ inline void swap(int & a, int & b)
   a = a ^ b;
 }
 
+/** Compare and swap two values (if they are in the wrong order).
+ *
+ * @param valA The first value
+ * @param valB The second value
+ * @param dir the desired order 1 = increasing
+ */
 __device__ inline void Comparator(float &valA, float &valB, uint dir)
 {
   if ((valA > valB) == dir)
@@ -19,8 +30,7 @@ __device__ inline void Comparator(float &valA, float &valB, uint dir)
   }
 }
 
-
-/** in-place bitonic sort float array in shared memory  .
+/** In-place Bitonic sort a float array.
  * @param data A pointer to an shared memory array containing elements to be sorted.
  * @param arrayLength The number of elements in the array
  * @param trdId the index of the calling thread (1 thread for 2 items in data)
@@ -28,10 +38,11 @@ __device__ inline void Comparator(float &valA, float &valB, uint dir)
  * @param dir direction to sort data ( 1 -> smallest to largest AND -1 -> largest to smallest )
  *
  * This is an in-place bitonic sort.
- * This is very fast for small numbers of items, ie; when they can all fit in shared memory, or generally are less that 1K or 2K
+  * This is very fast for small numbers of items, ie; when they can all fit in shared memory, ie < ~12K
  *
  * It has a constant performance of \f$ O\left(n\ \log^2 n \right)\f$ where n is the number of items to be sorted.
- * It only works on shared memory as it requires synchronisation.
+ * It requires the sort to be performed by only one block, as it requires synchronisation.
+ * But this allows for the use of SM
  *
  * Each thread counts for to items in the array, as each thread performs comparisons between to elements.
  * Generally there is ~48.0 KBytes of shared memory, thus could sort up to 12288 items. However there is a
@@ -108,31 +119,29 @@ __device__ void bitonicSort(float *data, const uint arrayLength, const uint trdI
   __syncthreads();  // Ensure all data is sorted before we return
 }
 
-/** Calculate the median of float values  .
+/** Calculate the median of an array of float values  .
  *
- * @param data
- * @param arrayLength
- * @param output
- * @param noSections
- * @param median
- * @param dir
- * @return
+ * This sorts the actual array so the values will be reordered
+ * This uses a bitonicSort which is very fast if the array is in SM
+ * This means that there
+ *
+ * @param array array of floats to search, this will be reordered should be in SM
+ * @param arrayLength the number of floats in the array
+ * @param dir the direction to sort the array 1 = increasing
+ * @return the median value
  */
-template< int bufferSz>
-__device__ float cuMedian(float *smBuffer, uint arrayLength, int dir)
+__device__ float cuMedianOne(float *array, uint arrayLength)
 {
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Block ID - flat index
   const int bSz = blockDim.x  * blockDim.y;                     /// Block size
 
   __shared__ float  medianValue;
 
-  uint noBatches    = ceilf(bufferSz/(float)(bSz) );
-
   FOLD // Sort  .
   {
     __syncthreads();
 
-    bitonicSort(smBuffer, arrayLength, tid, bSz, dir);
+    bitonicSort(array, arrayLength, tid, bSz, 1);
   }
 
   FOLD // Calculate the median  .
@@ -141,12 +150,9 @@ __device__ float cuMedian(float *smBuffer, uint arrayLength, int dir)
     {
       int idx = arrayLength / 2.0f;
 
-      //const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
-      //printf("%02i: idx %i -> %f  \n", bid, idx, arrayLength / 2.0);
-
       if ((arrayLength & 1))      // odd
       {
-        medianValue = smBuffer[idx];
+        medianValue = array[idx];
       }
       else                        //even
       {
@@ -154,7 +160,7 @@ __device__ float cuMedian(float *smBuffer, uint arrayLength, int dir)
         //medianValue = (smBuffer[idx-1] + smBuffer[idx])/2.0f;
 
         // lower
-        medianValue = smBuffer[idx - 1];
+        medianValue = array[idx - 1];
 
         // upper
         //medianValue = smBuffer[idx];
@@ -167,27 +173,28 @@ __device__ float cuMedian(float *smBuffer, uint arrayLength, int dir)
   return medianValue;
 }
 
-/** Calculate the median of float values  .
+/** Calculate the median of up to 16*bufferSz float values  .
  *
- * @param data
- * @param arrayLength
- * @param output
- * @param noSections
- * @param median
- * @param dir
- * @return
+ * This Sorts sections of the array, and then find the median by extracting and combining the
+ * centre chunk(s) of these and sorting that. To find the median.
+ *
+ * Note this reorders the original array
+ *
+ * @param data the value to find the median of
+ * @param buffer to do the sorting in this is bufferSz long and should be in SM
+ * @param arrayLength the length of the data array
+ * @return The median of data
  */
 template< int bufferSz>
-__device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLength, int dir)
+__device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
 {
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Block ID - flat index
   const int bSz = blockDim.x  * blockDim.y;                     /// Block size
 
-  // DEBUG //TMP
-  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
+  const float secs  = 32;
 
-  __shared__ float lower[32];
-  __shared__ float upper[32];
+  __shared__ float lower[16];
+  __shared__ float upper[16];
 
   __shared__ float  medianValue;
 
@@ -199,17 +206,21 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
   uint noSections   = ceilf(arrayLength/(float)bufferSz);
   uint noBatches    = ceilf(bufferSz/(float)(bSz) );
 
-  const float secs  = 16;
-
   uint subLen       = bufferSz * 2 / secs;
-  uint subStart     = bufferSz / 2 - bufferSz/secs;
-  //uint subEnd       = bufferSz / 2 + bufferSz/secs;
-  uint len          = noSections * subLen;
+  uint len          = 0;
+  uint before       = 0;
 
   FOLD // Sort each section and write back to device memory  .
   {
     for ( int sec = 0; sec < noSections; sec++)
     {
+      int sStart      = MIN(bufferSz*sec, arrayLength);
+      int sEnd        = MIN(bufferSz*(sec+1)-1, arrayLength);
+      int sLen        = sEnd - sStart;
+
+      int mStart      = MAX(0,sLen/2.0f - bufferSz/secs);
+      int mEnd        = MIN(sLen,mStart+subLen);
+
       FOLD // Load section into shared memory  .
       {
         for ( int batch = 0; batch < noBatches; batch++)
@@ -219,7 +230,7 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
 
           if ( idx < arrayLength )
           {
-            smBuffer[batch*bSz+tid] = data[idx];
+            buffer[batch*bSz+tid] = data[idx];
           }
         }
       }
@@ -230,15 +241,7 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
 
         int width = MIN(arrayLength-sec*bufferSz, bufferSz);
 
-        if ( tid == 0 )
-        {
-          if ( arrayLength-sec*bufferSz < bufferSz )
-          {
-            printf("%02i  sec %02i  Width %i  \n", bid, sec, width );
-          }
-        }
-
-        bitonicSort(smBuffer, width, tid, bSz, dir);
+        bitonicSort(buffer, width, tid, bSz, 1);
       }
 
       FOLD // Write section from shared memory main memory  .
@@ -247,12 +250,13 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
 
         for ( int batch = 0; batch < noBatches; batch++)
         {
-          int start = sec*bufferSz+batch*bSz;
-          int idx   = start + tid;
+          int start   = sec*bufferSz+batch*bSz;
+          int gmIdx   = start + tid;
+          int smIdx   = batch*bSz+tid;
 
-          if ( idx < arrayLength )
+          if ( smIdx >= mStart && smIdx < mEnd )
           {
-            data[idx] = smBuffer[batch*bSz+tid];
+            data[gmIdx] = buffer[smIdx];
           }
         }
       }
@@ -263,32 +267,34 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
   {
     noBatches  = ceilf(subLen/(float)(bSz) );
 
-    if ( tid == 0 )
-    {
-      printf("%02i  noBatches: %.2f  sections %.2f  subStart %ui  subLen: %ui \n", bid, subLen/(float)(bSz), arrayLength/(float)bufferSz, subStart, subLen );
-    }
-
-    FOLD // Load section into shared memory  .
+    FOLD // Load the middle of each section into shared memory  .
     {
       __syncthreads();
 
       for ( int sec = 0; sec < noSections; sec++)
       {
-        int startGM     = bufferSz*sec + subStart;
-        int startSM     = subLen*sec;
+        int sStart      = MIN(bufferSz*sec, arrayLength);
+        int sEnd        = MIN(bufferSz*(sec+1)-1, arrayLength);
+        int sLen        = sEnd - sStart;
+
+        int mStart      = MAX(0,sLen/2.0f - bufferSz/secs);
+        int mEnd        = MIN(sLen,mStart+subLen);
+        int mLen        = mEnd - mStart;
+
+        int startGM     = bufferSz*sec + mStart;
 
         for ( int batch = 0; batch < noBatches; batch++)
         {
           int idx = startGM + batch*bSz + tid;
+
           if ( idx < arrayLength )
           {
-            smBuffer[startSM + batch*bSz + tid] = data[idx];
-          }
-          else
-          {
-            printf("%02i: BAD\n", bid);
+            buffer[len + batch*bSz + tid] = data[idx];
           }
         }
+
+        len             += mLen;
+        before          += mStart;
       }
     }
 
@@ -298,26 +304,28 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
 
       if ( tid < noSections )
       {
-        lower[tid]      = smBuffer[subLen*tid];
-        upper[tid]      = smBuffer[subLen*(tid+1)-1];
+        lower[tid]      = buffer[subLen*tid];
+
+        int idx         = MIN(len,subLen*(tid+1));
+        upper[tid]      = buffer[idx-1];
       }
     }
 
-    FOLD // Sort the mid section in SM  .
+    FOLD // Sort the collection of mid sections in SM  .
     {
       __syncthreads();
 
-      bitonicSort(smBuffer, len, tid, bSz, dir);
+      bitonicSort(buffer, len, tid, bSz, 1);
     }
 
-    FOLD // Get the largest of the lower values  .
+    FOLD // Find the bounding vales  .
     {
       __syncthreads();
 
       if ( tid == 0 )
       {
         maxLower = lower[0];
-        minUpper = lower[0];
+        minUpper = upper[0];
         locLower = 0;
         locUpper = len;
 
@@ -329,80 +337,66 @@ __device__ float cuMedianBySection(float *data, float *smBuffer, uint arrayLengt
           if ( upper[sec] < minUpper )
             minUpper = upper[sec];
         }
-
-        if ( tid == 0 )
-        {
-          printf("%02i maxLower %.6i  minUpper %.6f", bid, maxLower, minUpper);
-        }
       }
     }
 
-    FOLD // Find the last location of the largest of the lower values  .
+    FOLD // Find the location of the bounding vales  .
     {
       __syncthreads();
 
       noBatches  = ceilf(len/(float)(bSz) );
+
       for ( int batch = 0; batch < noBatches; batch++)
       {
         int idx = batch*bSz + tid;
 
         if ( idx < len )
         {
-          if ( smBuffer[idx] == maxLower )
+          if ( buffer[idx] == maxLower )
           {
-            printf("%02i tid %02i  maxLower = %i \n", bid, tid, idx );
             atomicMax(&locLower, idx);
           }
 
-          if ( smBuffer[idx] == minUpper )
+          if ( buffer[idx] == minUpper )
           {
-            printf("%02i tid %02i  locUpper = %i \n", bid, tid, idx );
             atomicMin(&locUpper, idx);
           }
         }
       }
-
-      __syncthreads(); // TMP
-      if ( tid == 0 )
-      {
-        printf("%02i locLower %i  locUpper %i", bid, locLower, locUpper);
-      }
     }
 
-    FOLD //  .
+    FOLD // Find the index of the median in the buffer  .
     {
       __syncthreads();
 
       if (tid == 0 )
       {
-        int before  = noSections*subStart + locLower;
-        //int after   = noSections*(bufferSz-subEnd) + (len-locUpper);
-        int mid     = len / 2.0f;
+        int GMIdx   = arrayLength / 2.0f;
+        int SMIdx   = GMIdx - before;
 
-        if ( locLower > mid || locUpper < mid )
+        // The true median will fall between the bounding values
+        if ( (SMIdx >= locUpper) || (SMIdx <= locLower) )
         {
-          printf("ERROR: Section length to short!\n");
+          printf("ERROR: In function %s, median not in mid section, median value will be incorrect!\n", __FUNCTION__ );
         }
 
-        int idx = arrayLength / 2.0f;
-        int medianInSecton  = idx - before;
-
-        medianValue = smBuffer[locLower+medianInSecton];
-
-        if ((arrayLength & 1))      // odd
+        FOLD // Median selection  .
         {
-          medianValue = smBuffer[locLower+medianInSecton];
-        }
-        else                        //even
-        {
-          // mean
-          //medianValue = ( smBuffer[locLower+medianInSecton-1] + smBuffer[locLower+medianInSecton] ) / 2.0f;
+          if ( (arrayLength & 1) )    // odd
+          {
+            medianValue = buffer[SMIdx];
+          }
+          else                        //even
+          {
+            // mean
+            //medianValue = ( smBuffer[SMIdx-1] + smBuffer[mIdx] ) / 2.0f;
 
-          // lower
-          medianValue = smBuffer[locLower+medianInSecton-1];
+            // lower
+            medianValue = buffer[SMIdx-1];
 
-          // upper
-          //medianValue = smBuffer[locLower+medianInSecton];
+            // upper
+            //medianValue = buffer[SMIdx];
+          }
         }
       }
     }
@@ -418,84 +412,99 @@ __global__ void normAndSpread(fcomplexcu* data, stpType lens)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
-  const int bSz = blockDim.x*blockDim.y;                        /// Block size
-
-  __shared__ float sData[BS_MAX];
-  float medianValue;
-  float factor;
+  const int bSz = blockDim.x  * blockDim.y;                     /// Block size
 
   int width = lens.val[bid];
-
-  int batches = ceil( width / (float) bSz );
-
-  data += stride*bid;
-
-  if ( width <= BS_MAX )
+  if (width)
   {
-    FOLD // Calculate and store powers in shared memory  .
-    {
-      for ( int batch = 0; batch < batches; batch++)
-      {
-        int idx = batch*bSz+tid;
+    __shared__ float sData[BS_MAX];
 
-        if ( idx < width )
+    float   medianValue;
+    float   factor;
+
+    int batches = ceilf( width / (float) bSz );
+
+    // Stride input data
+    data += stride*bid;
+
+    if ( width <= BS_MAX )
+    {
+      FOLD // Calculate and store powers in shared memory  .
+      {
+        for ( int batch = 0; batch < batches; batch++)
         {
-          fcomplexcu val = data[idx];
-          sData[idx] = val.r*val.r+val.i*val.i;
+          int idx = batch*bSz+tid;
+
+          if ( idx < width )
+          {
+            fcomplexcu val = data[idx];
+            sData[idx] = val.r*val.r+val.i*val.i;
+          }
         }
       }
+
+      medianValue = cuMedianOne(sData, width);
     }
-
-    medianValue = cuMedian<BS_MAX>(sData, width, 1);
-
-    if ( tid == 0 )
+    else
     {
-      printf("%02i  batches: %.2f 1 section  median %.6f \n", bid, width / (float) bSz, medianValue );
-    }
-  }
-  else
-  {
-    float* powers = (float*)&data[width];
+      float* powers = (float*)&data[width];
 
-    FOLD // Calculate and store powers in device memory  .
-    {
-      for ( int batch = 0; batch < batches; batch++)
+      FOLD // Calculate and store powers in device memory  .
       {
-        fcomplexcu val = data[batch*bSz+tid];
-        powers[batch*bSz+tid] = val.r*val.r+val.i*val.i;
+        for ( int batch = 0; batch < batches; batch++)
+        {
+          fcomplexcu val = data[batch*bSz+tid];
+          powers[batch*bSz+tid] = val.r*val.r+val.i*val.i;
+        }
+      }
+
+      medianValue = cuMedianBySection<BS_MAX>(powers, sData, width);
+    }
+
+    // Calculate normalisation factor
+    factor = 1.0 / sqrt( medianValue / LN2 );
+
+    //  if ( tid == 0 )
+    //  {
+    //    float sec = width / (float)BS_MAX ;
+    //    printf("%02i  batches: %4.2f %3.2f section  median %.6f  factor: %20.20f \n", bid, width / (float) bSz, sec, medianValue, factor );
+    //  }
+
+    batches = ceil( stride / (float) bSz );
+
+    // Write spread by 2 and normalise
+    for ( int batch = batches-1; batch >= 0; batch--)
+    {
+      // Read all values into registers
+      fcomplexcu val = data[batch*bSz+tid];
+      __syncthreads();
+
+      int idx = batch*bSz+tid;
+
+      if ( (idx)*2 < stride)
+      {
+        // Set the value to normalised complex number spread by 2
+        if ( idx < width )
+        {
+          val.i *= factor;
+          val.r *= factor;
+        }
+        else
+        {
+          val.i = 0;
+          val.r = 0;
+        }
+        data[(idx)*2]     = val;
+
+        // Set every second value to 0
+        val.i = 0;
+        val.r = 0;
+        data[(idx)*2+1]   = val;
       }
     }
-
-    medianValue = cuMedianBySection<BS_MAX>(powers, sData, width, 1);
-
-    if ( tid == 0 )
-    {
-      printf("%02i  batches: %.2f 1 section  median %.3f \n", bid, width / (float) bSz, medianValue );
-    }
   }
-
-  factor = 1.0 / sqrt(medianValue / LN2 );
-
-  for ( int batch = batches-1; batch >= 0; batch--)
-  {
-    // Read all values into registers
-    fcomplexcu val = data[batch*bSz+tid];
-    __syncthreads();
-
-    // Set the value to normalised complex number spread by 2
-    val.i *= factor;
-    val.r *= factor;
-    data[(batch*bSz+tid)*2]     = val;
-
-    // Set every second value to 0
-    val.i = 0;
-    val.r = 0;
-    data[(batch*bSz+tid)*2+1]   = val;
-  }
-
 }
 
-//template<uint FLAGS, int noStages, const int noHarms, const int cunkSize, int noSteps>
 template<int width>
 __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
@@ -509,7 +518,6 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
   cuFfdotStack* cStack = &batch->stacks[stack];
 
   int noInput = cStack->noInStack * batch->noSteps ;
-  noInput = 1 ;
 
   if      ( noInput <= 1   )
   {
@@ -518,15 +526,11 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        //if ( !(searchRLow[step] == 0 &&  searchRHi[step] == 0) )
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
+        if ( stp < noInput )
+          iLen.val[stp] = rVal->numdata ;
 
-          if (stp < noInput ) // TMP
-            iLen.val[stp] = rVal->numdata ;
-        }
         stp++;
       }
       harm++;
@@ -541,14 +545,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        //if ( !(searchRLow[step] == 0 &&  searchRHi[step] == 0) )
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -563,14 +562,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        //if ( !(searchRLow[step] == 0 &&  searchRHi[step] == 0) )
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -585,14 +579,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        //if ( !(searchRLow[step] == 0 &&  searchRHi[step] == 0) )
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -607,13 +596,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -628,13 +613,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04li \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -649,13 +630,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -670,13 +647,9 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &((*batch->rInput)[step][harm]);
 
-          printf("stack %02i si %02i step %02i  cStack->width %04i   rVal->numdata %04i \n", stack, si,  step, cStack->width, rVal->numdata);
-
-          iLen.val[stp] = rVal->numdata ;
-        }
+        iLen.val[stp] = rVal->numdata ;
         stp++;
       }
       harm++;
@@ -686,7 +659,7 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
   }
   else
   {
-    fprintf(stderr,"ERROR: %s has not been set up to work with %i elements.",__FUNCTION__, noInput);
+    fprintf(stderr,"ERROR: %s has not been set up to work with %i input sections.",__FUNCTION__, noInput);
   }
 }
 
@@ -705,48 +678,54 @@ __host__ void normAndSpread_f(cudaStream_t inpStream, cuFFdotBatch* batch, uint 
   dimGrid.x = cStack->noInStack * batch->noSteps;
   dimGrid.y = 1;
 
-  dimGrid.x = 1;
-
-  printf("\n\n======================  normAndSpread_f  ======================\n");
-
   switch (cStack->width)
   {
-    case 512:
+    case 128   :
+    {
+      normAndSpread_w<128>(dimGrid, dimBlock, i1, inpStream, batch, stack);
+      break;
+    }
+    case 256   :
+    {
+      normAndSpread_w<256>(dimGrid, dimBlock, i1, inpStream, batch, stack);
+      break;
+    }
+    case 512   :
     {
       normAndSpread_w<512>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    case 1024:
+    case 1024  :
     {
       normAndSpread_w<1024>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    case 2048:
+    case 2048  :
     {
       normAndSpread_w<2048>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    case 4096:
+    case 4096  :
     {
       normAndSpread_w<4096>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    case 8192:
+    case 8192  :
     {
       normAndSpread_w<8192>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    case 16384:
+    case 16384 :
     {
       normAndSpread_w<16384>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    case 32768:
+    case 32768 :
     {
       normAndSpread_w<32768>(dimGrid, dimBlock, i1, inpStream, batch, stack);
       break;
     }
-    default:
+    default    :
     {
       fprintf(stderr, "ERROR: %s has not been templated for %lu steps\n", __FUNCTION__, cStack->width);
       exit(EXIT_FAILURE);

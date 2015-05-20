@@ -73,7 +73,7 @@ extern "C"
 #define SS4_NB          1                     // Added by auto-tune script
 
 #define CNV_DIMX        16                    // X Thread Block
-#define CNV_DIMY        4                     // Y Thread Block
+#define CNV_DIMY        8                     // Y Thread Block
 #define CNV_WORK        12                    // The number of values to load into SM
 
 /** Details of the Normalise and spread kernel
@@ -218,6 +218,48 @@ typedef struct float128
 {
     float val[128];
 } float128;
+
+//-------- POINTER ------- \\
+
+typedef struct ptr01
+{
+    void* val[1];
+} ptr01;
+
+typedef struct ptr02
+{
+    void* val[2];
+} ptr02;
+
+typedef struct ptr04
+{
+    void* val[4];
+} ptr04;
+
+typedef struct ptr08
+{
+    void* val[8];
+} ptr08;
+
+typedef struct ptr16
+{
+    void* val[16];
+} ptr16;
+
+typedef struct ptr32
+{
+    void* val[32];
+} ptr32;
+
+typedef struct ptr64
+{
+    void* val[64];
+} ptr64;
+
+typedef struct ptr128
+{
+    void* val[128];
+} ptr128;
 
 //------------- Arrays that can be passed to kernels -------------------\\
 
@@ -397,8 +439,6 @@ ExternC void printCands(const char* fileName, GSList *candsCPU);
 ExternC void printContext();
 
 ExternC void setContext(cuFFdotBatch* stkList) ;
-
-ExternC void testzm();
 
 /** Write CUFFT call backs to device
  */

@@ -159,15 +159,9 @@ void convolveBatch(cuFFdotBatch* batch)
     printf("\t\tConvolve\n");
 #endif
 
-        dimBlock.x = CNV_DIMX;   // in my experience 16 is almost always best (half warp)
-        dimBlock.y = CNV_DIMY;   // in my experience 16 is almost always best (half warp)
-
         // In my testing I found convolving each plain separately works fastest so it is the "default"
         if      ( batch->flag & FLAG_CNV_FAM ) // Do the convolutions one family at a time  .
         {
-          dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
-          dimGrid.y = 1;
-
           FOLD // Synchronisation  .
           {
             for (int ss = 0; ss < batch->noStacks; ss++) // Synchronise input data preparation for all stacks
@@ -179,16 +173,13 @@ void convolveBatch(cuFFdotBatch* batch)
             CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->convStream, batch->searchComp, 0),      "Waiting for GPU to be ready to copy data to device.");   // This will overwrite the f-fdot plain so search must be compete
           }
 
-          FOLD // Timing event  .
+          FOLD // Call kernel  .
           {
-#ifdef TIMING
-          CUDA_SAFE_CALL(cudaEventRecord(batch->convInit, batch->convStream),"Recording event: convInit");
+#ifdef TIMING // Timing event  .
+            CUDA_SAFE_CALL(cudaEventRecord(batch->convInit, batch->convStream),"Recording event: convInit");
 #endif
-          }
 
-          FOLD // call kernel  .
-          {
-            convolveffdot5_f(dimGrid, dimBlock, 0, batch->convStream, batch);
+            convolveffdot50_f(batch->convStream, batch);
 
             // Run message
             CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
@@ -210,25 +201,6 @@ void convolveBatch(cuFFdotBatch* batch)
           for (int ss = 0; ss < batch->noStacks; ss++)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
-
-            iHarmList hlist;
-            cHarmList plainsDat;
-            cHarmList kerDat;
-            iHarmList zUp;
-            iHarmList zDn;
-
-            for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
-            {
-              hlist.val[i]      =  cStack->harmInf[i].height;
-              plainsDat.val[i]  =  cStack->plains[i].d_plainData;
-              kerDat.val[i]     =  cStack->kernels[i].d_kerData;
-
-              zUp.val[i]        =  cStack->zUp[i];
-              zDn.val[i]        =  cStack->zDn[i];
-            }
-
-            dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-            dimGrid.y = 1;
 
             FOLD // Synchronisation  .
             {
@@ -256,29 +228,31 @@ void convolveBatch(cuFFdotBatch* batch)
 #endif
             }
 
-            FOLD // call kernel(s)  .
+            FOLD // Call kernel(s)  .
             {
               if ( batch->flag & FLAG_RAND_2 )
               {
-                convolveffdot00_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
+                convolveffdot00_f(cStack->cnvlStream, batch, ss);
               }
               else
               {
                 if ( batch->flag & FLAG_CNV_OVLP )
                 {
                   // NOTE: convolveffdot41 seams faster and has been adapted for multi-step
-                  convolveffdot71_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, batch->noSteps, cStack->noInStack, batch->flag );
+                  //convolveffdot71_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, plainsDat, cStack->width, cStack->inpStride, hlist, cStack->height, cStack->kerDatTex, zUp, zDn, batch->noSteps, cStack->noInStack, batch->flag );
                   //convolveffdot72_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
                 }
                 else
                 {
                   if( batch->flag & FLAG_RAND_1 )
                   {
-                    convolveffdot43_f(dimGrid, dimBlock, 0, cStack->cnvlStream, batch, ss);
+                    //convolveffdot43_f(cStack->cnvlStream, batch, ss);
+                    //convolveffdot10_f(cStack->cnvlStream, batch, ss);
+                    convolveffdot42_f(cStack->cnvlStream, batch, ss);
                   }
                   else
                   {
-                    convolveffdot41_f(dimGrid, dimBlock, 0, cStack->cnvlStream, cStack->d_kerData, cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, hlist, cStack->height, kerDat, cStack->kerDatTex, batch->noSteps, cStack->noInStack, batch->flag );
+                    convolveffdot42_f(cStack->cnvlStream, batch, ss);
                   }
                 }
               }
@@ -299,10 +273,12 @@ void convolveBatch(cuFFdotBatch* batch)
         }
         else if ( batch->flag & FLAG_CNV_PLN ) // Do the convolutions one plain  at a time  .
         {
-          // NOTE: The use of FLAG_CNV_1KER in this section will be handled because we are using the "kernels" pointers to the complex data
 #ifdef SYNCHRONOUS
       cuFfdotStack* pStack = NULL;
 #endif
+
+          dimBlock.x = CNV_DIMX;
+          dimBlock.y = CNV_DIMY;
 
           //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
           for (int ss = 0; ss< batch->noStacks; ss++)              // Loop through Stacks
@@ -349,7 +325,7 @@ void convolveBatch(cuFFdotBatch* batch)
 
                 for (int sti = 0; sti < batch->noSteps; sti++)       // Loop through Steps
                 {
-                  d_iData       = cPlain->d_iData + cHInfo->inpStride * sti;
+                  d_iData         = cPlain->d_iData + cHInfo->inpStride * sti;
 
                   if      ( batch->flag & FLAG_STP_ROW )
                   {
@@ -357,9 +333,9 @@ void convolveBatch(cuFFdotBatch* batch)
                     exit(EXIT_FAILURE);
                   }
                   else if ( batch->flag & FLAG_STP_PLN )
-                    d_plainData = cPlain->d_plainData + sti * cHInfo->height * cHInfo->inpStride;   // Shift by plain height
+                    d_plainData   = cPlain->d_plainData + sti * cHInfo->height * cHInfo->inpStride;   // Shift by plain height
                   else if ( batch->flag & FLAG_STP_STK )
-                    d_plainData = cPlain->d_plainData + sti * cStack->height * cHInfo->inpStride;   // Shift by stack height
+                    d_plainData   = cPlain->d_plainData + sti * cStack->height * cHInfo->inpStride;   // Shift by stack height
                   else
                     d_plainData   = cPlain->d_plainData;  // If nothing is specified just use plain data
 
@@ -408,7 +384,7 @@ void convolveBatch(cuFFdotBatch* batch)
         }
       }
 
-      FOLD // Inverse FFT the  f-∂f plain  .
+      FOLD // Inverse FFT the f-∂f plain  .
       {
 
 #ifdef STPMSG

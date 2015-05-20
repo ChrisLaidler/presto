@@ -39,7 +39,7 @@ extern "C"
 #define   MAX_HARM_NO   16      ///< The maximum number of harmonics handled by a accel search
 #define   MAX_YINDS     8000    ///< The maximum number of y indices to store in constant memory
 #define   MAX_STEPS     8       ///< The maximum number of steps
-#define   MAX_STKSZ     8       ///< The maximum number of plains in a stack
+#define   MAX_STKSZ     9       ///< The maximum number of plains in a stack
 #define   MAX_GPUS      32      ///< The maximum number GPU's
 
 //======================================== Debug Defines  ================================================\\
@@ -63,37 +63,42 @@ extern "C"
 
 //====================================== Bit flag values =================================================\\
 
-#define     CU_INPT_DEVICE      (1<<0)    ///< Put the entire raw input FFT on device memory - No CPU synchronisation required, but normalisation on GPU!
-#define     CU_INPT_HOST        (1<<1)    ///< Use host page locked host data for entire raw FFT data - normalisation on GPU but allows asynchronous copies.
-#define     CU_INPT_SINGLE_C    (1<<2)    ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_INPT_SINGLE_G    (1<<3)    ///< Prepare input data one step at a time, using GPU - normalisation on GPU
-#define     CU_INPT_SINGLE      (CU_INPT_SINGLE_G|CU_INPT_SINGLE_C)   ///< Prepare input data one step at a time
-#define     CU_INPT_ALL         ( CU_INPT_DEVICE | CU_INPT_HOST | CU_INPT_SINGLE_G | CU_INPT_SINGLE_C  )
+//#define     CU_INPT_DEVICE      (1<<0)    ///< Put the entire raw input FFT on device memory - No CPU synchronisation required, but normalisation on GPU!
+//#define     CU_INPT_HOST        (1<<1)    ///< Use host page locked host data for entire raw FFT data - normalisation on GPU but allows asynchronous copies.
 
-#define     CU_INPT_CPU_FFT     (1<<4)    ///< Do the FFT on the CPU
 
-#define     CU_OUTP_DEVICE      (1<<5)    ///< Write all candidates to the device memory : This requires a lot of device memory
-#define     CU_OUTP_HOST        (1<<6)    ///< Write all candidates to page locked host memory : This requires a lot of memory
-#define     CU_OUTP_SINGLE      (1<<7)    ///< Only get candidates from the current plain - This seams to be best in most cases
-#define     CU_OUTP_ALL         ( CU_OUTP_DEVICE | CU_OUTP_HOST | CU_OUTP_SINGLE )
+#define     FLAG_STP_ROW        (1<<0)    ///< Multi-step Row   interleaved        - This seams to be best in most cases
+#define     FLAG_STP_PLN        (1<<1)    ///< Multi-step Plain interleaved        -
+#define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN )
+
+#define     CU_INPT_SINGLE_C    (1<<3)    ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define     CU_INPT_SINGLE_G    (1<<4)    ///< Prepare input data one step at a time, using GPU - normalisation on GPU
+#define     CU_INPT_ALL         (CU_INPT_SINGLE_G | CU_INPT_SINGLE_C)
+
+#define     CU_INPT_CPU_FFT     (1<<6)    ///< Do the FFT on the CPU
+
+#define     FLAG_CNV_00         (1<<8)    ///< Convolve
+#define     FLAG_CNV_10         (1<<8)    ///< Convolve
+#define     FLAG_CNV_30         (1<<9)    ///< Convolve
+#define     FLAG_CNV_41         (1<<10)   ///< Convolve
+#define     FLAG_CNV_42         (1<<11)   ///< Convolve
+#define     FLAG_CNV_43         (1<<12)   ///< Convolve
+#define     FLAG_CNV_50         (1<<13)   ///< Convolve
+
+//#define     CU_OUTP_DEVICE      (1<<5)    ///< Write all candidates to the device memory : This requires a lot of device memory
+//#define     CU_OUTP_HOST        (1<<6)    ///< Write all candidates to page locked host memory : This requires a lot of memory
+//#define     CU_OUTP_SINGLE      (1<<7)    ///< Only get candidates from the current plain - This seams to be best in most cases
+//#define     CU_OUTP_ALL         ( CU_OUTP_DEVICE | CU_OUTP_HOST | CU_OUTP_SINGLE )
 
 #define     FLAG_SIG_GPU        (1<<8)    ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
 #define     CU_CAND_LST         (1<<9)    ///< Candidates are stored in a list   (usually a dynamic linked list)
 #define     CU_CAND_ARR         (1<<10)   ///< Candidates are stored in an array (requires more memory)
 
-#define     FLAG_CNV_1KER       (1<<12)   ///< Use minimal kernel                  - ie Only the kernel of largest plain in each stack
-#define     FLAG_CNV_OVLP       (1<<13)   ///< Use the overlap kernel              - I found this slower that the alternative
-
-#define     FLAG_CNV_PLN        (1<<14)   ///< Convolve one plain at a time
-#define     FLAG_CNV_STK        (1<<15)   ///< Convolve one stack at a time        - This seams to be best in most cases
-#define     FLAG_CNV_FAM        (1<<16)   ///< Convolve one family at a time       - Preferably don't use this!
-#define     FLAG_CNV_ALL        ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
-
-#define     FLAG_STP_ROW        (1<<17)   ///< Multi-step Row   interleaved        - This seams to be best in most cases
-#define     FLAG_STP_PLN        (1<<18)   ///< Multi-step Plain interleaved        -
-#define     FLAG_STP_STK        (1<<19)   ///< Multi-step Stack interleaved        - Preferably don't use this!
-#define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN | FLAG_STP_STK )
+//#define     FLAG_CNV_PLN        (1<<14)   ///< Convolve one plain at a time
+//#define     FLAG_CNV_STK        (1<<15)   ///< Convolve one stack at a time        - This seams to be best in most cases
+//#define     FLAG_CNV_FAM        (1<<16)   ///< Convolve one family at a time       - Preferably don't use this!
+//#define     FLAG_CNV_ALL        ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
 
 #define     FLAG_CUFFTCB_INP    (1<<21)   ///< Use an input  callback to do the convolution      - I found this to be very slow
 #define     FLAG_CUFFTCB_OUT    (1<<22)   ///< Use an output callback to create powers           - This is a similar speed
@@ -369,7 +374,7 @@ typedef struct cuFFdotBatch
 
     size_t noStacks;                  ///< The number of stacks in this batch
     size_t noHarms;                   ///< The number of harmonics in the family
-    size_t noSteps;                   ///< The number of slices in the batch
+    size_t noSteps;                   ///< The number of steps processed by the batch
     int noHarmStages;                 ///< The number of stages of harmonic summing
 
     int pIdx[MAX_HARM_NO];            ///< The index of the plains in the Presto harmonic summing order
@@ -447,7 +452,7 @@ typedef struct cuFFdotBatch
     // TIMING values
     float* kerGenTime;                ///< Array of floats from timing one for each stack
     float* copyH2DTime;               ///< Array of floats from timing one for each stack
-    float* InpNorm;                   ///< Array of floats from timing one for each stack
+    float* normTime;                  ///< Array of floats from timing one for each stack
     float* InpFFTTime;                ///< Array of floats from timing one for each stack
     float* convTime;                  ///< Array of floats from timing one for each stack
     float* InvFFTTime;                ///< Array of floats from timing one for each stack
@@ -480,11 +485,12 @@ typedef struct cuSearch
     cuMemInfo*    mInf;               ///< The allocated Device and host memory and data structures to create plains including the kernels
 
     // Some extra search details
-    int           noHarms;            ///< The number of harmonics in the family                 m
-    int           noHarmStages;       ///< The number of stages of harmonic summing              m
+    int           noHarms;            ///< The number of harmonics in the family
+    int           noHarmStages;       ///< The number of stages of harmonic summing
     int           numZ;               ///< The number of Z values
-    searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search         m
-    int*          pIdx;               ///< The index of the plains in the Presto harmonic summing order  m
+    int           noSteps;            ///< The number of steps to cover the entire input data
+    searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
+    int*          pIdx;               ///< The index of the plains in the Presto harmonic summing order
     float*        powerCut;           ///< The power cutoff
     long long*    numindep;           ///< The number of independent trials
 } cuSearch;

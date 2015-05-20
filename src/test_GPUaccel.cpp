@@ -914,8 +914,8 @@ int main(int argc, char *argv[])
           nDarray<2, float> CPU_kernels;
           nDarray<2, float> GPU_kernels;
 
-          float frac = (float)(harm)/(float)harmtosum;
-          int idx = noHarms - frac * noHarms;
+          float frac  = (float)(harm)/(float)harmtosum;
+          int idx     = noHarms - frac * noHarms;
 
           cuHarmInfo *hinf    = &cuSrch->mInf->kernels[0].hInfos[idx];
           subharminfo *sinf0  = subharminfs[0];
@@ -934,8 +934,7 @@ int main(int argc, char *argv[])
           CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->mInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
           //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"Error synchronising");
 
-          int row;
-          for (row=0; row < sinf->numkern; row++  )
+          for ( int row=0; row < sinf->numkern; row++  )
           {
             memcpy(CPU_kernels.getP(0,row), sinf->kern[row].data, hinf->width*sizeof(fcomplex));
           }
@@ -1076,6 +1075,7 @@ int main(int argc, char *argv[])
 
         double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
         double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
+        size_t   rest    = trdBatch->noSteps;
 
         setContext( trdBatch ) ;
 
@@ -1093,13 +1093,23 @@ int main(int argc, char *argv[])
 
           if ( firstStep + trdBatch->noSteps >= maxxx )
           {
-            // TODO: some work here
+            int tmp = 0;
+            rest    = maxxx - firstStep;
           }
 
-          for ( int si = 0; si < trdBatch->noSteps ; si ++)  // Set R search values  .
+          // Set start r-vals for all steps in this batch
+          for ( int step = 0; step < trdBatch->noSteps ; step ++)
           {
-            startrs[si] = obs.rlo + (firstStep+si) * ( master->accelLen * ACCEL_DR );
-            lastrs[si]  = startrs[si] + master->accelLen * ACCEL_DR - ACCEL_DR;
+            if ( step < rest )
+            {
+              startrs[step] = obs.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+              lastrs[step]  = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+            }
+            else
+            {
+              startrs[step] = 0 ;
+              lastrs[step]  = 0 ;
+            }
           }
 
           FOLD // Call the CUDA search  .
@@ -1193,49 +1203,53 @@ int main(int argc, char *argv[])
                 cuHarmInfo* cHInfo    = &trdBatch->hInfos[harm];      // The current harmonic we are working on
                 cuFFdot*    plan      = &cStack->plains[si];          // The current plain
 
-                for ( int step = 0; (step < trdBatch->noSteps) && ( firstStep+step < maxxx) ; step ++) // Loop over steps
+                for ( int step = 0; step < trdBatch->noSteps; step ++) // Loop over steps
                 {
-                  rVals*        rVal    = &((*trdBatch->rConvld)[step][harm]);
-                  //int diff = plan->numrs[step] - cHInfo->numrs;
-                  //int diff = plan->numrs[step] - cHInfo->numrs;
+                  rVals* rVal = &((*trdBatch->rConvld)[step][harm]);
 
-                  // Copy input data from GPU
-                  fcomplexcu *data = &trdBatch->d_iData[sz];
-                  CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
-
-                  // Copy pain from GPU
-                  for( int y = 0; y < cHInfo->height; y++ )
+                  if (rVal->numdata)
                   {
-                    fcomplexcu *cmplxData;
-                    float *powers;
-                    if ( trdBatch->flag & FLAG_STP_ROW )
-                    {
-                      cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
-                      powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
-                    }
-                    else if ( trdBatch->flag & FLAG_STP_PLN )
-                    {
-                      cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
-                      powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
-                    }
+                    //int diff = plan->numrs[step] - cHInfo->numrs;
+                    //int diff = plan->numrs[step] - cHInfo->numrs;
 
-                    if ( trdBatch->flag & FLAG_CUFFTCB_OUT )
+                    // Copy input data from GPU
+                    fcomplexcu *data = &trdBatch->d_iData[sz];
+                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
+
+                    // Copy pain from GPU
+                    for( int y = 0; y < cHInfo->height; y++ )
                     {
-                      //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                      /*
-                                 for( int jj = 0; jj < plan->numrs[step]; jj++)
-                                 {
-                                   float *add = gpuPowers[step][harm].getP(jj*2+1,y);
-                                   gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
-                                 }
-                       */
-                    }
-                    else
-                    {
-                      //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
-                      //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      fcomplexcu *cmplxData;
+                      float *powers;
+                      if      ( trdBatch->flag & FLAG_STP_ROW )
+                      {
+                        cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
+                        powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
+                      }
+                      else if ( trdBatch->flag & FLAG_STP_PLN )
+                      {
+                        cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
+                        powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
+                      }
+
+                      if      ( trdBatch->flag & FLAG_CUFFTCB_OUT )
+                      {
+                        //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        /*
+                                   for( int jj = 0; jj < plan->numrs[step]; jj++)
+                                   {
+                                     float *add = gpuPowers[step][harm].getP(jj*2+1,y);
+                                     gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
+                                   }
+                         */
+                      }
+                      else
+                      {
+                        //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
+                        //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                      }
                     }
                   }
 
@@ -1255,7 +1269,7 @@ int main(int argc, char *argv[])
             for ( int step = 0; (step < trdBatch->noSteps) && ( firstStep+step < maxxx) ; step ++) // Loop over steps
             {
               bool good = true;
-              bool bad = false;
+              bool bad  = false;
 
               if (printDetails)
                 printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
@@ -1264,17 +1278,16 @@ int main(int argc, char *argv[])
               {
                 basicStats stat = gpuInput[step][harz].getStats(true);
                 double MSE = gpuInput[step][harz].MSE(cpuInput[step][harz]);
-                double ERR =  MSE / stat.sigma ;
+                double ERR = MSE / stat.sigma ;
 
                 if ( ERR > 1e-10  )
                 {
                   if ( good && !printDetails )
                     printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
 
-
                   good = false;
                 }
-                if ( ERR > 1e-6  )
+                if ( ERR > 1e-6   )
                 {
                   badInp++;
                   bad = true;
@@ -1338,7 +1351,7 @@ int main(int argc, char *argv[])
                 {
                   basicStats stat = gpuPowers[step][harz].getStats(true);
                   double MSE = gpuPowers[step][harz].MSE(cpuPowers[step][harz]);
-                  double ERR =  MSE / stat.sigma ;
+                  double ERR = MSE / stat.sigma ;
 
                   if ( ERR > 1e-12 )
                   {
@@ -1433,7 +1446,7 @@ int main(int argc, char *argv[])
                 {
                   basicStats stat = gpuCmplx[step][harz].getStats(true);
                   double MSE = gpuCmplx[step][harz].MSE(cpuCmplx[step][harz]);
-                  double ERR =  MSE / stat.sigma ;
+                  double ERR = MSE / stat.sigma ;
 
                   if ( ERR > 1e-12  )
                   {
@@ -1442,7 +1455,7 @@ int main(int argc, char *argv[])
 
                     good = false;
                   }
-                  if ( ERR > 1e-6  )
+                  if ( ERR > 1e-6   )
                   {
                     bad = true;
                     badCplx++;
@@ -1556,16 +1569,17 @@ int main(int argc, char *argv[])
 
         FOLD  // Finish off CUDA search  .
         {
-          for ( int si = 0; si < trdBatch->noSteps ; si ++)
+          // Set r values to 0 so as to not process details
+          for ( int step = 0; step < trdBatch->noSteps ; step ++)
           {
-            startrs[si] = 0;
-            lastrs[si]  = 0;
+            startrs[step] = 0;
+            lastrs[step]  = 0;
           }
 
           // Finish searching the plains, this is required because of the out of order asynchronous calls
-          for ( int  pln = 0 ; pln < 2; pln++ )
+          for ( int step = 0 ; step < 2; step++ )
           {
-            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
           }
         }
       }

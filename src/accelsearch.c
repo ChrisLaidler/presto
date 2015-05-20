@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
 
    // Timing vars   
    long long prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0;
-   struct timeval start, end, timeval;   
+   struct timeval start, end;
 
    /* Prep the timer */
 
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
    if (cmd->lsgpuP)
    {
      listDevices();
-     return (0);
+     exit(EXIT_SUCCESS);
    }
 #endif
 
@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
    char candsFile[1024];
    sprintf(candsFile,"%s_hs%02i_zmax%06.1f_sig%06.3f.unoptcands", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
    FILE *file;
-   if ( file = fopen(candsFile, "rb") && 0 ) 	// Read candidates from previous search  .
+   if ( (file = fopen(candsFile, "rb")) && 0 ) 	// Read candidates from previous search  .
    {
      printf("\nReading raw candies from \"%s\" previous search.\n", candsFile);
      int numcands;
@@ -297,8 +297,6 @@ int main(int argc, char *argv[])
          //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
          //cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
 
-         int noHarms = (1 << (obs.numharmstages - 1));
-
          FOLD   // Contains main GPU loop  .
          {
            //cudaDeviceSynchronize();          // This is only necessary for timing
@@ -359,6 +357,7 @@ int main(int argc, char *argv[])
                {
                  firstStep = ss;
                  ss       += trdBatch->noSteps;
+                 cuSrch->noSteps++;
 
 #ifdef STPMSG
                  printf("\nStep %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, trdBatch->noSteps);
@@ -373,6 +372,7 @@ int main(int argc, char *argv[])
                  // TODO: there are a number of families we don't need to run see if we can use 'setPlainPointers(trdBatch)'
                  // To see if we can do less work on the last step
                  int tmp = 0;
+                 rest = maxxx - firstStep;
                }
 
                // Set start r-vals for all steps in this batch
@@ -390,14 +390,9 @@ int main(int argc, char *argv[])
                  }
                }
 
-               // Initiate the CUDA search for the batch
-               search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
-
-               if ( trdBatch->flag & CU_OUTP_HOST )
+               FOLD // Call the CUDA search  .
                {
-                 // TODO: check the addressing below for new cases ie:FLAG_STORE_EXP FLAG_STORE_ALL
-                 // TODO: to a type casting check here!
-                 trdBatch->d_candidates = &master->d_candidates[trdBatch->accelLen*obs.numharmstages*firstStep] ;
+                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
                }
 
 #ifndef STPMSG
@@ -405,34 +400,34 @@ int main(int argc, char *argv[])
 #endif
              }
 
-             // Set r values to 0 so as to not process details
-             for ( step = 0; step < trdBatch->noSteps ; step ++)
+             FOLD  // Finish off CUDA search  .
              {
-               startrs[step] = 0;
-               lastrs[step]  = 0;
-             }
+               // Set r values to 0 so as to not process details
+               for ( step = 0; step < trdBatch->noSteps ; step ++)
+               {
+                 startrs[step] = 0;
+                 lastrs[step]  = 0;
+               }
 
-             // Finish searching the plains, this is required because of the out of order asynchronous calls
-             for ( step = 0 ; step < 2; step++ )
-             {
-               search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+               // Finish searching the plains, this is required because of the out of order asynchronous calls
+               for ( step = 0 ; step < 2; step++ )
+               {
+                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+               }
              }
            }
 
            print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
            printf("\n");
 
-           if ( master->flag & CU_CAND_ARR )
+           if ( (master->flag & CU_CAND_ARR) && 0 )
            {
              printf("\nCopying candidates from array to list for optimisation.\n");
 
              nvtxRangePush("Add to list");
              int cdx;
 
-             long long numindep;
-
-             double poww, sig, sigx, sigc, diff;
-             double gpu_p, gpu_q;
+             double poww, sig;
              double rr, zz;
              int added = 0;
              int numharm;
@@ -447,7 +442,7 @@ int main(int argc, char *argv[])
                if ( poww > 0 )
                {
                  numharm   = candidate[cdx].numharm;
-                 numindep  = obs.numindep[twon_to_index(numharm)];
+                 //numindep  = obs.numindep[twon_to_index(numharm)];
                  sig       = candidate[cdx].sig;
                  rr        = candidate[cdx].r;
                  zz        = candidate[cdx].z;
@@ -460,46 +455,6 @@ int main(int argc, char *argv[])
                }
              }
            }
-
-           /* TODO: fix this section using SrchSz parameters
-          if ( master->flag & CU_OUTP_DEVICE )
-          {
-            nvtxRangePush("Add to list"); 
-            int len = master->rHigh - master->rLow;
-
-            CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, master->retDataSize*maxxx, cudaMemcpyDeviceToHost), "Failed to copy data to device");
-
-            int cdx; 
-            long long numindep;
-
-            double poww, sig, sigx, sigc, diff;
-            double gpu_p, gpu_q;
-            double rr, zz;
-            int added = 0;
-            int numharm;
-            poww = 0;
-
-            if ( master->retType == CU_SMALCAND &&  master->cndType == CU_FULLCAND )
-            {
-              accelcandBasic* bsk = (accelcandBasic*)master->h_retData;
-
-              for (cdx = 0; cdx < len; cdx++)
-              {
-                sig        = bsk[cdx].sigma;
-
-                if ( sig > 0 )
-                {
-                  numharm   = bsk[cdx].numharm;
-                  numindep  = obs.numindep[twon_to_index(numharm)];
-                  rr        = cdx + master->rLow;
-                  zz        = bsk[cdx].z;
-                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-                }
-              }
-            }
-            nvtxRangePop();
-          }
-            */
 
            //ccd udaProfilerStop(); // For profiling of only the 'critical' GPU section
 
@@ -527,7 +482,7 @@ int main(int argc, char *argv[])
 
      FOLD // Write candidates to unoptcands file  .
      {
-       if ( file = fopen(candsFile, "wb") )
+       if ( (file = fopen(candsFile, "wb")) )
        {
          int numcands = g_slist_length(cands);
          printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
@@ -677,7 +632,10 @@ int main(int argc, char *argv[])
 
       for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
       {
-        printf("Batch %02i\n",batch);
+        if ( cuSrch->mInf->noBatches > 1 )
+          printf("Batch %02i\n",batch);
+
+        cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
 
         float l_copyH2DT  = 0;
         float l_InpNorm   = 0;
@@ -688,16 +646,59 @@ int main(int argc, char *argv[])
         float l_resultT   = 0;
         float l_copyD2HT  = 0;
 
-        printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input Norm", "Input FFT", "Convolve", "Inverse FFT", "Sum & Search", "Sigma calcs", "Copy D2H" );
+        //printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input Norm", "Input FFT", "Convolve", "Inverse FFT", "Sum & Search", "Sigma calcs", "Copy D2H" );
+
+        FOLD // Heading  .
+        {
+          printf("\t\t");
+          printf("%s\t","Copy H2D");
+
+          if ( batches->flag & CU_INPT_SINGLE_G )
+            printf("%s\t","Norm GPU");
+          else
+            printf("%s\t","Norm CPU");
+
+          if ( batches->flag & CU_INPT_CPU_FFT )
+            printf("%s\t","Inp FFT CPU");
+          else
+            printf("%s\t","Inp FFT GPU");
+
+          printf("%s\t","Convolve");
+
+          printf("%s\t","Convolve BW");
+
+          printf("%s\t","Inverse FFT");
+
+          printf("%s\t","Sum & Search");
+
+          if ( batches->flag & FLAG_SIG_GPU )
+            printf("%s\t","Sigma GPU");
+          else
+            printf("%s\t","Sigma CPU");
+
+          printf("%s\t","Copy D2H");
+
+          printf("\n");
+        }
 
         for (stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
         {
-          cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
+          cuFfdotStack*   cStack = &batches->stacks[stack];
 
-          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->InpNorm[stack], batches->InpFFTTime[stack], batches->convTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+          float convDat = cStack->height * cStack->width * batches->noSteps * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+          convDat       += cStack->harmInf->height * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+          convDat       += cStack->noInStack * batches->noSteps * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+
+          float convT   = batches->convTime[stack] * 1e-3;
+          float convBW  = convDat / convT ;
+
+          //printf("height: %.3f width: %.2f  noSteps: %.2f   sz: %.2f  noSteps: %.2f \n", (float)cStack->height, (float)cStack->width, (float)batches->noSteps, (float)sizeof(fcomplex), (float)cuSrch->noSteps );
+          //printf("%.3f GB in %.4f s BW: %.4f \n",  convDat, convT, convBW );
+
+          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->convTime[stack], convBW, batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
 
           l_copyH2DT  += batches->copyH2DTime[stack];
-          l_InpNorm   += batches->InpNorm[stack];
+          l_InpNorm   += batches->normTime[stack];
           l_InpFFT    += batches->InpFFTTime[stack];
           l_convT     += batches->convTime[stack];
           l_InvFFT    += batches->InvFFTTime[stack];

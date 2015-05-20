@@ -128,11 +128,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
           for ( int step = 0; step < noSteps; step++)           // Loop over steps
           {
             candLists[stage][step].sigma = 0 ;
-
-            if ( FLAGS & CU_OUTP_SINGLE )
-            {
-              d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
-            }
+            d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
           }
         }
       }
@@ -288,56 +284,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
       }
     }
 
-    // Write results back to DRAM and calculate sigma if needed
-    if      ( FLAGS & CU_OUTP_DEVICE && 0)
-    {
-//#pragma unroll
-      for ( int stage = 0 ; stage < noStages; stage++)
-      {
-        const short numharm = 1 << stage;
-
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
-        for ( int step = 0; step < noSteps; step++)         // Loop over steps
-        {
-          if  ( candLists[stage][step].sigma >  POWERCUT[stage] )
-          {
-            //float rLow    = rLows.arry[step] * searchList.frac.val[harm];
-            //float diff    = rLow - (int)rLow;
-            //float idxS    = 0.5  + diff*ACCEL_RDR ;
-
-            int idx =  (int)(( rLows.arry[step] + tid * (double) ACCEL_DR ) / (double)numharm ) - base ;
-            if ( idx >= 0 )
-            {
-              long long numtrials             = NUMINDEP[stage];
-              candLists[stage][step].numharm  = numharm;
-              //candLists[stage][step].z      = ( candLists[stage].z*(double) ACCEL_DZ - searchList.zMax.val[0]  )  / (double)numharm ;
-              candLists[stage][step].sigma    = (float)candidate_sigma_cu(candLists[stage][step].sigma, numharm, numtrials);
-
-              FOLD // Atomic write to global list
-              {
-                volatile bool done = false;
-                while (!done)
-                {
-                  volatile int prev = atomicCAS(&d_sem[idx], UINT_MAX, tid );
-                  if ( prev == UINT_MAX )
-                  {
-                    if ( candLists[stage][step].sigma > d_cands[idx].sigma )
-                    {
-                      d_cands[idx]              = candLists[stage][step];
-                    }
-                    d_sem[idx]                  = UINT_MAX;
-                    done = true;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    else if ( FLAGS & CU_OUTP_SINGLE )
+    FOLD  // Write results  .
     {
 #if TEMPLATE_SEARCH == 1
 #pragma unroll
@@ -504,11 +451,9 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   if        ( FLAGS & FLAG_CUFFTCB_OUT )
   {
     if      ( FLAGS & FLAG_STP_ROW )
-      add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_searchCU31_p<FLAG_CUFFTCB_OUT | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else if ( FLAGS & FLAG_STP_PLN )
-      add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_STK )
-    //  add_and_searchCU31_p<FLAG_CUFFTCB_OUT | CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+      add_and_searchCU31_p<FLAG_CUFFTCB_OUT | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n" );
@@ -518,214 +463,13 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   else
   {
     if      ( FLAGS & FLAG_STP_ROW )
-      add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_searchCU31_p< FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else if ( FLAGS & FLAG_STP_PLN )
-      add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
-    //else if ( FLAGS & FLAG_STP_STK )
-    //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+      add_and_searchCU31_p< FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n" );
       exit(EXIT_FAILURE);
     }
   }
-
-// Uncomenting this block will make compile time VERY long! I mean days!
-/*
-  if( FLAGS & CU_OUTP_DEVICE )
-  {
-    if( FLAGS & FLAG_PLN_TEX )
-    {
-      if ( FLAGS & FLAG_SIG_GPU )
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.\n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_PLN_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    else
-    {
-      if ( FLAGS & FLAG_SIG_GPU )
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_DEVICE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-  }
-  else if ( (FLAGS & CU_OUTP_SINGLE) || (FLAGS & CU_OUTP_HOST) )
-  {
-    if( FLAGS & FLAG_PLN_TEX )
-    {
-      if ( FLAGS & FLAG_SIG_GPU )
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    else
-    {
-      if ( FLAGS & FLAG_SIG_GPU )
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        //else if ( FLAGS & FLAG_STP_STK )
-        //  add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-  }
-  else if (  FLAGS & CU_OUTP_SINGLE )
-  {
-    if( FLAGS & FLAG_PLN_TEX )
-    {
-      if ( FLAGS & FLAG_SIG_GPU )
-      {
-        if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_PLN_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    else
-    {
-      if ( FLAGS & FLAG_SIG_GPU )
-      {
-        if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_SIG_GPU | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination.  \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-      else
-      {
-        if      (FLAGS & FLAG_STP_ROW )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else if ( FLAGS & FLAG_STP_STK )
-          add_and_searchCU31_p<CU_OUTP_SINGLE | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, noSteps, noPlns );
-        else
-        {
-          fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n", noPlns);
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-  }
-*/
 }

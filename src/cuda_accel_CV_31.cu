@@ -29,6 +29,6 @@ __global__ void convolveffdot31(fcomplexcu *ffdot, uint width, uint stride, uint
 
       ffdot[idx].r = (inpReal * ker.r + inpImag * ker.i);
       ffdot[idx].i = (inpImag * ker.r - inpReal * ker.i);
-    }
+    } 
   }
 }

@@ -5,6 +5,7 @@
  */
 #if TEMPLATE_CONVOLVE == 1
 template<uint FLAGS, uint noPlns, uint noSteps>
+
 __global__ void convolveffdot71_k(const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const uint width, const uint stride, iHarmList plnHeights, const uint stkHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn )
 #else
 template<uint FLAGS, uint noPlns>
@@ -320,7 +321,7 @@ __host__ void convolveffdot71_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
     //  convolveffdot71_p<FLAG_CNV_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else
     {
-      fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination. \n", noPlns);
+      fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination. \n");
       exit(EXIT_FAILURE);
     }
   }
@@ -334,7 +335,7 @@ __host__ void convolveffdot71_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
     //  convolveffdot71_p< FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else
     {
-      fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination.\n", noPlns);
+      fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination.\n");
       exit(EXIT_FAILURE);
     }
   }

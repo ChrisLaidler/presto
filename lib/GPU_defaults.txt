@@ -2,7 +2,7 @@
 ####### memory #######
 
 # FLAG_STP_ROW  FLAG_STP_PLN
-FLAG_STP_ROW
+FLAG_STP_PLN
 
 ######## Input #######
 
@@ -10,7 +10,7 @@ FLAG_STP_ROW
 #CU_INPT_CPU_FFT
 
 # CU_INPT_SINGLE_G  CU_INPT_SINGLE_C
-CU_INPT_SINGLE_G
+CU_INPT_SINGLE_C
 
 
 ###### Convolve ######
@@ -18,9 +18,11 @@ CU_INPT_SINGLE_G
 # FLAG_CNV_FAM   FLAG_CNV_STK   FLAG_CNV_PLN
 FLAG_CNV_STK
 
-# Other Convolve methoud
+# Other Convolve method
 # FLAG_CNV_OVLP
-#FLAG_CNV_OVLP
+FLAG_CNV_OVLP
+
+FLAG_CNV_TEX
 
 ####### FFT ##########
 
@@ -34,4 +36,4 @@ CU_OUTP_SINGLE
 
 
 #FLAG_RAND_1
-FLAG_RAND_2
+#FLAG_RAND_2

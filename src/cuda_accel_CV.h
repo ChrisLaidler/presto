@@ -52,7 +52,11 @@ __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, 
 
 /** Convolution kernel - Just write 0 to all locations
  */
-__host__  void convolveffdot00_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
+__host__  void convolveffdot00_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
+
+/** Convolution kernel - One thread per f-∂f pixel in a stack  .
+ */
+__host__  void convolveffdot10_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 
 /** Convolution kernel - One thread per f-∂f pixel
  */
@@ -82,24 +86,31 @@ __global__ void convolveffdot38(fcomplexcu *ffdot, uint width, uint stride, uint
  * Each thread loops down a column of the plain
  * Reads the input and convolves it with the kernel and writes result to plain
  */
-__host__ void convolveffdot41_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns, int FLAGS );
+//__host__ void convolveffdot41_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns, int FLAGS );
+
+
+/** Convolution kernel - Convolve a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
+ * Each thread loops down a column of the plain
+ * Reads the input and convolves it with the kernel and writes result to plain
+ */
+__host__  void convolveffdot41_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 
 /** Convolution kernel - Convolve a stack with a kernel - multi-step - Use Constant memory  .
  * Each thread loops down a column of the plain
  * Reads the input and convolves it with the kernel and writes result to plain
  */
-__host__  void convolveffdot42_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
+__host__  void convolveffdot42_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 
 /** Convolution kernel - Convolve a stack with a kernel - multi-step - Use Constant memory  .
  * Each thread loops down a column of the plain
  * Reads the input and convolves it with the kernel and writes result to plain
  */
-__host__  void convolveffdot43_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
+__host__  void convolveffdot43_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 
 /** Convolution kernel - Convolve an entire batch with convolution kernel  .
  * Each thread loops down a column of the plains and convolves input with kernel and writes result to plain
  */
-__host__ void convolveffdot5_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch);
+__host__  void convolveffdot50_f(cudaStream_t cnvlStream, cuFFdotBatch* batch);
 
 /** Convolution kernel - Convolve a multi-step stack - using a 1 plain convolution kernel  .
  * Split the stack into overlapping sections and read the shared kernel values once and convolve with all relevant values
@@ -109,5 +120,5 @@ __host__ void convolveffdot71_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
 /** Convolution kernel - Convolve a multi-step stack - using a 1 plain convolution kernel  .
  * Split the stack into overlapping sections and read the shared kernel values once and convolve with all relevant values
  */
-__host__  void convolveffdot72_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
+__host__  void convolveffdot72_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 

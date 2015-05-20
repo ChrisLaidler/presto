@@ -26,9 +26,9 @@ extern __device__ __constant__ int        HWIDTH[MAX_HARM_NO];          ///< Pla
 
 //====================================== Constant variables  ===============================================\\
 
-extern __device__ const float FRAC[16]  ;//     =  {1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
-extern __device__ const int STAGE[5][2] ;//   =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
-extern __device__ const int CHUNKSZE[5] ;//  =  { 4, 8, 8, 8, 8 } ;
+extern __device__ const float FRAC[16]  ; //     =  {1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+extern __device__ const int STAGE[5][2] ; //     =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
+extern __device__ const int CHUNKSZE[5] ; //     =  { 4, 8, 8, 8, 8 } ;
 
 
 __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);

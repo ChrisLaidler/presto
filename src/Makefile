@@ -8,7 +8,7 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHNDARR  = yes
+WITHCBL    = yes
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
 OS_ARCH    = $(shell uname -m)
@@ -61,8 +61,12 @@ PNGLINK := $(shell pkg-config --libs libpng)
 
 # Include and link information for PGPLOT v5.X (including shared libs!)
 # Typically you need to have your PGPLOT_DIR environment variable set
+ifndef PGPLOT_DIR
+$(error PGPLOT_DIR is not set)
+else
 PGPLOTINC  = -I$(PGPLOT_DIR)
 PGPLOTLINK = -L$(PGPLOT_DIR) -lcpgplot -lpgplot $(X11LINK) $(PNGLINK)
+endif
 
 # Include and link information for the FFTW 3.X single-precision library
 FFTINC := $(shell pkg-config --cflags fftw3f)
@@ -175,12 +179,20 @@ else
   CFLAGS		+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32  
   
-  # vectorisation output
+  # vectorisation output 
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
   
-  NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
-#  NVCCFLAGS += -Xptxas -dlcm=ca
-  NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true
+  NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo -g
+  NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo -g
+
+  # Global memory accesses cached in both L1 and L2 (default)
+  #NVCCFLAGS += -Xptxas -dlcm=ca
+  #NVCLFLAGS += -Xptxas -dlcm=ca
+  
+  # Global memory accesses cached in L2 only
+  #NVCCFLAGS += -Xptxas -dlcm=cg
+  #NVCLFLAGS += -Xptxas -dlcm=cg
+  
   
   DEBUG_TARGET   =release
   POSTFIX        =
@@ -205,7 +217,7 @@ ifeq ($(WITHOMP),yes)
   NVCLFLAGS   += -Xcompiler -fopenmp -DWITHOMP
 endif
 
-ifeq ($(WITHNDARR),yes)
+ifeq ($(WITHCBL),yes)
   $(info • Compileing with Chris Debug libraries)
 
   # Include and link information for FreeType	
@@ -243,18 +255,6 @@ ifeq ($(WITH_CUDA),yes)
   CUACCL     = -lcuaccel$(POSTFIX)
 
   GPUOUTP    = $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
-	
-#  PRESTOLINK 	 	+= $(CUDALIBS)
-#  PRESTOLINK 		+= $(GLIBLINK)
-#  CC 				= $(NVCC) 
-#  CXX				 = $(NVCC)
-#  CLINKFLAGS 		= $(NVCLFLAGS)
-#  CFLAGS 			= $(NVCCFLAGS)
-  
-#  CFLAGS 			 += -I/usr/local/cuda/include/ -DCUDA
-  
-#	PRESTOOBJS 	 	+= $(NVCC_OBS)
-#  LINKCOMMAND1  	= $(NVCC) $(LIBCMD) -o
 else
   NVCC           = $(CC)
   NVCC_OBS       =
@@ -306,6 +306,9 @@ all: libpresto slalib binaries $(GPUOUTP)
 	@echo ""
 	@echo "Done ALL"	
 	@echo ""
+
+debug:
+	$(MAKE) mode=debug all
 
 # Default indentation is K&R style with no-tabs,
 # an indentation level of 4 (default), and a line-length of 85
@@ -586,8 +589,8 @@ $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
 ###############  Cleans   ################
 
 cleanTIMING:
-	rm -rf build/debug/accelsearch*.o build/debug/cuda_accel_Convolve.cu.o build/debug/cuda_accel_input.cu.o build/debug/cuda_accel_SumAndSearch.cu.o build/debug/cuda_accel_utils.cu.o
-	rm -rf build/release/accelsearch*.o build/release/cuda_accel_Convolve.cu.o build/release/cuda_accel_input.cu.o build/release/cuda_accel_SumAndSearch.cu.o build/release/cuda_accel_utils.cu.o
+	rm -rf build/debug/accelsearch*.o   build/debug/cuda_accel_CV.cu.o   build/debug/cuda_accel_IN.cu.o   build/debug/cuda_accel_SS.cu.o   build/debug/cuda_accel_utils.cu.o
+	rm -rf build/release/accelsearch*.o build/release/cuda_accel_CV.cu.o build/release/cuda_accel_IN.cu.o build/release/cuda_accel_SS.cu.o build/release/cuda_accel_utils.cu.o
 
 cleanGPU: cudaclean
 	rm -f ../lib/libpresto*

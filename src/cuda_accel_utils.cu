@@ -16,12 +16,9 @@ extern "C"
 #include "accel.h"
 }
 
-//#ifdef USEFFTW
-extern "C"
-{
+#ifdef USEFFTW
 #include <fftw3.h>
-}
-//#endif
+#endif
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
@@ -316,8 +313,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
         FOLD // How to handle input and output
         {
-          // NOTE:  Generally CU_INPT_SINGLE_C and CU_OUTP_SINGLE are the best options and SINGLE cases generally use less memory as well
-
           if ( !( kernel->flag & CU_INPT_ALL ) )
             kernel->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
 
@@ -334,7 +329,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         FOLD // Convolution flags  .
         {
           //batch->flag |= FLAG_CNV_TEX;         // Use texture memory to access the kernel for convolution - May give advantage on pre-Fermi generation which we don't really care about
-          kernel->flag |= FLAG_CNV_1KER;          // Create a minimal kernel (exploit overlap in stacks)  This should now always be the case
 
           if ( !(kernel->flag & FLAG_CNV_ALL ) )   // Default to convolution
           {
@@ -383,11 +377,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses kernel stride.");
 
             kernel->inpDataSize     += cStack->inpStride * cStack->noInStack;          // At this point stride is still in bytes
-
-            if ( kernel->flag & FLAG_CNV_1KER )
-              kernel->kerDataSize   += cStack->inpStride * cStack->harmInf[0].height;  // At this point stride is still in bytes
-            else
-              kernel->kerDataSize   += cStack->inpStride * cStack->height;             // At this point stride is still in bytes
+            kernel->kerDataSize     += cStack->inpStride * cStack->harmInf[0].height;  // At this point stride is still in bytes
 
             CUDA_SAFE_CALL(cudaFree(cStack->d_kerData), "Failed to free CUDA memory.");
             CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
@@ -434,7 +424,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     if ( kernel->kerDataSize > free )
     {
       fprintf(stderr, "ERROR: Not enough device memory for GPU convolution kernels. There is only %.2f MB free and you need %.2f MB \n", free / 1048576.0, kernel->kerDataSize / 1048576.0 );
-      return (0);
+      exit(EXIT_FAILURE);
     }
     else
     {
@@ -449,30 +439,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
     for (int i = 0; i< kernel->noStacks; i++)
     {
-      cuFfdotStack* cStack              = &kernel->stacks[i];
-      cStack->d_kerData                 = &kernel->d_kerData[kerSiz];
+      cuFfdotStack* cStack            = &kernel->stacks[i];
+      cStack->d_kerData               = &kernel->d_kerData[kerSiz];
 
       // Set the stride
       for (int j = 0; j< cStack->noInStack; j++)
       {
-        cStack->harmInf[j].inpStride    = cStack->inpStride;
-        if ( kernel->flag & FLAG_CNV_1KER )
-        {
-          // Point the plain kernel data to the correct position in the "main" kernel
-          int iDiff                     = cStack->harmInf[0].height - cStack->harmInf[j].height ;
-          float fDiff                   = iDiff / 2.0;
-          cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->inpStride*(int)fDiff];
-        }
-        else
-          cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->startZ[j]*cStack->inpStride];
+        cStack->harmInf[j].inpStride  = cStack->inpStride;
 
-        cStack->kernels[j].harmInf      = &cStack->harmInf[j];
+        // Point the plain kernel data to the correct position in the "main" kernel
+        int iDiff                     = cStack->harmInf[0].height - cStack->harmInf[j].height ;
+        float fDiff                   = iDiff / 2.0;
+        cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->inpStride*(int)fDiff];
+        cStack->kernels[j].harmInf    = &cStack->harmInf[j];
       }
-
-      if ( kernel->flag & FLAG_CNV_1KER )
-        kerSiz                          += cStack->inpStride * cStack->harmInf->height;
-      else
-        kerSiz                          += cStack->inpStride * cStack->height;
+      kerSiz                          += cStack->inpStride * cStack->harmInf->height;
     }
   }
 
@@ -493,33 +474,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         printf("    Stack %i has %02i f-∂f plain(s) with Width: %5li,  Stride %5li,  Total Height: %6li,   Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->inpStride, cStack->height, cStack->height*cStack->inpStride*sizeof(fcomplex)/1024.0/1024.0);
 
         // call the CUDA kernels
-        if ( kernel->flag & FLAG_CNV_1KER )
-        {
-          // Only need one kernel per stack
-          createStackKernel(cStack);
-        }
-        else
-        {
-          createStackKernels(cStack);
-        }
+        // Only need one kernel per stack
+        createStackKernel(cStack);
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
           printf("     Harmonic %2i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
-          if ( kernel->flag & FLAG_CNV_1KER )
+          if ( j == 0 )
           {
-            if ( j == 0 )
-            {
-              printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->inpStride*sizeof(fcomplex)/1024.0/1024.0);
-            }
-            else
-            {
-              printf("\n");
-            }
+            printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->inpStride*sizeof(fcomplex)/1024.0/1024.0);
           }
           else
           {
-            printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->inpStride*sizeof(fcomplex)/1024.0/1024.0);
+            printf("\n");
           }
           hh++;
         }
@@ -559,10 +526,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             int odist           = cStack->inpStride;
             int height;
 
-            if ( kernel->flag & FLAG_CNV_1KER )
-              height = cStack->harmInf->height;
-            else
-              height = cStack->height;
+            height = cStack->harmInf->height;
 
             //printf("cufftCreate %i\n", i);
             cufftCreate(&plnPlan);
@@ -826,36 +790,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       float remainigGPU   = free - fffTotSize*kernel->noSteps - totSize*kernel->noSteps*noBatches ;
       float remainingRAM  = freeRam;
 
-      if ( kernel->flag & CU_INPT_DEVICE 	)
-      {
-        if ( fullISize > remainigGPU*0.98 )
-        {
-          fprintf(stderr, "WARNING: Requested to store all input data on device but there is insufficient space so changing to page locked memory instead.\n");
-          kernel->flag &= ~CU_INPT_DEVICE;
-          kernel->flag |= CU_INPT_HOST;
-        }
-        else
-        {
-          // We can get all points on the device
-          remainigGPU -= fullISize ;
-        }
-      }
-
-      if ( kernel->flag & CU_INPT_HOST 	  )
-      {
-        if (fullISize > remainingRAM*0.98 )
-        {
-          fprintf(stderr, "WARNING: Requested to store all input data in page locked host memory but there is insufficient space, so changing to working on single stack at a time.\n");
-          kernel->flag &= ~CU_INPT_HOST;
-          kernel->flag |= CU_INPT_SINGLE_C;
-        }
-        else
-        {
-          // We can get all points in ram
-          remainingRAM -= fullISize ;
-        }
-      }
-
       if ( kernel->flag & CU_OUTP_DEVICE   )
       {
         if ( fullCSize > remainigGPU *0.98 )
@@ -901,41 +835,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
     FOLD // ALLOCATE device specific memory  .
     {
-      if      ( kernel->flag & CU_INPT_DEVICE )
+      if ( !(kernel->flag & CU_INPT_ALL) )
       {
-        // Create and copy raw fft data to the device
-        CUDA_SAFE_CALL(cudaMalloc((void** )&kernel->d_iData, fullISize), "Failed to allocate device memory for input raw FFT data.");
-        CUDA_SAFE_CALL(cudaMemcpy(kernel->d_iData, &fftinf->fft[kernel->SrchSz->rLow], fullISize, cudaMemcpyHostToDevice), "Failed to copy raw FFT data to device.");
-        deviceC += fullISize;
-      }
-      else if ( kernel->flag & CU_INPT_HOST   )
-      {
-        if ( master == NULL )
-        {
-          // Create page locked host memory and copy raw fft data - for the entire input data
-          CUDA_SAFE_CALL(cudaMallocHost((void**) &kernel->h_iData, fullISize), "Failed to create page-locked host memory for entire input data." );
-          deviceC+=fullISize;
-
-          int start = 0;   /// Number of bins to zero pad the beginning
-          if ( kernel->SrchSz->rLow < 0 ) // Zero pad if necessary
-          {
-            start = -kernel->SrchSz->rLow;
-            memset(kernel->h_iData, 0, start*sizeof(fcomplex) );
-          }
-
-          // Copy input data to pagelocked memory
-          memcpy(&kernel->h_iData[start], &fftinf->fft[kernel->SrchSz->rLow+start], (fullISize-start)*sizeof(fcomplex));
-          hostC += fullISize;
-        }
-      }
-      else if ( kernel->flag & CU_INPT_SINGLE )
-      {
-        // Nothing, each batch has its own input data already
-      }
-      else
-      {
-        fprintf(stderr, "ERROR: Undecided how to handle input data!\n");
-        return 0;
+        fprintf(stderr, "ERROR: Undecided how to handle input data! Pleas specify CU_INPT_SINGLE_C or CU_INPT_SINGLE_G\n");
+        exit(EXIT_FAILURE);
       }
 
       if      ( kernel->flag & CU_OUTP_DEVICE )
@@ -970,7 +873,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
     }
 
-    FOLD // Allocate global (device independent) host memory
+    FOLD // Allocate global (device independent) host memory  .
     {
       // One set of global set of "candidates" for all devices
       if( kernel->flag | CU_CAND_ARR )
@@ -1070,11 +973,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         resDesc.res.pitch2D.devPtr        = cStack->d_kerData;
         resDesc.res.pitch2D.width         = cStack->width;
         resDesc.res.pitch2D.pitchInBytes  = cStack->inpStride * sizeof(fcomplex);
-
-        if ( kernel->flag & FLAG_CNV_1KER )
-          resDesc.res.pitch2D.height      = cStack->harmInf->height;
-        else
-          resDesc.res.pitch2D.height      = cStack->height;
+        resDesc.res.pitch2D.height        = cStack->harmInf->height;
 
         CUDA_SAFE_CALL(cudaCreateTextureObject(&cStack->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
 
@@ -1201,20 +1100,6 @@ void freeKernel(cuFFdotBatch* kernrl, cuFFdotBatch* master)
 
     FOLD // ALLOCATE device specific memory  .
     {
-      if      ( kernrl->flag & CU_INPT_DEVICE )
-      {
-        // Create and copy raw fft data to the device
-        CUDA_SAFE_CALL(cudaFree(kernrl->d_iData), "Failed to allocate device memory for input raw FFT data.");
-      }
-      else if ( kernrl->flag & CU_INPT_HOST   )
-      {
-        if ( master == kernrl )
-        {
-          // Create page locked host memory and copy raw fft data - for the entire input data
-          CUDA_SAFE_CALL(cudaFreeHost(kernrl->h_iData), "Failed to create page-locked host memory for entire input data." );
-        }
-      }
-
       if      ( kernrl->flag & CU_OUTP_DEVICE )
       {
         // Create a candidate list
@@ -1386,17 +1271,15 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Allocate all device and host memory for the stacks  .
   {
-    // Allocate page-locked host memory for input data
-    if ( batch->flag & CU_INPT_SINGLE ) // TODO: Do a memory check here, ie is the enough
+    FOLD // Allocate page-locked host memory for input data
     {
       CUDA_SAFE_CALL(cudaMallocHost((void**) &batch->h_iData, batch->inpDataSize*batch->noSteps ), "Failed to create page-locked host memory plain input data." );
 
       if ( batch->flag & CU_INPT_SINGLE_C ) // Allocate memory for normalisation
         batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float));
 
-      // DEBUG TODO: Remove below!!!!
-      if ( batch->flag & CU_INPT_SINGLE_G )
-        batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float));
+      if ( batch->flag & CU_INPT_SINGLE_G ) // TMP
+        batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float)); // TMP
     }
 
     FOLD  // Allocate R value lists  .
@@ -1507,7 +1390,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
 #ifdef TIMING
       batch->copyH2DTime  = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->InpNorm      = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->normTime      = (float*)malloc(batch->noStacks*sizeof(float));
       batch->InpFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
       batch->convTime     = (float*)malloc(batch->noStacks*sizeof(float));
       batch->InvFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
@@ -1516,7 +1399,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       batch->copyD2HTime  = (float*)malloc(batch->noStacks*sizeof(float));
 
       memset(batch->copyH2DTime,  0,batch->noStacks*sizeof(float));
-      memset(batch->InpNorm,      0,batch->noStacks*sizeof(float));
+      memset(batch->normTime,      0,batch->noStacks*sizeof(float));
       memset(batch->InpFFTTime,   0,batch->noStacks*sizeof(float));
       memset(batch->convTime,     0,batch->noStacks*sizeof(float));
       memset(batch->InvFFTTime,   0,batch->noStacks*sizeof(float));
@@ -1825,8 +1708,7 @@ void freeBatch(cuFFdotBatch* batch)
 {
   FOLD // Allocate all device and host memory for the stacks  .
   {
-    // Allocate page-locked host memory for input data
-    if ( batch->flag & CU_INPT_SINGLE ) // TODO: Do a memory check here, ie is the enough
+    FOLD // Allocate page-locked host memory for input data
     {
       CUDA_SAFE_CALL(cudaFreeHost(batch->h_iData ), "Failed to create page-locked host memory plain input data." );
 
@@ -2120,12 +2002,6 @@ void setContext(cuFFdotBatch* batch)
   //printf("Thread %02i  Context %p \n", omp_get_thread_num(), pctx);
 }
 
-void testzm()
-{
-  cufftHandle plan;
-  CUFFT_SAFE_CALL(cufftCreate(&plan),"Failed associating a CUFFT plan with FFT input stream\n");
-}
-
 gpuSpecs gSpec(int devID = -1 )
 {
   gpuSpecs gSpec;
@@ -2218,19 +2094,7 @@ int readAccelDefalts(int *flags)
     while (fgets(line, sizeof(line), file))
     {
 
-      if      ( strncmp(line,"CU_INPT_DEVICE", 		14) == 0 )
-      {
-        (*flags) &= ~CU_INPT_ALL;
-        (*flags) |= CU_INPT_DEVICE;
-        printf(" CU_INPT_DEVICE \n");
-      }
-      else if ( strncmp(line,"CU_INPT_HOST", 	  	12) == 0 )
-      {
-        (*flags) &= ~CU_INPT_ALL;
-        (*flags) |= CU_INPT_HOST;
-        printf(" CU_INPT_HOST \n");
-      }
-      else if ( strncmp(line,"CU_INPT_SINGLE_C", 	16) == 0 )
+      if      ( strncmp(line,"CU_INPT_SINGLE_C", 	16) == 0 )
       {
         (*flags) &= ~CU_INPT_ALL;
         (*flags) |= CU_INPT_SINGLE_C;
@@ -2293,11 +2157,6 @@ int readAccelDefalts(int *flags)
         printf(" CU_CAND_ARR \n");
       }
 
-      else if ( strncmp(line,"FLAG_CNV_1KER",     13) == 0 )
-      {
-        (*flags) |= FLAG_CNV_1KER;
-        printf(" FLAG_CNV_1KER \n");
-      }
       else if ( strncmp(line,"FLAG_CNV_OVLP",     13) == 0 )
       {
         (*flags) |= FLAG_CNV_OVLP;
@@ -2484,11 +2343,19 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
     }
 
     nvtxRangePop();
+
+    if ( aInf->noDevices <= 0 ) // Check if we got ant devices
+    {
+      fprintf(stderr, "ERROR: Failed to set up a kernel on any device. Try -lsgpu to see what devices there are.\n");
+      exit (EXIT_FAILURE);
+    }
+
+
   }
 
   FOLD // Create plains for calculations  .
   {
-    nvtxRangePush("Init Batches");
+    nvtxRangePush("Initialise Batches");
 
     aInf->noSteps = 0;
 
@@ -2557,7 +2424,7 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
       if ( !same )
       {
-        fprintf(stderr,"ERROR: Call to %s with differing GPU search paramiters. Will have to allocate new GPU memory and kernels.\n      NB: Not freeing the old memory!", __FUNCTION__);
+        fprintf(stderr,"ERROR: Call to %s with differing GPU search parameters. Will have to allocate new GPU memory and kernels.\n      NB: Not freeing the old memory!", __FUNCTION__);
       }
       else
       {
@@ -2582,7 +2449,7 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
   srch->sSpec         = sSpec;
   srch->gSpec         = gSpec;
 
-  FOLD // Calculate power cutoff and number of independent values
+  FOLD // Calculate power cutoff and number of independent values  .
   {
     if (sSpec->zMax % ACCEL_DZ)
       sSpec->zMax = (sSpec->zMax / ACCEL_DZ + 1) * ACCEL_DZ;
@@ -2611,7 +2478,7 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
   return srch;
 }
 
-int freeCuAccel(cuMemInfo* aInf)
+void freeCuAccel(cuMemInfo* aInf)
 {
   FOLD // Free plains  .
   {
@@ -2789,7 +2656,7 @@ void plotPlains(cuFFdotBatch* batch)
       {
         cuHarmInfo   *cHInfo  = &batch->hInfos[harm];
         cuFfdotStack *cStack  = &batch->stacks[cHInfo->stackNo];
-        cuFFdot*      cPlain  = &batch->plains[harm];
+        //cuFFdot*      cPlain  = &batch->plains[harm];
         rVals*        rVal    = &((*batch->rInput)[step][harm]);
 
         for( int y = 0; y < cHInfo->height; y++ )
@@ -2920,10 +2787,6 @@ void printFlags(uint flags)
 {
   printf("FLAGS:\t");
 
-  if ( flags & CU_INPT_DEVICE )
-    printf("CU_INPT_DEVICE");
-  if ( flags & CU_INPT_HOST )
-    printf("CU_INPT_HOST");
   if ( flags & CU_INPT_SINGLE_C )
     printf("CU_INPT_SINGLE_C");
   if ( flags & CU_INPT_SINGLE_G )
@@ -2951,10 +2814,6 @@ void printFlags(uint flags)
   printf("\t");
   if ( flags & CU_CAND_ARR )
     printf("CU_CAND_ARR");
-  printf("\t");
-
-  if ( flags & FLAG_CNV_1KER )
-    printf("FLAG_CNV_1KER");
   printf("\t");
 
   if ( flags & FLAG_CNV_OVLP )
@@ -3025,20 +2884,19 @@ void printCommandLine(int argc, char *argv[])
   printf("\n");
 }
 
-
 void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime )
 {
   //#ifdef CBL
 
   searchSpecs*  sSpec;              ///< Specifications of the search
-  gpuSpecs*     gSpec;              ///< Specifications of the GPU's to use
+  //gpuSpecs*     gSpec;              ///< Specifications of the GPU's to use
 
   cuMemInfo*    mInf;               ///< The allocated Device and host memory and data structures to create plains including the kernels
 
   cuFFdotBatch* batch;
 
   sSpec   = cuSrch->sSpec;
-  gSpec   = cuSrch->gSpec;
+  //gSpec   = cuSrch->gSpec;
   mInf    = cuSrch->mInf;
   batch   = cuSrch->mInf->batches;
 
@@ -3102,7 +2960,7 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
       cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
 
       l_copyH2DT  += batches->copyH2DTime[stack];
-      l_InpNorm   += batches->InpNorm[stack];
+      l_InpNorm   += batches->normTime[stack];
       l_InpFFT    += batches->InpFFTTime[stack];
       l_convT     += batches->convTime[stack];
       l_InvFFT    += batches->InvFFTTime[stack];
@@ -3160,20 +3018,18 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
     char flagStr[1024];
 
     strClear(flagStr);
-    if ( flags & CU_INPT_DEVICE )
-      sprintf(flagStr, "%s", "DEVICE");
-    if ( flags & CU_INPT_HOST )
-      sprintf(flagStr, "%s", "HOST");
     if ( flags & CU_INPT_SINGLE_C )
-      sprintf(flagStr, "%s", "SINGLE_C");
+      sprintf(flagStr, "%s", "CPU");
     if ( flags & CU_INPT_SINGLE_G )
-      sprintf(flagStr, "%s", "SINGLE_G");
-    cvsLog->csvWrite("INP","flag","%s", flagStr);
+      sprintf(flagStr, "%s", "GPU");
+    cvsLog->csvWrite("NORM","flag","%s", flagStr);
 
 
     strClear(flagStr);
     if ( flags & CU_INPT_CPU_FFT )
-      sprintf(flagStr, "%s", "CU_INPT_CPU_FFT");
+      sprintf(flagStr, "%s", "CPU");
+    else
+      sprintf(flagStr, "%s", "GPU");
     cvsLog->csvWrite("INP FFT","flag","%s", flagStr);
 
 
@@ -3202,11 +3058,6 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
     if ( flags & CU_CAND_ARR )
       sprintf(flagStr, "%s", "CAND_ARR");
     cvsLog->csvWrite("CANG","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_CNV_1KER )
-      sprintf(flagStr, "%s", "FLAG_CNV_1KER");
-    cvsLog->csvWrite("INP","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & FLAG_CNV_OVLP )

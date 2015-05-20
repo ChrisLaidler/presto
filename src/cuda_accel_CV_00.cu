@@ -11,7 +11,7 @@
  * @param noSteps
  * @param kerHeight
  */
-__global__ void convolveffdot00_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int height, const int stride, int noSteps, int kerHeight )
+__global__ void convolveffdot00_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
 {
   const int ix = blockIdx.x * CNV_DIMX + threadIdx.x;
   const int iy = blockIdx.y * CNV_DIMY + threadIdx.y;
@@ -31,7 +31,7 @@ __global__ void convolveffdot00_k(const fcomplexcu* __restrict__ kernels, const 
   }
 }
 
-__global__ void convolveffdot01_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int height, const int stride, int noSteps, int kerHeight )
+__global__ void convolveffdot01_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
@@ -49,12 +49,33 @@ __global__ void convolveffdot01_k(const fcomplexcu* __restrict__ kernels, const 
       inpData += tid;
     }
 
-    FOLD // Read kernel
+    FOLD // Read input data  .
+    {
+      for (int step = 0; step < noSteps; step++)
+      {
+        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
+        {
+          fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+
+          if ( ipd.r < 0 && ipd.r > 0 )  // TMP
+          {
+            printf("ipd \n");
+          }
+        }
+      }
+    }
+
+    FOLD // Read kernel  .
     {
       for (int k = 0; k < kerHeight; k++ )
       {
-        idx  = k * stride;
-        ker = kernels[idx];
+        idx   = k * stride;
+        ker   = kernels[idx];
+
+        if ( ker.r < 0 && ker.r > 0 )  // TMP
+        {
+          printf("ker \n");
+        }
       }
     }
 
@@ -69,7 +90,7 @@ __global__ void convolveffdot01_k(const fcomplexcu* __restrict__ kernels, const 
       {
         idx  = y * stride;
 
-        FOLD // Convolve  .
+        FOLD // Write  .
         {
           ffdot[idx] = ker;
         }
@@ -78,7 +99,7 @@ __global__ void convolveffdot01_k(const fcomplexcu* __restrict__ kernels, const 
   }
 }
 
-/** Kernel for testing best possible performance - Just write to ffdot plain - Each thread loops down over column
+/** Kernel for testing best possible performance - Just write to ffdot plain - Each thread loops down over column  .
  *
  * @param kernels
  * @param inpData
@@ -89,23 +110,28 @@ __global__ void convolveffdot01_k(const fcomplexcu* __restrict__ kernels, const 
  * @param noSteps
  * @param kerHeight
  */
-__host__  void convolveffdot00_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
+__host__  void convolveffdot00_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
 {
+  dim3 dimGrid, dimBlock;
+
   cuFfdotStack* cStack = &batch->stacks[stack];
+
+  dimBlock.x = CNV_DIMX;
+  dimBlock.y = CNV_DIMY;
 
   if (0)
   {
     dimGrid.x = ceil(cStack->width                    / (float) ( CNV_DIMX ));
     dimGrid.y = ceil(cStack->height*batch->noSteps    / (float) ( CNV_DIMX ));
 
-    convolveffdot00_k<<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->inpStride, batch->noSteps, cStack->harmInf->height);
+    convolveffdot00_k<<<dimGrid, dimBlock, 0, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->inpStride, batch->noSteps, cStack->noInStack, cStack->harmInf->height);
   }
   else
   {
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = 1;
 
-    convolveffdot01_k<<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->inpStride, batch->noSteps, cStack->harmInf->height);
+    convolveffdot01_k<<<dimGrid, dimBlock, 0, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->inpStride, batch->noSteps, cStack->noInStack, cStack->harmInf->height);
   }
 
 }
