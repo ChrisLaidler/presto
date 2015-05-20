@@ -124,14 +124,14 @@ __host__  void convolveffdot00_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, u
     dimGrid.x = ceil(cStack->width                    / (float) ( CNV_DIMX ));
     dimGrid.y = ceil(cStack->height*batch->noSteps    / (float) ( CNV_DIMX ));
 
-    convolveffdot00_k<<<dimGrid, dimBlock, 0, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->inpStride, batch->noSteps, cStack->noInStack, cStack->harmInf->height);
+    convolveffdot00_k<<<dimGrid, dimBlock, 0, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }
   else
   {
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = 1;
 
-    convolveffdot01_k<<<dimGrid, dimBlock, 0, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->inpStride, batch->noSteps, cStack->noInStack, cStack->harmInf->height);
+    convolveffdot01_k<<<dimGrid, dimBlock, 0, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }
 
 }

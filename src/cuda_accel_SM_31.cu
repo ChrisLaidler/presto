@@ -63,7 +63,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
           //float idxS    = 0.5f + diff*ACCEL_RDR ;
           //ix = (int)( tid * searchList.frac.val[harm] + idxS ) + searchList.ffdBuffre.val[harm];
 
-          if     (FLAGS & FLAG_PLN_TEX)  // Calculate x index
+          if     (FLAGS & FLAG_SAS_TEX)  // Calculate x index
           {
             inds[step][harm]      = ix;
           }
@@ -71,9 +71,9 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
           {
             inds[step][harm]      = ix;
 
-            if        ( FLAGS & FLAG_STP_ROW )
+            if        ( FLAGS & FLAG_ITLV_ROW )
             {
-              if      ( FLAGS & FLAG_CUFFTCB_OUT )
+              if      ( FLAGS & FLAG_CNV_CB_OUT )
               {
                 //pPowr[step][harm]   = &searchList.powers.val[harm][ ix + searchList.strides.val[harm]*step ] ;
               }
@@ -82,9 +82,9 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                 pData[step][harm]   = &searchList.datas.val[harm][  ix + searchList.strides.val[harm]*step ] ;
               }
             }
-            else if   ( FLAGS & FLAG_STP_PLN )
+            else if   ( FLAGS & FLAG_ITLV_PLN )
             {
-              if      ( FLAGS & FLAG_CUFFTCB_OUT )
+              if      ( FLAGS & FLAG_CNV_CB_OUT )
               {
                 //pPowr[step][harm]   = &searchList.powers.val[harm][ ix + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
               }
@@ -97,14 +97,14 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
         }
 
         // Change the stride for this harmonic
-        if     ( FLAGS & FLAG_PLN_TEX )
+        if     ( FLAGS & FLAG_SAS_TEX )
         {
         }
         else
         {
-          if        ( FLAGS & FLAG_STP_ROW )
+          if        ( FLAGS & FLAG_ITLV_ROW )
           {
-            if ( FLAGS & FLAG_CUFFTCB_OUT )
+            if ( FLAGS & FLAG_CNV_CB_OUT )
             {
               //searchList.strides.val[harm] *= noSteps;
             }
@@ -197,14 +197,14 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 #endif
                 for ( int step = 0; step < noSteps; step++)       // Loop over steps
                 {
-                  if     (FLAGS & FLAG_PLN_TEX)
+                  if     (FLAGS & FLAG_SAS_TEX)
                   {
                     // Calculate y indice
-                    if      ( FLAGS & FLAG_STP_ROW )
+                    if      ( FLAGS & FLAG_ITLV_ROW )
                     {
                       iy  = ( iy * noSteps + step );
                     }
-                    else if ( FLAGS & FLAG_STP_PLN )
+                    else if ( FLAGS & FLAG_ITLV_PLN )
                     {
                       iy  = ( iy + searchList.heights.val[harm]*step ) ;
                     }
@@ -214,15 +214,15 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                   }
                   else
                   {
-                    if ( FLAGS & FLAG_CUFFTCB_OUT )
+                    if ( FLAGS & FLAG_CNV_CB_OUT )
                     {
                       float power;
-                      if        ( FLAGS & FLAG_STP_ROW )
+                      if        ( FLAGS & FLAG_ITLV_ROW )
                       {
                         power = searchList.powers.val[harm][ (inds[step][harm]  + searchList.strides.val[harm]*noSteps*iy + searchList.strides.val[harm]*step) ] ;
                         //power = pPowr[step][harm][searchList.strides.val[harm]*iy] ; // Note stride has been set depending on multi-step type
                       }
-                      else if   ( FLAGS & FLAG_STP_PLN )
+                      else if   ( FLAGS & FLAG_ITLV_PLN )
                       {
                         power = searchList.powers.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                       }
@@ -237,12 +237,12 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                     else
                     {
                       fcomplexcu cmpc;
-                      if        ( FLAGS & FLAG_STP_ROW )
+                      if        ( FLAGS & FLAG_ITLV_ROW )
                       {
                         //cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*noSteps*iy + searchList.strides.val[harm]*step ] ;
                         cmpc = pData[step][harm][searchList.strides.val[harm]*iy] ; // Note stride has been set depending on multi-step type
                       }
-                      else if   ( FLAGS & FLAG_STP_PLN )
+                      else if   ( FLAGS & FLAG_ITLV_PLN )
                       {
                         cmpc = searchList.datas.val[harm][ inds[step][harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                       }
@@ -423,12 +423,12 @@ __host__ void add_and_maxCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
 
 __host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, float* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS )
 {
-  if        ( FLAGS & FLAG_CUFFTCB_OUT )
+  if        ( FLAGS & FLAG_CNV_CB_OUT )
   {
-    if      ( FLAGS & FLAG_STP_ROW )
-      add_and_maxCU31_p<FLAG_CUFFTCB_OUT | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
-    else if ( FLAGS & FLAG_STP_PLN )
-      add_and_maxCU31_p<FLAG_CUFFTCB_OUT | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+    if      ( FLAGS & FLAG_ITLV_ROW )
+      add_and_maxCU31_p<FLAG_CNV_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+    else if ( FLAGS & FLAG_ITLV_PLN )
+      add_and_maxCU31_p<FLAG_CNV_CB_OUT | FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_maxCU31 has not been templated for flag combination. \n" );
@@ -437,10 +437,10 @@ __host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
   }
   else
   {
-    if      ( FLAGS & FLAG_STP_ROW )
-      add_and_maxCU31_p< FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
-    else if ( FLAGS & FLAG_STP_PLN )
-      add_and_maxCU31_p< FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, pd, rLows, noSteps, noStages );
+    if      ( FLAGS & FLAG_ITLV_ROW )
+      add_and_maxCU31_p< FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+    else if ( FLAGS & FLAG_ITLV_PLN )
+      add_and_maxCU31_p< FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_maxCU31 has not been templated for flag combination. \n" );

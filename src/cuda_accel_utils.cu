@@ -64,12 +64,13 @@ __host__ __device__ long long next2_to_n_cu(long long x)
   return i;
 }
 
+/*
 void printData_cu(cuFFdotBatch* batch, const int FLAGS, int harmonic, int nX, int nY, int sX, int sY)
 {
-  cuFFdot* cPlain       = &batch->plains[harmonic];
-
-  printfData<<<1,1,0,0>>>((float*)cPlain->d_iData, nX, nY, cPlain->harmInf->inpStride, sX, sY);
+  //cuFFdot* cPlain       = &batch->plains[harmonic];
+  //printfData<<<1,1,0,0>>>((float*)cPlain->d_iData, nX, nY, cPlain->harmInf->inpStride, sX, sY);
 }
+*/
 
 /* The fft length needed to properly process a subharmonic */
 static int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen)
@@ -311,31 +312,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
         kernel->flag = flags;
 
-        FOLD // How to handle input and output
-        {
-          if ( !( kernel->flag & CU_INPT_ALL ) )
-            kernel->flag    |= CU_INPT_SINGLE_C;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
-
-          if ( !( flags & CU_OUTP_ALL) )
-            kernel->flag    |= CU_OUTP_SINGLE;      // Only get candidates from the current plain - This seams to be best in most cases
-        }
-
         // Multi-step data layout method  .
-        if ( !(kernel->flag & FLAG_STP_ALL ) )
+        if ( !(kernel->flag & FLAG_ITLV_ALL ) )
         {
-          kernel->flag |= FLAG_STP_ROW ;          //  FLAG_STP_ROW   or    FLAG_STP_PLN
+          kernel->flag |= FLAG_ITLV_ROW ;          //  FLAG_ITLV_ROW   or    FLAG_ITLV_PLN
         }
-
-        FOLD // Convolution flags  .
-        {
-          //batch->flag |= FLAG_CNV_TEX;         // Use texture memory to access the kernel for convolution - May give advantage on pre-Fermi generation which we don't really care about
-
-          if ( !(kernel->flag & FLAG_CNV_ALL ) )   // Default to convolution
-          {
-            kernel->flag |= FLAG_CNV_STK;         //  FLAG_CNV_PLN   or   FLAG_CNV_STK   or   FLAG_CNV_FAM
-          }
-        }
-
 
         kernel->cndType = outType;
       }
@@ -357,27 +338,28 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           cStack->harmInf       = &kernel->hInfos[cStack->startIdx];
           cStack->kernels       = &kernel->kernels[cStack->startIdx];
           cStack->width         = cStack->harmInf->width;
+          cStack->kerHeigth     = cStack->harmInf->height;
 
           for (int j = 0; j < cStack->noInStack; j++)
           {
-            cStack->startZ[j]   =  cStack->height;
+            cStack->startZ[j]   = cStack->height;
             cStack->height     += cStack->harmInf[j].height;
-            cStack->zUp[j]      =  (cStack->harmInf[0].height - cStack->harmInf[j].height) / 2.0 ;
+            cStack->zUp[j]      = (cStack->kerHeigth - cStack->harmInf[j].height) / 2.0 ;
           }
 
           for (int j = 0; j < cStack->noInStack; j++)
           {
-            cStack->zDn[j]      = ( cStack->harmInf[0].height ) - cStack->zUp[cStack->noInStack - 1 - j ];
+            cStack->zDn[j]      = ( cStack->kerHeigth ) - cStack->zUp[cStack->noInStack - 1 - j ];
           }
 
 
           FOLD // Allocate temporary device memory to asses input stride  .
           {
-            CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_kerData, &cStack->inpStride, cStack->width * sizeof(cufftComplex), cStack->harmInf[0].height), "Failed to allocate device memory for kernel stack.");
+            CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_kerData, &cStack->strideCmplx, cStack->width * sizeof(cufftComplex), cStack->height), "Failed to allocate device memory for kernel stack.");
             CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses kernel stride.");
 
-            kernel->inpDataSize     += cStack->inpStride * cStack->noInStack;          // At this point stride is still in bytes
-            kernel->kerDataSize     += cStack->inpStride * cStack->harmInf[0].height;  // At this point stride is still in bytes
+            kernel->inpDataSize     += cStack->strideCmplx * cStack->noInStack;           // At this point stride is still in bytes
+            kernel->kerDataSize     += cStack->strideCmplx * cStack->kerHeigth;           // At this point stride is still in bytes
 
             CUDA_SAFE_CALL(cudaFree(cStack->d_kerData), "Failed to free CUDA memory.");
             CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
@@ -385,20 +367,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
           FOLD // Allocate temporary device memory to asses plain data stride  .
           {
-            kernel->plnDataSize     += cStack->inpStride * cStack->height;            // At this point stride is still in bytes
+            kernel->plnDataSize     += cStack->strideCmplx * cStack->height;              // At this point stride is still in bytes
 
-            if ( kernel->flag & FLAG_CUFFTCB_OUT )
+            if ( kernel->flag & FLAG_CNV_CB_OUT )
             {
-              CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_plainPowers, &cStack->pwrStride, cStack->width * sizeof(float), cStack->harmInf[0].height), "Failed to allocate device memory for kernel stack.");
+              CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_plainPowers, &cStack->stridePwrs, cStack->width * sizeof(float), cStack->kerHeigth), "Failed to allocate device memory for kernel stack.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses plain stride.");
 
               CUDA_SAFE_CALL(cudaFree(cStack->d_plainPowers), "Failed to free CUDA memory.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
 
-              kernel->pwrDataSize    += cStack->pwrStride * cStack->height;           // At this point stride is still in bytes
-              cStack->pwrStride     /= sizeof(float);
+              kernel->pwrDataSize    += cStack->stridePwrs * cStack->height;           // At this point stride is still in bytes
+              cStack->stridePwrs     /= sizeof(float);
             }
-            cStack->inpStride       /= sizeof(cufftComplex);                         // Set stride to number of complex numbers rather that bytes
+            cStack->strideCmplx       /= sizeof(cufftComplex);                         // Set stride to number of complex numbers rather that bytes
 
           }
           prev                      += cStack->noInStack;
@@ -437,7 +419,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
   {
     size_t kerSiz = 0;
 
-    for (int i = 0; i< kernel->noStacks; i++)
+    for (int i = 0; i < kernel->noStacks; i++)
     {
       cuFfdotStack* cStack            = &kernel->stacks[i];
       cStack->d_kerData               = &kernel->d_kerData[kerSiz];
@@ -445,15 +427,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       // Set the stride
       for (int j = 0; j< cStack->noInStack; j++)
       {
-        cStack->harmInf[j].inpStride  = cStack->inpStride;
+        cStack->harmInf[j].inpStride  = cStack->strideCmplx;
 
         // Point the plain kernel data to the correct position in the "main" kernel
-        int iDiff                     = cStack->harmInf[0].height - cStack->harmInf[j].height ;
+        int iDiff                     = cStack->kerHeigth - cStack->harmInf[j].height ;
         float fDiff                   = iDiff / 2.0;
-        cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->inpStride*(int)fDiff];
+        cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->strideCmplx*(int)fDiff];
         cStack->kernels[j].harmInf    = &cStack->harmInf[j];
       }
-      kerSiz                          += cStack->inpStride * cStack->harmInf->height;
+      kerSiz                          += cStack->strideCmplx * cStack->kerHeigth;
     }
   }
 
@@ -471,7 +453,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
 
-        printf("    Stack %i has %02i f-∂f plain(s) with Width: %5li,  Stride %5li,  Total Height: %6li,   Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->inpStride, cStack->height, cStack->height*cStack->inpStride*sizeof(fcomplex)/1024.0/1024.0);
+        printf("    Stack %i has %02i f-∂f plain(s) with Width: %5li,  Stride %5li,  Total Height: %6li,   Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
 
         // call the CUDA kernels
         // Only need one kernel per stack
@@ -482,23 +464,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           printf("     Harmonic %2i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
           if ( j == 0 )
           {
-            printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->inpStride*sizeof(fcomplex)/1024.0/1024.0);
+            printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
           }
           else
           {
             printf("\n");
           }
           hh++;
-        }
-      }
-
-      if ( DBG_KER01 )  // Print debug info  .
-      {
-        for (int i = 0; i< kernel->noHarms; i++)
-        {
-          printf("\nKernel pre FFT %i\n", i);
-          //printfData<<<1,1,0,0>>>((float*)batch->kernels[i].d_kerData,10,5,batch->hInfos[i].stride*2);
-          printData_cu(kernel, kernel->flag, i);
         }
       }
 
@@ -518,15 +490,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             size_t fftSize        = 0;
 
             int n[]             = {cStack->width};
-            int inembed[]       = {cStack->inpStride* sizeof(fcomplexcu)};
+            int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
             int istride         = 1;
-            int idist           = cStack->inpStride;
-            int onembed[]       = {cStack->inpStride* sizeof(fcomplexcu)};
+            int idist           = cStack->strideCmplx;
+            int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
             int ostride         = 1;
-            int odist           = cStack->inpStride;
+            int odist           = cStack->strideCmplx;
             int height;
 
-            height = cStack->harmInf->height;
+            height = cStack->kerHeigth;
 
             //printf("cufftCreate %i\n", i);
             cufftCreate(&plnPlan);
@@ -565,30 +537,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
 
       printf("  Done generating GPU convolution kernels.\n");
-
-      if ( DBG_KER02 )  	    // Print debug info  .
-      {
-        for (int i = 0; i< kernel->noHarms; i++)
-        {
-          printf("\nKernel post FFT %i\n", i);
-          //printfData<<<1,1,0,0>>>((float*)batch->kernels[batch->pIdx[i]].d_kerData,10,5,batch->hInfos[batch->pIdx[i]].stride*2);
-          printData_cu(kernel, kernel->flag, kernel->pIdx[i]);
-          CUDA_SAFE_CALL(cudaStreamSynchronize(0),"Printing debug info");
-        }
-      }
-
-      if ( DBG_PRNTKER02 ) 	  // Draw the kernel  .
-      {
-        /*
-        char fname[1024];
-        for (int i = 0; i< batch->noHarms; i++)
-        {
-          sprintf(fname, "./ker_%02i_GPU.png",i);
-          drawPlainCmplx(batch->kernels[batch->pIdx[i]].d_kerData, fname, batch->hInfos[batch->pIdx[i]].inpStride, batch->hInfos[batch->pIdx[i]].height );
-          CUDA_SAFE_CALL(cudaStreamSynchronize(0),"Printing debug info");
-        }
-         */
-      }
     }
     else                      // Copy kernels from master device
     {
@@ -605,7 +553,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     int retSZ   = 0;        /// The size in byte of the returned data
     int candSZ  = 0;        /// The size in byte of the candidates
     int noRets;             /// The number of candidates return per family (one step)
-    ulong deviceC  = 0;     /// The size in bytes of device memory used for candidates
     ulong hostC    = 0;     /// The size in bytes of device memory used for candidates
 
     if ( master == NULL )   // Calculate the search size in bins  .
@@ -642,12 +589,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     {
       kernel->retType = kernel->cndType;
 
-      if      (kernel->cndType == CU_NONE   )
+      if      (kernel->cndType == CU_NONE     )
       {
         fprintf(stderr,"Warning: No output type specified in %s setting to full candidate info.\n",__FUNCTION__);
         kernel->cndType = CU_FULLCAND;
       }
-
       if      (kernel->cndType == CU_CMPLXF   )
       {
         candSZ = sizeof(fcomplexcu);
@@ -721,7 +667,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       kernel->retDataSize   = noRets*retSZ;
     }
 
-    FOLD // calculate batch size and number of steps and batches on this device  .
+    FOLD // Calculate batch size and number of steps and batches on this device  .
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
       freeRam = getFreeRamCU();
@@ -732,7 +678,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       float noKers2 = ( free ) / (double) ( fffTotSize + totSize * noBatches ) ;  // (fffTotSize * noKers2) for the CUFFT memory for FFT'ing the plain(s) and (totSize * noThreads * noKers2) for each thread(s) plan(s)
 
-      printf("     Requested %i batches on this device.\n", noBatches);
+      printf("     Requested %i batches with on this device.\n", noBatches);
       if ( noKers2 > 1 )
       {
         if ( noSteps > floor(noKers2) )
@@ -755,8 +701,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       else
       {
         // TODO: check if we can do more than one step or set number of batches??
-        printf("      There is not be enough memory to do %i batches, throttling to 1 step per batch.\n", noBatches);
-        kernel->noSteps = 1;                  // Default we have to do at least one step at a time
+        float noKers3 = ( free ) / (double) ( fffTotSize + totSize ) ;
+        noSteps = MIN(MAX_STEPS, floor(noKers3));
+
+        printf("      There is not enough memory to crate %i batches with one plain each.\n", noBatches);
+        printf("        Throttling to %.0f steps in 1 batch.\n", noKers3);
+        kernel->noSteps = noSteps;
+        noBatches = 1;
       }
 
       if ( noBatches <= 0 || noSteps <= 0 )
@@ -766,18 +717,16 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         return 0;
       }
       printf("     Processing %i steps with each of the %i batch(s)\n", noSteps, noBatches );
-      //batch->mxSteps = batch->noSteps;
 
+      printf("    -----------------------------------------------\n" );
       printf("    Kernels      use: %5.2f GiB of device memory.\n", (kernel->kerDataSize) / 1073741824.0 );
-      printf("    CUFFT        use: %5.2f GiB of device memory.\n", (fffTotSize*kernel->noSteps) / 1073741824.0 );
+      printf("    CUFFT       uses: %5.2f GiB of device memory.\n", (fffTotSize*kernel->noSteps) / 1073741824.0 );
       printf("    Each batch  uses: %5.2f GiB of device memory.\n", (totSize*kernel->noSteps) / 1073741824.0 );
-      printf("               Using: %5.2f GiB of %.2f [%.2f%%] device memory for plains.\n", (kernel->kerDataSize + ( fffTotSize + totSize * noBatches )*kernel->noSteps ) / 1073741824.0, total / 1073741824.0, (kernel->kerDataSize + ( fffTotSize + totSize * noBatches )*kernel->noSteps ) / (float)total * 100.0f );
+      printf("               Using: %5.2f GiB of %.2f [%.2f%%] of GPU memory for search.\n", (kernel->kerDataSize + ( fffTotSize + totSize * noBatches )*kernel->noSteps ) / 1073741824.0, total / 1073741824.0, (kernel->kerDataSize + ( fffTotSize + totSize * noBatches )*kernel->noSteps ) / (float)total * 100.0f );
     }
 
-    float fullISize     = kernel->SrchSz->noInpR  * sizeof(fcomplexcu);   /// The full size of relevant input data
     float fullRSize     = kernel->SrchSz->noOutpR * retSZ;                /// The full size of all data returned
     float fullCSize     = kernel->SrchSz->noOutpR * candSZ;               /// The full size of all candidate data
-    float fullSem       = kernel->SrchSz->noOutpR * sizeof(uint);         /// size of semaphores
 
     if ( kernel->flag  & FLAG_RETURN_ALL )
       fullRSize *= numharmstages; // Store  candidates for all stages
@@ -785,91 +734,36 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     if ( kernel->flag  & FLAG_STORE_ALL )
       fullCSize *= numharmstages; // Store  candidates for all stages
 
-    FOLD // Do sanity checks for input and output and adjust "down" if necessary  .
+    FOLD // DO a sanity check on flags  .
     {
-      float remainigGPU   = free - fffTotSize*kernel->noSteps - totSize*kernel->noSteps*noBatches ;
-      float remainingRAM  = freeRam;
-
-      if ( kernel->flag & CU_OUTP_DEVICE   )
+      FOLD // How to handle input
       {
-        if ( fullCSize > remainigGPU *0.98 )
+        if ( !( kernel->flag & CU_NORM_ALL ) )
+          kernel->flag    |= CU_NORM_CPU;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
+      }
+
+      FOLD // How to handle output  .
+      {
+        if ( !( kernel->flag & CU_CAND_ALL ) )
+          kernel->flag    |= CU_CAND_ARR;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
+      }
+
+      FOLD // Convolution flags  .
+      {
+        if ( !(kernel->flag & FLAG_CNV_ALL ) )   // Default to convolution
         {
-          if( master == NULL)
+          if ( kernel->noHarmStages <= 2 )
           {
-            fprintf(stderr, "WARNING: Requested to store all candidates on device but there is insufficient space so changing to page locked memory instead.\n");
-            kernel->flag &= ~CU_OUTP_DEVICE;
-            kernel->flag |= CU_OUTP_HOST;
+            kernel->flag |= FLAG_CNV_42;
           }
           else
           {
-            fprintf(stderr, "ERROR: GPU %i has insufficient free memory to store all candidates on device.\n", kernel->device);
-            return 0;
+            if ( kernel->noSteps <= 4 )
+              kernel->flag |= FLAG_CNV_43;
+            else
+              kernel->flag |= FLAG_CNV_42;
           }
         }
-        else
-        {
-          remainigGPU -= fullRSize ;
-        }
-      }
-
-      if ( ( kernel->flag & CU_OUTP_HOST 	) || ( kernel->flag & CU_OUTP_DEVICE ) )
-      {
-        if( master == NULL)
-        {
-          if ( fullCSize > remainingRAM *0.98 )
-          {
-            fprintf(stderr, "WARNING: Requested to store all candidates in page locked host memory but there is insufficient space, so changing to working on single stack at a time.\n");
-            if ( kernel->flag & CU_OUTP_DEVICE  )
-              fprintf(stderr, "         This is strange you appear to have enough GPU memory for to store all candidates but not enough host RAM.\n");
-            kernel->flag &= ~CU_OUTP_HOST;
-            kernel->flag &= ~CU_OUTP_DEVICE;
-            kernel->flag |= CU_OUTP_SINGLE;
-          }
-          else
-          {
-            remainingRAM -= fullRSize ;
-          }
-        }
-      }
-    }
-
-    FOLD // ALLOCATE device specific memory  .
-    {
-      if ( !(kernel->flag & CU_INPT_ALL) )
-      {
-        fprintf(stderr, "ERROR: Undecided how to handle input data! Pleas specify CU_INPT_SINGLE_C or CU_INPT_SINGLE_G\n");
-        exit(EXIT_FAILURE);
-      }
-
-      if      ( kernel->flag & CU_OUTP_DEVICE )
-      {
-        // Create a candidate list
-        CUDA_SAFE_CALL(cudaMalloc((void** )&kernel->d_retData, fullRSize), "Failed to allocate device memory for candidate list stack.");
-        CUDA_SAFE_CALL(cudaMemset((void*)kernel->d_retData, 0, fullRSize ), "Failed to initialise  candidate list.");
-        deviceC += fullRSize;
-
-        // Create a semaphore list
-        CUDA_SAFE_CALL(cudaMalloc((void** )&kernel->d_candSem, fullSem ), "Failed to allocate device memory for candidate semaphore list.");
-        CUDA_SAFE_CALL(cudaMemset((void*)kernel->d_candSem, UINT_MAX, fullSem ), "Failed to initialise  semaphore list.");
-        deviceC += fullSem;
-      }
-      else if ( ( kernel->flag & CU_OUTP_HOST ) || ( kernel->flag & CU_OUTP_DEVICE ) )
-      {
-        if ( master == NULL )
-        {
-          CUDA_SAFE_CALL(cudaMallocHost((void**) &kernel->h_retData, fullRSize), "Failed to create page-locked host memory for entire candidate list." );
-          memset(kernel->h_retData, 0, fullRSize);
-          hostC += fullRSize;
-        }
-      }
-      else if ( kernel->flag & CU_OUTP_SINGLE )
-      {
-        // Nothing, each batch has its own return data already
-      }
-      else
-      {
-        fprintf(stderr, "ERROR: Undecided how to handle input data!");
-        return 0;
       }
     }
 
@@ -911,14 +805,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
     }
 
-    if ( deviceC + hostC )
+    if ( hostC )
     {
       printf("    Input and candidates use and additional:\n");
-      if ( deviceC )
-        printf("                      %5.2f GiB of device memory\n", deviceC / 1073741824.0 );
       if ( hostC )
         printf("                      %5.2f GiB of host   memory\n", hostC / 1073741824.0 );
     }
+    printf("    -----------------------------------------------\n" );
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Failed to create memory for candidate list or input data.");
 
@@ -972,8 +865,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         resDesc.res.pitch2D.desc          = channelDesc;
         resDesc.res.pitch2D.devPtr        = cStack->d_kerData;
         resDesc.res.pitch2D.width         = cStack->width;
-        resDesc.res.pitch2D.pitchInBytes  = cStack->inpStride * sizeof(fcomplex);
-        resDesc.res.pitch2D.height        = cStack->harmInf->height;
+        resDesc.res.pitch2D.pitchInBytes  = cStack->strideCmplx * sizeof(fcomplex);
+        resDesc.res.pitch2D.height        = cStack->kerHeigth;
 
         CUDA_SAFE_CALL(cudaCreateTextureObject(&cStack->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
 
@@ -987,7 +880,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           resDesc.res.pitch2D.devPtr        = cKer->d_kerData;
           resDesc.res.pitch2D.height        = cKer->harmInf->height;
           resDesc.res.pitch2D.width         = cKer->harmInf->width;
-          resDesc.res.pitch2D.pitchInBytes  = cStack->inpStride * sizeof(fcomplex);
+          resDesc.res.pitch2D.pitchInBytes  = cStack->strideCmplx * sizeof(fcomplex);
 
           CUDA_SAFE_CALL(cudaCreateTextureObject(&cKer->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
           CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
@@ -1019,12 +912,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       FOLD
       {
         int n[]             = {cStack->width};
-        int inembed[]       = {cStack->inpStride * sizeof(fcomplexcu)};
+        int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
         int istride         = 1;
-        int idist           = cStack->inpStride;
-        int onembed[]       = {cStack->inpStride * sizeof(fcomplexcu)};
+        int idist           = cStack->strideCmplx;
+        int onembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
         int ostride         = 1;
-        int odist           = cStack->inpStride;
+        int odist           = cStack->strideCmplx;
 
         cufftCreate(&cStack->plnPlan);
         cufftCreate(&cStack->inpPlan);
@@ -1098,25 +991,6 @@ void freeKernel(cuFFdotBatch* kernrl, cuFFdotBatch* master)
     if ( master == kernrl )
       free(kernrl->SrchSz);
 
-    FOLD // ALLOCATE device specific memory  .
-    {
-      if      ( kernrl->flag & CU_OUTP_DEVICE )
-      {
-        // Create a candidate list
-        CUDA_SAFE_CALL(cudaFree(kernrl->d_retData), "Failed to allocate device memory for candidate list stack.");
-
-        // Create a semaphore list
-        CUDA_SAFE_CALL(cudaFree(kernrl->d_candSem), "Failed to allocate device memory for candidate semaphore list.");
-      }
-      else if ( ( kernrl->flag & CU_OUTP_HOST ) || ( kernrl->flag & CU_OUTP_DEVICE ) )
-      {
-        if ( master == kernrl )
-        {
-          CUDA_SAFE_CALL(cudaFreeHost(kernrl->h_retData), "Failed to create page-locked host memory for entire candidate list." );
-        }
-      }
-    }
-
     FOLD // Allocate global (device independent) host memory
     {
       // One set of global set of "candidates" for all devices
@@ -1169,18 +1043,9 @@ void setPlainPointers(cuFFdotBatch* batch)
     {
       cuFFdot* cPlain           = &cStack->plains[j];
 
-      if ( (batch->flag & FLAG_STP_ROW) || (batch->flag & FLAG_STP_PLN) )
-      {
-        cPlain->d_plainData     = &cStack->d_plainData[   cStack->startZ[j] * batch->noSteps * cStack->inpStride ];
-        cPlain->d_plainPowers   = &cStack->d_plainPowers[ cStack->startZ[j] * batch->noSteps * cStack->pwrStride ];
-      }
-      else // Note this works for 1 step or FLAG_STP_STK
-      {
-        cPlain->d_plainData     = &cStack->d_plainData[   cStack->startZ[j] * cStack->inpStride];
-        cPlain->d_plainPowers   = &cStack->d_plainPowers[ cStack->startZ[j] * cStack->pwrStride];
-      }
-
-      cPlain->d_iData           = &cStack->d_iData[cStack->inpStride*j*batch->noSteps];
+      cPlain->d_plainData       = &cStack->d_plainData[   cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+      cPlain->d_plainPowers     = &cStack->d_plainPowers[ cStack->startZ[j] * batch->noSteps * cStack->stridePwrs ];
+      cPlain->d_iData           = &cStack->d_iData[cStack->strideCmplx*j*batch->noSteps];
       cPlain->harmInf           = &cStack->harmInf[j];
       cPlain->kernel            = &cStack->kernels[j];
     }
@@ -1213,9 +1078,9 @@ void setStkPointers(cuFFdotBatch* batch)
 
     // Increment the various values used for offset
     harm                 += cStack->noInStack;
-    idSiz                += batch->noSteps * cStack->inpStride * cStack->noInStack;
-    cmplStart            += cStack->height  * cStack->inpStride * batch->noSteps ;
-    pwrStart             += cStack->height  * cStack->pwrStride * batch->noSteps ;
+    idSiz                += batch->noSteps * cStack->strideCmplx * cStack->noInStack;
+    cmplStart            += cStack->height  * cStack->strideCmplx * batch->noSteps ;
+    pwrStart             += cStack->height  * cStack->stridePwrs * batch->noSteps ;
   }
 }
 
@@ -1275,11 +1140,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       CUDA_SAFE_CALL(cudaMallocHost((void**) &batch->h_iData, batch->inpDataSize*batch->noSteps ), "Failed to create page-locked host memory plain input data." );
 
-      if ( batch->flag & CU_INPT_SINGLE_C ) // Allocate memory for normalisation
+      if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation
         batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float));
-
-      if ( batch->flag & CU_INPT_SINGLE_G ) // TMP
-        batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float)); // TMP
     }
 
     FOLD  // Allocate R value lists  .
@@ -1338,7 +1200,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_iData,          batch->inpDataSize*batch->noSteps ), "Failed to allocate device memory for kernel stack.");
         CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_plainData,      batch->plnDataSize*batch->noSteps ), "Failed to allocate device memory for kernel stack.");
 
-        if ( batch->flag & FLAG_CUFFTCB_OUT )
+        if ( batch->flag & FLAG_CNV_CB_OUT )
         {
           CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_plainPowers,  batch->pwrDataSize*batch->noSteps ), "Failed to allocate device memory for kernel stack.");
           //batch->d_plainPowers = (float*)batch->d_plainData; // We can just re-use the plain data <- UMMMMMMMMM? No we can't!!
@@ -1348,31 +1210,29 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Allocate device & page-locked host memory for candidate  data  .
     {
-      if ( batch->flag & CU_OUTP_SINGLE )
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+
+      FOLD // Allocate device memory  .
       {
-        CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-
-        FOLD // Allocate device memory  .
+        if ( batch->retDataSize*batch->noSteps > free )
         {
-          if ( batch->retDataSize*batch->noSteps > free )
-          {
-            // Not enough memory =(
-            printf("Not enough GPU memory to create stacks.\n");
-            return 0;
-          }
-          else
-          {
-            CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_retData, batch->retDataSize*batch->noSteps ), "Failed to allocate device memory for return values.");
-          }
+          // Not enough memory =(
+          printf("Not enough GPU memory to create stacks.\n");
+          return 0;
         }
-
-        FOLD // Allocate page-locked host memory to copy the candidates back to  .
+        else
         {
-          CUDA_SAFE_CALL(cudaMallocHost((void**) &batch->h_retData, batch->retDataSize*batch->noSteps),"");
-          memset(batch->h_retData, 0, batch->retDataSize*batch->noSteps );
+          CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_retData, batch->retDataSize*batch->noSteps ), "Failed to allocate device memory for return values.");
         }
       }
+
+      FOLD // Allocate page-locked host memory to copy the candidates back to  .
+      {
+        CUDA_SAFE_CALL(cudaMallocHost((void**) &batch->h_retData, batch->retDataSize*batch->noSteps),"");
+        memset(batch->h_retData, 0, batch->retDataSize*batch->noSteps );
+      }
     }
+
 
     // Create the plains structures
     if ( batch->noHarms* sizeof(cuFFdot) > getFreeRamCU() )
@@ -1562,13 +1422,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Create textures for the f-∂f plains  .
   {
-    if ( (batch->flag&FLAG_TEX_INTERP) && !( (batch->flag&FLAG_CUFFTCB_OUT) && (batch->flag&FLAG_PLN_TEX) ) )
+    if ( (batch->flag&FLAG_TEX_INTERP) && !( (batch->flag&FLAG_CNV_CB_OUT) && (batch->flag&FLAG_SAS_TEX) ) )
     {
       fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation\n");
       batch->flag &= ~FLAG_TEX_INTERP;
     }
 
-    if ( batch->flag & FLAG_PLN_TEX )
+    if ( batch->flag & FLAG_SAS_TEX )
     {
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
 
@@ -1601,16 +1461,16 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         {
           cuFFdot* cPlain = &cStack->plains[j];
 
-          if ( batch->flag & FLAG_CUFFTCB_OUT ) // float input
+          if ( batch->flag & FLAG_CNV_CB_OUT ) // float input
           {
-            if      ( batch->flag & FLAG_STP_ROW )
+            if      ( batch->flag & FLAG_ITLV_ROW )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width * batch->noSteps;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
             }
-            else if ( batch->flag & FLAG_STP_PLN )
+            else if ( batch->flag & FLAG_ITLV_PLN )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width;
@@ -1624,14 +1484,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           }
           else // Implies complex numbers
           {
-            if      ( batch->flag & FLAG_STP_ROW )
+            if      ( batch->flag & FLAG_ITLV_ROW )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width * batch->noSteps * 2;
-              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2* sizeof(float);
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
             }
-            else if ( batch->flag & FLAG_STP_PLN )
+            else if ( batch->flag & FLAG_ITLV_PLN )
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width * 2;
@@ -1654,9 +1514,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOUT // Set up CUFFT call back stuff  .
   {
-    if ( (batch->flag & FLAG_CUFFTCB_INP) || (batch->flag & FLAG_CUFFTCB_OUT) )
+    if ( (batch->flag & FLAG_CNV_CB_IN) || (batch->flag & FLAG_CNV_CB_OUT) )
     {
-      if ( batch->flag & FLAG_CUFFTCB_INP )
+      if ( batch->flag & FLAG_CNV_CB_IN )
       {
         for (int i = 0; i < batch->noStacks; i++)
         {
@@ -1668,10 +1528,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           fftCnvlvInfo h_inf;
 
           h_inf.noSteps         = batch->noSteps;
-          h_inf.stride          = cStack->inpStride;
+          h_inf.stride          = cStack->strideCmplx;
           h_inf.width           = cStack->width;
           h_inf.noPlains        = cStack->noInStack;
-          //h_inf.d_plainPowers   = cStack->d_plainPowers;
 
           for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
           {
@@ -1712,7 +1571,7 @@ void freeBatch(cuFFdotBatch* batch)
     {
       CUDA_SAFE_CALL(cudaFreeHost(batch->h_iData ), "Failed to create page-locked host memory plain input data." );
 
-      if ( batch->flag & CU_INPT_SINGLE_C ) // Allocate memory for normalisation
+      if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation
         free(batch->h_powers);
     }
 
@@ -1722,7 +1581,7 @@ void freeBatch(cuFFdotBatch* batch)
       CUDA_SAFE_CALL(cudaFree(batch->d_iData ), "Failed to allocate device memory for kernel stack.");
       CUDA_SAFE_CALL(cudaFree(batch->d_plainData ), "Failed to allocate device memory for kernel stack.");
 
-      if ( batch->flag & FLAG_CUFFTCB_OUT )
+      if ( batch->flag & FLAG_CNV_CB_OUT )
       {
         CUDA_SAFE_CALL(cudaFree(batch->d_plainPowers), "Failed to allocate device memory for kernel stack.");
       }
@@ -1730,11 +1589,8 @@ void freeBatch(cuFFdotBatch* batch)
 
     FOLD // Allocate device & page-locked host memory for candidate  data  .
     {
-      if ( batch->flag & CU_OUTP_SINGLE )
-      {
-        CUDA_SAFE_CALL(cudaFree(batch->d_retData     ), "Failed to allocate device memory for return values.");
-        CUDA_SAFE_CALL(cudaFreeHost(batch->h_retData ),"");
-      }
+      CUDA_SAFE_CALL(cudaFree(batch->d_retData     ), "Failed to allocate device memory for return values.");
+      CUDA_SAFE_CALL(cudaFreeHost(batch->h_retData ),"");
     }
 
     // Create the plains structures
@@ -1755,7 +1611,7 @@ void freeBatch(cuFFdotBatch* batch)
 
   FOLD // Create textures for the f-∂f plains  .
   {
-    if ( batch->flag & FLAG_PLN_TEX )
+    if ( batch->flag & FLAG_SAS_TEX )
     {
 
       for (int i = 0; i< batch->noStacks; i++)
@@ -1775,9 +1631,9 @@ void freeBatch(cuFFdotBatch* batch)
 
   FOLD // Set up CUFFT call back stuff  .
   {
-    if ( (batch->flag & FLAG_CUFFTCB_INP) || (batch->flag & FLAG_CUFFTCB_OUT) )
+    if ( (batch->flag & FLAG_CNV_CB_IN) || (batch->flag & FLAG_CNV_CB_OUT) )
     {
-      if ( batch->flag & FLAG_CUFFTCB_INP )
+      if ( batch->flag & FLAG_CNV_CB_IN )
       {
         for (int i = 0; i < batch->noStacks; i++)
         {
@@ -2079,7 +1935,15 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
   return gpul;
 }
 
-int readAccelDefalts(int *flags)
+bool strCom(const char* str1, const char* str2)
+{
+  if ( strncmp(str1,str2, strlen(str2) ) == 0 )
+    return 1;
+  else
+    return 0;
+}
+
+void readAccelDefalts(uint *flags)
 {
   FILE *file;
   char fName[1024];
@@ -2090,170 +1954,179 @@ int readAccelDefalts(int *flags)
     printf("\nReading GPU settings from %s\n",fName);
 
     char line[1024];
+    int lineno = 0;
 
     while (fgets(line, sizeof(line), file))
     {
+      lineno++;
 
-      if      ( strncmp(line,"CU_INPT_SINGLE_C", 	16) == 0 )
+      if      ( strCom(line, "FLAG_ITLV_ROW" ) || strCom(line, "INTERLEAVE_ROW" ) )
       {
-        (*flags) &= ~CU_INPT_ALL;
-        (*flags) |= CU_INPT_SINGLE_C;
-        printf(" CU_INPT_SINGLE_C \n");
+        (*flags) &= ~FLAG_ITLV_ALL;
+        (*flags) |= FLAG_ITLV_ROW;
       }
-      else if ( strncmp(line,"CU_INPT_SINGLE_G",  16) == 0 )
+      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) || strCom(line, "INTERLEAVE_PLAIN" ) )
       {
-        (*flags) &= ~CU_INPT_ALL;
-        (*flags) |=  CU_INPT_SINGLE_G;
-        (*flags) &= ~CU_INPT_CPU_FFT;
-        printf(" CU_INPT_SINGLE_G \n");
+        (*flags) &= ~FLAG_ITLV_ALL;
+        (*flags) |= FLAG_ITLV_PLN;
       }
 
-      else if ( strncmp(line,"CU_INPT_CPU_FFT",   15) == 0 )
+      else if ( strCom(line, "CU_NORM_CPU" ) || strCom(line, "NORM_CPU" ) )
       {
-        if ( (*flags) | CU_INPT_SINGLE_G )
-        {
-          printf(" Cannot do CPU input FFT's with CU_INPT_SINGLE_G\n");
-        }
-        else
-        {
-          (*flags) |= CU_INPT_CPU_FFT;
-          printf(" CU_INPT_CPU_FFT \n");
-        }
+        (*flags) &= ~CU_NORM_ALL;
+        (*flags) |= CU_NORM_CPU;
+      }
+      else if ( strCom(line, "CU_NORM_GPU" ) || strCom(line, "NORM_GPU" ) )
+      {
+        (*flags) &= ~CU_NORM_ALL;
+        (*flags) |= CU_NORM_GPU;
       }
 
-      else if ( strncmp(line,"CU_OUTP_DEVICE", 		14) == 0 )
+      else if ( strCom(line, "CU_INPT_CPU_FFT" ) || strCom(line, "CPU_FFT" ) )
       {
-        (*flags) &= ~CU_OUTP_ALL;
-        (*flags) |= CU_OUTP_DEVICE;
-        printf(" CU_OUTP_DEVICE \n");
+        (*flags) |= CU_INPT_CPU_FFT;
       }
-      else if ( strncmp(line,"CU_OUTP_HOST", 	  	12) == 0 )
+      else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) )
       {
-        (*flags) &= ~CU_OUTP_ALL;
-        (*flags) |= CU_OUTP_HOST;
-        printf(" CU_OUTP_HOST \n");
-      }
-      else if ( strncmp(line,"CU_OUTP_SINGLE", 	  12) == 0 )
-      {
-        (*flags) &= ~CU_OUTP_ALL;
-        (*flags) |= CU_OUTP_SINGLE;
-        printf(" CU_OUTP_SINGLE \n");
+        (*flags) &= ~CU_NORM_ALL;
       }
 
-      else if ( strncmp(line,"FLAG_SIG_GPU", 	    12) == 0 )
+      else if ( strCom(line, "FLAG_CNV_00" ) || strCom(line, "CV_00" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_00;
+      }
+      else if ( strCom(line, "FLAG_CNV_10" ) || strCom(line, "CV_10" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_10;
+      }
+      else if ( strCom(line, "FLAG_CNV_30" ) || strCom(line, "CV_30" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_30;
+      }
+      else if ( strCom(line, "FLAG_CNV_41" ) || strCom(line, "CV_41" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_41;
+      }
+      else if ( strCom(line, "FLAG_CNV_42" ) || strCom(line, "CV_42" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_42;
+      }
+      else if ( strCom(line, "FLAG_CNV_43" ) || strCom(line, "CV_43" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_43;
+      }
+      else if ( strCom(line, "FLAG_CNV_50" ) || strCom(line, "CV_50" ) )
+      {
+        (*flags) &= ~FLAG_CNV_ALL;
+        (*flags) |= FLAG_CNV_50;
+      }
+
+      else if ( strCom(line, "FLAG_CNV_TEX" ) )
+      {
+        (*flags) |= FLAG_CNV_TEX;
+      }
+
+      else if ( strCom(line, "FLAG_CNV_CB_IN" ) )
+      {
+        (*flags) |= FLAG_CNV_CB_IN;
+      }
+
+      else if ( strCom(line, "FLAG_CNV_CB_OUT" ) )
+      {
+        (*flags) |= FLAG_CNV_CB_OUT;
+      }
+
+      else if ( strCom(line, "FLAG_NO_CB" ) )
+      {
+        (*flags) &= ~FLAG_CNV_CB_IN;
+        (*flags) &= ~FLAG_CNV_CB_OUT;
+      }
+
+      else if ( strCom(line, "FLAG_SAS_TEX" ) )
+      {
+        (*flags) |= FLAG_SAS_TEX;
+      }
+
+      else if ( strCom(line, "FLAG_TEX_INTERP" ) )
+      {
+        (*flags) |= FLAG_SAS_TEX;
+        (*flags) |= FLAG_TEX_INTERP;
+      }
+
+      else if ( strCom(line, "FLAG_SIG_GPU" ) || strCom(line, "SIG_GPU" ) )
       {
         (*flags) |= FLAG_SIG_GPU;
-        printf(" FLAG_SIG_GPU \n");
+      }
+      else if ( strCom(line, "FLAG_SIG_CPU" ) || strCom(line, "SIG_CPU" ) )
+      {
+        (*flags) &= ~FLAG_SIG_GPU;
       }
 
-      else if ( strncmp(line,"CU_CAND_LST",       11) == 0 )
+      else if ( strCom(line, "CU_CAND_ARR"  ) || strCom(line, "CAND_ARR"  ) )
       {
-        (*flags) |= CU_CAND_LST;
-        printf(" CU_CAND_LST \n");
-      }
-      else if ( strncmp(line,"CU_CAND_ARR",       11) == 0 )
-      {
+        (*flags) &= ~CU_CAND_ALL;
         (*flags) |= CU_CAND_ARR;
-        printf(" CU_CAND_ARR \n");
+      }
+      else if ( strCom(line, "CU_CAND_LST"  ) || strCom(line, "CAND_LST"  ) )
+      {
+        (*flags) &= ~CU_CAND_ALL;
+        (*flags) |= CU_CAND_LST;
+      }
+      else if ( strCom(line, "CU_CAND_QUAD" ) || strCom(line, "CAND_QUAD" ) )
+      {
+        (*flags) &= ~CU_CAND_ALL;
+        (*flags) |= CU_CAND_QUAD;
       }
 
-      else if ( strncmp(line,"FLAG_CNV_OVLP",     13) == 0 )
-      {
-        (*flags) |= FLAG_CNV_OVLP;
-        printf(" FLAG_CNV_OVLP \n");
-      }
-
-      else if ( strncmp(line,"FLAG_CNV_PLN", 	    12) == 0 )
-      {
-        (*flags) &= ~FLAG_CNV_ALL;
-        (*flags) |= FLAG_CNV_PLN;
-        printf(" FLAG_CNV_PLN \n");
-      }
-      else if ( strncmp(line,"FLAG_CNV_STK", 	    12) == 0 )
-      {
-        (*flags) &= ~FLAG_CNV_ALL;
-        (*flags) |= FLAG_CNV_STK;
-        printf(" FLAG_CNV_STK \n");
-      }
-      else if ( strncmp(line,"FLAG_CNV_FAM", 	    12) == 0 )
-      {
-        (*flags) &= ~FLAG_CNV_ALL;
-        (*flags) |= FLAG_CNV_FAM;
-        printf(" FLAG_CNV_FAM \n");
-      }
-
-      else if ( strncmp(line,"FLAG_STP_ROW",      12) == 0 )
-      {
-        (*flags) &= ~FLAG_STP_ALL;
-        (*flags) |= FLAG_STP_ROW;
-        printf(" FLAG_STP_ROW \n");
-      }
-      else if ( strncmp(line,"FLAG_STP_PLN",      12) == 0 )
-      {
-        (*flags) &= ~FLAG_STP_ALL;
-        (*flags) |= FLAG_STP_PLN;
-        printf(" FLAG_STP_PLN \n");
-      }
-      else if ( strncmp(line,"FLAG_STP_STK",      12) == 0 )
-      {
-        (*flags) &= ~FLAG_STP_ALL;
-        (*flags) |= FLAG_STP_STK;
-        printf(" FLAG_STP_STK \n");
-      }
-
-      else if ( strncmp(line,"FLAG_CUFFTCB_INP",  16) == 0 )
-      {
-        (*flags) |= FLAG_CUFFTCB_INP;
-        printf(" FLAG_CUFFTCB_INP \n");
-      }
-      else if ( strncmp(line,"FLAG_CUFFTCB_OUT",  16) == 0 )
-      {
-        (*flags) |= FLAG_CUFFTCB_OUT;
-        printf(" FLAG_CUFFTCB_OUT \n");
-      }
-
-      else if ( strncmp(line,"FLAG_CNV_TEX",      12) == 0 )
-      {
-        (*flags) |= FLAG_CNV_TEX;
-        printf(" FLAG_CNV_TEX \n");
-      }
-      else if ( strncmp(line,"FLAG_PLN_TEX",      12) == 0 )
-      {
-        (*flags) |= FLAG_CNV_TEX;
-        printf(" FLAG_PLN_TEX \n");
-      }
-      else if ( strncmp(line,"FLAG_TEX_INTERP",   15) == 0 )
-      {
-        (*flags) |= FLAG_TEX_INTERP;
-        printf(" FLAG_RETURN_ALL \n");
-      }
-
-      else if ( strncmp(line,"FLAG_RETURN_ALL",   15) == 0 )
+      else if ( strCom(line, "FLAG_RETURN_ALL" ) )
       {
         (*flags) |= FLAG_RETURN_ALL;
-        printf(" FLAG_RETURN_ALL \n");
       }
-      else if ( strncmp(line,"FLAG_STORE_ALL",    14) == 0 )
+      else if ( strCom(line, "FLAG_RETURN_FINAL" ) )
       {
-        (*flags) |= FLAG_STORE_ALL;
-        printf(" FLAG_STORE_ALL \n");
-      }
-      else if ( strncmp(line,"FLAG_STORE_EXP",    14) == 0 )
-      {
-        (*flags) |= FLAG_STORE_EXP;
-        printf(" FLAG_STORE_EXP \n");
+        (*flags) &= ~FLAG_RETURN_ALL;
       }
 
-      else if ( strncmp(line,"FLAG_RAND_1",       11) == 0 )
+      else if ( strCom(line, "FLAG_STORE_ALL" ) )
+      {
+        (*flags) |= FLAG_STORE_ALL;
+      }
+
+      else if ( strCom(line, "FLAG_STORE_EXP" ) )
+      {
+        (*flags) |= FLAG_STORE_EXP;
+      }
+
+      else if ( strCom(line, "FLAG_RAND_1" ) || strCom(line, "RAND_1" ) )
       {
         (*flags) |= FLAG_RAND_1;
-        printf(" FLAG_RAND_1 \n");
       }
-      else if ( strncmp(line,"FLAG_RAND_2",       11) == 0 )
+      else if ( strCom(line, "FLAG_RAND_2" ) || strCom(line, "RAND_2" ) )
       {
         (*flags) |= FLAG_RAND_2;
-        printf(" FLAG_RAND_2 \n");
       }
+      else if ( strCom(line, "FLAG_RAND_3" ) || strCom(line, "RAND_3" ) )
+      {
+        (*flags) |= FLAG_RAND_3;
+      }
+      else if ( strCom(line, "FLAG_RAND_4" ) || strCom(line, "RAND_4" ) )
+      {
+        (*flags) |= FLAG_RAND_4;
+      }
+
+      else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )
+      {
+        int ll = strlen(line);
+        line[ll-1] = 0;
+        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n",line, lineno, fName);
+      }
+
     }
 
     fclose (file);
@@ -2272,13 +2145,10 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   // Defaults for accel search
   sSpec.flags         |= FLAG_RETURN_ALL ;
   sSpec.flags         |= CU_CAND_ARR ;
-  sSpec.flags         |= FLAG_STP_ROW ;  //   FLAG_STP_ROW    FLAG_STP_PLN
-  //sSpec.flags         |= FLAG_PLN_TEX ;
+  sSpec.flags         |= FLAG_ITLV_ROW ;  //   FLAG_ITLV_ROW    FLAG_ITLV_PLN
+  //sSpec.flags         |= FLAG_SAS_TEX ;
   //sSpec.flags         |= FLAG_TEX_INTERP ;
-  //sSpec.flags         |= FLAG_CUFFTCB_OUT ;
-
-  // Convolution kernel
-  sSpec.flags         |= FLAG_CNV_FAM ;  //  FLAG_CNV_FAM   FLAG_CNV_STK   FLAG_CNV_PLN
+  //sSpec.flags         |= FLAG_CNV_CB_OUT ;
 
   readAccelDefalts(&sSpec.flags);
 
@@ -2665,22 +2535,22 @@ void plotPlains(cuFFdotBatch* batch)
           fcomplexcu *cmplxData;
           float *powers;
 
-          if ( batch->flag & FLAG_STP_ROW )
+          if ( batch->flag & FLAG_ITLV_ROW )
           {
-            cmplxData = &batch->d_plainData[(y*batch->noSteps + step)*cStack->inpStride ];
-            powers    = &batch->d_plainPowers[((y*batch->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ) ];
+            cmplxData = &batch->d_plainData[(y*batch->noSteps + step)*cStack->strideCmplx ];
+            powers    = &batch->d_plainPowers[((y*batch->noSteps + step)*cStack->stridePwrs + cHInfo->halfWidth * 2 ) ];
           }
-          else if ( batch->flag & FLAG_STP_PLN )
+          else if ( batch->flag & FLAG_ITLV_PLN )
           {
-            cmplxData = &batch->d_plainData[   (y + step*cHInfo->height)*cStack->inpStride ];
-            powers    = &batch->d_plainPowers[((y + step*cHInfo->height)*cStack->pwrStride  + cHInfo->halfWidth * 2 ) ];
+            cmplxData = &batch->d_plainData[   (y + step*cHInfo->height)*cStack->strideCmplx ];
+            powers    = &batch->d_plainPowers[((y + step*cHInfo->height)*cStack->stridePwrs  + cHInfo->halfWidth * 2 ) ];
           }
 
           cmplxData += cHInfo->halfWidth*2;
           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlain->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          if ( batch->flag & FLAG_CUFFTCB_OUT )
+          if ( batch->flag & FLAG_CNV_CB_OUT )
           {
             //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlain->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
             CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
@@ -2749,7 +2619,7 @@ void generatePlain(fftInfo fft, long long loBin, long long hiBin, int zMax, int 
     }
   }
 
-  flags = FLAG_CUFFTCB_OUT ;
+  flags = FLAG_CNV_CB_OUT ;
 
   gpu[0] = 0;
   kernels = new cuFFdotBatch;
@@ -2780,96 +2650,6 @@ void printBitString(uint val)
     else
       printf("0");
   }
-  printf("\n");
-}
-
-void printFlags(uint flags)
-{
-  printf("FLAGS:\t");
-
-  if ( flags & CU_INPT_SINGLE_C )
-    printf("CU_INPT_SINGLE_C");
-  if ( flags & CU_INPT_SINGLE_G )
-    printf("CU_INPT_SINGLE_G");
-  printf("\t");
-
-  if ( flags & CU_INPT_CPU_FFT )
-    printf("CU_INPT_CPU_FFT");
-  printf("\t");
-
-  if ( flags & CU_OUTP_DEVICE )
-    printf("CU_OUTP_DEVICE");
-  if ( flags & CU_OUTP_HOST )
-    printf("CU_OUTP_HOST");
-  if ( flags & CU_OUTP_SINGLE )
-    printf("CU_OUTP_SINGLE");
-  printf("\t");
-
-  if ( flags & FLAG_SIG_GPU )
-    printf("FLAG_SIG_GPU");
-  printf("\t");
-
-  if ( flags & CU_CAND_LST )
-    printf("CU_CAND_LST");
-  printf("\t");
-  if ( flags & CU_CAND_ARR )
-    printf("CU_CAND_ARR");
-  printf("\t");
-
-  if ( flags & FLAG_CNV_OVLP )
-    printf("FLAG_CNV_OVLP");
-  printf("\t");
-
-  if ( flags & FLAG_CNV_PLN )
-    printf("FLAG_CNV_PLN");
-  if ( flags & FLAG_CNV_STK )
-    printf("FLAG_CNV_STK");
-  if ( flags & FLAG_CNV_FAM )
-    printf("FLAG_CNV_FAM");
-  printf("\t");
-
-  if ( flags & FLAG_STP_ROW )
-    printf("FLAG_STP_ROW");
-  if ( flags & FLAG_STP_PLN )
-    printf("FLAG_STP_PLN");
-  if ( flags & FLAG_STP_STK )
-    printf("FLAG_STP_STK");
-  printf("\t");
-
-  if ( flags & FLAG_CUFFTCB_INP )
-    printf("FLAG_CUFFTCB_INP");
-  printf("\t");
-  if ( flags & FLAG_CUFFTCB_OUT )
-    printf("FLAG_CUFFTCB_OUT");
-  printf("\t");
-
-  if ( flags & FLAG_CNV_TEX )
-    printf("FLAG_CNV_TEX");
-  printf("\t");
-
-  if ( flags & FLAG_PLN_TEX )
-    printf("FLAG_PLN_TEX");
-  printf("\t");
-  if ( flags & FLAG_TEX_INTERP )
-    printf("FLAG_TEX_INTERP");
-  printf("\t");
-
-  if ( flags & FLAG_RETURN_ALL )
-    printf("FLAG_RETURN_ALL");
-  if ( flags & FLAG_STORE_ALL )
-    printf("FLAG_STORE_ALL");
-  if ( flags & FLAG_STORE_EXP )
-    printf("FLAG_STORE_EXP");
-  printf("\t");
-
-  if ( flags & FLAG_RAND_1 )
-    printf("FLAG_RAND_1");
-  printf("\t");
-  if ( flags & FLAG_RAND_2 )
-    printf("FLAG_RAND_2");
-  printf("\t");
-
-
   printf("\n");
 }
 
@@ -2922,7 +2702,7 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
   cvsLog->csvWrite("ACCEL_LEN","#","%5i",ACCEL_USELEN);
   cvsLog->csvWrite("Width","#","%4i",sSpec->pWidth);
   cvsLog->csvWrite("Step Sz","#","%5i",batch->accelLen);
-  cvsLog->csvWrite("Stride","#","%5i",batch->hInfos->inpStride);
+  cvsLog->csvWrite("Stride","#","%5i",batch->stacks->strideCmplx);
   cvsLog->csvWrite("Steps","#","%2i",batch->noSteps);
   cvsLog->csvWrite("Batches","#","%2i",mInf->noBatches);
   cvsLog->csvWrite("Devices","#","%2i",mInf->noDevices);
@@ -3018,9 +2798,17 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
     char flagStr[1024];
 
     strClear(flagStr);
-    if ( flags & CU_INPT_SINGLE_C )
+    if ( flags & FLAG_ITLV_ROW )
+      sprintf(flagStr, "%s", "ROW");
+    if ( flags & FLAG_ITLV_PLN )
+      sprintf(flagStr, "%s", "PLN");
+    cvsLog->csvWrite("ITLV","flag","%s", flagStr);
+
+
+    strClear(flagStr);
+    if ( flags & CU_NORM_CPU )
       sprintf(flagStr, "%s", "CPU");
-    if ( flags & CU_INPT_SINGLE_G )
+    if ( flags & CU_NORM_GPU )
       sprintf(flagStr, "%s", "GPU");
     cvsLog->csvWrite("NORM","flag","%s", flagStr);
 
@@ -3032,100 +2820,113 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
       sprintf(flagStr, "%s", "GPU");
     cvsLog->csvWrite("INP FFT","flag","%s", flagStr);
 
-
     strClear(flagStr);
-    if ( flags & CU_OUTP_DEVICE )
-      sprintf(flagStr, "%s", "DEVICE");
-    if ( flags & CU_OUTP_HOST )
-      sprintf(flagStr, "%s", "HOST");
-    if ( flags & CU_OUTP_SINGLE )
-      sprintf(flagStr, "%s", "SINGLE");
-    cvsLog->csvWrite("OUT","flag","%s", flagStr);
-
-
-    strClear(flagStr);
-    if ( flags & FLAG_SIG_GPU )
-      sprintf(flagStr, "%s", "GPU_SIG");
-    cvsLog->csvWrite("SIG","flag","%s", flagStr);
-
-
-    strClear(flagStr);
-    if ( flags & CU_CAND_LST )
-      sprintf(flagStr, "%s", "CAND_LST");
-    cvsLog->csvWrite("INP","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & CU_CAND_ARR )
-      sprintf(flagStr, "%s", "CAND_ARR");
-    cvsLog->csvWrite("CANG","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_CNV_OVLP )
-      sprintf(flagStr, "%s", "FLAG_CNV_OVLP");
-    cvsLog->csvWrite("CNV_OVLP","flag","%s", flagStr);
-
-
-    strClear(flagStr);
-    if ( flags & FLAG_CNV_PLN )
-      sprintf(flagStr, "%s", "PLN");
-    if ( flags & FLAG_CNV_STK )
-      sprintf(flagStr, "%s", "STK");
-    if ( flags & FLAG_CNV_FAM )
-      sprintf(flagStr, "%s", "FAM");
+    if ( flags & FLAG_CNV_00 )
+      sprintf(flagStr, "%s", "CV_00");
+    if ( flags & FLAG_CNV_10 )
+      sprintf(flagStr, "%s", "CV_10");
+    if ( flags & FLAG_CNV_30 )
+      sprintf(flagStr, "%s", "CV_30");
+    if ( flags & FLAG_CNV_41 )
+      sprintf(flagStr, "%s", "CV_41");
+    if ( flags & FLAG_CNV_42 )
+      sprintf(flagStr, "%s", "CV_42");
+    if ( flags & FLAG_CNV_43 )
+      sprintf(flagStr, "%s", "CV_43");
+    if ( flags & FLAG_CNV_50 )
+      sprintf(flagStr, "%s", "CV_50");
     cvsLog->csvWrite("CNV","flag","%s", flagStr);
 
     strClear(flagStr);
-    if ( flags & FLAG_STP_ROW )
-      sprintf(flagStr, "%s", "ROW");
-    if ( flags & FLAG_STP_PLN )
-      sprintf(flagStr, "%s", "PLN");
-    if ( flags & FLAG_STP_STK )
-      sprintf(flagStr, "%s", "STK");
-    cvsLog->csvWrite("STP","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_CUFFTCB_INP )
-      sprintf(flagStr, "%s", "CUFFT_CB_INP");
-    cvsLog->csvWrite("CUFFTCB_INP","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_CUFFTCB_OUT )
-      sprintf(flagStr, "%s", "CUFFT_CB_OUT");
-    cvsLog->csvWrite("CUFFTCB_OUT","flag","%s", flagStr);
-
-    strClear(flagStr);
     if ( flags & FLAG_CNV_TEX )
-      sprintf(flagStr, "%s", "CNV_TEX");
-    cvsLog->csvWrite("CNV_TEX","flag","%s", flagStr);
+      sprintf(flagStr, "%s", "1");
+    else
+      sprintf(flagStr, "%s", "0");
+    cvsLog->csvWrite("CV_TEX","flag","%s", flagStr);
 
     strClear(flagStr);
-    if ( flags & FLAG_PLN_TEX )
-      sprintf(flagStr, "%s", "PLN_TEX");
-    cvsLog->csvWrite("PLN_TEX","flag","%s", flagStr);
+    if ( flags & FLAG_CNV_CB_IN )
+      sprintf(flagStr, "%s", "1");
+    else
+      sprintf(flagStr, "%s", "0");
+    cvsLog->csvWrite("CB_IN","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_CNV_CB_OUT )
+      sprintf(flagStr, "%s", "1");
+    else
+      sprintf(flagStr, "%s", "0");
+    cvsLog->csvWrite("CB_OUT","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_SAS_TEX )
+      sprintf(flagStr, "%s", "1");
+    else
+      sprintf(flagStr, "%s", "0");
+    cvsLog->csvWrite("SAS_TEX","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & FLAG_TEX_INTERP )
-      sprintf(flagStr, "%s", "TEX_INTERP");
-    cvsLog->csvWrite("TEX_INTERP","flag","%s", flagStr);
+      sprintf(flagStr, "%s", "1");
+    else
+      sprintf(flagStr, "%s", "0");
+    cvsLog->csvWrite("SAS_INT","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_SIG_GPU )
+      sprintf(flagStr, "%s", "GPU");
+    else
+      sprintf(flagStr, "%s", "CPU");
+    cvsLog->csvWrite("SIG","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & CU_CAND_ARR )
+      sprintf(flagStr, "%s", "ARR");
+    if ( flags & CU_CAND_LST )
+      sprintf(flagStr, "%s", "LST");
+    if ( flags & CU_CAND_QUAD )
+      sprintf(flagStr, "%s", "QUAD");
+    cvsLog->csvWrite("CAND","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & FLAG_RETURN_ALL )
-      sprintf(flagStr, "%s", "RETURN_ALL");
+      sprintf(flagStr, "%s", "ALL");
+    else
+      sprintf(flagStr, "%s", "FINAL");
+    cvsLog->csvWrite("RET","flag","%s", flagStr);
+
     if ( flags & FLAG_STORE_ALL )
-      sprintf(flagStr, "%s", "STORE_ALL");
+      sprintf(flagStr, "%s", "ALL");
+    else
+      sprintf(flagStr, "%s", "BST");
+    cvsLog->csvWrite("STR","flag","%s", flagStr);
+
     if ( flags & FLAG_STORE_EXP )
-      sprintf(flagStr, "%s", "STORE_EXP");
-    cvsLog->csvWrite("RETURN","flag","%s", flagStr);
+      sprintf(flagStr, "%s", "EXP");
+    else
+      sprintf(flagStr, "%s", "CMP");
+    cvsLog->csvWrite("STR","flag","%s", flagStr);
+
 
     strClear(flagStr);
     if ( flags & FLAG_RAND_1 )
-      sprintf(flagStr, "%s", "RAND_1");
-    cvsLog->csvWrite("RAND1","flag","%s", flagStr);
+      sprintf(flagStr, "%s", "1");
+    cvsLog->csvWrite("RND1","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & FLAG_RAND_2 )
-      sprintf(flagStr, "%s", "RAND_2");
-    cvsLog->csvWrite("RAND2","flag","%s", flagStr);
+      sprintf(flagStr, "%s", "1");
+    cvsLog->csvWrite("RND2","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_RAND_3 )
+      sprintf(flagStr, "%s", "1");
+    cvsLog->csvWrite("RND3","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_RAND_4 )
+      sprintf(flagStr, "%s", "1");
+    cvsLog->csvWrite("RND4","flag","%s", flagStr);
   }
 
   cvsLog->csvEndLine();

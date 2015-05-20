@@ -52,17 +52,6 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               }
               //nvtxRangePop();
 
-              if ( DBG_INP01 )
-              {
-                float* data = (float*)&fft[rVal->lobin];
-                int gx;
-                printf("\nGPU Input Data RAW FFTs [ Half width: %i  lowbin: %lli  drlo: %.2f ] \n", cHInfo->halfWidth, rVal->lobin, rVal->drlo);
-
-                for ( gx = 0; gx < 10; gx++)
-                  printf("%.4f ",((float*)data)[gx]);
-                printf("\n");
-              }
-
               //nvtxRangePush("Median");
               norm = 1.0 / sqrt(median(batch->h_powers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
               //norm = 1.0 / sqrt(median(&plains->h_powers[start], (rVal->numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion)
@@ -70,7 +59,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 
               // Normalise and spread
               //nvtxRangePush("Write");
-              for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->inpStride ); ii++)
+              for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
               {
                 if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->SrchSz->searchRHigh )  // Zero Pad
                 {
@@ -79,7 +68,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                 }
                 else
                 {
-                  if ( ii * ACCEL_NUMBETWEEN > cStack->inpStride )
+                  if ( ii * ACCEL_NUMBETWEEN > cStack->strideCmplx )
                   {
                     fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
                     exit(EXIT_FAILURE);
@@ -133,7 +122,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
             //nvtxRangePop();
           }
 
-          sz += cStack->inpStride;
+          sz += cStack->strideCmplx;
         }
         harm++;
       }
@@ -241,7 +230,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
     FOLD // Norm Timing  .
     {
-      if ( batch->flag & CU_INPT_SINGLE_G )
+      if ( batch->flag & CU_NORM_GPU )
       {
         for (int ss = 0; ss < batch->noStacks; ss++)
         {
@@ -310,19 +299,20 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
   }
 #endif
 
-  if ( searchRLow[0] < searchRHi[0] ) // This is real data ie this isn't just a call to finish off asynchronous work
+  // Calculate R values
+  setStackRVals(batch, searchRLow, searchRHi );
+
+  //if ( searchRLow[0] < searchRHi[0] ) // This is real data ie this isn't just a call to finish off asynchronous work
+  if ( batch->rInput[0][0]->numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
     nvtxRangePush("Input");
 #ifdef STPMSG
     printf("\tInput\n");
 #endif
 
-    // Calculate R values
-    setStackRVals(batch, searchRLow, searchRHi );
-
     FOLD  // Normalise and spread and copy to device memory  .
     {
-      if      ( batch->flag & CU_INPT_SINGLE_G  )
+      if      ( batch->flag & CU_NORM_GPU  )
       {
         // Copy chunks of FFT data and normalise and spread using the GPU
 
@@ -390,7 +380,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
                     // Do the actual copy
                     memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
                   }
-                  sz += cStack->inpStride;
+                  sz += cStack->strideCmplx;
                 }
                 harm++;
               }
@@ -462,7 +452,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
           }
         }
       }
-      else if ( batch->flag & CU_INPT_SINGLE_C  )
+      else if ( batch->flag & CU_NORM_CPU  )
       {
         // Copy chunks of FFT data and normalise and spread using the CPU
 
@@ -514,7 +504,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         FOLD // Synchronisation  .
         {
           // Wait for per stack convolutions to finish
-          for (int ss = 0; ss< batch->noStacks; ss++)
+          for (int ss = 0; ss < batch->noStacks; ss++)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
             CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
@@ -555,23 +545,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       }
       else
       {
-        fprintf(stderr,"ERROR: No input normalisation method specified, pleas set to CU_INPT_SINGLE_G or CU_INPT_SINGLE_C\n");
-      }
-    }
-
-    if ( DBG_INP03 ) // Print debug info  .
-    {
-      for (int ss = 0; ss< batch->noHarms && true; ss++)
-      {
-        cuFFdot* cPlain     = &batch->plains[ss];
-        printf("\nGPU Input Data pre FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-        //printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
-        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-        for (int ss = 0; ss< batch->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &batch->stacks[ss];
-          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
-        }
+        fprintf(stderr,"ERROR: No input normalisation method specified, pleas set to CU_NORM_GPU or CU_NORM_CPU\n");
       }
     }
 
@@ -636,22 +610,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
           }
         }
         CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
-      }
-    }
-
-    if ( DBG_INP04 ) // Print debug info  .
-    {
-      for (int ss = 0; ss< batch->noHarms && true; ss++)
-      {
-        cuFFdot* cPlain     = &batch->plains[ss];
-        printf("\nGPU Input Data post FFT h:%i   f: %f\n",ss,cPlain->harmInf->harmFrac);
-        //printfData<<<1,1,0,0>>>((float*)cPlain->d_iData,10,1, cPlain->harmInf->inpStride);
-        CUDA_SAFE_CALL(cudaStreamSynchronize(0),"");
-        for (int ss = 0; ss< batch->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &batch->stacks[ss];
-          CUDA_SAFE_CALL(cudaStreamSynchronize(cStack->fftIStream),"");
-        }
       }
     }
 

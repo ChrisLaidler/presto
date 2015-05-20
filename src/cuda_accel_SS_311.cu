@@ -39,7 +39,7 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
     //register float maxP[noStages];
     //int z[noStages];
 
-    // One of the two variables below should get optimised out depending on FLAG_STP_ROW or FLAG_STP_PLN
+    // One of the two variables below should get optimised out depending on FLAG_ITLV_ROW or FLAG_ITLV_PLN
     int inds[noHarms];
     fcomplexcu* pData[noHarms];
     //float powers[CHUNKSZ];         // registers to hold values to increase mem cache hits
@@ -48,7 +48,7 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
     //float maxP[noStages];
     //int z[noStages];
 
-    // One of the two variables below should get optimised out depending on FLAG_STP_ROW or FLAG_STP_PLN
+    // One of the two variables below should get optimised out depending on FLAG_ITLV_ROW or FLAG_ITLV_PLN
     int inds[noHarms];
     fcomplexcu* pData[noHarms];
     //float powers[CHUNKSZ];         // registers to hold values to increase mem cache hits
@@ -77,7 +77,7 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
           float idxS    = 0.5f + diff*ACCEL_RDR ;
 
           ix = (int)( tid * searchList.frac.val[harm] + idxS ) + searchList.ffdBuffre.val[harm];
-          if     (FLAGS & FLAG_PLN_TEX)  // Calculate x index
+          if     (FLAGS & FLAG_SAS_TEX)  // Calculate x index
           {
             inds[harm]      = ix;
           }
@@ -85,18 +85,18 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
           {
             inds[harm]      = ix;
 
-            if        ( FLAGS & FLAG_STP_ROW )
+            if        ( FLAGS & FLAG_ITLV_ROW )
             {
               pData[harm]   = &searchList.datas.val[harm][ ix + searchList.strides.val[harm]*step ] ;
             }
-            else if   ( FLAGS & FLAG_STP_PLN )
+            else if   ( FLAGS & FLAG_ITLV_PLN )
             {
               pData[harm]   = &searchList.datas.val[harm][ ix + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
             }
           }
 
           // Change the stride for this harmonic
-          if     ( !( FLAGS & FLAG_PLN_TEX ) && ( FLAGS & FLAG_STP_ROW ) )
+          if     ( !( FLAGS & FLAG_SAS_TEX ) && ( FLAGS & FLAG_ITLV_ROW ) )
           {
             //searchList.strides.val[harm] *= noSteps;
             nStride[harm] = searchList.strides.val[harm] * noSteps;
@@ -175,14 +175,14 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
                 int trm       = y + yPlus ;
                 iy            = YINDS[ searchList.yInds.val[harm] + trm ] ;
 
-                if     (FLAGS & FLAG_PLN_TEX)
+                if     (FLAGS & FLAG_SAS_TEX)
                 {
                   // Calculate y indice
-                  if      ( FLAGS & FLAG_STP_ROW )
+                  if      ( FLAGS & FLAG_ITLV_ROW )
                   {
                     iy  = ( iy * noSteps + step );
                   }
-                  else if ( FLAGS & FLAG_STP_PLN )
+                  else if ( FLAGS & FLAG_ITLV_PLN )
                   {
                     iy  = ( iy + searchList.heights.val[harm]*step ) ;
                   }
@@ -194,12 +194,12 @@ __global__ void add_and_searchCU311(cuSearchList searchList, accelcandBasic* d_c
                 else
                 {
                   fcomplexcu cmpc;
-                  if        ( FLAGS & FLAG_STP_ROW )
+                  if        ( FLAGS & FLAG_ITLV_ROW )
                   {
                     //cmpc = searchList.datas.val[harm][ inds[harm]  + searchList.strides.val[harm]*noSteps*iy + searchList.strides.val[harm]*step ] ;
                     cmpc = pData[harm][nStride[harm]*iy] ; // Note stride has been set depending on multi-step type
                   }
-                  else if   ( FLAGS & FLAG_STP_PLN )
+                  else if   ( FLAGS & FLAG_ITLV_PLN )
                   {
                     cmpc = searchList.datas.val[harm][ inds[harm]  + searchList.strides.val[harm]*iy + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
                   }
@@ -333,7 +333,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
 //#pragma unroll
       for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
       {
-        if ( FLAGS & FLAG_STP_ROW )
+        if ( FLAGS & FLAG_ITLV_ROW )
         {
           stride[harm] = noSteps*STRIDE[harm] ;
         }
@@ -348,7 +348,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
           float fx    = (rBin.val[step] + tid)*FRAC[harm] - rBin.val[harm*noSteps + step]  + HWIDTH[harm] ;
           int   ix    = round(fx) ;
 
-          if ( FLAGS & FLAG_STP_ROW )
+          if ( FLAGS & FLAG_ITLV_ROW )
           {
             ix += step*STRIDE[harm] ;
           }
@@ -415,14 +415,14 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
                 {
                   int ix = inds[step][harm] ;
 
-                  if        ( FLAGS & FLAG_STP_PLN )
+                  if        ( FLAGS & FLAG_ITLV_PLN )
                   {
                     iy2 = iy1 + step * HEIGHT[harm];                // stride step by plain
                   }
 
-                  if        ( FLAGS & FLAG_PLN_TEX )
+                  if        ( FLAGS & FLAG_SAS_TEX )
                   {
-                    if      ( FLAGS & FLAG_CUFFTCB_OUT )
+                    if      ( FLAGS & FLAG_CNV_CB_OUT )
                     {
                       const float cmpf      = tex2D < float > (texs.val[harm], ix+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
                       powers[step][yPlus]   += cmpf;
@@ -436,7 +436,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
                   }
                   else
                   {
-                    if      ( FLAGS & FLAG_CUFFTCB_OUT )
+                    if      ( FLAGS & FLAG_CNV_CB_OUT )
                     {
                       float cmpf            = powersArr[harm][ ix + iy2 ];
                       powers[step][yPlus]  += cmpf;
@@ -513,30 +513,6 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
 template<uint FLAGS, int noStages, const int noHarms, const int cunkSize, int noSteps>
 __host__ void add_and_searchCU311_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  /*
-  int heights[noHarms];
-  int strides[noHarms];
-  float  frac[noHarms];
-  int  hWidth[noHarms];
-  //__global__ long   rBin[noHarms][noSteps];
-
-  int i = 0;
-  for (int i = 0; i < noHarms; i++)
-  {
-    int idx =  batch->pIdx[i];
-
-    heights[i]              = batch->hInfos[idx].height;
-    strides[i]              = batch->hInfos[idx].inpStride;
-    frac[i]                 = batch->hInfos[idx].harmFrac;
-    hWidth[i]               = batch->hInfos[idx].halfWidth*ACCEL_NUMBETWEEN;
-
-    for ( int step = 0; step < noSteps; step++)
-    {
-      rBin[i][step]         = (*batch->rConvld)[step][idx].expBin ;
-    }
-  }
-  */
-
   tHarmList   texs;
   fsHarmList powers;
   cHarmList   cmplx;
@@ -736,12 +712,12 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
   const uint FLAGS = batch->flag;
 
     {
-      if        ( FLAGS & FLAG_CUFFTCB_OUT )
+      if        ( FLAGS & FLAG_CNV_CB_OUT )
       {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU311_p<FLAG_CUFFTCB_OUT | FLAG_STP_PLN>  (dimGrid, dimBlock, stream, batch);
+        if      ( FLAGS & FLAG_ITLV_ROW )
+          add_and_searchCU311_p<FLAG_CNV_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
+        else if ( FLAGS & FLAG_ITLV_PLN )
+          add_and_searchCU311_p<FLAG_CNV_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
         else
         {
           fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
@@ -750,10 +726,10 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
       }
       else
       {
-        if      ( FLAGS & FLAG_STP_ROW )
-          add_and_searchCU311_p<FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
-        else if ( FLAGS & FLAG_STP_PLN )
-          add_and_searchCU311_p<FLAG_STP_PLN> (dimGrid, dimBlock, stream, batch);
+        if      ( FLAGS & FLAG_ITLV_ROW )
+          add_and_searchCU311_p<FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
+        else if ( FLAGS & FLAG_ITLV_PLN )
+          add_and_searchCU311_p<FLAG_ITLV_PLN> (dimGrid, dimBlock, stream, batch);
         else
         {
           fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );

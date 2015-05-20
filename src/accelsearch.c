@@ -33,11 +33,6 @@ static void print_percent_complete(int current, int number, char *what, int rese
 {
    static int newper = 0, oldper = -1;
 
-#ifdef CUDA
-   if ( DBG_INP01 || DBG_INP02 || DBG_INP03 || DBG_INP04 || DBG_PLN01 || DBG_PLN02 || DBG_PLN03 || DBG_PLTPLN06 )
-     return;
-#endif
-   
    if (reset) {
       oldper = -1;
       newper = 0;
@@ -465,9 +460,6 @@ int main(int argc, char *argv[])
            cands = candsGPU;
            printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
-           printCommandLine(argc,argv);
-           printFlags(master->flag);
-
 #ifdef DEBUG
            char name [100];
            sprintf(name,"%s_hs%02i_zmax%06.1f_sig%06.3f_GPU_Cands.csv", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
@@ -653,7 +645,7 @@ int main(int argc, char *argv[])
           printf("\t\t");
           printf("%s\t","Copy H2D");
 
-          if ( batches->flag & CU_INPT_SINGLE_G )
+          if ( batches->flag & CU_NORM_GPU )
             printf("%s\t","Norm GPU");
           else
             printf("%s\t","Norm CPU");
@@ -686,7 +678,7 @@ int main(int argc, char *argv[])
           cuFfdotStack*   cStack = &batches->stacks[stack];
 
           float convDat = cStack->height * cStack->width * batches->noSteps * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
-          convDat       += cStack->harmInf->height * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+          convDat       += cStack->kerHeigth * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
           convDat       += cStack->noInStack * batches->noSteps * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
 
           float convT   = batches->convTime[stack] * 1e-3;

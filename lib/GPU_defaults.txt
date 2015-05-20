@@ -1,39 +1,53 @@
 
 ####### memory #######
 
-# FLAG_STP_ROW  FLAG_STP_PLN
-FLAG_STP_PLN
+# INTERLEAVE_ROW  INTERLEAVE_PLN
+INTERLEAVE_ROW
 
 ######## Input #######
 
-# CU_INPT_CPU_FFT  
-#CU_INPT_CPU_FFT
+# NORM_CPU NORM_GPU
+NORM_GPU
 
-# CU_INPT_SINGLE_G  CU_INPT_SINGLE_C
-CU_INPT_SINGLE_C
+# CPU_FFT  GPU_FFT
+GPU_FFT
 
 
 ###### Convolve ######
 
-# FLAG_CNV_FAM   FLAG_CNV_STK   FLAG_CNV_PLN
-FLAG_CNV_STK
+# CV_00  CV_10  CV_30  CV_41  CV_42  CV_43  CV_50
+#CV_43
 
-# Other Convolve method
-# FLAG_CNV_OVLP
-FLAG_CNV_OVLP
-
-FLAG_CNV_TEX
+# Other Convolve options
+# FLAG_CNV_TEX
 
 ####### FFT ##########
 
-FLAG_CUFFTCB_OUT
+# FLAG_CNV_CB_IN
+FLAG_CNV_CB_OUT # Almost always want this if possible
 
+#FLAG_NO_CB
+
+###### Search ########
+
+#FLAG_SAS_TEX
+#FLAG_TEX_INTERP
+# SIG_GPU or SIG_CPU (default)
 
 ###### output ########
 
-# CU_OUTP_SINGLE   CU_OUTP_HOST   CU_OUTP_DEVICE
-CU_OUTP_SINGLE
+# CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
+CU_CAND_ARR
+
+# FLAG_RETURN_ALL or FLAG_RETURN_FINAL
+
+
+#FLAG_STORE_ALL
+#FLAG_STORE_EXP
 
 
 #FLAG_RAND_1
 #FLAG_RAND_2
+#FLAG_RAND_3
+#FLAG_RAND_4
+

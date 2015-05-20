@@ -42,77 +42,52 @@ extern "C"
 #define   MAX_STKSZ     9       ///< The maximum number of plains in a stack
 #define   MAX_GPUS      32      ///< The maximum number GPU's
 
-//======================================== Debug Defines  ================================================\\
-
-#define DBG_KER01       0       ///< Convolution kernel
-#define DBG_KER02       0       ///< Convolution kernel post fft
-#define DBG_PRNTKER02   0       ///< Convolution kernel post fft
-
-#define DBG_INP01       0       ///< RAW FFT
-#define DBG_INP02       0       ///< normalised RAW FFT
-#define DBG_INP03       0       ///< spread RAW FFT
-#define DBG_INP04       0       ///< FFT'd input data
-
-#define DBG_PLN01       0       ///< Input convolved
-#define DBG_PLN02       0       ///< Input convolved & FFTD (Complex plain)
-#define DBG_PLN03       0       ///< Summed powers (ie The f-∂f plain)
-
-#define DBG_PLTPLN06    0       ///< Input convolved & FFTD (Complex plain)
-#define DBG_PLTDETC     0       ///< Detections
-
-
 //====================================== Bit flag values =================================================\\
 
-//#define     CU_INPT_DEVICE      (1<<0)    ///< Put the entire raw input FFT on device memory - No CPU synchronisation required, but normalisation on GPU!
-//#define     CU_INPT_HOST        (1<<1)    ///< Use host page locked host data for entire raw FFT data - normalisation on GPU but allows asynchronous copies.
+#define     FLAG_ITLV_ROW       (1<<0)    ///< Multi-step Row   interleaved        - This seams to be best in most cases
+#define     FLAG_ITLV_PLN       (1<<1)    ///< Multi-step Plain interleaved        -
+#define     FLAG_ITLV_ALL       ( FLAG_ITLV_ROW | FLAG_ITLV_PLN )
 
+#define     CU_NORM_CPU         (1<<2)    ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define     CU_NORM_GPU         (1<<3)    ///< Prepare input data one step at a time, using GPU - normalisation on GPU
+#define     CU_NORM_ALL         (CU_NORM_GPU | CU_NORM_CPU)
 
-#define     FLAG_STP_ROW        (1<<0)    ///< Multi-step Row   interleaved        - This seams to be best in most cases
-#define     FLAG_STP_PLN        (1<<1)    ///< Multi-step Plain interleaved        -
-#define     FLAG_STP_ALL        ( FLAG_STP_ROW | FLAG_STP_PLN )
+#define     CU_INPT_CPU_FFT     (1<<4)    ///< Do the FFT on the CPU
 
-#define     CU_INPT_SINGLE_C    (1<<3)    ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_INPT_SINGLE_G    (1<<4)    ///< Prepare input data one step at a time, using GPU - normalisation on GPU
-#define     CU_INPT_ALL         (CU_INPT_SINGLE_G | CU_INPT_SINGLE_C)
+#define     FLAG_CNV_00         (1<<5)    ///< Convolve
+#define     FLAG_CNV_10         (1<<6)    ///< Convolve
+#define     FLAG_CNV_30         (1<<7)    ///< Convolve
+#define     FLAG_CNV_41         (1<<8)    ///< Convolve
+#define     FLAG_CNV_42         (1<<9)    ///< Convolve
+#define     FLAG_CNV_43         (1<<10)   ///< Convolve
+#define     FLAG_CNV_50         (1<<11)   ///< Convolve one kernel for entire batch
+#define     FLAG_CNV_BATCH      ( FLAG_CNV_50 )   ///< Convolve one kernel for entire batch
+#define     FLAG_CNV_STK        ( FLAG_CNV_00 | FLAG_CNV_10 | FLAG_CNV_41 | FLAG_CNV_42 | FLAG_CNV_43 )
+#define     FLAG_CNV_PLN        ( FLAG_CNV_30 )
+#define     FLAG_CNV_ALL        ( FLAG_CNV_BATCH | FLAG_CNV_STK | FLAG_CNV_PLN )
 
-#define     CU_INPT_CPU_FFT     (1<<6)    ///< Do the FFT on the CPU
+#define     FLAG_CNV_TEX        (1<<13)   ///< Use texture memory for convolution  - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_CNV_CB_IN      (1<<14)   ///< Use an input  callback to do the convolution      - I found this to be very slow
+#define     FLAG_CNV_CB_OUT     (1<<15)   ///< Use an output callback to create powers           - This is a similar speed
 
-#define     FLAG_CNV_00         (1<<8)    ///< Convolve
-#define     FLAG_CNV_10         (1<<8)    ///< Convolve
-#define     FLAG_CNV_30         (1<<9)    ///< Convolve
-#define     FLAG_CNV_41         (1<<10)   ///< Convolve
-#define     FLAG_CNV_42         (1<<11)   ///< Convolve
-#define     FLAG_CNV_43         (1<<12)   ///< Convolve
-#define     FLAG_CNV_50         (1<<13)   ///< Convolve
+#define     FLAG_SAS_TEX        (1<<17)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_INTERP     (1<<18)   ///< Use liner interpolation in with texture memory - This requires - FLAG_CNV_CB_OUT and FLAG_SAS_TEX
+#define     FLAG_SIG_GPU        (1<<19)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-//#define     CU_OUTP_DEVICE      (1<<5)    ///< Write all candidates to the device memory : This requires a lot of device memory
-//#define     CU_OUTP_HOST        (1<<6)    ///< Write all candidates to page locked host memory : This requires a lot of memory
-//#define     CU_OUTP_SINGLE      (1<<7)    ///< Only get candidates from the current plain - This seams to be best in most cases
-//#define     CU_OUTP_ALL         ( CU_OUTP_DEVICE | CU_OUTP_HOST | CU_OUTP_SINGLE )
+#define     CU_CAND_ARR         (1<<20)   ///< Candidates are stored in an array (requires more memory)
+#define     CU_CAND_LST         (1<<21)   ///< Candidates are stored in a list  (usually a dynamic linked list)
+#define     CU_CAND_QUAD        (1<<22)   ///< Candidates are stored in a list  (usually a dynamic linked list)
+#define     CU_CAND_ALL         (CU_CAND_ARR | CU_CAND_LST | CU_CAND_QUAD)
 
-#define     FLAG_SIG_GPU        (1<<8)    ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define     FLAG_RETURN_ALL     (1<<23)   ///< Return results for all stages of summing, default is only the final result
 
-#define     CU_CAND_LST         (1<<9)    ///< Candidates are stored in a list   (usually a dynamic linked list)
-#define     CU_CAND_ARR         (1<<10)   ///< Candidates are stored in an array (requires more memory)
+#define     FLAG_STORE_ALL      (1<<24)   ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<25)   ///< Store expanded candidates
 
-//#define     FLAG_CNV_PLN        (1<<14)   ///< Convolve one plain at a time
-//#define     FLAG_CNV_STK        (1<<15)   ///< Convolve one stack at a time        - This seams to be best in most cases
-//#define     FLAG_CNV_FAM        (1<<16)   ///< Convolve one family at a time       - Preferably don't use this!
-//#define     FLAG_CNV_ALL        ( FLAG_CNV_PLN | FLAG_CNV_STK | FLAG_CNV_FAM )
-
-#define     FLAG_CUFFTCB_INP    (1<<21)   ///< Use an input  callback to do the convolution      - I found this to be very slow
-#define     FLAG_CUFFTCB_OUT    (1<<22)   ///< Use an output callback to create powers           - This is a similar speed
-
-#define     FLAG_CNV_TEX        (1<<23)   ///< Use texture memory for convolution  - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_PLN_TEX        (1<<24)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     (1<<25)   ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFTCB_OUT and FLAG_PLN_TEX
-
-#define     FLAG_RETURN_ALL     (1<<26)   ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      (1<<28)   ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<29)   ///< Store expanded candidates
-
-#define     FLAG_RAND_1         (1<<30)   ///< Random Flag 1
-#define     FLAG_RAND_2         (1<<31)   ///< Random Flag 2
+#define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
+#define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
+#define     FLAG_RAND_3         (1<<29)   ///< Random Flag 2
+#define     FLAG_RAND_4         (1<<30)   ///< Random Flag 2
 
 // ----------- This is a list of the data types that can be passed or returned
 
@@ -148,16 +123,16 @@ typedef struct fcomplexcu
 ///< Note this may not be the best choice on a GPU as it has a bad size
 typedef struct accelcand2
 {
-  float value;        // This cab be Sigma or summed power
-  short z;            // Fourier f-dot of first harmonic
+    float value;        // This cab be Sigma or summed power
+    short z;            // Fourier f-dot of first harmonic
 } accelcand2;
 
 ///< Basic accel search candidate to be used in CUDA kernels
 typedef struct accelcandBasic
 {
-  float sigma;        // Sigma - adjusted for number of trials, NOTE: at some points this value holds the sum of powers from which the sigma value will be calculated
-  short numharm;      // Number of harmonics summed
-  short z;            // Fourier f-dot of first harmonic
+    float sigma;        // Sigma - adjusted for number of trials, NOTE: at some points this value holds the sum of powers from which the sigma value will be calculated
+    short numharm;      // Number of harmonics summed
+    short z;            // Fourier f-dot of first harmonic
 } accelcandBasic;
 
 ///< Accel search candidate (this holds more info and is thus larger than accelcandBasic
@@ -230,18 +205,18 @@ typedef struct rVals
  */
 typedef struct searchSpecs
 {
-//    int     noHarms;                  ///< The number of harmonics in the family                 m
-    int     noHarmStages;             ///< The number of stages of harmonic summing              m
+    //    int     noHarms;                  ///< The number of harmonics in the family
+    int     noHarmStages;             ///< The number of stages of harmonic summing
 
     int     zMax;                     ///< The highest z drift of the fundamental
     int     pWidth;                   ///< The desired width of the plains
     float   sigma;                    ///< The cut off sigma
     fftInfo fftInf;                   ///< The details of the input fft - location size and area to search
 
-    int     flags;                    ///< The search flags
+    uint    flags;                    ///< The search flags
     int     normType;                 ///< The type of normalisation to do
 
-    int     outType;                  ///< The type of output                                    m
+    int     outType;                  ///< The type of output
     void*   outData;                  ///< A pointer to the location to store candidates
 } searchSpecs;
 
@@ -255,12 +230,13 @@ typedef struct gpuSpecs
     int     noDevSteps[MAX_GPUS];     ///< A list noDevices long of the number of steps each device wants to use
 } gpuSpecs;
 
-/** The size information of a f-∂f plain
+/** The general information of a f-∂f plain
+ * NOTE: This is everything that is not specific to a particular plain
  */
 typedef struct cuHarmInfo
 {
     size_t  height;                   ///< The number if rows (Z's)
-    size_t  width;                    ///< The number of complex numbers in each kernel (2 floats)
+    size_t  width;                    ///< The number of columns (this should always be a power of 2)
 
     int     halfWidth;                ///< The kernel half width         - in input fft units ie needs to be multiply by ACCEL_RDR to get plain units
 
@@ -268,7 +244,7 @@ typedef struct cuHarmInfo
 
     int     zmax;                     ///< The maximum (and minimum) z
     float   harmFrac;                 ///< The harmonic fraction
-    int     stackNo;                  ///< Which Stack is the plain in. (0 indexed at starting at the widest stack)
+    int     stackNo;                  ///< Which Stack is this plain in. (0 indexed at starting at the widest stack)
 
     int     yInds;                    ///< The offset of the y offset in constant memory
     int     stageOrder;               ///< The index of this harmonic in the staged order
@@ -310,8 +286,9 @@ typedef struct cuFfdotStack
     int     startIdx;                 ///< The 'global' offset of the first element of the stack
     size_t  width;                    ///< The width of  the entire stack, for one step [ in complex numbers! ]
     size_t  height;                   ///< The height of the entire stack, for one step
-    size_t  inpStride;                ///< The stride of the block of memory  [ in complex numbers! ]
-    size_t  pwrStride;                ///< The stride of the block of memory  [ in complex numbers! ]
+    size_t  kerHeigth;                ///< The width of  the entire stack, for one step [ in complex numbers! ]
+    size_t  strideCmplx;              ///< The stride of the block of memory  [ in complex numbers! ]
+    size_t  stridePwrs;               ///< The stride of the powers
 
     // Sub data structures associated with this stack
     cuHarmInfo* harmInf;              ///< A pointer to all the harmonic info's for this stack
@@ -333,34 +310,33 @@ typedef struct cuFfdotStack
     // FFTW details
     fftwf_plan  inpPlanFFTW;          ///< A FFTW plan to fft the input data for this stack
 
-    // pointers to memory
+    // Pointers to device memory
     fcomplexcu* d_kerData;            ///< Kernel data for this stack
     fcomplexcu* d_plainData;          ///< Plain data for this stack
     float*      d_plainPowers;        ///< Powers for this stack
     fcomplexcu* d_iData;              ///< Input data for this stack
     fcomplexcu* h_iData;              ///< Paged locked input data for this stack
 
-    // Texture
-    fCplxTex kerDatTex;               ///< A texture holding the kernel data
-
-    // Events
-    cudaEvent_t normComp;             ///< Normalisation of input data
-    cudaEvent_t prepComp;             ///< Preparation of the input data complete
-    cudaEvent_t convComp;             ///< Convolution complete
-    cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
-
-    // TIMING events
-    cudaEvent_t normInit;             ///< Convolution starting
-    cudaEvent_t inpFFTinit;           ///< Start of the input FFT
-    cudaEvent_t convInit;             ///< Convolution starting
-    cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
-
-
     // Streams
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the stack
     cudaStream_t fftIStream;          ///< CUDA stream to CUFFT the input data
     cudaStream_t cnvlStream;          ///< CUDA stream for work on the stack
     cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
+
+    // CUDA Texture
+    fCplxTex kerDatTex;               ///< A texture holding the kernel data
+
+    // CUDA Events
+    cudaEvent_t normComp;             ///< Normalisation of input data
+    cudaEvent_t prepComp;             ///< Preparation of the input data complete
+    cudaEvent_t convComp;             ///< Convolution complete
+    cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
+
+    // CUDA TIMING events
+    cudaEvent_t normInit;             ///< Convolution starting
+    cudaEvent_t inpFFTinit;           ///< Start of the input FFT
+    cudaEvent_t convInit;             ///< Convolution starting
+    cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
 
 } cuFfdotStack;
 

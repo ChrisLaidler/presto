@@ -91,20 +91,20 @@ __global__ void convolveffdot71_k(const fcomplexcu *kernel, const fcomplexcu *da
 
               FOLD  // Calculate y indices for this plain  .
               {
-                if      ( FLAGS & FLAG_STP_ROW )
+                if      ( FLAGS & FLAG_ITLV_ROW )
                 {
                   //iyTopPln  = ( iyTop - zUp.val[plnNo] ) ;
                   //iyBotPln  = ( iyBot - zUp.val[plnNo] ) ;
                   iyTopPln  = ( iyTop - zUp.val[plnNo] ) * noSteps * stride ;
                   iyBotPln  = ( iyBot - zUp.val[plnNo] ) * noSteps * stride ;
                 }
-                else if ( FLAGS & FLAG_STP_PLN )
+                else if ( FLAGS & FLAG_ITLV_PLN )
                 {
                   iyTopPln  = ( iyTop - zUp.val[plnNo] );
                   iyBotPln  = ( iyBot - zUp.val[plnNo] );
                 }
                 /*
-              else if ( FLAGS & FLAG_STP_STK )
+              else if ( FLAGS & FLAG_ITLV_STK )
               {
                 iyTopPln  = ( iyTop - zUp.val[plnNo] );
                 iyBotPln  = ( iyBot - zUp.val[plnNo] );
@@ -117,20 +117,20 @@ __global__ void convolveffdot71_k(const fcomplexcu *kernel, const fcomplexcu *da
               {
                 FOLD // Calculate indices  .
                 {
-                  if      ( FLAGS & FLAG_STP_ROW )
+                  if      ( FLAGS & FLAG_ITLV_ROW )
                   {
                     //idxTop  = (iyTopPln * noSteps + step) * stride ;
                     //idxBot  = (iyBotPln * noSteps + step) * stride ;
                     idxTop  = iyTopPln + step * stride ;
                     idxBot  = iyBotPln + step * stride ;
                   }
-                  else if ( FLAGS & FLAG_STP_PLN )
+                  else if ( FLAGS & FLAG_ITLV_PLN )
                   {
                     idxTop  = (iyTopPln + plnHeights.val[plnNo]*step) * stride ;
                     idxBot  = (iyBotPln + plnHeights.val[plnNo]*step) * stride ;
                   }
                   /*
-              else if ( FLAGS & FLAG_STP_STK )
+              else if ( FLAGS & FLAG_ITLV_STK )
               {
                 idxTop  = (iyTopPln + stkHeight*step) * stride ;
                 idxBot  = (iyBotPln + stkHeight*step) * stride ;
@@ -184,17 +184,13 @@ __global__ void convolveffdot71_k(const fcomplexcu *kernel, const fcomplexcu *da
             {
               FOLD // Calculate indices  .
               {
-                if ( FLAGS & FLAG_STP_ROW )
+                if ( FLAGS & FLAG_ITLV_ROW )
                 {
                   idxTop  = cy + step * stride ;
                 }
-                else if ( FLAGS & FLAG_STP_PLN )
+                else if ( FLAGS & FLAG_ITLV_PLN )
                 {
                   idxTop  = (( (iyTop )  - zUp.val[plnNo] ) + plnHeights.val[plnNo]*step) * stride ;
-                }
-                else if ( FLAGS & FLAG_STP_STK )
-                {
-                  idxTop  = (( (iyTop )  - zUp.val[plnNo] ) + stkHeight*step) * stride ;
                 }
               }
 
@@ -313,12 +309,12 @@ __host__ void convolveffdot71_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
 {
   if ( FLAGS & FLAG_CNV_TEX )
   {
-    if      ( FLAGS & FLAG_STP_ROW )
-      convolveffdot71_p<FLAG_CNV_TEX | FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
-    else if ( FLAGS & FLAG_STP_PLN )
-      convolveffdot71_p<FLAG_CNV_TEX | FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
-    //else if ( FLAGS & FLAG_STP_STK )
-    //  convolveffdot71_p<FLAG_CNV_TEX | FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    if      ( FLAGS & FLAG_ITLV_ROW )
+      convolveffdot71_p<FLAG_CNV_TEX | FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    else if ( FLAGS & FLAG_ITLV_PLN )
+      convolveffdot71_p<FLAG_CNV_TEX | FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    //else if ( FLAGS & FLAG_ITLV_STK )
+    //  convolveffdot71_p<FLAG_CNV_TEX | FLAG_ITLV_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else
     {
       fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination. \n");
@@ -327,12 +323,12 @@ __host__ void convolveffdot71_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
   }
   else
   {
-    if      ( FLAGS & FLAG_STP_ROW )
-      convolveffdot71_p< FLAG_STP_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
-    else if ( FLAGS & FLAG_STP_PLN )
-      convolveffdot71_p< FLAG_STP_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
-    //else if ( FLAGS & FLAG_STP_STK )
-    //  convolveffdot71_p< FLAG_STP_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    if      ( FLAGS & FLAG_ITLV_ROW )
+      convolveffdot71_p< FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    else if ( FLAGS & FLAG_ITLV_PLN )
+      convolveffdot71_p< FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
+    //else if ( FLAGS & FLAG_ITLV_STK )
+    //  convolveffdot71_p< FLAG_ITLV_STK> (dimGrid, dimBlock, i1, cnvlStream, kernel,  datas, ffdot, width, stride,  heights,  stackHeight, kerTex, zUp, zDn, noSteps, noPlns );
     else
     {
       fprintf(stderr, "ERROR: convolveffdot7 has not been templated for flag combination.\n");

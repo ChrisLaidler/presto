@@ -455,8 +455,6 @@ cuHarmInfo* createStacks(int numharmstages, int zmax, accelobs* obs);
 
 ExternC int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
 
-void printData_cu(cuFFdotBatch* stkLst, const int FLAGS, int harmonic, int nX = 10, int nY = 5, int sX = 0, int sY = 0);
-
 /** Initialise the pointers of the stacks data structures of a batch  .
  *
  * This assumes the various memory blocks of the batch have been created
@@ -486,8 +484,6 @@ ExternC void setBatchPointers(cuFFdotBatch* batch);
  * @param val The value to print
  */
 void printBitString(uint val);
-
-
 
 /////////////////////////////////////// Kernel prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 

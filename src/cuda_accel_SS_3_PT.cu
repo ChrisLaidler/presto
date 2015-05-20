@@ -26,7 +26,7 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
         {
           float fx    = (rBin.val[step] + tid)*FRAC[harm] - rBin.val[harm*noSteps + step]  + HWIDTH[harm];
 
-          if        ( FLAGS & FLAG_STP_ROW )
+          if        ( FLAGS & FLAG_ITLV_ROW )
           {
             fx += step*STRIDE[harm] ;
           }
@@ -91,7 +91,7 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
                 //#pragma unroll
                 for ( int step = 0; step < noSteps; step++)        // Loop over steps  .
                 {
-                  if        ( FLAGS & FLAG_STP_PLN )
+                  if        ( FLAGS & FLAG_ITLV_PLN )
                   {
                     fy2 = fy1 + step * HEIGHT[harm];  // stride step by plain
                   }
@@ -313,12 +313,12 @@ __host__ void add_and_searchCU3_PT_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
 {
   const uint FLAGS = batch->flag ;
 
-  if        ( (FLAGS & FLAG_CUFFTCB_OUT) && (FLAGS & FLAG_PLN_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if        ( (FLAGS & FLAG_CNV_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
-    if      ( FLAGS & FLAG_STP_ROW )
-      add_and_searchCU3_PT_p<FLAG_STP_ROW> (dimGrid, dimBlock, stream, batch);
-    else if ( FLAGS & FLAG_STP_PLN )
-      add_and_searchCU3_PT_p<FLAG_STP_PLN> (dimGrid, dimBlock, stream, batch);
+    if      ( FLAGS & FLAG_ITLV_ROW )
+      add_and_searchCU3_PT_p<FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
+    else if ( FLAGS & FLAG_ITLV_PLN )
+      add_and_searchCU3_PT_p<FLAG_ITLV_PLN> (dimGrid, dimBlock, stream, batch);
     else
     {
       fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );

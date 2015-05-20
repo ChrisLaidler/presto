@@ -220,11 +220,11 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
           int offsetPart1;
           FOLD // Calculate partial offset  .
           {
-            if      ( FLAGS & FLAG_STP_ROW )
+            if      ( FLAGS & FLAG_ITLV_ROW )
             {
               offsetPart1  = pHeight + plainY*noSteps*stride;
             }
-            else if ( FLAGS & FLAG_STP_PLN )
+            else if ( FLAGS & FLAG_ITLV_PLN )
             {
               offsetPart1  = pHeight + plainY*stride;
             }
@@ -237,11 +237,11 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
 
             FOLD // Calculate offset  .
             {
-              if      ( FLAGS & FLAG_STP_ROW )
+              if      ( FLAGS & FLAG_ITLV_ROW )
               {
                 idx  = offsetPart1 + step * stride;
               }
-              else if ( FLAGS & FLAG_STP_PLN )
+              else if ( FLAGS & FLAG_ITLV_PLN )
               {
                 idx  = offsetPart1 + step * ns2;
               }
@@ -286,55 +286,55 @@ __host__  void convolveffdot43_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream
     case 1	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,1>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,2>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,3>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,4>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,5>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,6>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,7>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,8>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9	:
     {
       cudaFuncSetCacheConfig(convolveffdot43_k<FLAGS,noSteps,9>, cudaFuncCachePreferL1);
-      convolveffdot43_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->inpStride, offset);
+      convolveffdot43_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, cnvlStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default	:
@@ -411,10 +411,10 @@ __host__  void convolveffdot43_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, u
   dimGrid.y = 1;
 
 
-  if      ( batch->flag & FLAG_STP_ROW )
-    convolveffdot43_s<FLAG_STP_ROW>(dimGrid, dimBlock, 0, cnvlStream, batch, stack);
-  else if ( batch->flag & FLAG_STP_PLN )
-    convolveffdot43_s<FLAG_STP_PLN>(dimGrid, dimBlock, 0, cnvlStream, batch, stack);
+  if      ( batch->flag & FLAG_ITLV_ROW )
+    convolveffdot43_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, cnvlStream, batch, stack);
+  else if ( batch->flag & FLAG_ITLV_PLN )
+    convolveffdot43_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, cnvlStream, batch, stack);
   else
   {
     fprintf(stderr, "ERROR: convolveffdot43 has not been templated for layout.\n");

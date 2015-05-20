@@ -89,11 +89,6 @@ static void print_percent_complete(int current, int number, const char *what, in
 {
   static int newper = 0, oldper = -1;
 
-#ifdef CUDA
-  if ( DBG_INP01 || DBG_INP02 || DBG_INP03 || DBG_INP04 || DBG_PLN01 || DBG_PLN02 || DBG_PLN03 || DBG_PLTPLN06 )
-    return;
-#endif
-
   if (reset) {
     oldper = -1;
     newper = 0;
@@ -1115,13 +1110,6 @@ int main(int argc, char *argv[])
           FOLD // Call the CUDA search  .
           {
             search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
-
-            if ( trdBatch->flag & CU_OUTP_HOST )
-            {
-              // TODO: check the addressing below for new cases ie:FLAG_STORE_EXP FLAG_STORE_ALL
-              // TODO: Fix this!
-              //trdBatch->d_candidates = &master->d_candidates[master->accelLen*obs.numharmstages*firstStep] ;
-            }
           }
 
           FOLD // Now do an equivalent CPU search  .
@@ -1214,25 +1202,25 @@ int main(int argc, char *argv[])
 
                     // Copy input data from GPU
                     fcomplexcu *data = &trdBatch->d_iData[sz];
-                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->inpStride*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
+                    CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->strideCmplx*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
 
                     // Copy pain from GPU
                     for( int y = 0; y < cHInfo->height; y++ )
                     {
                       fcomplexcu *cmplxData;
                       float *powers;
-                      if      ( trdBatch->flag & FLAG_STP_ROW )
+                      if      ( trdBatch->flag & FLAG_ITLV_ROW )
                       {
-                        cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
-                        powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
+                        cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+                        powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->stridePwrs + cHInfo->halfWidth * 2 ];
                       }
-                      else if ( trdBatch->flag & FLAG_STP_PLN )
+                      else if ( trdBatch->flag & FLAG_ITLV_PLN )
                       {
-                        cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->inpStride   + cHInfo->halfWidth * 2 ];
-                        powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->pwrStride + cHInfo->halfWidth * 2 ];
+                        cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+                        powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->stridePwrs + cHInfo->halfWidth * 2 ];
                       }
 
-                      if      ( trdBatch->flag & FLAG_CUFFTCB_OUT )
+                      if      ( trdBatch->flag & FLAG_CNV_CB_OUT )
                       {
                         //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                         CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
@@ -1253,7 +1241,7 @@ int main(int argc, char *argv[])
                     }
                   }
 
-                  sz += cStack->inpStride;
+                  sz += cStack->strideCmplx;
                 }
                 harm++;
               }
@@ -1342,7 +1330,7 @@ int main(int argc, char *argv[])
               good = true;
               bad  = false;
 
-              if ( trdBatch->flag & FLAG_CUFFTCB_OUT )
+              if ( trdBatch->flag & FLAG_CNV_CB_OUT )
               {
                 if ( printDetails )
                   printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
@@ -1630,48 +1618,6 @@ int main(int argc, char *argv[])
         }
 
         fclose (pFile);
-        nvtxRangePop();
-      }
-
-      if ( master->flag & CU_OUTP_DEVICE )  // Write values from device memory to list  .
-      {
-        nvtxRangePush("Add to list");
-
-        int cdx;
-        long long numindep;
-
-        double poww, sig, sigx, sigc, diff;
-        double gpu_p, gpu_q;
-        double rr, zz;
-        int added = 0;
-        int numharm;
-        poww = 0;
-
-        if ( master->retType == CU_SMALCAND &&  master->cndType == CU_FULLCAND )
-        {
-          CUDA_SAFE_CALL(cudaMemcpy(master->h_retData, master->d_retData, master->SrchSz->noOutpR*sizeof(accelcandBasic), cudaMemcpyDeviceToHost), "Failed to copy data to device");
-
-          accelcandBasic* bsk = (accelcandBasic*)master->h_retData;
-
-          for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)
-          {
-            sig        = bsk[cdx].sigma;
-
-            if ( sig > 0 )
-            {
-              numharm   = bsk[cdx].numharm;
-              numindep  = obs.numindep[twon_to_index(numharm)];
-
-              if ( master->flag  & FLAG_STORE_EXP )
-                rr      = master->SrchSz->searchRLow + cdx*ACCEL_DR;
-              else
-                rr      = master->SrchSz->searchRLow + cdx;
-
-              zz        = bsk[cdx].z;
-              candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-            }
-          }
-        }
         nvtxRangePop();
       }
 

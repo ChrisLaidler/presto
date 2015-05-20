@@ -68,16 +68,16 @@ template<uint FLAGS>
 __device__ inline int getY(int plainY, const int noSteps,  const int step, const int plainHeight = 0 )
 {
   // Calculate y indice from interleave method
-  if      ( FLAGS & FLAG_STP_ROW )
+  if      ( FLAGS & FLAG_ITLV_ROW )
   {
     return plainY * noSteps + step;
   }
-  else if ( FLAGS & FLAG_STP_PLN )
+  else if ( FLAGS & FLAG_ITLV_PLN )
   {
     return plainY + plainHeight*step;
   }
   /*
-  else if ( FLAGS & FLAG_STP_STK )
+  else if ( FLAGS & FLAG_ITLV_STK )
   {
     return plainY + stackHeight*step;
   }
@@ -89,7 +89,7 @@ __device__ inline int getY(int plainY, const int noSteps,  const int step, const
 template<uint FLAGS>
 __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t tex, fcomplexcu* base, const int stride)
 {
-  if  ( (FLAGS & FLAG_PLN_TEX ) )
+  if  ( (FLAGS & FLAG_SAS_TEX ) )
   {
     const float2 cmpf = tex2D < float2 > (tex, ix, iy);
     return (cmpf.x * cmpf.x + cmpf.y * cmpf.y);
@@ -347,7 +347,7 @@ __host__ void add_and_searchCU3(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream
 {
   const uint FLAGS = batch->flag ;
 
-  if            ( (FLAGS & FLAG_CUFFTCB_OUT) && (FLAGS & FLAG_PLN_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if            ( (FLAGS & FLAG_CNV_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
     add_and_searchCU3_PT_f(dimGrid, dimBlock, stream, batch );
   }
@@ -528,7 +528,7 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
           {
             //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
             //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
-            //if ( (batch->flag&FLAG_CUFFTCB_OUT) && (batch->flag&FLAG_PLN_TEX) )
+            //if ( (batch->flag&FLAG_CNV_CB_OUT) && (batch->flag&FLAG_SAS_TEX) )
             {
               add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
             }
@@ -832,7 +832,7 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
 
     FOLD // Convolution timing  .
     {
-      if ( batch->flag & FLAG_CNV_FAM )   // Convolution was done on the entire batch  .
+      if ( batch->flag & FLAG_CNV_BATCH )   // Convolution was done on the entire batch  .
       {
         ret = cudaEventElapsedTime(&time, batch->convInit, batch->convComp);
         if ( ret == cudaErrorNotReady )
@@ -980,59 +980,19 @@ void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
 
     if ( batch->haveConvData ) // We have a convolved plain so call Sum & search  kernel .
     {
-      FOLD // Create search list
-      {
-        int i = 0;
-        for (int stage = 0; stage < noStages; stage++)
-        {
-          harmtosum = 1 << stage;
-
-          for (int harm = 1; harm <= harmtosum; harm += 2)
-          {
-            //printf("Stage  %i harm %i \n", stage, harm);
-
-            /*
-            float fract = 1-harm/ float(harmtosum);
-            int idx = round(fract* batch->noHarms);
-            if ( fract == 1 )
-              idx = 0;
-
-            searchList.texs.val[i]      = batch->plains[idx].datTex;
-            searchList.datas.val[i]     = batch->plains[idx].d_plainData;
-            searchList.powers.val[i]    = batch->plains[idx].d_plainPowers;
-            searchList.frac.val[i]      = batch->hInfos[idx].harmFrac;
-            searchList.yInds.val[i]     = batch->hInfos[idx].yInds;
-            searchList.heights.val[i]   = batch->hInfos[idx].height;
-            //searchList.widths.val[i]    = batch->batch[idx].ffdotPowWidth[0];
-            searchList.strides.val[i]   = batch->hInfos[idx].inpStride;
-            searchList.ffdBuffre.val[i] = batch->hInfos[idx].halfWidth*ACCEL_NUMBETWEEN;
-            searchList.zMax.val[i]      = batch->hInfos[idx].zmax;
-            //searchList.rLow.val[i]      = batch->batch[idx].rLow[0];
-
-            searchList.widths.val[i]    = (*batch->rSearch)[0][idx].numrs;
-            searchList.rLow.val[i]      = (*batch->rSearch)[0][idx].drlo; // batch->batch[idx].rLow[0];
-*/
-            i++;
-          }
-        }
-      }
-
       FOLD // Call the main sum & search kernel
       {
-        if ( (batch->flag & CU_OUTP_SINGLE) || (batch->flag & CU_OUTP_HOST) ) // Call the templated kernel
-        {
-          dimBlock.x  = SS3_X;
-          dimBlock.y  = SS3_Y;
+        dimBlock.x  = SS3_X;
+        dimBlock.y  = SS3_Y;
 
-          float bw    = SS3_X * SS3_Y;
-          //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
-          float ww    = batch->accelLen / ( bw );
+        float bw    = SS3_X * SS3_Y;
+        //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
+        float ww    = batch->accelLen / ( bw );
 
-          dimGrid.x   = ceil(ww);
-          dimGrid.y   = 1;
+        dimGrid.x   = ceil(ww);
+        dimGrid.y   = 1;
 
-          //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
-        }
+        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
 
         // Run message
         CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
@@ -1043,43 +1003,36 @@ void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
 
     if ( batch->haveSearchResults ) // Process previous results  .
     {
-      if ( batch->flag & CU_OUTP_SINGLE )
+      // A blocking synchronisation to ensure results are ready to be proceeded by the host
+      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+
+      nvtxRangePush("CPU Process results");
+
+      for ( int step = 0; step < batch->noSteps; step++ )
       {
-        // A blocking synchronisation to ensure results are ready to be proceeded by the host
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+        rVals* rVal = &((*batch->rInput)[step][0]);
 
+        //int gIdx = batch->plains[0].searchRlowPrev[step] ;
+        int gIdx = rVal->drlo;
 
+        if ( batch->flag & FLAG_STORE_EXP )
+          gIdx =  ( rVal->drlo ) * ACCEL_RDR ;
 
+        float* gWrite = (float*)batch->h_candidates + gIdx;
+        float* pRead = (float*)(batch->h_retData) + batch->hInfos->width*step;
 
-        nvtxRangePush("CPU Process results");
-
-        for ( int step = 0; step < batch->noSteps; step++ )
-        {
-          rVals* rVal = &((*batch->rInput)[step][0]);
-
-          //int gIdx = batch->plains[0].searchRlowPrev[step] ;
-          int gIdx = rVal->drlo;
-
-          if ( batch->flag & FLAG_STORE_EXP )
-            gIdx =  ( rVal->drlo ) * ACCEL_RDR ;
-
-          float* gWrite = (float*)batch->h_candidates + gIdx;
-          float* pRead = (float*)(batch->h_retData) + batch->hInfos->width*step;
-
-          memcpy(gWrite, pRead, batch->accelLen*sizeof(float));
-        }
-
-        nvtxRangePop();
-
-        // Do some Synchronisation
-        CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
-
-        batch->haveSearchResults = 0;
+        memcpy(gWrite, pRead, batch->accelLen*sizeof(float));
       }
+
+      nvtxRangePop();
+
+      // Do some Synchronisation
+      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
+
+      batch->haveSearchResults = 0;
     }
 
-    // Copy results from device to host
-    if ( (batch->flag & CU_OUTP_SINGLE) || (batch->flag & CU_OUTP_HOST) )
+    FOLD // Copy results from device to host  .
     {
       if ( batch->haveConvData )
       {

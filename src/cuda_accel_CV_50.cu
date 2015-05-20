@@ -48,12 +48,12 @@ __global__ void convolveffdot50_k(const fcomplexcu* __restrict__ kernels, const 
           val.r = (input[step].r * ker->r + input[step].i * ker->i);
           val.i = (input[step].i * ker->r - input[step].r * ker->i);
 
-          if      ( FLAGS & FLAG_STP_ROW )
+          if      ( FLAGS & FLAG_ITLV_ROW )
           {
             *ffdot = val;
             ffdot += stride;  // Stride output pointer to next plain
           }
-          else if ( FLAGS & FLAG_STP_PLN )
+          else if ( FLAGS & FLAG_ITLV_PLN )
           {
             ffdot[plnOffset + step*PlnStride ] = val;
           }
@@ -63,7 +63,7 @@ __global__ void convolveffdot50_k(const fcomplexcu* __restrict__ kernels, const 
         ker += stride;
       }
 
-      if ( FLAGS & FLAG_STP_PLN ) 	                // Stride output pointer to next plain  .
+      if ( FLAGS & FLAG_ITLV_PLN ) 	                // Stride output pointer to next plain  .
       {
         ffdot += noSteps*height*stride;
       }
@@ -134,10 +134,10 @@ __host__  void convolveffdot50_f(cudaStream_t cnvlStream, cuFFdotBatch* batch)
   dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = 1;
 
-  if      ( batch->flag & FLAG_STP_ROW )
-    convolveffdot50_s<FLAG_STP_ROW>(dimGrid, dimBlock, 0, cnvlStream, batch);
-  else if ( batch->flag & FLAG_STP_PLN )
-    convolveffdot50_s<FLAG_STP_PLN>(dimGrid, dimBlock, 0, cnvlStream, batch);
+  if      ( batch->flag & FLAG_ITLV_ROW )
+    convolveffdot50_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, cnvlStream, batch);
+  else if ( batch->flag & FLAG_ITLV_PLN )
+    convolveffdot50_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, cnvlStream, batch);
   else
   {
     fprintf(stderr, "ERROR: convolveffdot5 has not been templated for layout.\n");

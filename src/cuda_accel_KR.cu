@@ -393,7 +393,7 @@ int createStackKernel(cuFfdotStack* cStack)
 
   // Set up grid
   dimGrid.x = ceil(  cStack->width  / ( float ) dimBlock.x );
-  dimGrid.y = ceil ( cStack->harmInf->height / ( float ) dimBlock.y );
+  dimGrid.y = ceil ( cStack->kerHeigth / ( float ) dimBlock.y );
 
   FOLD // call the CUDA kernels  .
   {
@@ -419,7 +419,7 @@ int createStackKernels(cuFfdotStack* cStack)
 
   // Set up grid
   dimGrid.x = ceil(  cStack->width  / ( float ) dimBlock.x );
-  dimGrid.y = ceil ( cStack->harmInf->height / ( float ) dimBlock.y );
+  dimGrid.y = ceil ( cStack->kerHeigth / ( float ) dimBlock.y );
 
   iList startR;
   fList zmax;
@@ -437,7 +437,7 @@ int createStackKernels(cuFfdotStack* cStack)
     dimGrid.y = ceil ( cStack->height / ( float ) dimBlock.y );
 
     // Call kernel
-    init_kernels_stack<<<dimGrid, dimBlock>>>((float2*) cStack->d_kerData, cStack->width, cStack->inpStride, cStack->height, cStack->noInStack , startR, zmax);
+    init_kernels_stack<<<dimGrid, dimBlock>>>((float2*) cStack->d_kerData, cStack->width, cStack->strideCmplx, cStack->height, cStack->noInStack , startR, zmax);
 
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
