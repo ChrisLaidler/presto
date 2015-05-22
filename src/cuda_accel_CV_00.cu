@@ -136,6 +136,7 @@ __host__  void convolveffdot00_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, u
 
 }
 
+//-----------------------------------------//
 
 
 /** Convolution kernel - Convolve a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .

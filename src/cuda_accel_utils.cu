@@ -160,9 +160,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
   int noHarms         = (1 << (numharmstages - 1) );
   int prevWidth       = 0;
   int noStacks        = 0;
+  int major           = 0;
+  int minor           = 0;
   noInStack[0]        = 0;
   size_t totSize      = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
   size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initKernel.");
 
   FOLD // See if we can use the cuda device  .
   {
@@ -184,6 +188,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       cudaDeviceProp deviceProp;
       CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
       printf("\nInitializing GPU %i (%s)\n",device,deviceProp.name);
+
+      major = deviceProp.major;
+      minor = deviceProp.minor;
     }
 
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
@@ -744,7 +751,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
     FOLD // DO a sanity check on flags  .
     {
-      FOLD // How to handle input
+      FOLD // How to handle input  .
       {
         if ( !( kernel->flag & CU_NORM_ALL ) )
           kernel->flag    |= CU_NORM_CPU;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
@@ -757,7 +764,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         }
       }
 
-
       FOLD // How to handle output  .
       {
         if ( !( kernel->flag & CU_CAND_ALL ) )
@@ -766,18 +772,30 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       FOLD // Convolution flags  .
       {
-        if ( !(kernel->flag & FLAG_CNV_ALL ) )   // Default to convolution
+        if ( !(kernel->flag & FLAG_CNV_ALL ) )   // Default to convolution  .
         {
-          if ( kernel->noHarmStages <= 2 )
+          float ver =  major + minor/10.0f;
+          int noInp =  kernel->stacks->noInStack * kernel->noSteps ;
+
+          if ( ver > 3.0 )
           {
+            // Lots of registers per thread so 4.2 is good
             kernel->flag |= FLAG_CNV_42;
           }
           else
           {
-            if ( kernel->noSteps <= 4 )
-              kernel->flag |= FLAG_CNV_43;
+            // We have less registers per thread
+            if ( noInp <= 20 )
+            {
+              kernel->flag |= FLAG_CNV_42;
+            }
             else
-              kernel->flag |= FLAG_CNV_41;
+            {
+              if ( kernel->noSteps <= 4 )
+                kernel->flag |= FLAG_CNV_43;
+              else
+                kernel->flag |= FLAG_CNV_41;
+            }
           }
         }
       }
@@ -1951,6 +1969,8 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
 {
   gpuSpecs gpul;
 
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering readGPUcmd.");
+
   if ( cmd->gpuP ) // Determine the index and number of devices
   {
     if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd every time clig is run!!!!
@@ -2040,13 +2060,13 @@ void readAccelDefalts(uint *flags)
         (*flags) |= CU_NORM_GPU;
       }
 
-      else if ( strCom(line, "CU_INPT_CPU_FFT" ) || strCom(line, "CPU_FFT" ) )
+      else if ( strCom(line, "CU_INPT_CPU_FFT" ) || strCom(line, "CPU_FFT") || strCom(line, "FFT_CPU" ) )
       {
         (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
         (*flags) |= CU_INPT_CPU_FFT;
       }
-      else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) )
+      else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) || strCom(line, "FFT_GPU" ) )
       {
         (*flags) &= ~CU_INPT_CPU_FFT;
       }
@@ -2202,6 +2222,8 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   searchSpecs sSpec;
   memset(&sSpec, 0, sizeof(sSpec));
 
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering readSrchSpecs.");
+
   // Defaults for accel search
   sSpec.flags         |= FLAG_RETURN_ALL ;
   sSpec.flags         |= CU_CAND_ARR ;
@@ -2241,6 +2263,8 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
 {
   cuMemInfo* aInf = new cuMemInfo;
   memset(aInf, 0, sizeof(cuMemInfo));
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initCuAccel.");
 
   FOLD // Create a kernel on each device  .
   {
@@ -2359,6 +2383,8 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
 cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   bool same   = true;
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initCuSearch.");
 
   if( srch )
   {

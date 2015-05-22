@@ -1,6 +1,5 @@
 #include "cuda_accel_CV.h"
 
-
 /** Convolution kernel - Convolve a stack with a kernel - multi-step - Loop ( Y - Pln - step )  .
  * Each thread loops down a column of the plain
  * Reads the input and convolves it with the kernel and writes result to plain
@@ -13,9 +12,6 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
 
   if ( tid < width )  // Valid thread  .
   {
-    int idx;                                      /// flat index of output plain
-    int pHeight = 0;                              /// Height of previous data in the stack
-    fcomplexcu ker;                               /// kernel data
 
     FOLD  // Stride, kernel, input data & output data  .
     {
@@ -24,30 +20,49 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
       inpData += tid;
     }
 
-    __restrict__ fcomplexcu inpDat[noSteps][noPlns];          // Set of input data for this thread/column
     const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
 
-    FOLD // Read input data for this plain  .
+    /*
+    fcomplexcu inpDat[noSteps][noPlns];                       // Set of input data for this thread/column
+    FOLD // Read all input data  .
     {
       for (int step = 0; step < noSteps; step++)
       {
         for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
         {
-          inpDat[step][pln]     = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-          inpDat[step][pln].r   /= (float) width;
-          inpDat[step][pln].i   /= (float) width;
+          fcomplexcu inp        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+          inp.r                 /= (float) width ;
+          inp.i                 /= (float) width ;
+          inpDat[step][pln]     = inp ;
+        }
+      }
+    }
+    */
+
+    fcomplexcu inpDat[noPlns][noSteps];                       // Set of input data for this thread/column
+    FOLD // Read all input data  .
+    {
+      for (int step = 0; step < noSteps; step++)
+      {
+        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
+        {
+          fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+          ipd.r                 /= (float) width;
+          ipd.i                 /= (float) width;
+          inpDat[pln][step]     = ipd;
         }
       }
     }
 
     for (int y = 0; y < kerHeight; y++)                       // Loop through the kernel .
     {
+      fcomplexcu ker;                                         // kernel data
       FOLD // Read the kernel value  .
       {
         ker   = kernels[y*stride];
       }
 
-      pHeight = 0;
+      int pHeight = 0;                                        // Height of previous data in the stack
 
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains  .
       {
@@ -55,10 +70,10 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
         const int kerYOffset    = (kerHeight - plnHeight)/2;
         const int plainY        = y - kerYOffset;
         const int ns2           = plnHeight * stride;
-        int off1;
 
         if( plainY >= 0 && plainY < plnHeight )
         {
+          int off1;
           FOLD // Calculate partial offset  .
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
@@ -73,6 +88,7 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
 
           for ( int step = 0; step < noSteps; ++step )        // Loop over steps .
           {
+            int idx;
             FOLD // Calculate indices  .
             {
               if      ( FLAGS & FLAG_ITLV_ROW )
@@ -87,12 +103,24 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
 
             FOLD // Convolve  .
             {
-              ffdot[idx].r = (inpDat[step][pln].r * ker.r + inpDat[step][pln].i * ker.i);
-              ffdot[idx].i = (inpDat[step][pln].i * ker.r - inpDat[step][pln].r * ker.i);
+              //ffdot[idx].r = (inpDat[step][pln].r * ker.r + inpDat[step][pln].i * ker.i);
+              //ffdot[idx].i = (inpDat[step][pln].i * ker.r - inpDat[step][pln].r * ker.i);
+
+              //ffdot[idx].r = (inpDat[step].r * ker.r + inpDat[step].i * ker.i);
+              //ffdot[idx].i = (inpDat[step].i * ker.r - inpDat[step].r * ker.i);
+
+              //fcomplexcu inp = sInputPtr[(pln*noSteps + step)*CNV_DIMX * CNV_DIMY];
+              //ffdot[idx].r = (inp.r * ker.r + inp.i * ker.i);
+              //ffdot[idx].i = (inp.i * ker.r - inp.r * ker.i);
+
+              fcomplexcu ipd = inpDat[pln][step];
+              fcomplexcu vv;
+              vv.r = (ipd.r * ker.r + ipd.i * ker.i);
+              vv.i = (ipd.i * ker.r - ipd.r * ker.i);
+              ffdot[idx] = vv;
             }
           }
         }
-
         pHeight += plnHeight * noSteps * stride;
       }
     }

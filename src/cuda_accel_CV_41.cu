@@ -32,7 +32,7 @@ __global__ void convolveffdot41_k(const __restrict__ fcomplexcu*  kernels, const
       const int kerYOffset    = (HEIGHT_FAM_ORDER[firstPlain] - plnHeight)/2;
       const int ns2           = plnHeight * stride;
 
-      FOLD // Read input data for this plain
+      FOLD // Read input data for this plain  .
       {
         for (int step = 0; step < noSteps; step++)
         {

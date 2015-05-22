@@ -9,14 +9,14 @@ IL_PLN # Last Edited by run time script
 # NORM_CPU NORM_GPU
 NORM_GPU
 
-# CPU_FFT  GPU_FFT
-GPU_FFT
+# FFT_CPU  FFT_GPU
+FFT_GPU # Last Edited by run time script
 
 
 ###### Convolve ######
 
 # CV_00  CV_10  CV_30  CV_41  CV_42  CV_43  CV_50
-CV_50 # Last Edited by run time script
+CV_43 # Last Edited by run time script
 
 # Other Convolve options
 # FLAG_CNV_TEX

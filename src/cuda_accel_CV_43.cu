@@ -14,38 +14,18 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
 
   if ( tid < width )  // Valid thread  .
   {
-    //int idx;                                      /// flat index of output plain
-    //int pHeight = 0;                              /// Height of previous data in the stack
-    //fcomplexcu ker;                               /// kernel data
-
     const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
     const int bStride   = CNV_DIMX*CNV_DIMY;
-
-    //__shared__ fcomplexcu ker_sm[CNV_DIMX*CNV_DIMY*cv_chunkSZ];
-    //fcomplexcu ker_smP[cv_chunkSZ];
-    //fcomplexcu* ker_smP = ker_sm;
 
     FOLD  // Stride, kernel, input data & output data  .
     {
       kernels += tid;
       ffdot   += tid;
       inpData += tid;
-      //ker_smP  = &ker_sm[bidx];
     }
 
-    FOLD // TMP - zero values  .
-    {
-      for( int c = 0; c < cv_chunkSZ; c++ )
-      {
-        //ker_smP[c].r = 0;
-        //ker_smP[c].i = 0;
-      }
-    }
-
-    ///*__restrict__*/ fcomplexcu inpDat[noSteps][noPlns];          // Set of input data for this thread/column
-    /*__restrict__*/ fcomplexcu inpDat[noPlns][noSteps];          // Set of input data for this thread/column
-
-    FOLD // Read input data for this plain  .
+    fcomplexcu inpDat[noPlns][noSteps];                       // Set of input data for this thread/column
+    FOLD // Read all input data  .
     {
       for (int step = 0; step < noSteps; step++)
       {
@@ -67,14 +47,6 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
       const int c1  = MIN(cv_chunkSZ,kerHeight-c0);
       int pHeight   = 0;
 
-      /*
-      if ( tid == 0 )
-      {
-        printf("\n");
-        printf("chunk %02i  c0: %02i  len %i  \n", chunk, c0, c1);
-      }
-      */
-
       fcomplexcu k0   = kernels[(c0+0 )*stride];
       fcomplexcu k1   = kernels[(c0+1 )*stride];
       fcomplexcu k2   = kernels[(c0+2 )*stride];
@@ -87,21 +59,6 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
       fcomplexcu k9   = kernels[(c0+9 )*stride];
       fcomplexcu k10  = kernels[(c0+10)*stride];
       fcomplexcu k11  = kernels[(c0+11)*stride];
-
-      FOLD // Load kernel data into SM  .
-      {
-        for( int c = 0; c < c1; c++ )
-        {
-          //ker_sm[c*bStride + bidx] = kernels[(c0+c)*stride];
-          //ker_smP[c] = kernels[(c0+c)*stride];
-
-          //if(ker_smP[c].r < 0 && ker_smP[c].r > 0 )
-          {
-            //printf("hi");
-            //int tmp = 0;
-          }
-        }
-      }
 
 //#pragma unroll
       for (int pln = 0; pln < noPlns; pln++)                    // Loop through the plains of the stack  .
@@ -122,12 +79,6 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
 
         const int ns2           = plnHeight * stride;
 
-//        if ( tid == 0 )
-//        {
-//          if ( p1 > p0 )
-//            printf("pln %02i  kerYOffset: %02i  kerAddd %02i  p0 %03i  p1 %03i \n", pln, kerYOffset, kerAddd, p0, p1 );
-//        }
-
         for (int plainY = p0; plainY < p1; plainY++)            // Loop over the individual plain  .
         {
           int y = plainY - p0 + kerAddd;
@@ -139,16 +90,6 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
             //ker   = ker_sm[(plainY-p0+kerAddd)*bStride + bidx];
             //ker   = ker_smP[(plainY-p0+kerAddd)];
             //ker   = ker_smP[y+kerAddd];
-
-            //if ( ker.r < 0 && ker.r > 0 )
-            {
-              //printf("%i %i %f\n", kerAddd, plainY-p0+kerAddd, ker_smP[(plainY-p0+kerAddd)].r );
-              //printf("%i %i %f\n", kerAddd, plainY-p0+kerAddd );
-            }
-            //ker.r = 1/(plainY-p0);
-            //ker.i = 1/(plainY-p0);
-            //ker.r = 1/(y);
-            //ker.i = 1/(y);
 
             switch(y)
             {
@@ -214,7 +155,6 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
               }
 
             }
-
           }
 
           int offsetPart1;

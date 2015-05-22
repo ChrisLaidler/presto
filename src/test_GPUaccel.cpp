@@ -714,7 +714,13 @@ int main(int argc, char *argv[])
 
   printf("\n\n");
   printf("    Fourier-Domain Acceleration Search Routine\n");
-  printf("               by Scott M. Ransom\n\n");
+  printf("               by Scott M. Ransom\n");
+
+#ifdef CUDA
+  printf("              With GPU additions by:\n");
+  printf("                 Chris Laidler\n");
+#endif
+  printf("\n");
 
   /* Create the accelobs structure */
   create_accelobs(&obs, &idata, cmd, 1);
@@ -786,7 +792,7 @@ int main(int argc, char *argv[])
 
     //cudaDeviceSynchronize();          // This is only necessary for timing
     gettimeofday(&start, NULL);       // Profiling
-    cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
+    //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
 
     FOLD // Generate the GPU kernel  .
     {
