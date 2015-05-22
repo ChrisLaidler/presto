@@ -18,13 +18,6 @@ extern "C"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
-
-//======================================= Constant memory =================================================\\
-
-extern __device__ __constant__ int          HEIGHT_FAM_ORDER[MAX_HARM_NO];        ///< Plain height in stage order
-extern __device__ __constant__ int          STRIDE_FAM_ORDER[MAX_HARM_NO];        ///< Plain stride in stage order
-extern __device__ __constant__ fcomplexcu*  KERNEL_FAM_ORDER[MAX_HARM_NO];        ///< Kernel pointer in stage order
-
 //======================================= CUFFT callbacks =================================================\\
 
 extern  __device__ cufftCallbackLoadC d_loadCallbackPtr;
@@ -53,6 +46,8 @@ __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, 
 /** Convolution kernel - Just write 0 to all locations
  */
 __host__  void convolveffdot00_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
+
+__host__  void convolveffdot02_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack);
 
 /** Convolution kernel - One thread per f-∂f pixel in a stack  .
  */

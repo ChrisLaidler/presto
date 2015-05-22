@@ -311,7 +311,7 @@ int main(int argc, char *argv[])
 
            cuFFdotBatch* master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
 
-           printf("\nRunning GPU search with %i simultaneous f-∂f plains spread across %i device(s).\n\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
+           printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
 
            omp_set_num_threads(cuSrch->mInf->noBatches);
 
@@ -328,7 +328,7 @@ int main(int argc, char *argv[])
            printf("GPU loop will process %i steps\n", maxxx);
 #endif
 
-#ifndef DEBUG
+#ifndef DEBUG // Parallel if we are not in debug mode  .
 #pragma omp parallel
 #endif
            FOLD  // Main GPU loop  .
@@ -657,7 +657,7 @@ int main(int argc, char *argv[])
 
           printf("%s\t","Convolve");
 
-          printf("%s\t","Convolve BW");
+          //printf("%s\t","Convolve BW");
 
           printf("%s\t","Inverse FFT");
 
@@ -687,7 +687,7 @@ int main(int argc, char *argv[])
           //printf("height: %.3f width: %.2f  noSteps: %.2f   sz: %.2f  noSteps: %.2f \n", (float)cStack->height, (float)cStack->width, (float)batches->noSteps, (float)sizeof(fcomplex), (float)cuSrch->noSteps );
           //printf("%.3f GB in %.4f s BW: %.4f \n",  convDat, convT, convBW );
 
-          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->convTime[stack], convBW, batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->convTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
 
           l_copyH2DT  += batches->copyH2DTime[stack];
           l_InpNorm   += batches->normTime[stack];
@@ -715,7 +715,7 @@ int main(int argc, char *argv[])
         copyD2HT  += l_copyD2HT;
       }
       printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
-      printf("Total\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, convT, InvFFT, ss, resultT, copyD2HT );
+      printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, convT, InvFFT, ss, resultT, copyD2HT );
 
       printf("\n===========================================================================================================================================\n");
 

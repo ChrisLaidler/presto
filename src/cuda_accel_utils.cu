@@ -29,6 +29,14 @@ extern "C"
 #include "log.h"
 #endif
 
+
+__device__ __constant__ int           HEIGHT_FAM_ORDER[MAX_HARM_NO];    ///< Plain  height  in stage order
+__device__ __constant__ int           STRIDE_FAM_ORDER[MAX_HARM_NO];    ///< Plain  stride  in stage order
+__device__ __constant__ int           WIDTH_FAM_ORDER[MAX_HARM_NO];     ///< Plain  strides   in family
+__device__ __constant__ fcomplexcu*   KERNEL_FAM_ORDER[MAX_HARM_NO];    ///< Kernel pointer in stage order
+__device__ __constant__ stackInfo     STACKS[64];
+
+
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
   //printf("\n");
@@ -740,7 +748,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         if ( !( kernel->flag & CU_NORM_ALL ) )
           kernel->flag    |= CU_NORM_CPU;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
+
+        if ( (kernel->flag & CU_INPT_CPU_FFT) & !(kernel->flag & CU_NORM_CPU))
+        {
+          fprintf(stderr, "WARNING: Using CPU FFT of the input data necessitate doing the normalisation on CPU.\n");
+          kernel->flag &= ~CU_NORM_ALL;
+          kernel->flag |= CU_NORM_CPU;
+        }
       }
+
 
       FOLD // How to handle output  .
       {
@@ -761,7 +777,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             if ( kernel->noSteps <= 4 )
               kernel->flag |= FLAG_CNV_43;
             else
-              kernel->flag |= FLAG_CNV_42;
+              kernel->flag |= FLAG_CNV_41;
           }
         }
       }
@@ -1233,7 +1249,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       }
     }
 
-
     // Create the plains structures
     if ( batch->noHarms* sizeof(cuFFdot) > getFreeRamCU() )
     {
@@ -1512,51 +1527,109 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     }
   }
 
-  FOUT // Set up CUFFT call back stuff  .
+  return batch->noSteps;
+}
+
+int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
+{
+  stackInfo* dcoeffs;
+  cudaGetSymbolAddress((void **)&dcoeffs, STACKS );
+
+  for (int i = 0; i < batch->noStacks; i++)
   {
-    if ( (batch->flag & FLAG_CNV_CB_IN) || (batch->flag & FLAG_CNV_CB_OUT) )
-    {
-      if ( batch->flag & FLAG_CNV_CB_IN )
-      {
-        for (int i = 0; i < batch->noStacks; i++)
-        {
-          cuFfdotStack* cStack  = &batch->stacks[i];
-          CUDA_SAFE_CALL(cudaMalloc((void **)&cStack->d_cinf, sizeof(fftCnvlvInfo)),"Malloc Device memory for CUFFT call-back structure");
+    cuFfdotStack* cStack  = &batch->stacks[offset+i];
+    stackInfo*    cInf    = &h_inf[offset+i];
 
-          size_t heights = 0;
+    cInf->noSteps         = batch->noSteps;
+    cInf->noPlains        = cStack->noInStack;
+    cInf->famIdx          = cStack->startIdx;
+    cInf->flag            = batch->flag;
 
-          fftCnvlvInfo h_inf;
+    cInf->d_iData         = cStack->d_iData;
+    cInf->d_plainData     = cStack->d_plainData;
+    cInf->d_plainPowers   = cStack->d_plainPowers;
 
-          h_inf.noSteps         = batch->noSteps;
-          h_inf.stride          = cStack->strideCmplx;
-          h_inf.width           = cStack->width;
-          h_inf.noPlains        = cStack->noInStack;
+    // Set the pointer to constant memory
+    cStack->stkIdx        = offset+i;
 
-          for (int i = 0; i < cStack->noInStack; i++)     // Loop over plains to determine where they start
-          {
-            h_inf.d_idata[i]    = cStack->plains[i].d_iData;
-            h_inf.d_kernel[i]   = cStack->kernels[i].d_kerData;
-            h_inf.heights[i]    = cStack->harmInf[i].height;
-            h_inf.top[i]        = heights;
-            heights            += cStack->harmInf[i].height;
-          }
+    //cStack->d_sInf        = &STACKS[offset+i];
 
-          for (int i = cStack->noInStack; i < MAX_STKSZ; i++ )
-          {
-            h_inf.heights[i]    = cStack->harmInf[i].height;
-            printf("top %02i: %6li\n", i, heights);
-          }
+    //cudaGetSymbolAddress((void **)&dcoeffs, (&STACKS)+offset+i );
+    //cudaGetSymbolAddress((void **)&dcoeffs, STACKS );
+    cStack->d_sInf        = dcoeffs + offset+i ;
 
-          // Copy host memory to device
-          CUDA_SAFE_CALL(cudaMemcpy(cStack->d_cinf, &h_inf, sizeof(fftCnvlvInfo), cudaMemcpyHostToDevice),"Copy to device");
-        }
-      }
-
-      //copyCUFFT_LD_CB();
-    }
+    //cStack->d_sInf        = ((stackInfo*)dcoeffs) + offset+i ;
+    int tmp = 0;
   }
 
-  return batch->noSteps;
+  return batch->noStacks;
+}
+
+int setConstVals_Fam_Order( cuFFdotBatch* batch )
+{
+  FOLD // Set other constant values
+  {
+    void *dcoeffs;
+
+    int           height[MAX_HARM_NO];
+    int           stride[MAX_HARM_NO];
+    int            width[MAX_HARM_NO];
+    fcomplexcu*   kerPnt[MAX_HARM_NO];
+    for (int i = 0; i < batch->noHarms; i++)
+    {
+      height[i] = batch->hInfos[i].height;
+      stride[i] = batch->hInfos[i].inpStride;
+      width[i]  = batch->hInfos[i].width;
+      kerPnt[i] = batch->kernels[i].d_kerData;
+
+      if (batch->hInfos[i].width != batch->hInfos[i].inpStride )
+      {
+        fprintf(stderr,"ERROR: Width is not the same as stride, using width this may case errors in the convolution.\n");
+      }
+    }
+
+    for (int i = batch->noHarms; i < MAX_HARM_NO; i++) // Zero the rest
+    {
+      height[i] = 0;
+      stride[i] = 0;
+    }
+
+    cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_FAM_ORDER);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+
+    cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_FAM_ORDER);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+
+    cudaGetSymbolAddress((void **)&dcoeffs, WIDTH_FAM_ORDER);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &width,  MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+
+    cudaGetSymbolAddress((void **)&dcoeffs, KERNEL_FAM_ORDER);
+    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(fcomplexcu*), cudaMemcpyHostToDevice),      "Copying stages to device");
+  }
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the constant memory values for the convolutions.");
+
+  return 1;
+}
+
+/** Copy host stack info to the device constant memory
+ *
+ * NOTE: The device should already be set!
+ *
+ * @param h_inf
+ * @param noStacks
+ * @return
+ */
+int setConstStkInfo(stackInfo* h_inf, int noStacks)
+{
+  void *dcoeffs;
+
+  // TODO: Do a test to see if  we are on the correct device
+
+  cudaGetSymbolAddress((void **)&dcoeffs, STACKS);
+  CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, h_inf, noStacks * sizeof(stackInfo), cudaMemcpyHostToDevice),      "Copying stack info to device");
+
+  return 1;
 }
 
 /** Free batch data structure  .
@@ -1626,21 +1699,6 @@ void freeBatch(cuFFdotBatch* batch)
         }
       }
       CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plain data.");
-    }
-  }
-
-  FOLD // Set up CUFFT call back stuff  .
-  {
-    if ( (batch->flag & FLAG_CNV_CB_IN) || (batch->flag & FLAG_CNV_CB_OUT) )
-    {
-      if ( batch->flag & FLAG_CNV_CB_IN )
-      {
-        for (int i = 0; i < batch->noStacks; i++)
-        {
-          cuFfdotStack* cStack  = &batch->stacks[i];
-          CUDA_SAFE_CALL(cudaFree(cStack->d_cinf),"Malloc Device memory for CUFFT call-back structure");
-        }
-      }
     }
   }
 
@@ -1960,12 +2018,12 @@ void readAccelDefalts(uint *flags)
     {
       lineno++;
 
-      if      ( strCom(line, "FLAG_ITLV_ROW" ) || strCom(line, "INTERLEAVE_ROW" ) )
+      if      ( strCom(line, "FLAG_ITLV_ROW" ) || strCom(line, "INTERLEAVE_ROW" ) ||  strCom(line, "IL_ROW" ) )
       {
         (*flags) &= ~FLAG_ITLV_ALL;
         (*flags) |= FLAG_ITLV_ROW;
       }
-      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) || strCom(line, "INTERLEAVE_PLAIN" ) )
+      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) || strCom(line, "INTERLEAVE_PLAIN" ) || strCom(line, "IL_PLN" ) )
       {
         (*flags) &= ~FLAG_ITLV_ALL;
         (*flags) |= FLAG_ITLV_PLN;
@@ -1984,11 +2042,13 @@ void readAccelDefalts(uint *flags)
 
       else if ( strCom(line, "CU_INPT_CPU_FFT" ) || strCom(line, "CPU_FFT" ) )
       {
+        (*flags) &= ~CU_NORM_ALL;
+        (*flags) |= CU_NORM_CPU;
         (*flags) |= CU_INPT_CPU_FFT;
       }
       else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
+        (*flags) &= ~CU_INPT_CPU_FFT;
       }
 
       else if ( strCom(line, "FLAG_CNV_00" ) || strCom(line, "CV_00" ) )
@@ -2227,9 +2287,12 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
   {
     nvtxRangePush("Initialise Batches");
 
-    aInf->noSteps = 0;
+    aInf->noSteps       = 0;
+    aInf->batches       = (cuFFdotBatch*)malloc(aInf->noBatches*sizeof(cuFFdotBatch));
+    aInf->devNoStacks   = (int*)malloc(gSpec->noDevices*sizeof(int));
+    aInf->h_stackInfo   = (stackInfo**)malloc(gSpec->noDevices*sizeof(stackInfo*));
 
-    aInf->batches = (cuFFdotBatch*)malloc(aInf->noBatches*sizeof(cuFFdotBatch));
+    memset(aInf->devNoStacks,0,gSpec->noDevices*sizeof(int));
 
     int bNo = 0;
     int ker = 0;
@@ -2239,6 +2302,8 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
       int noSteps = 0;
       if ( gSpec->noDevBatches[dev] > 0 )
       {
+        int firstBatch = bNo;
+
         for ( int batch = 0 ; batch < gSpec->noDevBatches[dev]; batch++ )
         {
           noSteps = initBatch(&aInf->batches[bNo], &aInf->kernels[ker], batch, gSpec->noDevBatches[dev]-1);
@@ -2253,10 +2318,34 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
           }
           else
           {
-            aInf->noSteps += noSteps;
+            aInf->noSteps           += noSteps;
+            aInf->devNoStacks[dev]  += aInf->batches[bNo].noStacks;
             bNo++;
           }
         }
+
+        int noStacks = aInf->devNoStacks[dev] ;
+        if ( noStacks )
+        {
+          aInf->h_stackInfo[dev] = (stackInfo*)malloc(noStacks*sizeof(stackInfo));
+          int idx = 0;
+
+          // Set the values of the host data structures
+          for (int batch = firstBatch; batch < bNo; batch++)
+          {
+            idx += setStackInfo(&aInf->batches[batch], aInf->h_stackInfo[dev], idx);
+          }
+
+          if ( idx != noStacks )
+          {
+            fprintf (stderr,"ERROR: in %s line %i, The number of steps on device do not match\n.",__FILE__, __LINE__);
+          }
+          else
+          {
+            setConstStkInfo(aInf->h_stackInfo[dev], idx);
+          }
+        }
+
         ker++;
       }
     }
@@ -2366,10 +2455,24 @@ void freeCuAccel(cuMemInfo* aInf)
     }
   }
 
+  FOLD // Stack infos  .
+  {
+    for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
+    {
+      free(aInf->h_stackInfo[dev]);
+    }
+  }
+
   free(aInf->batches);
   aInf->batches = NULL;
   free(aInf->kernels);
   aInf->kernels = NULL;
+
+  free(aInf->h_stackInfo);
+  aInf->h_stackInfo = NULL;
+  free(aInf->devNoStacks);
+  aInf->devNoStacks = NULL;
+
 }
 
 void accelMax(cuSearch* srch)

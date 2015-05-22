@@ -85,12 +85,8 @@ __global__ void convolveffdot10_f(const __restrict__ fcomplexcu* kernels, const 
 template<int FLAGS, int noSteps>
 __host__  void convolveffdot10_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
 {
-  int offset = 0;
-  for ( int i = 0; i < stack; i++)
-  {
-    offset += batch->stacks[i].noInStack;
-  }
-  cuFfdotStack* cStack = &batch->stacks[stack];
+  cuFfdotStack* cStack  = &batch->stacks[stack];
+  int offset            = cStack->startIdx;
 
   switch (cStack->noInStack)
   {
@@ -218,7 +214,7 @@ __host__  void convolveffdot10_f(cudaStream_t cnvlStream, cuFFdotBatch* batch, u
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  dimGrid.x = ceil( cStack->width           / (float) ( CNV_DIMX ) );
+  dimGrid.x = ceil( cStack->width     / (float) ( CNV_DIMX ) );
   dimGrid.y = ceil( cStack->kerHeigth / (float) ( CNV_DIMY ) );
 
   if      ( batch->flag & FLAG_ITLV_ROW )

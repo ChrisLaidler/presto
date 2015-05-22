@@ -6,7 +6,7 @@
  * Reads the input and convolves it with the kernel and writes result to plain
  */
 template<int FLAGS, int noSteps, int noPlns>
-__global__ void convolveffdot42_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, const int firstPlain )
+__global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
@@ -102,12 +102,8 @@ __global__ void convolveffdot42_k(const fcomplexcu* __restrict__ kernels, const 
 template<int FLAGS, int noSteps>
 __host__  void convolveffdot42_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
 {
-  int offset = 0;
-  for ( int i = 0; i < stack; i++)
-  {
-    offset += batch->stacks[i].noInStack;
-  }
-  cuFfdotStack* cStack = &batch->stacks[stack];
+  cuFfdotStack* cStack  = &batch->stacks[stack];
+  int offset            = cStack->startIdx;
 
   switch (cStack->noInStack)
   {

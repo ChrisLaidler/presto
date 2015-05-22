@@ -69,16 +69,16 @@ PGPLOTLINK = -L$(PGPLOT_DIR) -lcpgplot -lpgplot $(X11LINK) $(PNGLINK)
 endif
 
 # Include and link information for the FFTW 3.X single-precision library
-FFTINC := $(shell pkg-config --cflags fftw3f)
+FFTINC  := $(shell pkg-config --cflags fftw3f)
 FFTLINK := $(shell pkg-config --libs fftw3f)
 
 
 # Include and link information for the GLIB 2.0 library
-GLIBINC := $(shell pkg-config --cflags glib-2.0)
+GLIBINC  := $(shell pkg-config --cflags glib-2.0)
 GLIBLINK := $(shell pkg-config --libs glib-2.0)
 
 # Include and link information for CFITSIO
-CFITSIOINC := $(shell pkg-config --cflags cfitsio)
+CFITSIOINC  := $(shell pkg-config --cflags cfitsio)
 CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
@@ -140,7 +140,7 @@ ARCH =
 #ARCH += -gencode arch=compute_20,code=sm_21
 ARCH += -gencode arch=compute_30,code=sm_30
 #ARCH += -gencode arch=compute_35,code=sm_35
-ARCH += -gencode arch=compute_50,code=sm_50
+#ARCH += -gencode arch=compute_50,code=sm_50
 
 CUDA_PATH  = /usr/local/cuda
 
@@ -337,7 +337,8 @@ binaries: $(BINARIES)
 
 mpi: mpiprepsubband
 
-GPU: $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+GPU: $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) 
+	@ # $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX) # Temporally removed
 	@ # Make file cant handle blank targets so here is a random comment =/
 
 slalib: slalib/sla_test test_sla

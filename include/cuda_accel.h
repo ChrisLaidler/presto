@@ -146,21 +146,19 @@ typedef struct cand
 } cand;
 
 /** A data structure to pass to CUFFT call-back load functions
+ * This holds relevant info on the stack being FFT'd
  */
-typedef struct fftCnvlvInfo
+typedef struct stackInfo
 {
-    int     stride;
-    int     width;
-    int     noSteps;
-    int     noPlains;
-    //float*  d_plainPowers;
+    int     noSteps;                    ///<  The Number of steps in the stack
+    int     noPlains;                   ///<  The number of plains in the stack
+    int     famIdx;                     ///<  The stage order of the first plain in the stack
+    uint    flag;                       ///<  Flag
 
-    int heights[MAX_STKSZ];
-    int top[MAX_STKSZ];
-    fcomplexcu* d_idata [MAX_STKSZ];
-    fcomplexcu* d_kernel[MAX_STKSZ];
-
-} fftCnvlvInfo;
+    fcomplexcu* d_plainData;            ///<  Plain data for this stack
+    float*      d_plainPowers;          ///<  Powers for this stack
+    fcomplexcu* d_iData;                ///<  Input data for this stack
+} stackInfo;
 
 /** A structure to hold information on a raw fft
  */
@@ -205,7 +203,6 @@ typedef struct rVals
  */
 typedef struct searchSpecs
 {
-    //    int     noHarms;                  ///< The number of harmonics in the family
     int     noHarmStages;             ///< The number of stages of harmonic summing
 
     int     zMax;                     ///< The highest z drift of the fundamental
@@ -283,7 +280,7 @@ typedef struct cuFFdot
 typedef struct cuFfdotStack
 {
     int     noInStack;                ///< The number of plains in this stack
-    int     startIdx;                 ///< The 'global' offset of the first element of the stack
+    int     startIdx;                 ///< The family index the first plain of the stack
     size_t  width;                    ///< The width of  the entire stack, for one step [ in complex numbers! ]
     size_t  height;                   ///< The height of the entire stack, for one step
     size_t  kerHeigth;                ///< The width of  the entire stack, for one step [ in complex numbers! ]
@@ -305,7 +302,6 @@ typedef struct cuFfdotStack
     // CUFFT details
     cufftHandle   plnPlan;            ///< A cufft plan to fft the entire stack
     cufftHandle   inpPlan;            ///< A cufft plan to fft the input data for this stack
-    fftCnvlvInfo* d_cinf;             ///< Convolve info structure on device
 
     // FFTW details
     fftwf_plan  inpPlanFFTW;          ///< A FFTW plan to fft the input data for this stack
@@ -315,6 +311,11 @@ typedef struct cuFfdotStack
     fcomplexcu* d_plainData;          ///< Plain data for this stack
     float*      d_plainPowers;        ///< Powers for this stack
     fcomplexcu* d_iData;              ///< Input data for this stack
+
+    stackInfo*  d_sInf;               ///< Stack info structure on the device (usually in constant memory)
+    int         stkIdx;               ///< The index of this stack in the constant device memory list of stacks
+
+    // Pointer to host memory
     fcomplexcu* h_iData;              ///< Paged locked input data for this stack
 
     // Streams
@@ -449,6 +450,9 @@ typedef struct cuMemInfo
     cuFFdotBatch*   batches;            ///< A list noBatches long of convolution kernels: These hold: basic info, the address of the convolution kernels on the GPU, the CUFFT plan.
 
     int             noSteps;            ///< The total steps there are across all devices
+
+    int*            devNoStacks;        ///< An array of the number of stacks on each device
+    stackInfo**     h_stackInfo;        ///< An array of pointers to host memory for the stack info
 } cuMemInfo;
 
 /** User independent details  .
@@ -507,7 +511,7 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
  */
 //ExternC int initCuAccel(cuMemInfo* aInf, fftInfo* fftinf, int numharmstages, int zMax, int width, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
 
-/** Initialise the template structure and kernels for a multi-step batches
+/** Initialise the template structure and kernels for a multi-step batches  .
  * This is called once per device
  *
  * @param stkLst            The data structure to fill
@@ -526,7 +530,7 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
  */
 //ExternC int initHarmonics(cuFFdotBatch* stkLst, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo fftinf, int device, int noBatches, int noSteps, int width, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
 
-/** Free all host and device memory allocated by initHarmonics(...)
+/** Free all host and device memory allocated by initHarmonics(...)  .
  * If the stkLst is master, this will free any device independat memory
  *
  * @param stkLst            The data structure to free
@@ -535,7 +539,7 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
  */
 //ExternC  void freeHarmonics(cuFFdotBatch* stkLst, cuFFdotBatch* master, void* out);
 
-/** Initialise a multi-step batch from the device kernel
+/** Initialise a multi-step batch from the device kernel  .
  *
  * @param harms             The kernel to base this multi-step batch
  * @param no                The index of this batch
@@ -544,17 +548,21 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
  */
 //ExternC cuFFdotBatch* initBatch(cuFFdotBatch* harms, int no, int of);
 
-/** Free device and host memory allocated by initStkList
+/** Free device and host memory allocated by initStkList  .
  *
  * @param harms             The batch to free
  */
 //ExternC void freeBatch(cuFFdotBatch* stkLst);
 
+ExternC void setContext(cuFFdotBatch* stkList) ;
+
+ExternC void printCands(const char* fileName, GSList *candsCPU);
+
 ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands);
 
 ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers );
 
-/** Print the flag values in text
+/** Print the flag values in text  .
  *
  * @param flags
  */

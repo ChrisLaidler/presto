@@ -2,7 +2,7 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN
-INTERLEAVE_ROW
+IL_PLN # Last Edited by run time script
 
 ######## Input #######
 
@@ -16,14 +16,14 @@ GPU_FFT
 ###### Convolve ######
 
 # CV_00  CV_10  CV_30  CV_41  CV_42  CV_43  CV_50
-#CV_43
+CV_50 # Last Edited by run time script
 
 # Other Convolve options
 # FLAG_CNV_TEX
 
 ####### FFT ##########
 
-# FLAG_CNV_CB_IN
+#FLAG_CNV_CB_IN # In my testing this is very slow, like 7 times slower (FFT only)!
 FLAG_CNV_CB_OUT # Almost always want this if possible
 
 #FLAG_NO_CB

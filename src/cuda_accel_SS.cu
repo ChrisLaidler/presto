@@ -32,7 +32,7 @@ extern "C"
 //======================================= Constant memory =================================================\\
 
 __device__ __constant__ int        YINDS[MAX_YINDS];
-__device__ __constant__ float      YINDS_F[MAX_YINDS];
+//__device__ __constant__ float      YINDS_F[MAX_YINDS];
 __device__ __constant__ float      POWERCUT[MAX_HARM_NO];
 __device__ __constant__ float      NUMINDEP[MAX_HARM_NO];
 
@@ -832,27 +832,13 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
 
     FOLD // Convolution timing  .
     {
-      if ( batch->flag & FLAG_CNV_BATCH )   // Convolution was done on the entire batch  .
+      if ( !(batch->flag & FLAG_CNV_CB_IN) )
       {
-        ret = cudaEventElapsedTime(&time, batch->convInit, batch->convComp);
-        if ( ret == cudaErrorNotReady )
-        {
-          //printf("Not ready\n");
-        }
-        else
-        {
-          //printf("    ready\n");
-#pragma omp atomic
-          batch->convTime[0] += time;
-        }
-      }
-      else                                // Convolution was on a per stack basis  .
-      {
-        for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
-        {
-          cuFfdotStack* cStack = &batch->stacks[ss];
+        // Did the convolution by separate kernel
 
-          ret = cudaEventElapsedTime(&time, cStack->convInit, cStack->convComp);
+        if ( batch->flag & FLAG_CNV_BATCH )   // Convolution was done on the entire batch  .
+        {
+          ret = cudaEventElapsedTime(&time, batch->convInit, batch->convComp);
           if ( ret == cudaErrorNotReady )
           {
             //printf("Not ready\n");
@@ -861,7 +847,26 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
           {
             //printf("    ready\n");
 #pragma omp atomic
-            batch->convTime[ss] += time;
+            batch->convTime[0] += time;
+          }
+        }
+        else                                // Convolution was on a per stack basis  .
+        {
+          for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            ret = cudaEventElapsedTime(&time, cStack->convInit, cStack->convComp);
+            if ( ret == cudaErrorNotReady )
+            {
+              //printf("Not ready\n");
+            }
+            else
+            {
+              //printf("    ready\n");
+#pragma omp atomic
+              batch->convTime[ss] += time;
+            }
           }
         }
       }

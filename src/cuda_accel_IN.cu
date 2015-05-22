@@ -3,8 +3,6 @@
 #include "cuda_accel_utils.h"
 #include "cuda_accel_IN.h"
 
-
-
 //void CPU_Norm_Spread(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
 void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 {
@@ -27,7 +25,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 
       for (int si = 0; si < cStack->noInStack; si++)
       {
-        cuHarmInfo* cHInfo  = &batch->hInfos[harm];      // The current harmonic we are working on
+        //cuHarmInfo* cHInfo  = &batch->hInfos[harm];      // The current harmonic we are working on
 
         for (int step = 0; step < batch->noSteps; step++)
         {
@@ -38,47 +36,52 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
             {
               double norm;    /// The normalising factor
 
-              //nvtxRangePush("Powers");
-              for (int ii = 0; ii < rVal->numdata; ii++)
+              FOLD // Calculate and store powers  .
               {
-                if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->SrchSz->searchRHigh ) // Zero Pad
+                //nvtxRangePush("Powers");
+                for (int ii = 0; ii < rVal->numdata; ii++)
                 {
-                  batch->h_powers[ii] = 0;
+                  if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->SrchSz->searchRHigh ) // Zero Pad
+                  {
+                    batch->h_powers[ii] = 0;
+                  }
+                  else
+                  {
+                    batch->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
+                  }
                 }
-                else
-                {
-                  batch->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
-                }
+                //nvtxRangePop();
               }
-              //nvtxRangePop();
 
               //nvtxRangePush("Median");
               norm = 1.0 / sqrt(median(batch->h_powers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
               //norm = 1.0 / sqrt(median(&plains->h_powers[start], (rVal->numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion)
               //nvtxRangePop();
 
-              // Normalise and spread
-              //nvtxRangePush("Write");
-              for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
+              FOLD // Normalise and spread  .
               {
-                if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->SrchSz->searchRHigh )  // Zero Pad
+                //nvtxRangePush("Write");
+                for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
                 {
-                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = 0;
-                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = 0;
-                }
-                else
-                {
-                  if ( ii * ACCEL_NUMBETWEEN > cStack->strideCmplx )
+                  if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->SrchSz->searchRHigh )  // Zero Pad
                   {
-                    fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
-                    exit(EXIT_FAILURE);
+                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = 0;
+                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = 0;
                   }
+                  else
+                  {
+                    if ( ii * ACCEL_NUMBETWEEN > cStack->strideCmplx )
+                    {
+                      fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
+                      exit(EXIT_FAILURE);
+                    }
 
-                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin + ii].r * norm;
-                  cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * norm;
+                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin + ii].r * norm;
+                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * norm;
+                  }
                 }
+                //nvtxRangePop();
               }
-              //nvtxRangePop();
             }
             else                  // or double-tophat normalisation
             {
@@ -115,11 +118,6 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 
               vect_free(loc_powers);  // I hate doing this!!!
             }
-
-            // I tested doing the FFT's on the CPU and its drastically faster doing it on the GPU, and can often be done synchronously -- Chris L
-            //nvtxRangePush("CPU FFT");
-            //COMPLEXFFT((fcomplex *)&batch->h_iData[sz], numdata*ACCEL_NUMBETWEEN, -1);
-            //nvtxRangePop();
           }
 
           sz += cStack->strideCmplx;
@@ -302,7 +300,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
   // Calculate R values
   setStackRVals(batch, searchRLow, searchRHi );
 
-  //if ( searchRLow[0] < searchRHi[0] ) // This is real data ie this isn't just a call to finish off asynchronous work
   if ( batch->rInput[0][0]->numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
     nvtxRangePush("Input");
@@ -446,9 +443,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             {
               cudaEventRecord(cStack->normComp, cStack->inpStream);
             }
-
-            //cudaDeviceSynchronize(); // TMP
-            //int tmp = 0; // TMP
           }
         }
       }

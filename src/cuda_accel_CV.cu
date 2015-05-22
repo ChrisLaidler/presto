@@ -3,127 +3,147 @@
 __device__ cufftCallbackLoadC d_loadCallbackPtr     = CB_ConvolveInput;
 __device__ cufftCallbackStoreC d_storeCallbackPtr   = CB_PowerOut;
 
-__device__ __constant__ int           HEIGHT_FAM_ORDER[MAX_HARM_NO];        ///< Plain height in stage order
-__device__ __constant__ int           STRIDE_FAM_ORDER[MAX_HARM_NO];        ///< Plain stride in stage order
-__device__ __constant__ fcomplexcu*   KERNEL_FAM_ORDER[MAX_HARM_NO];        ///< Kernel pointer in stage order
-
 __device__ cufftComplex CB_ConvolveInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
+  stackInfo *inf  = (stackInfo*)callerInfo;
 
-  fftCnvlvInfo *inf = (fftCnvlvInfo*)callerInfo;
+  int fIdx        = inf->famIdx;
+  int noSteps     = inf->noSteps;
+  int noPlains    = inf->noPlains;
+  int stackStrd   = STRIDE_FAM_ORDER[fIdx];
+  int width       = WIDTH_FAM_ORDER[fIdx];
 
-  const int strd = inf->stride * inf->noSteps;
+  int strd        = stackStrd * noSteps ;                 /// Stride taking into acount steps)
+  int gRow        = offset / strd;                        /// Row (ignoring steps)
+  int col         = offset % stackStrd;                   /// 2D column
+  int top         = 0;                                    /// The top of the plain
+  int pHeight     = 0;
+  int pln         = 0;
 
-  size_t grow = offset / strd;
-  size_t col  = offset % inf->stride;
-  size_t step = ( offset % strd ) / inf->stride ;
-  size_t pln  = 0;
-
-  for ( int i = 0; i < inf->noPlains; i++ )
+  for ( int i = 0; i < noPlains; i++ )
   {
-    if ( grow >= inf->top[i] )
+    top += HEIGHT_FAM_ORDER[fIdx+i];
+
+    if ( gRow >= top )
     {
-      pln = i;
+      pln         = i+1;
+      pHeight     = top;
     }
   }
 
-  size_t row  = grow - inf->top[pln];
+  int row         = offset / stackStrd - pHeight*noSteps;
+  int pIdx        = fIdx + pln;
+  int plnHeight   = HEIGHT_FAM_ORDER[pIdx];
+  int step;
 
-  cufftComplex ker = ((cufftComplex*)inf->d_kernel[pln])[row*inf->stride + col ];
-  cufftComplex inp = ((cufftComplex*)inf->d_idata[pln])[step*inf->stride + col ];
+  if ( inf->flag & FLAG_ITLV_PLN )
+  {
+    step = row / plnHeight;
+    row  = row % plnHeight;
+  }
+  else
+  {
+    step  = row % noSteps;
+    row   = row / noSteps;
+  }
 
+  cufftComplex ker = ((cufftComplex*)(KERNEL_FAM_ORDER[pIdx]))[row*stackStrd + col];      //
+  cufftComplex inp = ((cufftComplex*)inf->d_iData)[(pln*noSteps+step)*stackStrd + col];   //
+
+  // Do the convolution
   cufftComplex out;
-  out.x = ( inp.x * ker.x + inp.y * ker.y ) / inf->width;
-  out.y = ( inp.y * ker.x - inp.x * ker.y ) / inf->width;
+  out.x = ( inp.x * ker.x + inp.y * ker.y ) / (float)width;
+  out.y = ( inp.y * ker.x - inp.x * ker.y ) / (float)width;
 
   return out;
-
-  //return ((cufftComplex*)dataIn)[offset];
 }
 
 __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
+  // Calculate power
   float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
   ((float*)callerInfo)[offset] = power;
 }
 
 void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
-  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr,  d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "");
+  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "");
   CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeCallbackPtr, sizeof(cufftCallbackStoreC)),  "");
 }
 
-int setConstVals_Fam_Order( cuFFdotBatch* batch )
-{
-  FOLD // Set other constant values
-  {
-    void *dcoeffs;
-
-    int           height[MAX_HARM_NO];
-    int           stride[MAX_HARM_NO];
-    fcomplexcu*   kerPnt[MAX_HARM_NO];
-    for (int i = 0; i < batch->noHarms; i++)
-    {
-      height[i] = batch->hInfos[i].height;
-      stride[i] = batch->hInfos[i].width;
-      kerPnt[i] = batch->kernels[i].d_kerData;
-
-      if (batch->hInfos[i].width != batch->hInfos[i].inpStride )
-      {
-        fprintf(stderr,"ERROR: Width is not the same as stride, using width this may case errors in the convolution.\n");
-      }
-    }
-
-    for (int i = batch->noHarms; i < MAX_HARM_NO; i++) // Zero the rest
-    {
-      height[i] = 0;
-      stride[i] = 0;
-    }
-
-    cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_FAM_ORDER);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
-
-    cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_FAM_ORDER);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
-
-    cudaGetSymbolAddress((void **)&dcoeffs, KERNEL_FAM_ORDER);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(fcomplexcu*), cudaMemcpyHostToDevice),      "Copying stages to device");
-  }
-
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the constant memory values for the convolutions.");
-
-  return 1;
-}
-
 /** Convolve and inverse FFT the complex f-∂f plain using FFT callback
- * @param plains
+ * @param batch
  */
 void convolveBatchCUFFT(cuFFdotBatch* batch )
 {
+#ifdef SYNCHRONOUS
+  cuFfdotStack* pStack = NULL;
+#endif
+
   // Convolve this entire stack in one block
   for (int ss = 0; ss< batch->noStacks; ss++)
   {
     cuFfdotStack* cStack = &batch->stacks[ss];
 
-    // Synchronisation
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // Need input data
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-
-    // Do the FFT
-#pragma omp critical
-    FOLD
+    FOLD // Synchronisation  .
     {
-      if ( batch->flag & FLAG_CNV_CB_OUT )
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
+#ifdef SYNCHRONOUS
+      // Wait for all the input FFT's to complete
+      for (int ss = 0; ss< batch->noStacks; ss++)
       {
-        //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&h_storeCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+        cuFfdotStack* cStack2 = &batch->stacks[ss];
+        cudaStreamWaitEvent(cStack->fftPStream, cStack2->prepComp, 0);
       }
 
-      CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
-      CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
+      // Wait for the previous convolution to complete
+      if ( pStack != NULL )
+        cudaStreamWaitEvent(cStack->fftPStream, pStack->plnComp, 0);
+#endif
     }
 
-    // Synchronise
-    cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+    FOLD // Do the FFT  .
+    {
+#pragma omp critical
+      FOLD
+      {
+        FOLD // Timing  .
+        {
+#ifdef TIMING
+          cudaEventRecord(cStack->invFFTinit, cStack->fftPStream);
+#endif
+        }
+
+        FOLD // Set store FFT callback  .
+        {
+          if ( batch->flag & FLAG_CNV_CB_OUT )
+          {
+            CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+          }
+        }
+
+        FOLD // Set load FFT callback  .
+        {
+          CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"");
+        }
+
+        CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with cnvlStream.");
+        CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
+      }
+    }
+
+    FOLD // Synchronisation  .
+    {
+      cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+
+#ifdef SYNCHRONOUS
+      pStack = cStack;
+#endif
+    }
   }
 }
 
@@ -159,10 +179,8 @@ void convolveBatch(cuFFdotBatch* batch)
         printf("\t\tConvolve\n");
 #endif
 
-
-
         // In my testing I found convolving each plain separately works fastest so it is the "default"
-        if      ( batch->flag & FLAG_CNV_BATCH ) // Do the convolutions one family at a time  .
+        if      ( batch->flag & FLAG_CNV_BATCH ) 	// Do the convolutions one family at a time  .
         {
           FOLD // Synchronisation  .
           {
@@ -192,7 +210,7 @@ void convolveBatch(cuFFdotBatch* batch)
             CUDA_SAFE_CALL(cudaEventRecord(batch->convComp, batch->convStream),"Recording event: convComp");
           }
         }
-        else if ( batch->flag & FLAG_CNV_STK ) // Do the convolutions one stack  at a time  .
+        else if ( batch->flag & FLAG_CNV_STK ) 	  // Do the convolutions one stack  at a time  .
         {
 #ifdef SYNCHRONOUS
           cuFfdotStack* pStack = NULL;
@@ -271,7 +289,7 @@ void convolveBatch(cuFFdotBatch* batch)
             }
           }
         }
-        else if ( batch->flag & FLAG_CNV_PLN ) // Do the convolutions one plain  at a time  .
+        else if ( batch->flag & FLAG_CNV_PLN ) 	  // Do the convolutions one plain  at a time  .
         {
 #ifdef SYNCHRONOUS
           cuFfdotStack* pStack = NULL;
@@ -289,8 +307,8 @@ void convolveBatch(cuFFdotBatch* batch)
 
             FOLD // Synchronisation  .
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),    "Waiting for GPU to be ready to copy data to device.");  // Need input data
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->cnvlStream, batch->searchComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
 #ifdef SYNCHRONOUS
               // Wait for all the input FFT's to complete
@@ -414,10 +432,6 @@ void convolveBatch(cuFFdotBatch* batch)
 
               if ( batch->flag & FLAG_CNV_CB_OUT ) // Set the CUFFT callback to calculate and store powers  .
               {
-                //cufftCallbackLoadC hostCopyOfCallbackPtr;
-                //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &hostCopyOfCallbackPtr, d_storeCallbackPtr, sizeof(hostCopyOfCallbackPtr)),  "");
-                //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&hostCopyOfCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
-
                 CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
               }
 
@@ -447,5 +461,4 @@ void convolveBatch(cuFFdotBatch* batch)
   // Set the r-values and width for the next iteration when we will be doing the actual Add and Search
   cycleRlists(batch);
 }
-
 

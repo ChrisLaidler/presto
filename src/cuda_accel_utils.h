@@ -1,3 +1,9 @@
+/**   cuda_accel_utils.h
+ *
+ * This file contains all the common defines and specific to cuda
+ *
+ */
+
 #ifndef CUDA_ACCEL_UTILS_INCLUDED
 #define CUDA_ACCEL_UTILS_INCLUDED
 
@@ -299,12 +305,7 @@ typedef struct tHarmList
     __host__ __device__ inline cudaTextureObject_t operator [](const int idx) { return val[idx]; }
 } tHarmList;
 
-
-extern long long time1;       /// Global variable used for timing
-extern long long time2;       /// Global variable used for timing
-extern long long time3;       /// Global variable used for timing
-extern long long time4;       /// Global variable used for timing
-
+//-------- POINTER ------- \\
 
 typedef struct cuSearchList
 {
@@ -365,6 +366,38 @@ typedef struct fMax
 {
      float arry[MAX_STEPS];
 } fMax;
+
+
+//======================================= Constant memory =================================================\\
+
+//-------------------  Details in Family order  ------------------------\\
+
+extern __device__ __constant__ int          HEIGHT_FAM_ORDER[MAX_HARM_NO];    ///< Plain  heights   in family
+extern __device__ __constant__ int          STRIDE_FAM_ORDER[MAX_HARM_NO];    ///< Plain  strides   in family
+extern __device__ __constant__ int          WIDTH_FAM_ORDER[MAX_HARM_NO];     ///< Plain  strides   in family
+extern __device__ __constant__ fcomplexcu*  KERNEL_FAM_ORDER[MAX_HARM_NO];    ///< Kernel pointers  in family
+
+//--------------------  Details in stage order  ------------------------\\
+
+extern __device__ __constant__ float        POWERCUT[MAX_HARM_NO];            ///<
+extern __device__ __constant__ float        NUMINDEP[MAX_HARM_NO];            ///<
+extern __device__ __constant__ int          HEIGHT[MAX_HARM_NO];              ///< Plain heights in stage order
+extern __device__ __constant__ int          STRIDE[MAX_HARM_NO];              ///< Plain strides in stage order
+extern __device__ __constant__ int          HWIDTH[MAX_HARM_NO];              ///< Plain half width in stage order
+
+//-------------------  Other constant values  --------------------------\\
+
+extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
+extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
+//extern __device__ __constant__ float        YINDS_F[MAX_YINDS];               ///< Z Indices in float
+
+
+//========================================= Global vals ===================================================\\
+
+extern long long time1;       /// Global variable used for timing
+extern long long time2;       /// Global variable used for timing
+extern long long time3;       /// Global variable used for timing
+extern long long time4;       /// Global variable used for timing
 
 
 //-------------------------  Prototypes  -------------------------------\\
@@ -432,13 +465,13 @@ __host__ __device__ long long next2_to_n_cu(long long x);
  * @param print if set to 1 will print the name and details of the device
  * @return The SMX version of the decide
  */
-ExternC int selectDevice(int device, int print);
+int selectDevice(int device, int print);
 
-ExternC void printCands(const char* fileName, GSList *candsCPU);
 
-ExternC void printContext();
 
-ExternC void setContext(cuFFdotBatch* stkList) ;
+void printContext();
+
+
 
 /** Write CUFFT call backs to device
  */
@@ -453,7 +486,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch);
  */
 cuHarmInfo* createStacks(int numharmstages, int zmax, accelobs* obs);
 
-ExternC int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
+int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
 
 /** Initialise the pointers of the stacks data structures of a batch  .
  *
@@ -461,7 +494,7 @@ ExternC int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searc
  *
  * @param batch
  */
-ExternC void setStkPointers(cuFFdotBatch* batch);
+void setStkPointers(cuFFdotBatch* batch);
 
 /** Initialise the pointers of the plains data structures of a batch  .
  *
@@ -469,7 +502,7 @@ ExternC void setStkPointers(cuFFdotBatch* batch);
  *
  * @param batch
  */
-ExternC void setPlainPointers(cuFFdotBatch* batch);
+void setPlainPointers(cuFFdotBatch* batch);
 
 /** Initialise the pointers of the stacks and plains data structures of a batch  .
  *
@@ -477,7 +510,7 @@ ExternC void setPlainPointers(cuFFdotBatch* batch);
  *
  * @param batch
  */
-ExternC void setBatchPointers(cuFFdotBatch* batch);
+void setBatchPointers(cuFFdotBatch* batch);
 
 /** Print a integer in binary
  *

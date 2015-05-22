@@ -5,7 +5,7 @@
  * Reads the input and convolves it with the kernel and writes result to plain
  */
 template<int FLAGS, int noSteps>
-__global__ void convolveffdot41_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, int noPlns, const int firstPlain )
+__global__ void convolveffdot41_k(const __restrict__ fcomplexcu*  kernels, const __restrict__ fcomplexcu*  inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, int noPlns, const int firstPlain )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
@@ -27,20 +27,21 @@ __global__ void convolveffdot41_k(const fcomplexcu* __restrict__ kernels, const 
 
     for (int pln = 0; pln < noPlns; pln++)                    // Loop through the plains  .
     {
-      const int plnStrd = pln*stride*noSteps;
-
-      // Read input data for this plain
-      for (int step = 0; step < noSteps; step++)
-      {
-        fcomplexcu inp    = inpData[ (int)(plnStrd + step*stride) ];
-        inp.r             /= (float) width;
-        inp.i             /= (float) width;
-        inpDat[step]      = inp;
-      }
-
+      const int plnStrd       = pln*stride*noSteps;
       const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
       const int kerYOffset    = (HEIGHT_FAM_ORDER[firstPlain] - plnHeight)/2;
       const int ns2           = plnHeight * stride;
+
+      FOLD // Read input data for this plain
+      {
+        for (int step = 0; step < noSteps; step++)
+        {
+          fcomplexcu inp    = inpData[ (int)(plnStrd + step*stride) ];
+          inp.r             /= (float) width;
+          inp.i             /= (float) width;
+          inpDat[step]      = inp;
+        }
+      }
 
       for (int plainY = 0; plainY < plnHeight; plainY++)      // Loop over the individual plain  .
       {
@@ -93,12 +94,8 @@ __global__ void convolveffdot41_k(const fcomplexcu* __restrict__ kernels, const 
 template<int FLAGS>
 __host__  void convolveffdot41_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
 {
-  int offset = 0;
-  for ( int i = 0; i < stack; i++)
-  {
-    offset += batch->stacks[i].noInStack;
-  }
-  cuFfdotStack* cStack = &batch->stacks[stack];
+  cuFfdotStack* cStack  = &batch->stacks[stack];
+  int offset            = cStack->startIdx;
 
   switch (batch->noSteps)
   {

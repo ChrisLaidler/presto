@@ -274,12 +274,8 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
 template<int FLAGS, int noSteps>
 __host__  void convolveffdot43_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream, cuFFdotBatch* batch, uint stack)
 {
-  int offset = 0;
-  for ( int i = 0; i < stack; i++)
-  {
-    offset += batch->stacks[i].noInStack;
-  }
-  cuFfdotStack* cStack = &batch->stacks[stack];
+  cuFfdotStack* cStack  = &batch->stacks[stack];
+  int offset            = cStack->startIdx;
 
   switch (cStack->noInStack)
   {
