@@ -51,3 +51,5 @@ CU_CAND_ARR
 #FLAG_RAND_3
 #FLAG_RAND_4
 
+globalFloat01 8192  # Last Edited by run time script
+globalFloat02 32  # Last Edited by run time script

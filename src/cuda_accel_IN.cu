@@ -337,8 +337,8 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             {
               cuFfdotStack* cStack = &batch->stacks[stack];
 
-//              int vv = 0; // TMP
-//              printf("-------- %.20f ------\n", log(2.0) ); // TMP
+              //int vv = 0; // TMP
+              //printf("-------- %.20f ------\n", log(2.0) ); // TMP
 
               for ( int plain = 0; plain < cStack->noInStack; plain++)
               {
@@ -352,25 +352,28 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
                     if ( rVal->lobin < 0 )
                       start = -rVal->lobin;
 
-//                    FOLD // TMP
+//                    Fout // TMP  .
 //                    {
+//                      float h_powers[32310];
+//
 //                      //nvtxRangePush("Powers");
 //                      for (int ii = 0; ii < rVal->numdata; ii++)
 //                      {
 //                        if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->SrchSz->searchRHigh ) // Zero Pad
 //                        {
-//                          batch->h_powers[ii] = 0;
+//                          h_powers[ii] = 0;
 //                        }
 //                        else
 //                        {
-//                          batch->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
+//                          h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
 //                        }
 //                      }
 //                      //nvtxRangePop();
 //
-//                      double norm = 1.0 / sqrt(median(batch->h_powers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
+//                      float medd  = median(h_powers, rVal->numdata ) ;
+//                      double norm = 1.0 / sqrt( medd / log(2.0) );                       /// NOTE: This is the same method as CPU version
 //
-//                      printf("%02i  CPU median: %.6f  norm: %20.20f  \n", vv, median(batch->h_powers, (rVal->numdata) ), norm );
+//                      printf("%02i  CPU median: %.6f  norm: %20.20f  \n", vv, medd, norm );
 //                      vv++;
 //                    }
 
@@ -443,6 +446,9 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             {
               cudaEventRecord(cStack->normComp, cStack->inpStream);
             }
+
+            cudaDeviceSynchronize(); // TMP
+            int tmp = 0; // TMP
           }
         }
       }
@@ -541,6 +547,9 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       {
         fprintf(stderr,"ERROR: No input normalisation method specified, pleas set to CU_NORM_GPU or CU_NORM_CPU\n");
       }
+
+      cudaDeviceSynchronize(); // TMP
+      int tmp = 0; // TMP
     }
 
     FOLD // fft the input on the GPU data  .

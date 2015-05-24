@@ -45,7 +45,7 @@ extern "C"
 //#define   CU_MAX_BLOCK_SIZE   32768         // 32K FFT's
 
 //#define BS_MAX          (CU_MAX_BLOCK_SIZE/2) // BITonic sort max number of elements
-#define BS_MAX          8192                  // BITonic sort max number of elements
+//#define BS_MAX          8192                  // BITonic sort max number of elements
 
 //#define ACCEL_USELEN 7470     // This works up to zmax=300 to use 8K FFTs
 //#define ACCEL_USELEN 62500    // 64K   up to zmax=1200
@@ -588,5 +588,23 @@ void sumAndSearch(cuFFdotBatch* plains, long long* numindep, GSList** cands);
  *
  */
 void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers);
+
+
+
+
+//////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+extern int    globalInt01;
+extern int    globalInt02;
+extern int    globalInt03;
+extern int    globalInt04;
+extern int    globalInt05;
+
+extern float  globalFloat01;
+extern float  globalFloat02;
+extern float  globalFloat03;
+extern float  globalFloat04;
+extern float  globalFloat05;
+
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED

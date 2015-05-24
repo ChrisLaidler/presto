@@ -37,6 +37,18 @@ __device__ __constant__ fcomplexcu*   KERNEL_FAM_ORDER[MAX_HARM_NO];    ///< Ker
 __device__ __constant__ stackInfo     STACKS[64];
 
 
+int    globalInt01    = 0;
+int    globalInt02    = 0;
+int    globalInt03    = 0;
+int    globalInt04    = 0;
+int    globalInt05    = 0;
+
+float  globalFloat01  = 0;
+float  globalFloat02  = 0;
+float  globalFloat03  = 0;
+float  globalFloat04  = 0;
+float  globalFloat05  = 0;
+
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
   //printf("\n");
@@ -2034,6 +2046,8 @@ void readAccelDefalts(uint *flags)
     char line[1024];
     int lineno = 0;
 
+    char *rest;
+
     while (fgets(line, sizeof(line), file))
     {
       lineno++;
@@ -2207,6 +2221,57 @@ void readAccelDefalts(uint *flags)
         fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n",line, lineno, fName);
       }
 
+      else if ( strCom(line, "globalFloat01" ) )
+      {
+        rest = &line[ strlen("globalFloat01")+1];
+        globalFloat01 = atof(rest);
+      }
+      else if ( strCom(line, "globalFloat02" ) )
+      {
+        rest = &line[ strlen("globalFloat02")+1];
+        globalFloat02 = atof(rest);
+      }
+      else if ( strCom(line, "globalFloat03" ) )
+      {
+        rest = &line[ strlen("globalFloat03")+1];
+        globalFloat03 = atof(rest);
+      }
+      else if ( strCom(line, "globalFloat04" ) )
+      {
+        rest = &line[ strlen("globalFloat04")+1];
+        globalFloat04 = atof(rest);
+      }
+      else if ( strCom(line, "globalFloat05" ) )
+      {
+        rest = &line[ strlen("globalFloat05")+1];
+        globalFloat05 = atof(rest);
+      }
+
+      else if ( strCom(line, "globalInt01" ) )
+      {
+        rest = &line[ strlen("globalInt01")+1];
+        globalInt01 = atoi(rest);
+      }
+      else if ( strCom(line, "globalInt02" ) )
+      {
+        rest = &line[ strlen("globalInt02")+1];
+        globalInt02 = atoi(rest);
+      }
+      else if ( strCom(line, "globalInt03" ) )
+      {
+        rest = &line[ strlen("globalInt03")+1];
+        globalInt03 = atoi(rest);
+      }
+      else if ( strCom(line, "globalInt04" ) )
+      {
+        rest = &line[ strlen("globalInt04")+1];
+        globalInt04 = atoi(rest);
+      }
+      else if ( strCom(line, "globalInt05" ) )
+      {
+        rest = &line[ strlen("globalInt05")+1];
+        globalInt05 = atoi(rest);
+      }
     }
 
     fclose (file);
