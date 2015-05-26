@@ -840,6 +840,24 @@ __global__ void normAndSpread(fcomplexcu* data, stpType lens)
   }
 }
 
+__global__ void normAndSpread_writeOnly(fcomplexcu* data, int width)
+{
+
+  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
+  const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
+
+  const int idx = bid*(blockDim.x * blockDim.y) + tid;                     /// Block size
+
+  if (idx < width )
+  {
+    fcomplexcu val  = data[idx];
+    val.r *= 1;
+    val.i *= 1;
+    data[idx]       = val;
+  }
+
+}
+
 template<int width, int buffer>
 __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
@@ -1044,8 +1062,28 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
   }
 }
 
+__host__ void normAndSpread_f2(cudaStream_t stream, cuFFdotBatch* batch, uint stack )
+{
+  dim3 dimBlock, dimGrid;
+  cuFfdotStack* cStack = &batch->stacks[stack];
+
+  // Blocks of 1024 threads ( the maximum number of threads per block )
+  dimBlock.x = NAS_DIMX;
+  dimBlock.y = NAS_DIMY;
+  dimBlock.z = 1;
+
+  // One block per harmonic, thus we can sort input powers in Shared memory
+  dimGrid.x = ceil(cStack->width*cStack->height*batch->noSteps / float(dimBlock.x*dimBlock.y*dimBlock.z));
+  dimGrid.y = 1;
+
+  normAndSpread_writeOnly<<<dimGrid, dimBlock, 0, stream>>>(cStack->d_iData, cStack->width*cStack->height*batch->noSteps );
+}
+
 __host__ void normAndSpread_f(cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
+  //normAndSpread_f2(stream, batch, stack );
+  //return;
+
   dim3 dimBlock, dimGrid;
   int i1 = 0;
   cuFfdotStack* cStack = &batch->stacks[stack];
