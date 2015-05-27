@@ -867,22 +867,28 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
   FOLD // Stack specific events  .
   {
-    char strBuff[1024];
-
-    for (int i = 0; i< kernel->noStacks; i++)
+    if ( noBatches > 1 )
     {
-      cuFfdotStack* cStack = &kernel->stacks[i];
-      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-      sprintf(strBuff,"%i FFT Input %i Stack", device, i);
-      nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
-    }
+      char strBuff[1024];
 
-    for (int i = 0; i< kernel->noStacks; i++)
-    {
-      cuFfdotStack* cStack = &kernel->stacks[i];
-      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-      sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
-      nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+      if ( !(kernel->flag & CU_INPT_CPU_FFT) )
+      {
+        for (int i = 0; i< kernel->noStacks; i++)
+        {
+          cuFfdotStack* cStack = &kernel->stacks[i];
+          CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
+          sprintf(strBuff,"%i FFT Input %i Stack", device, i);
+          nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+        }
+      }
+
+      for (int i = 0; i< kernel->noStacks; i++)
+      {
+        cuFfdotStack* cStack = &kernel->stacks[i];
+        CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
+        sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
+        nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+      }
     }
   }
 
@@ -1326,13 +1332,33 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         sprintf(strBuff,"%i.%i.0.0 batch input", batch->device, no);
         nvtxNameCudaStreamA(batch->inpStream, strBuff);
 
-        for (int i = 0; i< batch->noStacks; i++)
+        for (int i = 0; i < batch->noStacks; i++)
         {
           cuFfdotStack* cStack  = &batch->stacks[i];
 
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inpStream), "Creating input data cnvlStream for stack");
           sprintf(strBuff,"%i.%i.0.%i Stack Input", batch->device, no, i);
           nvtxNameCudaStreamA(cStack->inpStream, strBuff);
+        }
+      }
+
+      FOLD // Input FFT streams  .
+      {
+        if ( (no == 0) && (of == 0) && !(kernel->flag & CU_INPT_CPU_FFT) )
+        {
+          printf("\nRecreating Input FFT streams\n");
+
+          for (int i = 0; i < kernel->noStacks; i++)
+          {
+            cuFfdotStack* kStack = &kernel->stacks[i];
+            //CUDA_SAFE_CALL(cudaStreamDestroy(kStack->fftIStream),"Creating CUDA stream for fft's");
+
+            cuFfdotStack* cStack = &batch->stacks[i];
+            CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
+            sprintf(strBuff,"%i FFT Input %i Stack", batch->device, i);
+            nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+            kStack->fftIStream = cStack->fftIStream;
+          }
         }
       }
 
@@ -1352,10 +1378,32 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         }
       }
 
-      // Search stream
-      CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
-      sprintf(strBuff,"%i.%i.2.0 batch search", batch->device, no);
-      nvtxNameCudaStreamA(batch->strmSearch, strBuff);
+      FOLD // Inverse FFT streams  .
+      {
+        if ( (no == 0) && (of == 0) )
+        {
+          printf("\nRecreating Inverse FFT streams\n");
+
+          for (int i = 0; i < kernel->noStacks; i++)
+          {
+            cuFfdotStack* kStack = &kernel->stacks[i];
+            //CUDA_SAFE_CALL(cudaStreamDestroy(kStack->fftPStream),"Creating CUDA stream for fft's");
+
+            cuFfdotStack* cStack = &batch->stacks[i];
+            CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
+            sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
+            nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+            kStack->fftPStream = cStack->fftPStream;
+          }
+        }
+      }
+
+      FOLD // Search stream  .
+      {
+        CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
+        sprintf(strBuff,"%i.%i.2.0 batch search", batch->device, no);
+        nvtxNameCudaStreamA(batch->strmSearch, strBuff);
+      }
     }
 
     FOLD // Create Events  .
