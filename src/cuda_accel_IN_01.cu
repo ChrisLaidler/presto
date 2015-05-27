@@ -957,17 +957,23 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
   }
   else
   {
-    if ( cStack->width > 8129)
-      bufWidth          = 2048;
+    if ( cStack->width > 8192 )
+      bufWidth          = 2048;               // Multi bitonic sort with a buffer size of 2048
     else
-      bufWidth          = cStack->width/2.0f; // Use the actual plain width
+      bufWidth          = cStack->width/2.0f; // Use the actual number of input elements (1 bitonic sort)
   }
 
-  bufWidth              = MAX( (cStack->width/2.0f)/16.0, bufWidth );
-  bufWidth              = MAX( 256, bufWidth );
+  bufWidth              = MAX( (cStack->width/2.0f)/32.0, bufWidth );
+  bufWidth              = MAX( 128,  bufWidth );
+  bufWidth              = MIN( 8192, bufWidth );
 
   switch ( bufWidth )
   {
+    case 128   :
+    {
+      normAndSpread_b<width,128>(dimGrid, dimBlock, i1, stream, batch, stack);
+      break;
+    }
     case 256   :
     {
       normAndSpread_b<width,256>(dimGrid, dimBlock, i1, stream, batch, stack);
