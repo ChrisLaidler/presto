@@ -474,6 +474,330 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
   return 1;
 }
 
+void SSKer(cuFFdotBatch* batch, long long *numindep)
+{
+  if ( batch->haveConvData )
+  {
+#ifdef STPMSG
+    printf("\t\tSum & search kernel\n");
+#endif
+    dim3 dimBlock, dimGrid;
+
+    int noStages = log(batch->noHarms)/log(2) + 1;
+
+    FOLD // Timing event  .
+    {
+#ifdef TIMING
+      CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
+#endif
+    }
+
+    FOLD // Call the SS kernel  .
+    {
+      dimBlock.x  = SS3_X;
+      dimBlock.y  = SS3_Y;
+
+      float bw    = SS3_X * SS3_Y;
+      float ww    = batch->accelLen / ( bw );
+
+      dimGrid.x   = ceil(ww);
+      dimGrid.y   = 1;
+
+      if ( batch->retType & CU_SMALCAND )
+      {
+        //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
+        //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
+        //if ( (batch->flag&FLAG_CNV_CB_OUT) && (batch->flag&FLAG_SAS_TEX) )
+        {
+          add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
+        }
+      }
+      else
+      {
+        fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+        exit(EXIT_FAILURE);
+      }
+      CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
+    }
+
+    FOLD // Synchronisation  .
+    {
+      CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+    }
+  }
+}
+
+void processSearchResults(cuFFdotBatch* batch, long long *numindep)
+{
+  if ( batch->haveSearchResults )
+  {
+    // A blocking synchronisation to ensure results are ready to be proceeded by the host
+    CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+
+    int noStages = log(batch->noHarms)/log(2) + 1;
+
+#ifdef TIMING // Timing  .
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+#endif
+
+    nvtxRangePush("CPU Process results");
+
+#ifdef STPMSG
+    printf("\t\tProcess previous results\n");
+#endif
+
+    batch->noResults = 0;
+
+    double poww, sig;
+    double rr, zz;
+    int numharm;
+    poww = 0;
+
+    FOLD  // Loop over results and find candidates  .
+    {
+      //float* powers = NULL;
+      //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
+      //memset(powers, 0, batch->noSteps*noStages*batch->accelLen);
+
+      // TODO: We could loop over values and remove non local maxima to reuse sigma calculations
+
+      Fout // Calculate sigma vales from power  .
+      {
+        // We don't want to do the expensive sigma calculations in the critical block ...
+        if ( !(batch->flag & FLAG_SIG_GPU) )
+        {
+          nvtxRangePush("CPU sigma calculations");
+#ifdef STPMSG
+          printf("\t\t\tCalculate sigma\n");
+#endif
+
+          if ( batch->retType & CU_SMALCAND )
+          {
+            //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
+          }
+
+          for ( int step = 0; step < batch->noSteps; step++)         // Loop over steps  .
+          {
+            for ( int stage = 0; stage < noStages; stage++ )
+            {
+              for ( int x = 0; x < batch->accelLen; x++ )
+              {
+                int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
+
+                if ( batch->retType & CU_SMALCAND )
+                {
+                  accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
+                  poww                  = candB.sigma ;
+
+                  if ( poww > 0 )
+                  {
+                    //powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ] = poww ;
+
+                    numharm     = (1<<stage);
+                    candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
+                  }
+                }
+                else if ( batch->retType & CU_FULLCAND )
+                {
+                  cand candd  = ((cand*)batch->h_retData)[idx] ;
+                  poww        = candd.power;
+
+                  if ( poww > 0 )
+                  {
+                    numharm   = (1<<stage);
+                    candd.sig = candidate_sigma(poww, numharm, numindep[stage]);
+                  }
+                }
+                else
+                {
+                  fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
+                  exit(1);
+                }
+              }
+            }
+          }
+
+          nvtxRangePop();
+        }
+      }
+
+      FOLD // ADD candidates to global list  .
+      {
+
+#ifdef STPMSG
+        printf("\t\t\tAdd To List\n");
+#endif
+
+#pragma omp critical
+        {
+          for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
+          {
+            rVals* rVal = &((*batch->rSearch)[step][0]);
+
+            for ( int stage = 0; stage < noStages; stage++ )
+            {
+              for ( int x = 0; x < batch->accelLen; x++ )
+              {
+                int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
+
+                if ( batch->retType & CU_SMALCAND )
+                {
+                  accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
+                  sig                   = candB.sigma ;
+
+                  if ( sig > 0 )
+                  {
+                    batch->noResults++;
+                    numharm = (1<<stage);
+
+                    if ( !(batch->flag & FLAG_SIG_GPU) )
+                    {
+                      sig   = candidate_sigma(sig, numharm, numindep[stage]);
+                      poww  = candB.sigma;
+                    }
+                    else
+                    {
+                      poww  = candB.sigma;
+                    }
+
+                    if ( !(batch->flag & FLAG_SIG_GPU) )
+                    {
+                      //poww    = powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ];
+                    }
+                    else
+                    {
+                      //poww = candB.sigma;
+                    }
+                    rr      = rVal->drlo + x *  ACCEL_DR ;
+
+                    if ( rr < batch->SrchSz->searchRHigh )
+                    {
+                      rr    /=  (double)numharm ;
+                      zz    =   ( candB.z * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)numharm ;
+
+                      if      ( batch->flag & CU_CAND_LST )
+                      {
+                        //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
+                      }
+                      else if ( batch->flag & CU_CAND_ARR )
+                      {
+                        double  rDiff = rr - batch->SrchSz->searchRLow ;
+                        long    grIdx;   /// The index of the candidate in the global list
+
+                        if ( batch->flag & FLAG_STORE_EXP )
+                        {
+                          grIdx = floor(rDiff*ACCEL_RDR);
+                        }
+                        else
+                        {
+                          grIdx = floor(rDiff);
+                        }
+
+                        if ( grIdx >= 0 && grIdx < batch->SrchSz->noOutpR )  // Valid index
+                        {
+                          batch->noResults++;
+
+                          if ( batch->flag & FLAG_STORE_ALL )               // Store all stages
+                          {
+                            grIdx += stage * (batch->SrchSz->noOutpR);      // Stride by size
+                          }
+
+                          if ( batch->cndType == CU_FULLCAND )
+                          {
+                            //#pragma omp critical
+                            {
+                              cand* candidate = &((cand*)batch->h_candidates)[grIdx];
+
+                              // this sigma is greater than the current sigma for this r value
+                              if ( candidate->sig < sig )
+                              {
+                                candidate->sig      = sig;
+                                candidate->power    = poww;
+                                candidate->numharm  = numharm;
+                                candidate->r        = rr;
+                                candidate->z        = zz;
+                              }
+                            }
+                          }
+                          else
+                          {
+                            fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
+                            exit(1);
+                          }
+                        }
+                      }
+                      else
+                      {
+                        fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
+                        exit(1);
+                      }
+                    }
+                  }
+                }
+                else
+                {
+                  fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+                  exit(1);
+                }
+              }
+            }
+          }
+        }
+
+#ifdef STPMSG
+        printf("\t\t\tDone\n");
+#endif
+        //if ( !(batch->flag & FLAG_SIG_GPU) && (batch->retType & CU_SMALCAND) )
+        //  free(powers);
+      }
+
+      //free(powers);
+    }
+
+    nvtxRangePop();
+
+#ifdef TIMING // Timing  .
+    gettimeofday(&end, NULL);
+    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+    batch->resultTime[0] += v1;
+#endif
+
+    FOLD // Synchronisation  .
+    {
+      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
+    }
+
+    batch->haveSearchResults = 0;
+  }
+}
+
+void getResults(cuFFdotBatch* batch)
+{
+  if ( batch->haveConvData )
+  {
+
+#ifdef STPMSG
+    printf("\t\tCopy results from device to host\n");
+#endif
+
+    cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
+    cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
+
+#ifdef TIMING // Timing event  .
+    CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->strmSearch),"Recording event: candCpyInit");
+#endif
+
+    CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+
+    CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
+    CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
+
+    batch->haveConvData        = 0;
+    batch->haveSearchResults   = 1;
+  }
+}
+
 void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
@@ -499,323 +823,31 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
 
     FOLD // Call the main sum & search kernel  .
     {
-      if ( batch->haveConvData )
-      {
-#ifdef STPMSG
-    printf("\t\tSum & search kernel\n");
-#endif
-        dim3 dimBlock, dimGrid;
+      SSKer(batch, numindep);
+    }
 
-        FOLD // Timing event  .
-        {
-#ifdef TIMING
-          CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
-#endif
-        }
 
-        FOLD // Call the SS kernel  .
-        {
-          dimBlock.x  = SS3_X;
-          dimBlock.y  = SS3_Y;
-
-          float bw    = SS3_X * SS3_Y;
-          float ww    = batch->accelLen / ( bw );
-
-          dimGrid.x   = ceil(ww);
-          dimGrid.y   = 1;
-
-          if ( batch->retType & CU_SMALCAND )
-          {
-            //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
-            //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
-            //if ( (batch->flag&FLAG_CNV_CB_OUT) && (batch->flag&FLAG_SAS_TEX) )
-            {
-              add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
-            }
-          }
-          else
-          {
-            fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
-            exit(EXIT_FAILURE);
-          }
-          CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
-        }
-
-        FOLD // Synchronisation  .
-        {
-          CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
-        }
-      }
+#ifdef SYNCHRONOUS
+    FOLD // Copy results from device to host  .
+    {
+      getResults(batch);
     }
 
     FOLD // Process previous results  .
     {
-      if ( batch->haveSearchResults )
-      {
-        // A blocking synchronisation to ensure results are ready to be proceeded by the host
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-
-#ifdef TIMING // Timing  .
-        struct timeval start, end;
-        gettimeofday(&start, NULL);
-#endif
-
-        nvtxRangePush("CPU Process results");
-
-#ifdef STPMSG
-        printf("\t\tProcess previous results\n");
-#endif
-
-        batch->noResults = 0;
-
-        double poww, sig;
-        double rr, zz;
-        int numharm;
-        poww = 0;
-
-        FOLD  // Loop over results and find candidates  .
-        {
-          //float* powers = NULL;
-          //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
-          //memset(powers, 0, batch->noSteps*noStages*batch->accelLen);
-
-          // TODO: We could loop over values and remove non local maxima to reuse sigma calculations
-
-          Fout // Calculate sigma vales from power  .
-          {
-            // We don't want to do the expensive sigma calculations in the critical block ...
-            if ( !(batch->flag & FLAG_SIG_GPU) )
-            {
-              nvtxRangePush("CPU sigma calculations");
-#ifdef STPMSG
-              printf("\t\t\tCalculate sigma\n");
-#endif
-
-              if ( batch->retType & CU_SMALCAND )
-              {
-                //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
-              }
-
-              for ( int step = 0; step < batch->noSteps; step++)         // Loop over steps  .
-              {
-                for ( int stage = 0; stage < noStages; stage++ )
-                {
-                  for ( int x = 0; x < batch->accelLen; x++ )
-                  {
-                    int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
-
-                    if ( batch->retType & CU_SMALCAND )
-                    {
-                      accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
-                      poww                  = candB.sigma ;
-
-                      if ( poww > 0 )
-                      {
-                        //powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ] = poww ;
-
-                        numharm     = (1<<stage);
-                        candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
-                      }
-                    }
-                    else if ( batch->retType & CU_FULLCAND )
-                    {
-                      cand candd  = ((cand*)batch->h_retData)[idx] ;
-                      poww        = candd.power;
-
-                      if ( poww > 0 )
-                      {
-                        numharm   = (1<<stage);
-                        candd.sig = candidate_sigma(poww, numharm, numindep[stage]);
-                      }
-                    }
-                    else
-                    {
-                      fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
-                      exit(1);
-                    }
-                  }
-                }
-              }
-
-              nvtxRangePop();
-            }
-          }
-
-          FOLD // ADD candidates to global list  .
-          {
-
-#ifdef STPMSG
-            printf("\t\t\tAdd To List\n");
-#endif
-
-#pragma omp critical
-            {
-              for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
-              {
-                rVals* rVal = &((*batch->rSearch)[step][0]);
-
-                for ( int stage = 0; stage < noStages; stage++ )
-                {
-                  for ( int x = 0; x < batch->accelLen; x++ )
-                  {
-                    int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
-
-                    if ( batch->retType & CU_SMALCAND )
-                    {
-                      accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
-                      sig                   = candB.sigma ;
-
-                      if ( sig > 0 )
-                      {
-                        batch->noResults++;
-                        numharm = (1<<stage);
-
-                        if ( !(batch->flag & FLAG_SIG_GPU) )
-                        {
-                          sig   = candidate_sigma(sig, numharm, numindep[stage]);
-                          poww  = candB.sigma;
-                        }
-                        else
-                        {
-                          poww  = candB.sigma;
-                        }
-
-                        if ( !(batch->flag & FLAG_SIG_GPU) )
-                        {
-                          //poww    = powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ];
-                        }
-                        else
-                        {
-                          //poww = candB.sigma;
-                        }
-                        rr      = rVal->drlo + x *  ACCEL_DR ;
-
-                        if ( rr < batch->SrchSz->searchRHigh )
-                        {
-                          rr    /=  (double)numharm ;
-                          zz    =   ( candB.z * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)numharm ;
-
-                          if      ( batch->flag & CU_CAND_LST )
-                          {
-                            //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
-                          }
-                          else if ( batch->flag & CU_CAND_ARR )
-                          {
-                            double  rDiff = rr - batch->SrchSz->searchRLow ;
-                            long    grIdx;   /// The index of the candidate in the global list
-
-                            if ( batch->flag & FLAG_STORE_EXP )
-                            {
-                              grIdx = floor(rDiff*ACCEL_RDR);
-                            }
-                            else
-                            {
-                              grIdx = floor(rDiff);
-                            }
-
-                            if ( grIdx >= 0 && grIdx < batch->SrchSz->noOutpR )  // Valid index
-                            {
-                              batch->noResults++;
-
-                              if ( batch->flag & FLAG_STORE_ALL )								// Store all stages
-                              {
-                                grIdx += stage * (batch->SrchSz->noOutpR);      // Stride by size
-                              }
-
-                              if ( batch->cndType == CU_FULLCAND )
-                              {
-                                //#pragma omp critical
-                                {
-                                  cand* candidate = &((cand*)batch->h_candidates)[grIdx];
-
-                                  // this sigma is greater than the current sigma for this r value
-                                  if ( candidate->sig < sig )
-                                  {
-                                    candidate->sig      = sig;
-                                    candidate->power    = poww;
-                                    candidate->numharm  = numharm;
-                                    candidate->r        = rr;
-                                    candidate->z        = zz;
-                                  }
-                                }
-                              }
-                              else
-                              {
-                                fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
-                                exit(1);
-                              }
-                            }
-                          }
-                          else
-                          {
-                            fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
-                            exit(1);
-                          }
-                        }
-                      }
-                    }
-                    else
-                    {
-                      fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-                      exit(1);
-                    }
-                  }
-                }
-              }
-            }
-
-#ifdef STPMSG
-            printf("\t\t\tDone\n");
-#endif
-            //if ( !(batch->flag & FLAG_SIG_GPU) && (batch->retType & CU_SMALCAND) )
-            //  free(powers);
-          }
-
-          //free(powers);
-        }
-
-        nvtxRangePop();
-
-#ifdef TIMING // Timing  .
-        gettimeofday(&end, NULL);
-        float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-        batch->resultTime[0] += v1;
-#endif
-
-        FOLD // Synchronisation  .
-        {
-          CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
-        }
-
-        batch->haveSearchResults = 0;
-      }
+      processSearchResults(batch, numindep);
+    }
+#else
+    FOLD // Process previous results  .
+    {
+      processSearchResults(batch, numindep);
     }
 
     FOLD // Copy results from device to host  .
     {
-      if ( batch->haveConvData )
-      {
-
-#ifdef STPMSG
-        printf("\t\tCopy results from device to host\n");
-#endif
-
-        cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
-        cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
-
-#ifdef TIMING // Timing event  .
-        CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->strmSearch),"Recording event: candCpyInit");
-#endif
-
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
-
-        CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
-
-        batch->haveConvData        = 0;
-        batch->haveSearchResults   = 1;
-      }
+      getResults(batch);
     }
+#endif
 
     nvtxRangePop();
   }
