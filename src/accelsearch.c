@@ -366,7 +366,6 @@ int main(int argc, char *argv[])
                {
                  // TODO: there are a number of families we don't need to run see if we can use 'setPlainPointers(trdBatch)'
                  // To see if we can do less work on the last step
-                 int tmp = 0;
                  rest = maxxx - firstStep;
                }
 
@@ -387,7 +386,7 @@ int main(int argc, char *argv[])
 
                FOLD // Call the CUDA search  .
                {
-                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep);
                }
 
 #ifndef STPMSG
@@ -407,7 +406,7 @@ int main(int argc, char *argv[])
                // Finish searching the plains, this is required because of the out of order asynchronous calls
                for ( step = 0 ; step < 2; step++ )
                {
-                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep);
                }
              }
            }
@@ -415,7 +414,7 @@ int main(int argc, char *argv[])
            print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
            printf("\n");
 
-           if ( (master->flag & CU_CAND_ARR) && 0 )
+           if ( (master->flag & CU_CAND_ARR) )
            {
              printf("\nCopying candidates from array to list for optimisation.\n");
 
@@ -480,14 +479,14 @@ int main(int argc, char *argv[])
          printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
          fwrite( &numcands, sizeof(numcands), 1, file );
 
-         GSList *tmpLst = cands;
+         GSList *candLst = cands;
          int nc = 0;
-         while (tmpLst)
+         while (candLst)
          {
-           accelcand* newCnd = tmpLst->data;
+           accelcand* newCnd = candLst->data;
 
            fwrite( newCnd, sizeof(accelcand), 1, file );
-           tmpLst = tmpLst->next;
+           candLst = candLst->next;
            nc++;
          }
 
@@ -745,7 +744,7 @@ int main(int argc, char *argv[])
 
 //#ifndef DEBUG
 //#ifdef CUDA
-   cudaDeviceReset();
+   //cudaDeviceReset();
 //#endif
 //#endif
 

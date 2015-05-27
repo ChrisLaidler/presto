@@ -23,6 +23,7 @@ extern "C"
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
+#include "cuda_accel_IN.h"
 
 #ifdef CBL
 #include <unistd.h>
@@ -765,10 +766,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     {
       FOLD // How to handle input  .
       {
-        if ( !( kernel->flag & CU_NORM_ALL ) )
+        if ( !(kernel->flag & CU_NORM_ALL) )
           kernel->flag    |= CU_NORM_CPU;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
 
-        if ( (kernel->flag & CU_INPT_CPU_FFT) & !(kernel->flag & CU_NORM_CPU))
+        if ( (kernel->flag & CU_INPT_CPU_FFT) && !(kernel->flag & CU_NORM_CPU) )
         {
           fprintf(stderr, "WARNING: Using CPU FFT of the input data necessitate doing the normalisation on CPU.\n");
           kernel->flag &= ~CU_NORM_ALL;
@@ -866,22 +867,22 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
   FOLD // Stack specific events  .
   {
-    char tmpStr[1024];
+    char strBuff[1024];
 
     for (int i = 0; i< kernel->noStacks; i++)
     {
       cuFfdotStack* cStack = &kernel->stacks[i];
       CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-      sprintf(tmpStr,"%i FFT Input %i Stack", device, i);
-      nvtxNameCudaStreamA(cStack->fftIStream, tmpStr);
+      sprintf(strBuff,"%i FFT Input %i Stack", device, i);
+      nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
     }
 
     for (int i = 0; i< kernel->noStacks; i++)
     {
       cuFfdotStack* cStack = &kernel->stacks[i];
       CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-      sprintf(tmpStr,"%i FFT Plain %i Stack", device, i);
-      nvtxNameCudaStreamA(cStack->fftPStream, tmpStr);
+      sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
+      nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
     }
   }
 
@@ -1155,7 +1156,7 @@ void setBatchPointers(cuFFdotBatch* batch)
  */
 int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 {
-  char tmpStr[1024];
+  char strBuff[1024];
   size_t free, total;
 
   FOLD // See if we can use the cuda device  .
@@ -1322,39 +1323,39 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       FOLD // Input streams  .
       {
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
-        sprintf(tmpStr,"%i.%i.0.0 batch input", batch->device, no);
-        nvtxNameCudaStreamA(batch->inpStream, tmpStr);
+        sprintf(strBuff,"%i.%i.0.0 batch input", batch->device, no);
+        nvtxNameCudaStreamA(batch->inpStream, strBuff);
 
         for (int i = 0; i< batch->noStacks; i++)
         {
           cuFfdotStack* cStack  = &batch->stacks[i];
 
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inpStream), "Creating input data cnvlStream for stack");
-          sprintf(tmpStr,"%i.%i.0.%i Stack Input", batch->device, no, i);
-          nvtxNameCudaStreamA(cStack->inpStream, tmpStr);
+          sprintf(strBuff,"%i.%i.0.%i Stack Input", batch->device, no, i);
+          nvtxNameCudaStreamA(cStack->inpStream, strBuff);
         }
       }
 
       FOLD // Convolve streams  .
       {
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->convStream),"Creating convolution stream for batch.");
-        sprintf(tmpStr,"%i.%i.0.0 batch convolve", batch->device, no);
-        nvtxNameCudaStreamA(batch->convStream, tmpStr);
+        sprintf(strBuff,"%i.%i.0.0 batch convolve", batch->device, no);
+        nvtxNameCudaStreamA(batch->convStream, strBuff);
 
         for (int i = 0; i< batch->noStacks; i++)
         {
           cuFfdotStack* cStack  = &batch->stacks[i];
 
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->cnvlStream), "Creating cnvlStream for stack");
-          sprintf(tmpStr,"%i.%i.1.%i Stack Convolve", batch->device, no, i);
-          nvtxNameCudaStreamA(cStack->cnvlStream, tmpStr);
+          sprintf(strBuff,"%i.%i.1.%i Stack Convolve", batch->device, no, i);
+          nvtxNameCudaStreamA(cStack->cnvlStream, strBuff);
         }
       }
 
       // Search stream
       CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
-      sprintf(tmpStr,"%i.%i.2.0 batch search", batch->device, no);
-      nvtxNameCudaStreamA(batch->strmSearch, tmpStr);
+      sprintf(strBuff,"%i.%i.2.0 batch search", batch->device, no);
+      nvtxNameCudaStreamA(batch->strmSearch, strBuff);
     }
 
     FOLD // Create Events  .
@@ -1581,15 +1582,7 @@ int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
 
     // Set the pointer to constant memory
     cStack->stkIdx        = offset+i;
-
-    //cStack->d_sInf        = &STACKS[offset+i];
-
-    //cudaGetSymbolAddress((void **)&dcoeffs, (&STACKS)+offset+i );
-    //cudaGetSymbolAddress((void **)&dcoeffs, STACKS );
     cStack->d_sInf        = dcoeffs + offset+i ;
-
-    //cStack->d_sInf        = ((stackInfo*)dcoeffs) + offset+i ;
-    int tmp = 0;
   }
 
   return batch->noStacks;
@@ -1737,13 +1730,13 @@ void freeBatch(cuFFdotBatch* batch)
 
 void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
 {
-  float *tmpp = (float*) malloc(stride * height * sizeof(fcomplexcu));
+  float *h_fArr = (float*) malloc(stride * height * sizeof(fcomplexcu));
   //float DestS   = ffdotPlain->ffPowWidth*sizeof(float);
   //float SourceS = ffdotPlain->ffPowStride;
-  CUDA_SAFE_CALL(cudaMemcpy2D(tmpp, stride * sizeof(fcomplexcu), ffdotPlain, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
+  CUDA_SAFE_CALL(cudaMemcpy2D(h_fArr, stride * sizeof(fcomplexcu), ffdotPlain, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
 
-  //draw2DArray(name, tmpp, stride*2, height);
-  free(tmpp);
+  //draw2DArray(name, h_fArr, stride*2, height);
+  free(h_fArr);
 }
 
 /** Cycle the arrays of r-values  .
@@ -1752,14 +1745,14 @@ void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
  */
 void cycleRlists(cuFFdotBatch* batch)
 {
-  rVals*** tmp    = batch->rSearch;
+  rVals*** rvals    = batch->rSearch;
 
   batch->rSearch = batch->rConvld;
   batch->rConvld = batch->rInput;
-  batch->rInput  = tmp;
+  batch->rInput  = rvals;
 }
 
-void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep, GSList** cands)
+void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep )
 {
   CUDA_SAFE_CALL(cudaGetLastError(), "Error entering search_ffdot_batch_CU.");
 
@@ -1781,14 +1774,14 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
 
   FOLD // Sum & Search  .
   {
-    sumAndSearch(batch, numindep, cands);
+    sumAndSearch(batch, numindep);
   }
 
 #else
 
   FOLD // Sum & Search  .
   {
-    sumAndSearch(batch, numindep, cands);
+    sumAndSearch(batch, numindep);
   }
 
   FOLD // Convolve & inverse FFT  .
@@ -1881,7 +1874,7 @@ void printCands(const char* fileName, GSList *cands)
   if ( cands == NULL  )
     return;
 
-  GSList *tmp_list = cands ;
+  GSList *inp_list = cands ;
 
   FILE * myfile;                    /// The file being written to
   myfile = fopen ( fileName, "w" );
@@ -1893,10 +1886,10 @@ void printCands(const char* fileName, GSList *cands)
     fprintf(myfile, "# ; r ; z ; sig ; power ; harm \n");
     int i = 0;
 
-    while ( tmp_list->next )
+    while ( inp_list->next )
     {
-      fprintf(myfile, "%i ; %14.5f ; %14.2f ; %-7.4f ; %7.2f ; %i \n", i, ((accelcand *) (tmp_list->data))->r, ((accelcand *) (tmp_list->data))->z, ((accelcand *) (tmp_list->data))->sigma, ((accelcand *) (tmp_list->data))->power, ((accelcand *) (tmp_list->data))->numharm );
-      tmp_list = tmp_list->next;
+      fprintf(myfile, "%i ; %14.5f ; %14.2f ; %-7.4f ; %7.2f ; %i \n", i, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->z, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
+      inp_list = inp_list->next;
       i++;
     }
     fclose ( myfile );
@@ -2074,11 +2067,12 @@ void readAccelDefalts(uint *flags)
         (*flags) |= CU_NORM_GPU;
       }
 
-      else if ( strCom(line, "CU_INPT_CPU_FFT" ) || strCom(line, "CPU_FFT") || strCom(line, "FFT_CPU" ) )
+      else if ( strCom(line, "CU_INPT_CPU_FFT" ) || strCom(line, "CPU_FFT" ) || strCom(line, "FFT_CPU" ) )
       {
         (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
         (*flags) |= CU_INPT_CPU_FFT;
+        printf("\nCU_INPT_CPU_FFT\n"); // TMP
       }
       else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) || strCom(line, "FFT_GPU" ) )
       {
@@ -2219,6 +2213,13 @@ void readAccelDefalts(uint *flags)
         int ll = strlen(line);
         line[ll-1] = 0;
         fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n",line, lineno, fName);
+      }
+
+
+      else if ( strCom(line, "cuMedianBuffSz" ) )
+      {
+        rest = &line[ strlen("cuMedianBuffSz")+1];
+        cuMedianBuffSz = atoi(rest);
       }
 
       else if ( strCom(line, "globalFloat01" ) )

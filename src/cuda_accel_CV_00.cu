@@ -57,7 +57,7 @@ __global__ void convolveffdot01_k(const __restrict__ fcomplexcu* kernels, const 
         {
           fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
 
-          if ( ipd.r < 0 && ipd.r > 0 )  // TMP
+          if ( ipd.r < 0 && ipd.r > 0 )   // Required so as to not optimise out
           {
             printf("ipd \n");
           }
@@ -72,7 +72,7 @@ __global__ void convolveffdot01_k(const __restrict__ fcomplexcu* kernels, const 
         idx   = k * stride;
         ker   = kernels[idx];
 
-        if ( ker.r < 0 && ker.r > 0 )  // TMP
+        if ( ker.r < 0 && ker.r > 0 )     // Required so as to not optimise out
         {
           printf("ker \n");
         }

@@ -23,6 +23,9 @@ extern "C"
 
 #define LN2  0.693147180559945309417232121458176568075500134360255254120680f
 
+
+extern int    cuMedianBuffSz;
+
 __host__ void normAndSpread_f(cudaStream_t inpStream, cuFFdotBatch* batch, uint stack );
 
 #endif // CUDA_ACCEL_IN_INCLUDED

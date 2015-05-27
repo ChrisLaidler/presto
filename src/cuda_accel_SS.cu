@@ -190,9 +190,9 @@ __host__ __device__ double incdf (double p, double q )
     if ( q < 1.0 )
     {
       sighn = -1.0;
-      double tmp = p;
+      double hold = p;
       p = q;
-      q = tmp;
+      q = hold;
     }
   }
 
@@ -474,7 +474,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
   return 1;
 }
 
-void sumAndSearch(cuFFdotBatch* batch, long long *numindep, GSList** cands)
+void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
@@ -966,12 +966,6 @@ void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
   if ( batch->haveSearchResults || batch->haveConvData ) // previous plain has data data so sum and search  .
   {
     int noStages = log(batch->noHarms)/log(2) + 1;
-    int harmtosum;
-    //cuSearchList searchList;      // The list of details of all the individual batch
-    //cuSearchItem* pd;
-    //float *rLows;
-    //pd = (cuSearchItem*)malloc(batch->noHarms * sizeof(cuSearchItem));
-    //rLows = (float*)malloc(batch->noSteps * sizeof(float));
 
     FOLD // Do synchronisations  .
     {

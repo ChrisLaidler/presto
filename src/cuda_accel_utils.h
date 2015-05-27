@@ -582,7 +582,7 @@ int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long l
 
 __host__ __device__ double incdf (double p, double q );
 
-void sumAndSearch(cuFFdotBatch* plains, long long* numindep, GSList** cands);
+void sumAndSearch(cuFFdotBatch* batch, long long *numindep);
 
 /** A function to call a kernel to harmonicall sum a plan and retunr the max of each column
  *

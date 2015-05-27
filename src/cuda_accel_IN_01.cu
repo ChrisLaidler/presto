@@ -36,20 +36,12 @@ __device__ inline int midpoint(int imin, int imax)
 
 __device__ int binSearch(const float* data, float key, int arrayLength)
 {
-  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index) // TMP
-  const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Block ID - flat index
-
   int imax = arrayLength-1;
   int imin = 0;
-
-//  int ite = 0;
 
   while ( imax >= imin )
   {
     int imid = midpoint(imin, imax) ;
-
-//    if ( bid == 0 && tid == 0 )
-//      printf("%02i imin %05i  imin %05i imax %05i   %22.6f  %22.6f  %22.6f    key %22.6f  \n", ite, imin, imid, imax, data[imin], data[imid], data[imax],  key);
 
     if      ( data[imid] == key )
       return imid;
@@ -58,9 +50,6 @@ __device__ int binSearch(const float* data, float key, int arrayLength)
     else
       imax = imid - 1;
   }
-
-//  if ( bid == 0 && tid == 0 )
-//    printf("Returning %02i  \n", imin);
 
   return imin;
 }
@@ -337,8 +326,6 @@ __device__ float cuMedianOne(float *array, uint arrayLength)
 template< int bufferSz >
 __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
 {
-  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index) // TMP
-
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Block ID - flat index
   const int bSz = blockDim.x  * blockDim.y;                     /// Block size
 
@@ -601,23 +588,6 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
                 }
               }
             }
-
-            Fout // TMP Write section values .
-            {
-              if ( (ite > 0) && (tid == 0) && (bid == 14) )
-              {
-                __syncthreads();
-
-                for ( int sec = 0; sec < noSections; sec++)
-                {
-                  int sStart      = MIN(bufferSz*sec,     arrayLength);
-                  int sEnd        = MIN(bufferSz*(sec+1), arrayLength);
-                  int sLen        = sEnd - sStart;
-
-                  printf("%02i sec\t%02i\tsmid\t%04i\t%22.6f\t%22.6f\t\n", bid,  sec, (int)(sLen/2.0f),  lower[sec], upper[sec] ) ;
-                }
-              }
-            }
           }
 
           FOLD // Find the index of the median in the buffer  .
@@ -646,47 +616,9 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
                 found = true;
               }
 
-              Fout  // TMP  Write lots of output .
-              {
-                if ( !found )
-                {
-                  if  ( bid == 12 )
-                  {
-                    int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
-                    printf("\n");
-                    printf(" %02i\t%22.6f\t%22.6f\t%22.6f \n", ite,lowerVal, medianValue, upperVal );
-                    printf("ERROR: In function %s, In block %02i median not in mid section, median value will be incorrect!  buff %04i | no sec %02i  |  locLower %04i  SMIdx %04i  locUpper %04i \n", __FUNCTION__,  bid, bufferSz, noSections, locLower, SMIdx, locUpper );
-                    printf(" ite %02i old rMedian %.6f  new rMedian %.6f \n", ite, rMedian, medianValue );
-                    printf(" rMedian %.6f   maxLower %.6f   minUpper %.6f   arrayLength %04i   medIdx %04i    before %04i   len %04i  \n", medianValue, maxLower, minUpper, (int)arrayLength, (int)(arrayLength/2.0), before, len ) ;
-                    printf(" %22.6f  %22.6f   %04i  %04i \n", maxLower, minUpper, locLower, locUpper ) ;
-
-                    FOLD // Write section values .
-                    {
-                      for ( int sec = 0; sec < noSections; sec++)
-                      {
-                        int sStart      = MIN(bufferSz*sec,     arrayLength);
-                        int sEnd        = MIN(bufferSz*(sec+1), arrayLength);
-                        int sLen        = sEnd - sStart;
-
-                        printf("sec\t%02i\tsmid\t%04i\t%22.6f\t%22.6f\t\n", sec, (int)(sLen/2.0f),  lower[sec], upper[sec] ) ;
-                      }
-                    }
-
-                    FOLD // TMP  write medians  .
-                    {
-                      printf("%02i medians:", noSections );
-                      for ( int i = 0; i < noSections; i++ )
-                      {
-                        printf("\t%.6f", medianA[i] );
-                      }
-                      printf("\n");
-                    }
-                  }
-                }
-              }
-
               if ( ite > 40 )
               {
+                const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
                 printf("\nERROR: in %s. Block %02i iterated %i times and did not find the correct median.\n", __FUNCTION__, bid, ite+1 );
                 found = true;
                 SMIdx = MAX(0,SMIdx);
@@ -714,11 +646,11 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
                   }
                 }
 
-                //if  ( bid == 12 )
-                //  printf("FOUND\n %02i\t%22.6f\t%22.6f\t%22.6f \n", ite, lowerVal, medianValue, upperVal );
-
                 if ( ite > 20 )
+                {
+                  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
                   printf("\nFound median in block %02i after %02i iterations.\n", bid, ite );
+                }
               }
             }
           }
@@ -1017,9 +949,21 @@ template<int width>
 __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
   cuFfdotStack* cStack  = &batch->stacks[stack];
-  int bufWidth          = MIN( globalFloat01, (cStack->width/2.0f)/globalFloat02 );
+  int bufWidth;
 
-  bufWidth              = MAX( (cStack->width/2.0f)/32.0, bufWidth );
+  if ( cuMedianBuffSz > 0 )
+  {
+    bufWidth            = cuMedianBuffSz;
+  }
+  else
+  {
+    if ( cStack->width > 8129)
+      bufWidth          = 2048;
+    else
+      bufWidth          = cStack->width/2.0f; // Use the actual plain width
+  }
+
+  bufWidth              = MAX( (cStack->width/2.0f)/16.0, bufWidth );
   bufWidth              = MAX( 256, bufWidth );
 
   switch ( bufWidth )

@@ -1115,7 +1115,7 @@ int main(int argc, char *argv[])
 
           FOLD // Call the CUDA search  .
           {
-            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep);
           }
 
           FOLD // Now do an equivalent CPU search  .
@@ -1573,7 +1573,7 @@ int main(int argc, char *argv[])
           // Finish searching the plains, this is required because of the out of order asynchronous calls
           for ( int step = 0 ; step < 2; step++ )
           {
-            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep, &candsGPU);
+            search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep);
           }
         }
       }

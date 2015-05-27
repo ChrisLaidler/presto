@@ -51,5 +51,7 @@ CU_CAND_ARR
 #FLAG_RAND_3
 #FLAG_RAND_4
 
-globalFloat01 1024  # Last Edited by run time script
-globalFloat02 1  # Last Edited by run time script
+#globalFloat01 1024  # Last Edited by run time script
+#globalFloat02 1  # Last Edited by run time script
+
+cuMedianBuffSz 8192
