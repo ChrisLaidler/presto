@@ -3,6 +3,8 @@
 #include "cuda_accel_utils.h"
 #include "cuda_accel_IN.h"
 
+int    cuMedianBuffSz = -1;
+
 //void CPU_Norm_Spread(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
 void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 {
@@ -293,7 +295,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         }
       }
     }
-
   }
 #endif
 
@@ -311,6 +312,9 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
     {
       if      ( batch->flag & CU_NORM_GPU  )
       {
+#ifdef STPMSG
+            printf("\t\tGPU normalisation\n");
+#endif
         // Copy chunks of FFT data and normalise and spread using the GPU
 
         FOLD // Synchronisation  .
@@ -337,9 +341,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             {
               cuFfdotStack* cStack = &batch->stacks[stack];
 
-              //int vv = 0; // TMP
-              //printf("-------- %.20f ------\n", log(2.0) ); // TMP
-
               for ( int plain = 0; plain < cStack->noInStack; plain++)
               {
                 for (int step = 0; step < batch->noSteps; step++)
@@ -351,31 +352,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
                     int start = 0;
                     if ( rVal->lobin < 0 )
                       start = -rVal->lobin;
-
-//                    Fout // TMP  .
-//                    {
-//                      float h_powers[32310];
-//
-//                      //nvtxRangePush("Powers");
-//                      for (int ii = 0; ii < rVal->numdata; ii++)
-//                      {
-//                        if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->SrchSz->searchRHigh ) // Zero Pad
-//                        {
-//                          h_powers[ii] = 0;
-//                        }
-//                        else
-//                        {
-//                          h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
-//                        }
-//                      }
-//                      //nvtxRangePop();
-//
-//                      float medd  = median(h_powers, rVal->numdata ) ;
-//                      double norm = 1.0 / sqrt( medd / log(2.0) );                       /// NOTE: This is the same method as CPU version
-//
-//                      printf("%02i  CPU median: %.6f  norm: %20.20f  \n", vv, medd, norm );
-//                      vv++;
-//                    }
 
                     // Do the actual copy
                     memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
@@ -423,14 +399,23 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 #ifdef STPMSG
             printf("\t\tNormalise on device\n");
 #endif
+
+#ifdef SYNCHRONOUS
+        cuFfdotStack* pStack = NULL;
+#endif
           for ( int stack = 0; stack < batch->noStacks; stack++)  // Loop over stack
           {
             cuFfdotStack* cStack = &batch->stacks[stack];
-            //printf("--------------\n"); // TMP
 
             FOLD // Synchronisation  .
             {
               CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inpStream, batch->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+
+#ifdef SYNCHRONOUS
+            // Wait for previous FFT to complete
+            if ( pStack != NULL )
+              cudaStreamWaitEvent(cStack->inpStream, pStack->normComp, 0);
+#endif
 
 #ifdef TIMING
               cudaEventRecord(cStack->normInit, cStack->inpStream);
@@ -445,15 +430,26 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             FOLD // Synchronisation  .
             {
               cudaEventRecord(cStack->normComp, cStack->inpStream);
-            }
 
-            cudaDeviceSynchronize(); // TMP
-            int tmp = 0; // TMP
+#ifdef SYNCHRONOUS
+              pStack = cStack;
+#endif
+            }
           }
+
+#ifdef SYNCHRONOUS
+          cuFfdotStack* lStack = &batch->stacks[batch->noStacks -1];
+          cudaStreamWaitEvent(pStack->inpStream ->inpStream, lStack->normComp, 0);
+          cudaEventRecord(batch->normComp, pStack->inpStream);
+#endif
         }
       }
       else if ( batch->flag & CU_NORM_CPU  )
       {
+        //#ifdef STPMSG
+        printf("\t\tCPU normalisation\n");
+        //#endif
+
         // Copy chunks of FFT data and normalise and spread using the CPU
 
         // Make sure the previous thread has complete reading from page locked memory
@@ -547,9 +543,6 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       {
         fprintf(stderr,"ERROR: No input normalisation method specified, pleas set to CU_NORM_GPU or CU_NORM_CPU\n");
       }
-
-      cudaDeviceSynchronize(); // TMP
-      int tmp = 0; // TMP
     }
 
     FOLD // fft the input on the GPU data  .
@@ -564,9 +557,9 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         cuFfdotStack* pStack = NULL;
 #endif
 
-        for (int ss = 0; ss < batch->noStacks; ss++)
+        for (int stackIdx = 0; stackIdx < batch->noStacks; stackIdx++)
         {
-          cuFfdotStack* cStack = &batch->stacks[ss];
+          cuFfdotStack* cStack = &batch->stacks[stackIdx];
 
           CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
 
@@ -583,6 +576,13 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             // Wait for previous FFT to complete
             if ( pStack != NULL )
               cudaStreamWaitEvent(cStack->fftIStream, pStack->prepComp, 0);
+
+            // Wait for all GPU normalisations to complete
+            for (int stack2Idx = 0; stack2Idx < batch->noStacks; stack2Idx++)
+            {
+              cuFfdotStack* stack2 = &batch->stacks[stackIdx];
+              cudaStreamWaitEvent(cStack->fftIStream, stack2->normComp, 0);
+            }
 #endif
           }
 
