@@ -79,7 +79,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 void convolveBatchCUFFT(cuFFdotBatch* batch )
 {
 #ifdef SYNCHRONOUS
-  cuFfdotStack* pStack = NULL;
+  cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
   // Convolve this entire stack in one block
@@ -167,7 +167,7 @@ void convolveBatch(cuFFdotBatch* batch)
     if ( batch->flag & FLAG_CNV_CB_IN )  	// Do the convolution using a CUFFT callback  .
     {
 #ifdef STPMSG
-    printf("\t\tConvolve with CUFFT\n");
+      printf("\t\tConvolve with CUFFT\n");
 #endif
       convolveBatchCUFFT( batch );
     }
@@ -213,7 +213,7 @@ void convolveBatch(cuFFdotBatch* batch)
         else if ( batch->flag & FLAG_CNV_STK ) 	  // Do the convolutions one stack  at a time  .
         {
 #ifdef SYNCHRONOUS
-          cuFfdotStack* pStack = NULL;
+          cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
           // Convolve this entire stack in one block
@@ -271,7 +271,7 @@ void convolveBatch(cuFFdotBatch* batch)
               }
               else
               {
-                fprintf(stderr,"ERROR: No valid convolve specifyed. Line %i in %s.\n", __LINE__, __FILE__);
+                fprintf(stderr,"ERROR: No valid convolve specified. Line %i in %s.\n", __LINE__, __FILE__);
                 exit(EXIT_FAILURE);
               }
 
@@ -292,7 +292,7 @@ void convolveBatch(cuFFdotBatch* batch)
         else if ( batch->flag & FLAG_CNV_PLN ) 	  // Do the convolutions one plain  at a time  .
         {
 #ifdef SYNCHRONOUS
-          cuFfdotStack* pStack = NULL;
+          cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
           dimBlock.x = CNV_DIMX;
@@ -391,7 +391,7 @@ void convolveBatch(cuFFdotBatch* batch)
 #endif
 
 #ifdef SYNCHRONOUS
-        cuFfdotStack* pStack = NULL;
+        cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
         // Copy fft data to device

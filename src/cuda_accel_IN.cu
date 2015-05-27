@@ -313,7 +313,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       if      ( batch->flag & CU_NORM_GPU  )
       {
 #ifdef STPMSG
-            printf("\t\tGPU normalisation\n");
+        printf("\t\tGPU normalisation\n");
 #endif
         // Copy chunks of FFT data and normalise and spread using the GPU
 
@@ -397,11 +397,11 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         FOLD // Normalise and spread on GPU  .
         {
 #ifdef STPMSG
-            printf("\t\tNormalise on device\n");
+          printf("\t\tNormalise on device\n");
 #endif
 
 #ifdef SYNCHRONOUS
-        cuFfdotStack* pStack = NULL;
+          cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
           for ( int stack = 0; stack < batch->noStacks; stack++)  // Loop over stack
           {
@@ -412,9 +412,9 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
               CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inpStream, batch->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
 
 #ifdef SYNCHRONOUS
-            // Wait for previous FFT to complete
-            if ( pStack != NULL )
-              cudaStreamWaitEvent(cStack->inpStream, pStack->normComp, 0);
+              // Wait for previous FFT to complete
+              if ( pStack != NULL )
+                cudaStreamWaitEvent(cStack->inpStream, pStack->normComp, 0);
 #endif
 
 #ifdef TIMING
@@ -437,18 +437,18 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             }
           }
 
-#ifdef SYNCHRONOUS
+#ifdef SYNCHRONOUS // Wait for the last stack to complete normalisation  .
           cuFfdotStack* lStack = &batch->stacks[batch->noStacks -1];
-          cudaStreamWaitEvent(pStack->inpStream ->inpStream, lStack->normComp, 0);
-          cudaEventRecord(batch->normComp, pStack->inpStream);
+          cudaStreamWaitEvent(lStack->inpStream, lStack->normComp, 0);
+          cudaEventRecord(batch->normComp, lStack->inpStream);
 #endif
         }
       }
       else if ( batch->flag & CU_NORM_CPU  )
       {
-        //#ifdef STPMSG
+#ifdef STPMSG
         printf("\t\tCPU normalisation\n");
-        //#endif
+#endif
 
         // Copy chunks of FFT data and normalise and spread using the CPU
 
@@ -467,7 +467,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
           if ( batch->flag & CU_INPT_CPU_FFT )
           {
 #ifdef STPMSG
-          printf("\t\tCPU FFT Input\n");
+            printf("\t\tCPU FFT Input\n");
 #endif
 
 #pragma omp critical
@@ -550,11 +550,11 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       if ( !(batch->flag & CU_INPT_CPU_FFT) )
       {
 #ifdef STPMSG
-          printf("\t\tGPU FFT\n");
+        printf("\t\tGPU FFT\n");
 #endif
 
 #ifdef SYNCHRONOUS
-        cuFfdotStack* pStack = NULL;
+        cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
         for (int stackIdx = 0; stackIdx < batch->noStacks; stackIdx++)
@@ -592,7 +592,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
             {
 
 #ifdef TIMING
-                cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
+              cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
 #endif
 
               CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");

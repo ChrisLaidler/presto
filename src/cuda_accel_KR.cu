@@ -403,6 +403,8 @@ int createStackKernel(cuFfdotStack* cStack)
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
   }
+
+  return 0;
 }
 
 /** Create GPU kernels. One for each plain of the stack  .
@@ -442,4 +444,6 @@ int createStackKernels(cuFfdotStack* cStack)
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
   }
+
+  return 0;
 }

@@ -481,7 +481,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
 
-        printf("    Stack %i has %02i f-∂f plain(s) with Width: %5li,  Stride %5li,  Total Height: %6li,   Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
+        printf("    Stack %i has %02i f-∂f plain(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
 
         // call the CUDA kernels
         // Only need one kernel per stack
@@ -489,7 +489,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
-          printf("     Harmonic %2i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
+          printf("     Harmonic %02i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
           if ( j == 0 )
           {
             printf("Convolution kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
