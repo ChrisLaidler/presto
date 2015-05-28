@@ -357,10 +357,6 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
       float rMedian;                                                // The number of medians to consider
       int len;                                                      // Only really needed by tid 0
       int before;                                                   // Only really needed by tid 0
-      float pPos;
-
-      float lowerVal;
-      float upperVal;
 
       if ( tid == 0 )
       {
