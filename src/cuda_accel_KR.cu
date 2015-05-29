@@ -2,111 +2,110 @@
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
-
-// S(x) for small x
-static __device__ double sn[6] =
-{ -2.99181919401019853726E3, 7.08840045257738576863E5, -6.29741486205862506537E7, 2.54890880573376359104E9, -4.42979518059697779103E10, 3.18016297876567817986E11,};
-
-static __device__ double sd[6] =
-{ 2.81376268889994315696E2, 4.55847810806532581675E4, 5.17343888770096400730E6, 4.19320245898111231129E8, 2.24411795645340920940E10, 6.07366389490084639049E11,};
-
-// C(x) for small x
-static __device__ double cn[6] =
-{ -4.98843114573573548651E-8, 9.50428062829859605134E-6, -6.45191435683965050962E-4, 1.88843319396703850064E-2, -2.05525900955013891793E-1, 9.99999999999999998822E-1,};
-
-static __device__ double cd[7] =
-{ 3.99982968972495980367E-12, 9.15439215774657478799E-10, 1.25001862479598821474E-7, 1.22262789024179030997E-5, 8.68029542941784300606E-4, 4.12142090722199792936E-2, 1.00000000000000000118E0,};
-
-// Auxiliary function f(x)
-static __device__ double fn[10] =
-{ 4.21543555043677546506E-1, 1.43407919780758885261E-1, 1.15220955073585758835E-2, 3.45017939782574027900E-4, 4.63613749287867322088E-6, 3.05568983790257605827E-8, 1.02304514164907233465E-10, 1.72010743268161828879E-13, 1.34283276233062758925E-16, 3.76329711269987889006E-20,};
-
-static __device__ double fd[10] =
-{ 7.51586398353378947175E-1, 1.16888925859191382142E-1, 6.44051526508858611005E-3, 1.55934409164153020873E-4, 1.84627567348930545870E-6, 1.12699224763999035261E-8, 3.60140029589371370404E-11, 5.88754533621578410010E-14, 4.52001434074129701496E-17, 1.25443237090011264384E-20,};
-
-// Auxiliary function g(x)
-static __device__ double gn[11] =
-{ 5.04442073643383265887E-1, 1.97102833525523411709E-1, 1.87648584092575249293E-2, 6.84079380915393090172E-4, 1.15138826111884280931E-5, 9.82852443688422223854E-8, 4.45344415861750144738E-10, 1.08268041139020870318E-12, 1.37555460633261799868E-15, 8.36354435630677421531E-19, 1.86958710162783235106E-22,};
-
-static __device__ double gd[11] =
-{ 1.47495759925128324529E0, 3.37748989120019970451E-1, 2.53603741420338795122E-2, 8.14679107184306179049E-4, 1.27545075667729118702E-5, 1.04314589657571990585E-7, 4.60680728146520428211E-10, 1.10273215066240270757E-12, 1.38796531259578871258E-15, 8.39158816283118707363E-19, 1.86958710162783236342E-22,};
-
-
-__device__ double polevl(double x, double *p, int N)
+/** Fresnel integral  .
+ *
+ * DESCRIPTION:
+ *
+ * Evaluates the Fresnel integrals
+ *
+ *           x
+ *           -
+ *          | |
+ * C(x) =   |   cos(pi/2 t**2) dt,
+ *        | |
+ *         -
+ *          0
+ *
+ *           x
+ *           -
+ *          | |
+ * S(x) =   |   sin(pi/2 t**2) dt.
+ *        | |
+ *         -
+ *          0
+ *
+ *
+ * The integrals are evaluated by a power series for x < 1.
+ * For x >= 1 auxiliary functions f(x) and g(x) are employed
+ * such that
+ *
+ * C(x) = 0.5 + f(x) sin( pi/2 x**2 ) - g(x) cos( pi/2 x**2 )
+ * S(x) = 0.5 - f(x) cos( pi/2 x**2 ) - g(x) sin( pi/2 x**2 )
+ *
+ *
+ *
+ * ACCURACY:
+ *
+ *  Relative error.
+ *
+ * Arithmetic  function   domain     # trials      peak         rms
+ *   IEEE       S(x)      0, 10       10000       2.0e-15     3.2e-16
+ *   IEEE       C(x)      0, 10       10000       1.8e-15     3.3e-16
+ *   DEC        S(x)      0, 10        6000       2.2e-16     3.9e-17
+ *   DEC        C(x)      0, 10        5000       2.3e-16     3.9e-17
+ *
+ *   This function is adapted from:
+ *   Cephes Math Library Release 2.8:  June, 2000
+ *   Copyright 1984, 1987, 1989, 2000 by Stephen L. Moshier
+ *
+ * @param xxa Value to evaluate the Fresnel integral at
+ * @param ss  The result S(xxa)
+ * @param cc  The result C(xxa)
+ */
+template<typename T>
+__device__ void fresnl(T xxa, T* ss, T* cc)
 {
-  double ans;
-  int i;
-  //double *p;
-  //p = coef;
+  T f, g, c, s, t, u;
+  T x, x2;
 
-  ans = *p++;
-  i = N;
+  x       = fabs(xxa);
+  x2      = x * x;
 
-  do
-    ans = ans * x + *p++;
-  while (--i);
+  if      ( x2 < 2.5625   )     // Small so use a polynomial approximation  .
+  {
+    t     = x2 * x2;
 
-  return (ans);
-}
+    T sn  = 3.18016297876567817986e11 + (-4.42979518059697779103e10 + (2.54890880573376359104e9  + (-6.29741486205862506537e7  + ( 7.08840045257738576863e5  -   2.99181919401019853726e3   * t)*t)*t)*t)*t;
+    T sd  = 6.07366389490084639049e11 + ( 2.24411795645340920940e10 + (4.19320245898111231129e8  + ( 5.17343888770096400730e6  + ( 4.55847810806532581675e4  + ( 2.81376268889994315696e2   + t)*t)*t)*t)*t)*t ;
+    T cn  = 9.99999999999999998822e-1 + (-2.05525900955013891793e-1 + (1.88843319396703850064e-2 + (-6.45191435683965050962e-4 + ( 9.50428062829859605134e-6 -   4.98843114573573548651e-8  * t)*t)*t)*t)*t;
+    T cd  = 1.00000000000000000118e0  + ( 4.12142090722199792936e-2 + (8.68029542941784300606e-4 + ( 1.22262789024179030997e-5 +  (1.25001862479598821474e-7 + ( 9.15439215774657478799e-10 + 3.99982968972495980367e-12*t)*t)*t)*t)*t)*t ;
 
-__device__ double p1evl(double x, double *p, int N)
-{
-  double ans;
-  //double *p;
-  int i;
-
-  //p = coef;
-  ans = x + *p++;
-  i = N - 1;
-
-  do
-    ans = ans * x + *p++;
-  while (--i);
-
-  return (ans);
-}
-
-__device__ int fresnl(double xxa, double *ssa, double *cca)
-{
-  double f, g, cc, ss, c, s, t, u;
-  double x, x2;
-
-  x = fabs(xxa);
-  x2 = x * x;
-  if (x2 < 2.5625) {
-    t = x2 * x2;
-    ss = x * x2 * polevl(t, sn, 5) / p1evl(t, sd, 6);
-    cc = x * polevl(t, cn, 5) / polevl(t, cd, 6);
-    goto done;
+    *ss   = x * x2 * sn / sd;
+    *cc   = x * cn / cd;
   }
-  if (x > 36974.0) {
-    cc = 0.5;
-    ss = 0.5;
-    goto done;
+  else if ( x  > 36974.0  )     // Asymptotic behaviour  .
+  {
+    *cc   = 0.5;
+    *ss   = 0.5;
   }
-  /* Auxiliary functions for large argument  */
-  x2 = x * x;
-  t = PI * x2;
-  u = 1.0 / (t * t);
-  t = 1.0 / t;
-  f = 1.0 - u * polevl(u, fn, 9) / p1evl(u, fd, 10);
-  g = t * polevl(u, gn, 10) / p1evl(u, gd, 11);
-  t = PIBYTWO * x2;
-  c = cos(t);
-  s = sin(t);
-  t = PI * x;
-  cc = 0.5 + (f * s - g * c) / t;
-  ss = 0.5 - (f * c + g * s) / t;
+  else                          // Auxiliary functions for large argument  .
+  {
+    x2    = x * x;
+    t     = PI * x2;
+    u     = 1.0 / (t * t);
+    t     = 1.0 / t;
 
-  done:
+    T fn  = 3.76329711269987889006e-20+(1.34283276233062758925e-16+(1.72010743268161828879e-13+(1.02304514164907233465e-10+(3.05568983790257605827e-8 +(4.63613749287867322088e-6+(3.45017939782574027900e-4+(1.15220955073585758835e-2+(1.43407919780758885261e-1+ 4.21543555043677546506e-1*u)*u)*u)*u)*u)*u)*u)*u)*u;
+    T fd  = 1.25443237090011264384e-20+(4.52001434074129701496e-17+(5.88754533621578410010e-14+(3.60140029589371370404e-11+(1.12699224763999035261e-8 +(1.84627567348930545870e-6+(1.55934409164153020873e-4+(6.44051526508858611005e-3+(1.16888925859191382142e-1+(7.51586398353378947175e-1+u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+    T gn  = 1.86958710162783235106e-22+(8.36354435630677421531e-19+(1.37555460633261799868e-15+(1.08268041139020870318e-12+(4.45344415861750144738e-10+(9.82852443688422223854e-8+(1.15138826111884280931e-5+(6.84079380915393090172e-4+(1.87648584092575249293e-2+(1.97102833525523411709e-1+5.04442073643383265887e-1*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+    T gd  = 1.86958710162783236342e-22+(8.39158816283118707363e-19+(1.38796531259578871258e-15+(1.10273215066240270757e-12+(4.60680728146520428211e-10+(1.04314589657571990585e-7+(1.27545075667729118702e-5+(8.14679107184306179049e-4+(2.53603741420338795122e-2+(3.37748989120019970451e-1+(1.47495759925128324529e0+u)*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
 
-  if (xxa < 0.0) {
-    cc = -cc;
-    ss = -ss;
+    f     = 1.0 - u * fn / fd;
+    g     =       t * gn / gd;
+
+    t     = PIBYTWO * x2;
+    sincos(t, &s, &c);
+    t     = PI * x;
+    *cc   = 0.5 + (f * s - g * c) / t;
+    *ss   = 0.5 - (f * c + g * s) / t;
   }
-  *cca = cc;
-  *ssa = ss;
-  return (0);
+
+  if (xxa < 0.0)
+  {
+    // Swap as function is antisymmetric
+    *cc   = -*cc;
+    *ss   = -*ss;
+  }
 }
 
 __device__ int z_resp_halfwidth(double z)
@@ -137,12 +136,13 @@ __device__ int z_resp_halfwidth(double z)
  * @param rr            A pointer to the real part of the complex response for kx
  * @param ri            A pointer to the imaginary part of the complex response for kx
  */
-__device__ inline void gen_r_response(int kx, double roffset, float numbetween, int numkern, float* rr, float* ri)
+template<typename T>
+__device__ inline void gen_r_response(int kx, T roffset, T numbetween, int numkern, float* rr, float* ri)
 {
   int ii;
-  double tmp, sinc, s, c, alpha, beta, delta, startr, r;
+  T tmp, sinc, s, c, alpha, beta, delta, startr, r;
 
-  startr = PI * (numkern / (double) (2 * numbetween));
+  startr = PI * (numkern / (T) (2 * numbetween));
   delta = -PI / numbetween;
   tmp = sin(0.5 * delta);
   alpha = -2.0 * tmp * tmp;
@@ -184,28 +184,29 @@ __device__ inline void gen_r_response(int kx, double roffset, float numbetween, 
  *
  * This is based on gen_z_response in responce.c
  *
- * @param kx            The x index of the value in the kernel
+ * @param rx            The x index of the value in the kernel
  * @param z             The Fourier Frequency derivative (# of bins the signal smears over during the observation)
  * @param absz          Is the absolute value of z
  * @param roffset       Is the offset in Fourier bins for the full response (i.e. At this point, the response would equal 1.0)
  * @param numbetween    Is the number of points to interpolate between each standard FFT bin. (i.e. 'numbetween' = 2 = interbins, this is the standard)
  * @param numkern       Is the number of complex points that the kernel will contain.
- * @param rr            A pointer to the real part of the complex response for kx
- * @param ri            A pointer to the imaginary part of the complex response for kx
+ * @param rr            A pointer to the real part of the complex response for rx
+ * @param ri            A pointer to the imaginary part of the complex response for rx
  */
-__device__ inline void gen_z_response(int rx, float z,  double absz, float numbetween, int numkern, float* rr, float* ri)
+template<typename T>
+__device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int numkern, float* rr, float* ri)
 {
   int signz;
-  double zd, r, xx, yy, zz, startr, startroffset;
-  double fressy, frescy, fressz, frescz, tmprl, tmpim;
-  double s, c, pibyz, cons, delta;
+  T zd, r, xx, yy, zz, startr, startroffset;
+  T fressy, frescy, fressz, frescz, tmprl, tmpim;
+  T s, c, pibyz, cons, delta;
 
   startr        = 0 - (0.5 * z);
   startroffset  = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
 
   if (rx == numkern / 2.0 && startroffset < 1E-3 && absz < 1E-3)
   {
-    double nr, ni;
+    T nr, ni;
 
     zz      = z * z;
     xx      = startroffset * startroffset;
@@ -221,27 +222,31 @@ __device__ inline void gen_z_response(int rx, float z,  double absz, float numbe
   }
   else
   {
-    signz   = (z < 0.0) ? -1 : 1;
-    zd      = signz * (double) SQRT2 / sqrt(absz);
-    zd      = signz * sqrt(2.0 / absz);
-    cons    = zd / 2.0;
-    pibyz   = PI / z;
-    startr  += numkern / (double) (2 * numbetween);
-    delta   = -1.0 / numbetween;
+    // This is evaluating Eq (38) in:
+    // Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
 
+    signz   = (z < 0.0) ? -1 : 1;
+    zd      = signz * (T) SQRT2 / sqrt(absz);
+    zd      = signz * sqrt(2.0 / absz);
+    cons    = zd / 2.0;                             // 1 / sqrt(2*r')
+
+
+    startr  += numkern / (T) (2 * numbetween);
+    delta   = -1.0 / numbetween;
     r       = startr + rx * delta;
 
+    pibyz   = PI / z;
     yy      = r * zd;
     zz      = yy + z * zd;
     xx      = pibyz * r * r;
     c       = cos(xx);
     s       = sin(xx);
-    fresnl(yy, &fressy, &frescy);
-    fresnl(zz, &fressz, &frescz);
-    tmprl = signz * (frescz - frescy);
-    tmpim = fressy - fressz;
+    fresnl<T>(yy, &fressy, &frescy);
+    fresnl<T>(zz, &fressz, &frescz);
+    tmprl   = signz * (frescz - frescy);
+    tmpim   = fressy - fressz;
 
-    *rr     = (tmprl * c - tmpim * s) * cons;
+    *rr     =  (tmprl * c - tmpim * s) * cons;
     *ri     = -(tmprl * s + tmpim * c) * cons;
   }
 }
@@ -255,16 +260,16 @@ __device__ inline void gen_z_response(int rx, float z,  double absz, float numbe
  * @param fftlen
  * @param frac
  */
-__global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
+__global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float frac)
 {
-  int cx, cy;                       /// The x and y index of this thread in the array
-  int rx = -1;                      /// The x index of the value in the kernel
+  int cx, cy;                                   /// The x and y index of this thread in the array
+  int rx = -1;                                  /// The x index of the value in the kernel
 
   // Calculate the 2D index of this thread
-  cx = blockDim.x * blockIdx.x + threadIdx.x;// use BLOCKSIZE rather (its constant)
-  cy = blockDim.y * blockIdx.y + threadIdx.y;// use BLOCKSIZE rather (its constant)
+  cx = blockDim.x * blockIdx.x + threadIdx.x;   /// use BLOCKSIZE rather (its constant)
+  cy = blockDim.y * blockIdx.y + threadIdx.y;   /// use BLOCKSIZE rather (its constant)
 
-  float z = -maxZ + cy * ACCEL_DZ;   /// The Fourier Frequency derivative
+  float z = -maxZ + cy * ACCEL_DZ;              /// The Fourier Frequency derivative
 
   if ( z < -maxZ || z > maxZ || cx >= fftlen || cx < 0 )
   {
@@ -275,34 +280,34 @@ __global__ void init_kernels(float* response, int maxZ, int fftlen, float frac)
   // Calculate the response x position from the plain x position
   int kern_half_width = z_resp_halfwidth((double) z);
   int hw = ACCEL_NUMBETWEEN * kern_half_width;
-  int numkern = 2 * hw;           /// The number of complex points that the kernel row will contain
+  int numkern = 2 * hw;                         /// The number of complex points that the kernel row will contain
   if (cx < hw)
     rx = cx + hw;
   else if (cx >= fftlen - hw)
     rx = cx - (fftlen - hw);
 
-  FOLD // Calculate the response value
-  {
-    float rr = 0;               /// The real part of the complex response
-    float ri = 0;               /// The imaginary part of the complex response
+  fcomplexcu resp;                              /// the complex response
+  resp.r = 0.0;
+  resp.i = 0.0;
 
+  FOLD // Calculate the response value  .
+  {
     if (rx != -1)
     {
       float absz = fabs(z);
 
-      if (absz < 1E-4 )    // If z~=0 use the normal Fourier interpolation kernel
+      if (absz < 1E-4 )    // If z~=0 use the normal Fourier interpolation kernel  .
       {
-        gen_r_response (rx, 0.0, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
+        gen_r_response<double> (rx, 0.0,    ACCEL_NUMBETWEEN, numkern, &resp.r, &resp.i);
       }
-      else                 // Calculate the complex response value for Fourier f-dot interpolation.
+      else                 // Calculate the complex response value for Fourier f-dot interpolation  .
       {
-        gen_z_response (rx, z, absz, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
+        gen_z_response<double> (rx, z, absz, ACCEL_NUMBETWEEN, numkern, &resp.r, &resp.i);
       }
     }
-
-    response[(cy * fftlen + cx) * 2    ]  = rr;
-    response[(cy * fftlen + cx) * 2 + 1]  = ri;
   }
+
+  response[cy * fftlen + cx]  = resp;
 }
 
 /** Create the convolution kernel for an entire stack  .
@@ -361,14 +366,14 @@ __global__ void init_kernels_stack(float2* response, const int fftlen, const int
 
     if (rx != -1)
     {
-      double absz = fabs(z);
+      float absz = fabs(z);
       if (absz < 1E-4 )     // If z~=0 use the normal Fourier interpolation kernel
       {
-        gen_r_response(rx, 0.0, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
+        gen_r_response<double>(rx, 0.0, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
       }
       else                  // Calculate the complex response value for Fourier f-dot interpolation.
       {
-        gen_z_response (rx, z, absz, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
+        gen_z_response<double>(rx, z, absz, ACCEL_NUMBETWEEN, numkern, &rr, &ri);
       }
     }
 
@@ -398,7 +403,7 @@ int createStackKernel(cuFfdotStack* cStack)
   FOLD // call the CUDA kernels  .
   {
     // Call kernel
-    init_kernels<<<dimGrid, dimBlock>>>((float*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width, cStack->harmInf->harmFrac);
+    init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width, cStack->harmInf->harmFrac);
 
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");

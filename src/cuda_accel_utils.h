@@ -450,6 +450,10 @@ double _GammaQ (double n, double x);
 
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
+
+template<typename T>
+__device__ void fresnl(T xxa, T* ss, T* cc);
+
 /** Cycle the arrays of r-values  .
  *
  * @param batch

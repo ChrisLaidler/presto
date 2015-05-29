@@ -7,16 +7,16 @@ IL_PLN # Last Edited by run time script
 ######## Input #######
 
 # NORM_CPU NORM_GPU
-NORM_GPU
+NORM_CPU
 
 # FFT_CPU  FFT_GPU
-FFT_GPU # Last Edited by run time script
+FFT_CPU # Last Edited by run time script
 
 
 ###### Convolve ######
 
 # CV_00  CV_10  CV_30  CV_41  CV_42  CV_43  CV_50
-CV_43 # Last Edited by run time script
+CV_00 # Last Edited by run time script
 
 # Other Convolve options
 # FLAG_CNV_TEX
@@ -51,7 +51,8 @@ CU_CAND_ARR
 #FLAG_RAND_3
 #FLAG_RAND_4
 
-#globalFloat01 1024  # Last Edited by run time script
-#globalFloat02 1  # Last Edited by run time script
 
-cuMedianBuffSz 8192
+# 128 256 512 1024 2048 4096 8192
+
+#cuMedianBuffSz 2048
+

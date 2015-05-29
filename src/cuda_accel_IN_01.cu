@@ -439,9 +439,6 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
           if ( tid == 0 )
           {
             medianValue           = median(medianA, noSections, 0 );
-            pPos                  = (noSections-1)/2.0;
-            lowerVal              = medianA[0];
-            upperVal              = medianA[noSections-1];
           }
         }
       }
