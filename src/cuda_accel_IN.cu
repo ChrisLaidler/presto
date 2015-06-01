@@ -217,85 +217,8 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 {
   dim3 dimBlock, dimGrid;
 
-#ifdef TIMING // Timing  .
+#ifdef TIMING // Timing variables  .
   struct timeval start, end;
-
-  if ( batch->haveSearchResults )
-  {
-    // Make sure the previous thread has complete reading from page locked memory
-    CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
-
-    float time;         // Time in ms of the thing
-    cudaError_t ret;    // Return status of cudaEventElapsedTime
-
-    FOLD // Norm Timing  .
-    {
-      if ( batch->flag & CU_NORM_GPU )
-      {
-        for (int ss = 0; ss < batch->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &batch->stacks[ss];
-
-          ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
-          if ( ret == cudaErrorNotReady )
-          {
-            //printf("Not ready\n");
-          }
-          else
-          {
-            //printf("    ready\n");
-#pragma omp atomic
-            batch->normTime[ss] += time;
-
-            //if ( ss == 0 )
-            //  printf("\nFFT: %f ms\n",time);
-          }
-        }
-      }
-    }
-
-    FOLD // Copy input data  .
-    {
-      ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
-
-      if ( ret == cudaErrorNotReady )
-      {
-        //printf("Not ready\n");
-      }
-      else
-      {
-        //printf("    ready\n");
-#pragma omp atomic
-        batch->copyH2DTime[0] += time;
-      }
-    }
-
-    FOLD // Input FFT timing  .
-    {
-      if ( !(batch->flag & CU_INPT_CPU_FFT) )
-      {
-        for (int ss = 0; ss < batch->noStacks; ss++)
-        {
-          cuFfdotStack* cStack = &batch->stacks[ss];
-
-          ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
-          if ( ret == cudaErrorNotReady )
-          {
-            //printf("Not ready\n");
-          }
-          else
-          {
-            //printf("    ready\n");
-#pragma omp atomic
-            batch->InpFFTTime[ss] += time;
-
-            //if ( ss == 0 )
-            //  printf("\nFFT: %f ms\n",time);
-          }
-        }
-      }
-    }
-  }
 #endif
 
   // Calculate R values
@@ -620,4 +543,86 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
     nvtxRangePop();
   }
+
+#ifdef TIMING // Timing  .
+
+#ifndef SYNCHRONOUS
+  if ( batch->haveSearchResults )
+#endif
+  {
+    // Make sure the previous thread has complete reading from page locked memory
+    CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
+
+    float time;         // Time in ms of the thing
+    cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+    FOLD // Norm Timing  .
+    {
+      if ( batch->flag & CU_NORM_GPU )
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
+          if ( ret == cudaErrorNotReady )
+          {
+            //printf("Not ready\n");
+          }
+          else
+          {
+            //printf("    ready\n");
+#pragma omp atomic
+            batch->normTime[ss] += time;
+
+            //if ( ss == 0 )
+            //  printf("\nFFT: %f ms\n",time);
+          }
+        }
+      }
+    }
+
+    FOLD // Copy input data  .
+    {
+      ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
+
+      if ( ret == cudaErrorNotReady )
+      {
+        //printf("Not ready\n");
+      }
+      else
+      {
+        //printf("    ready\n");
+#pragma omp atomic
+        batch->copyH2DTime[0] += time;
+      }
+    }
+
+    FOLD // Input FFT timing  .
+    {
+      if ( !(batch->flag & CU_INPT_CPU_FFT) )
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
+          if ( ret == cudaErrorNotReady )
+          {
+            //printf("Not ready\n");
+          }
+          else
+          {
+            //printf("    ready\n");
+#pragma omp atomic
+            batch->InpFFTTime[ss] += time;
+
+            //if ( ss == 0 )
+            //  printf("\nFFT: %f ms\n",time);
+          }
+        }
+      }
+    }
+  }
+#endif
 }

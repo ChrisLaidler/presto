@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
    printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
 
-#ifdef CUDA  // Profiling  .
+#ifdef CUDA  	  // Profiling  .
    nvtxRangePop();
    gettimeofday(&end, NULL);
    prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -339,11 +339,11 @@ int main(int argc, char *argv[])
 
              double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
              double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
-             size_t   rest    = trdBatch->noSteps;
+             int      rest    = trdBatch->noSteps;
 
              setContext(trdBatch) ;
 
-             int firstStep = 0;
+             int firstStep    = 0;
              int step;
 
              while ( ss < maxxx )  // Main GPU loop  .
@@ -362,7 +362,7 @@ int main(int argc, char *argv[])
                if ( firstStep >= maxxx )
                  break;
 
-               if ( firstStep + trdBatch->noSteps >= maxxx )
+               if ( firstStep + (int)trdBatch->noSteps >= maxxx )
                {
                  // TODO: there are a number of families we don't need to run see if we can use 'setPlainPointers(trdBatch)'
                  // To see if we can do less work on the last step
@@ -370,7 +370,7 @@ int main(int argc, char *argv[])
                }
 
                // Set start r-vals for all steps in this batch
-               for ( step = 0; step < trdBatch->noSteps ; step ++)
+               for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
                {
                  if ( step < rest )
                  {
@@ -397,7 +397,7 @@ int main(int argc, char *argv[])
              FOLD  // Finish off CUDA search  .
              {
                // Set r values to 0 so as to not process details
-               for ( step = 0; step < trdBatch->noSteps ; step ++)
+               for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
                {
                  startrs[step] = 0;
                  lastrs[step]  = 0;
@@ -429,7 +429,7 @@ int main(int argc, char *argv[])
 
              cand* candidate = (cand*)master->h_candidates;
 
-             for (cdx = 0; cdx < master->SrchSz->noOutpR; cdx++)  // Loop
+             for (cdx = 0; cdx < (int)master->SrchSz->noOutpR; cdx++)  // Loop
              {
                poww        = candidate[cdx].power;
 
@@ -501,7 +501,7 @@ int main(int argc, char *argv[])
      printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
    }
 
-   if (0) // optimization  .
+   if (0)   	// optimization  .
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;
@@ -601,7 +601,7 @@ int main(int argc, char *argv[])
 #endif
    }
 
-#ifdef CUDA // Timing message  .
+#ifdef CUDA 	// Timing message  .
       printf("\n Timing:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
       writeLogEntry("/home/chris/accelsearch_log.csv",&obs, cuSrch, prepTime, cupTime, gpuTime, optTime);
@@ -672,7 +672,7 @@ int main(int argc, char *argv[])
           printf("\n");
         }
 
-        for (stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
+        for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
         {
           cuFfdotStack*   cStack = &batches->stacks[stack];
 
@@ -680,8 +680,8 @@ int main(int argc, char *argv[])
           convDat       += cStack->kerHeigth * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
           convDat       += cStack->noInStack * batches->noSteps * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
 
-          float convT   = batches->convTime[stack] * 1e-3;
-          float convBW  = convDat / convT ;
+          //float convT   = batches->convTime[stack] * 1e-3;
+          //float convBW  = convDat / convT ;
 
           //printf("height: %.3f width: %.2f  noSteps: %.2f   sz: %.2f  noSteps: %.2f \n", (float)cStack->height, (float)cStack->width, (float)batches->noSteps, (float)sizeof(fcomplex), (float)cuSrch->noSteps );
           //printf("%.3f GB in %.4f s BW: %.4f \n",  convDat, convT, convBW );
@@ -753,3 +753,4 @@ int main(int argc, char *argv[])
    g_slist_free(cands);
    return (0);
 }
+

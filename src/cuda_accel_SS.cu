@@ -487,7 +487,7 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
 
     FOLD // Timing event  .
     {
-#ifdef TIMING
+#ifdef TIMING // Timing event
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
 #endif
     }
@@ -854,7 +854,9 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
 
 #ifdef TIMING // Timing  .
 
+#ifndef SYNCHRONOUS
   if ( batch->haveSearchResults )
+#endif
   {
     // A blocking synchronisation to ensure results are ready to be proceeded by the host
     CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");

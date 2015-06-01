@@ -1,8 +1,8 @@
 #include "cuda_accel_CV.h"
 
-/** Convolution kernel - Convolve a stack with a kernel - multi-step - uses shared memory to store sections of the kernel  .
+/** Convolution kernel - All multiplications for a stack - Uses registers to store sections of the kernel - Loop ( chunk (read ker) - plan - Y - step ) .
  * Each thread loops down a column of the plain
- * Reads the input and convolves it with the kernel and writes result to plain
+ * Reads the input and multiples it with the kernel and writes result to plain
  */
 template<int FLAGS, int noSteps, int noPlns>
 __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
@@ -25,6 +25,7 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
     }
 
     fcomplexcu inpDat[noPlns][noSteps];                       // Set of input data for this thread/column
+
     FOLD // Read all input data  .
     {
       for (int step = 0; step < noSteps; step++)
@@ -153,7 +154,6 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
                 ker = k11;
                 break;
               }
-
             }
           }
 
@@ -187,7 +187,7 @@ __global__ void convolveffdot43_k(const __restrict__ fcomplexcu* kernels, const 
               }
             }
 
-            FOLD // Convolve  .
+            FOLD // Multiply  .
             {
               //ffdot[idx].r = (inpDat[pln][step].r * ker.r + inpDat[pln][step].i * ker.i);
               //ffdot[idx].i = (inpDat[pln][step].i * ker.r - inpDat[pln][step].r * ker.i);

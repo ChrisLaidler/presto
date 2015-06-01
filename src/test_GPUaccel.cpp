@@ -788,6 +788,11 @@ int main(int argc, char *argv[])
     subharminfs = create_subharminfos(&obs);
     printf("Done generating kernels.\n\n");
 
+    int noEl = 8;
+    fcomplex *tempkern;
+    //tempkern = gen_z_response(0.2, 2,  4, noEl);
+    //tempkern = gen_z_response(0.2, 2, -4, noEl);
+
     nDarray<2, float> DFF_kernels;
 
     //cudaDeviceSynchronize();          // This is only necessary for timing

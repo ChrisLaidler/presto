@@ -222,8 +222,12 @@ __device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int nu
   }
   else
   {
-    // This is evaluating Eq (38) in:
-    // Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
+    /* This is evaluating Eq (38) in:
+     * Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
+     *
+     * Where: qᵣ  is the variable r and represents the distance from the centre frequency
+     *        |ṙ| is the variable z which is ḟ
+     */
 
     signz   = (z < 0.0) ? -1 : 1;
     zd      = signz * (T) SQRT2 / sqrt(absz);

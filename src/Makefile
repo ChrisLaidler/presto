@@ -137,10 +137,10 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 ######## CUDA flags
 
 ARCH =
-#ARCH += -gencode arch=compute_20,code=sm_21
-ARCH += -gencode arch=compute_30,code=sm_30
-#ARCH += -gencode arch=compute_35,code=sm_35
-ARCH += -gencode arch=compute_50,code=sm_50
+#ARCH 	+= -gencode arch=compute_20,code=sm_21
+ARCH 		+= -gencode arch=compute_30,code=sm_30
+#ARCH 	+= -gencode arch=compute_35,code=sm_35
+ARCH 		+= -gencode arch=compute_50,code=sm_50
 
 CUDA_PATH  = /usr/local/cuda
 
@@ -240,26 +240,26 @@ endif
 ifeq ($(WITH_CUDA),yes)
   $(info • Compileing with CUDA)
 
-  NVCC_SRCS  = $(wildcard *.cu)
-  NVCC_OBS   = $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
+  NVCC_SRCS  	= $(wildcard *.cu)
+  NVCC_OBS   	= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
   
-  NVCCFLAGS  += -DCUDA -Xcompiler -fPIC
-  NVCLFLAGS  += -DCUDA -Xcompiler -fPIC
+  NVCCFLAGS  	+= -DCUDA -Xcompiler -fPIC
+  NVCLFLAGS  	+= -DCUDA -Xcompiler -fPIC
   
-  CFLAGS     += -DCUDA $(CUDAINC)
-  FLAGS      += -DCUDA $(CUDAINC)
+  CFLAGS     	+= -DCUDA $(CUDAINC)
+  FLAGS      	+= -DCUDA $(CUDAINC)
   
-  CXXFLAGS   += -DCUDA $(CFLAGS)	$(CUDAINC)
-  LDFLAGS    += -DCUDA $(CUDAINC) $(CLINKFLAGS) 
+  CXXFLAGS   	+= -DCUDA $(CFLAGS)	$(CUDAINC)
+  LDFLAGS    	+= -DCUDA $(CUDAINC) $(CLINKFLAGS) 
 
-  CUACCL     = -lcuaccel$(POSTFIX)
+  CUACCL     	= -lcuaccel$(POSTFIX)
 
-  GPUOUTP    = $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+  GPUOUTP    	= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 else
-  NVCC           = $(CC)
-  NVCC_OBS       =
-  NVCLFLAGS      = $(CLINKFLAGS)
-  GPUOUTP        =
+  NVCC        = $(CC)
+  NVCC_OBS    =
+  NVCLFLAGS   = $(CLINKFLAGS)
+  GPUOUTP     =
 endif
 
 $(info )

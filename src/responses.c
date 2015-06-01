@@ -305,7 +305,22 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
       tmpim           = fressy - fressz;
       response[ii].r  = ((tmprl) * c - tmpim * s) * cons;
       response[ii].i  = -(tmprl  * s + tmpim * c) * cons;
+
+      // NB TODO: When I checked the math i think real and ima are inverted??????
+
+      
+      /*
+      double Ster = fressz - fressy;
+      double Cter = frescy - frescz;
+      double tR   = cons * (c*Ster + signz*s*Cter);
+      double tI   = cons * (s*Ster - signz*c*Cter);
+
+      printf("[(%7.4f %7.4f) ",  response[ii].r,  response[ii].i );
+      printf("(%7.4f %7.4f)] ",  tR,              tI );
+      fflush(stdout);
+      */
    }
+   //printf("\n");
 
    /* Correct for divide by zero when the roffset and z is close to zero */
 

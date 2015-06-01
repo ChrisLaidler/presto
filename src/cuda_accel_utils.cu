@@ -1346,7 +1346,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
         if ( (no == 0) && (of == 0) && !(kernel->flag & CU_INPT_CPU_FFT) )
         {
-          printf("\nRecreating Input FFT streams\n");
+          //printf("\nRecreating Input FFT streams\n");
 
           for (int i = 0; i < kernel->noStacks; i++)
           {
@@ -1382,7 +1382,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
         if ( (no == 0) && (of == 0) )
         {
-          printf("\nRecreating Inverse FFT streams\n");
+          //printf("\nRecreating Inverse FFT streams\n");
 
           for (int i = 0; i < kernel->noStacks; i++)
           {

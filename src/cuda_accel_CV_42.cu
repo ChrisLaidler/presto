@@ -22,24 +22,8 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
 
     const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
 
-    /*
-    fcomplexcu inpDat[noSteps][noPlns];                       // Set of input data for this thread/column
-    FOLD // Read all input data  .
-    {
-      for (int step = 0; step < noSteps; step++)
-      {
-        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
-        {
-          fcomplexcu inp        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-          inp.r                 /= (float) width ;
-          inp.i                 /= (float) width ;
-          inpDat[step][pln]     = inp ;
-        }
-      }
-    }
-    */
-
     fcomplexcu inpDat[noPlns][noSteps];                       // Set of input data for this thread/column
+
     FOLD // Read all input data  .
     {
       for (int step = 0; step < noSteps; step++)
@@ -68,6 +52,7 @@ __global__ void convolveffdot42_k(const __restrict__ fcomplexcu* kernels, const 
       {
         const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
+
         const int plainY        = y - kerYOffset;
         const int ns2           = plnHeight * stride;
 

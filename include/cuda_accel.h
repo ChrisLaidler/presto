@@ -33,7 +33,7 @@ extern "C"
 #undef STPMSG
 //#define STPMSG            // Uncomment to set to print out debug step
 
-//=========================================== Defines ====================================================\\
+//=========================================== Defines ====================================================
 
 #define   MAX_IN_STACK  10      ///< NOTE: this is 1 to big to handle the init problem
 #define   MAX_HARM_NO   16      ///< The maximum number of harmonics handled by a accel search
@@ -42,7 +42,7 @@ extern "C"
 #define   MAX_STKSZ     9       ///< The maximum number of plains in a stack
 #define   MAX_GPUS      32      ///< The maximum number GPU's
 
-//====================================== Bit flag values =================================================\\
+//====================================== Bit flag values =================================================
 
 #define     FLAG_ITLV_ROW       (1<<0)    ///< Multi-step Row   interleaved        - This seams to be best in most cases
 #define     FLAG_ITLV_PLN       (1<<1)    ///< Multi-step Plain interleaved        -
@@ -101,14 +101,14 @@ extern "C"
 #define     CU_GSList           (1<<7)    ///<
 
 
-//========================================== Macros ======================================================\\
+//========================================== Macros ======================================================
 
 ///< Defines for safe calling usable in C
 #define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
 #define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
 
 
-//======================================== Type defines ==================================================\\
+//======================================== Type defines ==================================================
 
 ///< A complex float in device texture memory
 typedef cudaTextureObject_t fCplxTex;
@@ -171,7 +171,7 @@ typedef struct fftInfo
 } fftInfo;
 
 
-//------------- Data structures for, plains, stacks, batches etc ----------------\\
+//------------- Data structures for, plains, stacks, batches etc ----------------
 
 /** Details of the number of bins of the full search
  */
@@ -476,7 +476,7 @@ typedef struct cuSearch
 } cuSearch;
 
 
-//===================================== Function prototypes ===============================================\\
+//===================================== Function prototypes ===============================================
 
 /** Read the GPU details from clig command line  .
  *
