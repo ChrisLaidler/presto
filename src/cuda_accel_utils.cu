@@ -3063,7 +3063,7 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
       sprintf(flagStr, "%s", "MUL_00");
     if ( flags & FLAG_MUL_10 )
     {
-      ( flags & FLAG_MUL_TEX )
+      if ( flags & FLAG_MUL_TEX )
         sprintf(flagStr, "%s", "MUL_12");
       else
         sprintf(flagStr, "%s", "MUL_11");
