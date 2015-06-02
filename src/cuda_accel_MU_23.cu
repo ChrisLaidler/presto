@@ -48,18 +48,18 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
       const int c1  = MIN(cv_chunkSZ,kerHeight-c0);
       int pHeight   = 0;
 
-      fcomplexcu k0   = kernels[(c0+0 )*stride];
-      fcomplexcu k1   = kernels[(c0+1 )*stride];
-      fcomplexcu k2   = kernels[(c0+2 )*stride];
-      fcomplexcu k3   = kernels[(c0+3 )*stride];
-      fcomplexcu k4   = kernels[(c0+4 )*stride];
-      fcomplexcu k5   = kernels[(c0+5 )*stride];
-      fcomplexcu k6   = kernels[(c0+6 )*stride];
-      fcomplexcu k7   = kernels[(c0+7 )*stride];
-      fcomplexcu k8   = kernels[(c0+8 )*stride];
-      fcomplexcu k9   = kernels[(c0+9 )*stride];
-      fcomplexcu k10  = kernels[(c0+10)*stride];
-      fcomplexcu k11  = kernels[(c0+11)*stride];
+      register fcomplexcu k0   = kernels[(c0+0 )*stride];
+      register fcomplexcu k1   = kernels[(c0+1 )*stride];
+      register fcomplexcu k2   = kernels[(c0+2 )*stride];
+      register fcomplexcu k3   = kernels[(c0+3 )*stride];
+      register fcomplexcu k4   = kernels[(c0+4 )*stride];
+      register fcomplexcu k5   = kernels[(c0+5 )*stride];
+      register fcomplexcu k6   = kernels[(c0+6 )*stride];
+      register fcomplexcu k7   = kernels[(c0+7 )*stride];
+      register fcomplexcu k8   = kernels[(c0+8 )*stride];
+      register fcomplexcu k9   = kernels[(c0+9 )*stride];
+      register fcomplexcu k10  = kernels[(c0+10)*stride];
+      register fcomplexcu k11  = kernels[(c0+11)*stride];
 
 //#pragma unroll
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains of the stack  .
@@ -170,7 +170,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             }
           }
 
-#pragma unroll
+//#pragma unroll
           for ( int step = 0; step < noSteps; step++ )        // Loop over steps .
           {
             int idx;

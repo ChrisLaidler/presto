@@ -23,7 +23,6 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
     const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
 
     __restrict__ fcomplexcu inpDat[noPlns][noSteps];          // Set of input data for this thread/column
-
     FOLD // Read all input data  .
     {
       for (int step = 0; step < noSteps; step++)
@@ -38,6 +37,18 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
       }
     }
 
+    int plnHeight[noPlns];
+    int kerYOffset[noPlns];
+    FOLD // Read all input data  .
+    {
+      for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
+      {
+        plnHeight[pln]     = HEIGHT_FAM_ORDER[firstPlain + pln];
+        kerYOffset[pln]    = (kerHeight - plnHeight[pln])/2;
+      }
+    }
+
+
     for (int y = 0; y < kerHeight; y++)                       // Loop through the kernel .
     {
       fcomplexcu ker;                                         // kernel data
@@ -50,13 +61,15 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
 
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains  .
       {
-        const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
-        const int kerYOffset    = (kerHeight - plnHeight)/2;
+        //const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
+        //const int kerYOffset    = (kerHeight - plnHeight)/2;
+        //const int plainY        = y - kerYOffset;
+        //const int ns2           = plnHeight * stride;
 
-        const int plainY        = y - kerYOffset;
-        const int ns2           = plnHeight * stride;
+        const int plainY        = y - kerYOffset[pln];
+        const int ns2           = plnHeight[pln] * stride;
 
-        if( plainY >= 0 && plainY < plnHeight )
+        if( plainY >= 0 && plainY < plnHeight[pln] )
         {
           int off1;
           FOLD // Calculate partial offset  .
@@ -71,7 +84,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
             }
           }
 
-
+#pragma unroll
           for ( int step = 0; step < noSteps; ++step )        // Loop over steps .
           {
             int idx;
@@ -108,7 +121,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plain
+        pHeight += plnHeight[pln] * noSteps * stride;              // Set striding value for next plain
       }
     }
   }
