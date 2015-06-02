@@ -55,15 +55,14 @@ extern "C"
 #define     CU_INPT_CPU_FFT     (1<<4)    ///< Do the FFT on the CPU
 
 #define     FLAG_MUL_00         (1<<5)    ///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
-#define     FLAG_MUL_10         (1<<6)    ///< Multiply kernel - read all input - loop over kernel - loop over plains
-#define     FLAG_MUL_20         (1<<7)    ///< Multiply kernel - Loop ( Plain - Y )
-#define     FLAG_MUL_30         (1<<8)    ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
-#define     FLAG_MUL_40         (1<<9)    ///< Multiply kernel - Do the multiplication one plain ant a time
-#define     FLAG_MUL_50         (1<<10)   ///< Multiply kernel - Do an entire batch in one kernel
-//#define     FLAG_MUL_60         (1<<11)   ///< Multiply one kernel for entire batch
-#define     FLAG_MUL_PLN        ( FLAG_MUL_40 )
-#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_10 | FLAG_MUL_20 | FLAG_MUL_30 )
-#define     FLAG_MUL_BATCH      ( FLAG_MUL_50 )
+#define     FLAG_MUL_10         (1<<9)    ///< Multiply kernel - Do the multiplication one plain ant a time
+#define     FLAG_MUL_21         (1<<6)    ///< Multiply kernel - read all input - loop over kernel - loop over plains
+#define     FLAG_MUL_22         (1<<7)    ///< Multiply kernel - Loop ( Plain - Y )
+#define     FLAG_MUL_23         (1<<8)    ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
+#define     FLAG_MUL_30         (1<<10)   ///< Multiply kernel - Do an entire batch in one kernel
+#define     FLAG_MUL_PLN        ( FLAG_MUL_10 )
+#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 )
+#define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
 #define     FLAG_MUL_TEX        (1<<13)   ///< Use texture memory for multiplication  - May give advantage on pre-Fermi generation which we don't really care about

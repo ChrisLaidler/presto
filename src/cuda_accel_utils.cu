@@ -793,21 +793,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           if ( ver > 3.0 )
           {
             // Lots of registers per thread so 4.2 is good
-            kernel->flag |= FLAG_MUL_10;
+            kernel->flag |= FLAG_MUL_21;
           }
           else
           {
             // We have less registers per thread
             if ( noInp <= 20 )
             {
-              kernel->flag |= FLAG_MUL_10;
+              kernel->flag |= FLAG_MUL_21;
             }
             else
             {
               if ( kernel->noSteps <= 4 )
-                kernel->flag |= FLAG_MUL_30;
+                kernel->flag |= FLAG_MUL_23;
               else
-                kernel->flag |= FLAG_MUL_20;
+                kernel->flag |= FLAG_MUL_22;
             }
           }
         }
@@ -2137,38 +2137,26 @@ void readAccelDefalts(uint *flags)
         (*flags) &= ~FLAG_MUL_ALL;
         (*flags) |= FLAG_MUL_10;
       }
-      else if ( strCom(line, "FLAG_MUL_20" ) || strCom(line, "MUL_20" ) )
+      else if ( strCom(line, "FLAG_MUL_21" ) || strCom(line, "MUL_21" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_20;
+        (*flags) |= FLAG_MUL_21;
+      }
+      else if ( strCom(line, "FLAG_MUL_22" ) || strCom(line, "MUL_22" ) )
+      {
+        (*flags) &= ~FLAG_MUL_ALL;
+        (*flags) |= FLAG_MUL_22;
+      }
+      else if ( strCom(line, "FLAG_MUL_23" ) || strCom(line, "MUL_23" ) )
+      {
+        (*flags) &= ~FLAG_MUL_ALL;
+        (*flags) |= FLAG_MUL_23;
       }
       else if ( strCom(line, "FLAG_MUL_30" ) || strCom(line, "MUL_30" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
         (*flags) |= FLAG_MUL_30;
       }
-      /*
-      else if ( strCom(line, "FLAG_MUL_20" ) || strCom(line, "MUL_41" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_20;
-      }
-      else if ( strCom(line, "FLAG_MUL_10" ) || strCom(line, "MUL_42" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_10;
-      }
-      else if ( strCom(line, "FLAG_MUL_30" ) || strCom(line, "MUL_43" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_30;
-      }
-      else if ( strCom(line, "FLAG_MUL_50" ) || strCom(line, "MUL_50" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_50;
-      }
-      */
 
       else if ( strCom(line, "FLAG_MUL_TEX" ) )
       {
@@ -3074,17 +3062,20 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
     if ( flags & FLAG_MUL_00 )
       sprintf(flagStr, "%s", "MUL_00");
     if ( flags & FLAG_MUL_10 )
-      sprintf(flagStr, "%s", "MUL_10");
-    if ( flags & FLAG_MUL_20 )
-      sprintf(flagStr, "%s", "MUL_20");
+    {
+      ( flags & FLAG_MUL_TEX )
+        sprintf(flagStr, "%s", "MUL_12");
+      else
+        sprintf(flagStr, "%s", "MUL_11");
+    }
+    if ( flags & FLAG_MUL_21 )
+      sprintf(flagStr, "%s", "MUL_21");
+    if ( flags & FLAG_MUL_22 )
+      sprintf(flagStr, "%s", "MUL_22");
+    if ( flags & FLAG_MUL_23 )
+      sprintf(flagStr, "%s", "MUL_23");
     if ( flags & FLAG_MUL_30 )
       sprintf(flagStr, "%s", "MUL_30");
-    if ( flags & FLAG_MUL_40 )
-      sprintf(flagStr, "%s", "MUL_40");
-    if ( flags & FLAG_MUL_50 )
-      sprintf(flagStr, "%s", "MUL_50");
-    if ( flags & FLAG_MUL_60 )
-      sprintf(flagStr, "%s", "MUL_60");
     cvsLog->csvWrite("MULT","flag","%s", flagStr);
 
     strClear(flagStr);

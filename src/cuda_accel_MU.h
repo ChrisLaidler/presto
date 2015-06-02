@@ -51,7 +51,7 @@ __host__  void mult00_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
 
 /** Multiplication kernel - One thread per f-∂f pixel in a stack  .
  */
-//__host__  void mult10_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
+//__host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 
 /** Multiplication kernel - One thread per f-∂f pixel
  */
@@ -72,46 +72,46 @@ __host__  void mult00_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
  * Each thread loops down a column of the plain
  * Reads the input and multiplies it with the kernel and writes result to plain
  */
-//__host__ void mult41_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns, int FLAGS );
+//__host__ void mult11_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns, int FLAGS );
 
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
  * Each thread loops down a column of the plain
  * Reads the input and multiplies it with the kernel and writes result to plain
  */
-__host__  void mult10_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
+__host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
  * Each thread loops down a column of the plain
  * Reads the input and multiplies it with the kernel and writes result to plain
  */
-__host__  void mult20_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
+__host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
  * Each thread loops down a column of the plain
  * Reads the input and multiplies it with the kernel and writes result to plain
  */
-__host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
+__host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 
 /** Multiplication kernel - One plain at a time
  * Each thread reads one input value and loops down over the kernels
  */
-__host__  void mult40(cuFFdotBatch* batch);
+__host__  void mult10(cuFFdotBatch* batch);
 
 /** Multiplication kernel - One thread per r location (input FFT)
  * Each thread reads one input value and loops down over the kernels
  */
-__global__ void mult41(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
+__global__ void mult11(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
 
 /** Multiplication kernel - One thread per r location loop down z - Texture memory
  * Each thread reads one input value and loops down over the kernels
  */
-__global__ void mult42(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex);
+__global__ void mult12(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex);
 
 /** Multiplication kernel - Multiply an entire batch with Multiplication kernel  .
  * Each thread loops down a column of the plains and multiplies input with kernel and writes result to plain
  */
-__host__  void mult50_f(cudaStream_t multStream, cuFFdotBatch* batch);
+__host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch);
 
 /** Multiplication kernel - Multiply a multi-step stack - using a 1 plain Multiplication kernel  .
  * Split the stack into overlapping sections and read the shared kernel values once and multiply with all relevant values

@@ -199,7 +199,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             CUDA_SAFE_CALL(cudaEventRecord(batch->multInit, batch->multStream),"Recording event: multInit");
 #endif
 
-            mult50_f(batch->multStream, batch);
+            mult30_f(batch->multStream, batch);
 
             // Run message
             CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
@@ -253,32 +253,18 @@ void multiplyBatch(cuFFdotBatch* batch)
               {
                 mult00_f(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_MUL_10 )
+              else if ( batch->flag & FLAG_MUL_21 )
               {
-                mult10_f(cStack->multStream, batch, ss);
+                mult21_f(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_MUL_20 )
+              else if ( batch->flag & FLAG_MUL_22 )
               {
-                mult20_f(cStack->multStream, batch, ss);
+                mult22_f(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_MUL_30 )
+              else if ( batch->flag & FLAG_MUL_23 )
               {
-                mult30_f(cStack->multStream, batch, ss);
+                mult23_f(cStack->multStream, batch, ss);
               }
-              /*
-              else if ( batch->flag & FLAG_MUL_41 )
-              {
-                mult41_f(cStack->multStream, batch, ss);
-              }
-              else if ( batch->flag & FLAG_MUL_42 )
-              {
-                mult42_f(cStack->multStream, batch, ss);
-              }
-              else if ( batch->flag & FLAG_MUL_43 )
-              {
-                mult43_f(cStack->multStream, batch, ss);
-              }
-              */
               else
               {
                 fprintf(stderr,"ERROR: No valid multiply specified. Line %i in %s.\n", __LINE__, __FILE__);
@@ -301,7 +287,7 @@ void multiplyBatch(cuFFdotBatch* batch)
         }
         else if ( batch->flag & FLAG_MUL_PLN ) 	  // Do the multiplications one plain  at a time  .
         {
-          mult40(batch);
+          mult10(batch);
         }
         else
         {

@@ -1,359 +1,146 @@
 #include "cuda_accel_MU.h"
 
-/** Multiplication kernel - All multiplications for a stack - Uses registers to store sections of the kernel - Loop ( chunk (read ker) - plan - Y - step ) .
- * Each thread loops down a column of the plain
- * Reads the input and multiples it with the kernel and writes result to plain
+/** Multiplication kernel - Multiply an entire batch with convolution kernel  .
+ * Each thread loops down a column of the plains and multiplies input with kernel and writes result to plain
  */
-template<int FLAGS, int noSteps, int noPlns>
-__global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
+template<uint FLAGS, int noSteps>
+__global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* datas, __restrict__ fcomplexcu* ffdot, int noPlains)
 {
-  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
+  const int ix = blockIdx.x * CNV_DIMX * CNV_DIMY + CNV_DIMX * threadIdx.y + threadIdx.x;
 
-  const int cv_chunkSZ = 12;
+  fcomplexcu input[noSteps];
 
-  if ( tid < width )  // Valid thread  .
+  // Stride
+  ffdot   += ix;
+  datas   += ix;
+
+  for (int n = 0; n < noPlains; n++)                  // Loop over plains  .
   {
-    const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
-    const int bStride   = CNV_DIMX*CNV_DIMY;
+    const int stride   = STRIDE_FAM_ORDER[n];
+    const int height   = HEIGHT_FAM_ORDER[n];
+    fcomplexcu* ker    = KERNEL_FAM_ORDER[n] + ix;
 
-    FOLD  // Stride, kernel, input data & output data  .
+    if ( ix < stride )
     {
-      kernels += tid;
-      ffdot   += tid;
-      inpData += tid;
-    }
-
-    fcomplexcu inpDat[noPlns][noSteps];                       // Set of input data for this thread/column
-
-    FOLD // Read all input data  .
-    {
-      for (int step = 0; step < noSteps; step++)
+      // read input for each step into registers
+      for (int step = 0; step < noSteps; step++)      // Loop over plains  .
       {
-        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
-        {
-          fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-          ipd.r                 /= (float) width;
-          ipd.i                 /= (float) width;
-          inpDat[pln][step]     = ipd;
-        }
+        input[step]      = datas[step*stride];
+
+        // Normalise
+        input[step].r   /= (float) stride ;
+        input[step].i   /= (float) stride ;
       }
-    }
 
-    int noChunks = ceilf(kerHeight / (float)cv_chunkSZ);
+      // Stride input data
+      datas        += stride*noSteps;
 
-    for (int chunk = 0; chunk < noChunks; chunk++ )
-    {
-      const int c0  = chunk*cv_chunkSZ;
-      const int c1  = MIN(cv_chunkSZ,kerHeight-c0);
-      int pHeight   = 0;
-
-      fcomplexcu k0   = kernels[(c0+0 )*stride];
-      fcomplexcu k1   = kernels[(c0+1 )*stride];
-      fcomplexcu k2   = kernels[(c0+2 )*stride];
-      fcomplexcu k3   = kernels[(c0+3 )*stride];
-      fcomplexcu k4   = kernels[(c0+4 )*stride];
-      fcomplexcu k5   = kernels[(c0+5 )*stride];
-      fcomplexcu k6   = kernels[(c0+6 )*stride];
-      fcomplexcu k7   = kernels[(c0+7 )*stride];
-      fcomplexcu k8   = kernels[(c0+8 )*stride];
-      fcomplexcu k9   = kernels[(c0+9 )*stride];
-      fcomplexcu k10  = kernels[(c0+10)*stride];
-      fcomplexcu k11  = kernels[(c0+11)*stride];
-
-//#pragma unroll
-      for (int pln = 0; pln < noPlns; pln++)                    // Loop through the plains of the stack  .
+      for (int iy = 0; iy < height; iy++)           // Loop over individual plain  .
       {
-        const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
-        const int kerYOffset    = (kerHeight - plnHeight)/2;
+        const int plnOffset = iy*stride;
+        const int PlnStride = height*stride;
 
-        //const int p0            = c0 - kerYOffset;
-        const int p0            = MAX(c0 - kerYOffset,0);
-
-        //const int p1            = c0 + c1 - kerYOffset;
-        //const int p1            = p0 + c1;
-        //const int p1            = MIN(p0 + c1, plnHeight);
-        const int p1            = MIN(c0 + c1 - kerYOffset, plnHeight);
-
-        //const int kerAddd       = c1-p1;
-        const int kerAddd       = MAX(0, kerYOffset - c0);
-
-        const int ns2           = plnHeight * stride;
-
-        for (int plainY = p0; plainY < p1; plainY++)            // Loop over the individual plain  .
+        // Multiply and write data
+        for (int step = 0; step < noSteps; step++)  // Loop over steps  .
         {
-          int y = plainY - p0 + kerAddd;
-          fcomplexcu ker;
+          // Multiply
+          fcomplexcu val;
+          val.r = (input[step].r * ker->r + input[step].i * ker->i);
+          val.i = (input[step].i * ker->r - input[step].r * ker->i);
 
-          FOLD // Read the kernel value  .
+          if      ( FLAGS & FLAG_ITLV_ROW )
           {
-            //ker   = kernels[(kerYOffset+plainY)*stride];
-            //ker   = ker_sm[(plainY-p0+kerAddd)*bStride + bidx];
-            //ker   = ker_smP[(plainY-p0+kerAddd)];
-            //ker   = ker_smP[y+kerAddd];
-
-            switch(y)
-            {
-              case 0	:
-              {
-                ker = k0;
-                break;
-              }
-              case 1	:
-              {
-                ker = k1;
-                break;
-              }
-              case 2	:
-              {
-                ker = k2;
-                break;
-              }
-              case 3	:
-              {
-                ker = k3;
-                break;
-              }
-              case 4	:
-              {
-                ker = k4;
-                break;
-              }
-              case 5	:
-              {
-                ker = k5;
-                break;
-              }
-              case 6	:
-              {
-                ker = k6;
-                break;
-              }
-              case 7	:
-              {
-                ker = k7;
-                break;
-              }
-              case 8	:
-              {
-                ker = k8;
-                break;
-              }
-              case 9	:
-              {
-                ker = k9;
-                break;
-              }
-              case 10	:
-              {
-                ker = k10;
-                break;
-              }
-              case 11	:
-              {
-                ker = k11;
-                break;
-              }
-            }
+            *ffdot = val;
+            ffdot += stride;  // Stride output pointer to next plain
           }
-
-          int offsetPart1;
-          FOLD // Calculate partial offset  .
+          else if ( FLAGS & FLAG_ITLV_PLN )
           {
-            if      ( FLAGS & FLAG_ITLV_ROW )
-            {
-              offsetPart1  = pHeight + plainY*noSteps*stride;
-            }
-            else if ( FLAGS & FLAG_ITLV_PLN )
-            {
-              offsetPart1  = pHeight + plainY*stride;
-            }
-          }
-
-#pragma unroll
-          for ( int step = 0; step < noSteps; step++ )          // Loop over steps .
-          {
-            int idx;
-
-            FOLD // Calculate offset  .
-            {
-              if      ( FLAGS & FLAG_ITLV_ROW )
-              {
-                idx  = offsetPart1 + step * stride;
-              }
-              else if ( FLAGS & FLAG_ITLV_PLN )
-              {
-                idx  = offsetPart1 + step * ns2;
-              }
-            }
-
-            FOLD // Multiply  .
-            {
-              //ffdot[idx].r = (inpDat[pln][step].r * ker.r + inpDat[pln][step].i * ker.i);
-              //ffdot[idx].i = (inpDat[pln][step].i * ker.r - inpDat[pln][step].r * ker.i);
-
-              //fcomplexcu vv;
-              //vv.r = (inpDat[pln][step].r * ker.r + inpDat[pln][step].i * ker.i);
-              //vv.i = (inpDat[pln][step].i * ker.r - inpDat[pln][step].r * ker.i);
-              //ffdot[idx] = vv;
-
-              fcomplexcu ipd = inpDat[pln][step];
-              fcomplexcu vv;
-              vv.r = (ipd.r * ker.r + ipd.i * ker.i);
-              vv.i = (ipd.i * ker.r - ipd.r * ker.i);
-              ffdot[idx] = vv;
-            }
+            ffdot[plnOffset + step*PlnStride ] = val;
           }
         }
-        pHeight += plnHeight * noSteps * stride;
+
+        // Stride kernel to next row
+        ker += stride;
       }
-    }
-  }
-}
 
-template<int FLAGS, int noSteps>
-__host__  void mult30_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
-{
-  cuFfdotStack* cStack  = &batch->stacks[stack];
-  int offset            = cStack->startIdx;
-
-  switch (cStack->noInStack)
-  {
-    case 1	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,1>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 2	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,2>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 3	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,3>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 4	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,4>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 5	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,5>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 6	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,6>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 7	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,7>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 8	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,8>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    case 9	:
-    {
-      cudaFuncSetCacheConfig(mult30_k<FLAGS,noSteps,9>, cudaFuncCachePreferL1);
-      mult30_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
-      break;
-    }
-    default	:
-    {
-      fprintf(stderr, "ERROR: mult30 has not been templated for %i plains in a stack.\n",cStack->noInStack);
-      exit(EXIT_FAILURE);
+      if ( FLAGS & FLAG_ITLV_PLN ) 	                // Stride output pointer to next plain  .
+      {
+        ffdot += noSteps*height*stride;
+      }
     }
   }
 }
 
 template<int FLAGS>
-__host__  void mult30_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult30_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch)
 {
   switch (batch->noSteps)
   {
-    case 1	:
+    case 1:
     {
-      mult30_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 2	:
+    case 2:
     {
-      mult30_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 3	:
+    case 3:
     {
-      mult30_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 4	:
+    case 4:
     {
-      mult30_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 5	:
+    case 5:
     {
-      mult30_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 6	:
+    case 6:
     {
-      mult30_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 7	:
+    case 7:
     {
-      mult30_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    case 8	:
+    case 8:
     {
-      mult30_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult30_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
       break;
     }
-    default	:
+    default:
     {
-      fprintf(stderr, "ERROR: convolveffdot42 has not been templated for %lu steps\n", batch->noSteps);
+      fprintf(stderr, "ERROR: mult5 has not been templated for %lu steps\n", batch->noSteps);
       exit(EXIT_FAILURE);
     }
   }
 }
 
-__host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
+  dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = 1;
 
-
   if      ( batch->flag & FLAG_ITLV_ROW )
-    mult30_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult30_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);
   else if ( batch->flag & FLAG_ITLV_PLN )
-    mult30_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult30_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch);
   else
   {
-    fprintf(stderr, "ERROR: mult30 has not been templated for layout.\n");
+    fprintf(stderr, "ERROR: mult5 has not been templated for layout.\n");
     exit(EXIT_FAILURE);
   }
 }

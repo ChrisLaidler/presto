@@ -1,6 +1,6 @@
 #include "cuda_accel_MU.h"
 
-__global__ void mult42(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex)
+__global__ void mult12(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex)
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;
