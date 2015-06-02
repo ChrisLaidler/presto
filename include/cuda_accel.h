@@ -54,29 +54,29 @@ extern "C"
 
 #define     CU_INPT_CPU_FFT     (1<<4)    ///< Do the FFT on the CPU
 
-#define     FLAG_CNV_00         (1<<5)    ///< Convolve
-#define     FLAG_CNV_10         (1<<6)    ///< Convolve
-#define     FLAG_CNV_30         (1<<7)    ///< Convolve
-#define     FLAG_CNV_41         (1<<8)    ///< Convolve
-#define     FLAG_CNV_42         (1<<9)    ///< Convolve
-#define     FLAG_CNV_43         (1<<10)   ///< Convolve
-#define     FLAG_CNV_50         (1<<11)   ///< Convolve one kernel for entire batch
-#define     FLAG_CNV_BATCH      ( FLAG_CNV_50 )   ///< Convolve one kernel for entire batch
-#define     FLAG_CNV_STK        ( FLAG_CNV_00 | FLAG_CNV_10 | FLAG_CNV_41 | FLAG_CNV_42 | FLAG_CNV_43 )
-#define     FLAG_CNV_PLN        ( FLAG_CNV_30 )
-#define     FLAG_CNV_ALL        ( FLAG_CNV_BATCH | FLAG_CNV_STK | FLAG_CNV_PLN )
+#define     FLAG_MUL_00         (1<<5)    ///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
+#define     FLAG_MUL_10         (1<<6)    ///< Multiply kernel - read all input - loop over kernel - loop over plains
+#define     FLAG_MUL_20         (1<<7)    ///< Multiply kernel - Loop ( Plain - Y )
+#define     FLAG_MUL_30         (1<<8)    ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
+#define     FLAG_MUL_40         (1<<9)    ///< Multiply kernel - Do the multiplication one plain ant a time
+#define     FLAG_MUL_50         (1<<10)   ///< Multiply kernel - Do an entire batch in one kernel
+//#define     FLAG_MUL_60         (1<<11)   ///< Multiply one kernel for entire batch
+#define     FLAG_MUL_PLN        ( FLAG_MUL_40 )
+#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_10 | FLAG_MUL_20 | FLAG_MUL_30 )
+#define     FLAG_MUL_BATCH      ( FLAG_MUL_50 )
+#define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_CNV_TEX        (1<<13)   ///< Use texture memory for convolution  - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_CNV_CB_IN      (1<<14)   ///< Use an input  callback to do the convolution      - I found this to be very slow
-#define     FLAG_CNV_CB_OUT     (1<<15)   ///< Use an output callback to create powers           - This is a similar speed
+#define     FLAG_MUL_TEX        (1<<13)   ///< Use texture memory for multiplication  - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_MUL_CB_IN      (1<<14)   ///< Use an input  callback to do the multiplication      - I found this to be very slow
+#define     FLAG_MUL_CB_OUT     (1<<15)   ///< Use an output callback to create powers           - This is a similar speed
 
 #define     FLAG_SAS_TEX        (1<<17)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     (1<<18)   ///< Use liner interpolation in with texture memory - This requires - FLAG_CNV_CB_OUT and FLAG_SAS_TEX
+#define     FLAG_TEX_INTERP     (1<<18)   ///< Use liner interpolation in with texture memory - This requires - FLAG_MUL_CB_OUT and FLAG_SAS_TEX
 #define     FLAG_SIG_GPU        (1<<19)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
 #define     CU_CAND_ARR         (1<<20)   ///< Candidates are stored in an array (requires more memory)
 #define     CU_CAND_LST         (1<<21)   ///< Candidates are stored in a list  (usually a dynamic linked list)
-#define     CU_CAND_QUAD        (1<<22)   ///< Candidates are stored in a list  (usually a dynamic linked list)
+#define     CU_CAND_QUAD        (1<<22)   ///< Candidates are stored in a dynamic quadtree
 #define     CU_CAND_ALL         (CU_CAND_ARR | CU_CAND_LST | CU_CAND_QUAD)
 
 #define     FLAG_RETURN_ALL     (1<<23)   ///< Return results for all stages of summing, default is only the final result
@@ -247,7 +247,7 @@ typedef struct cuHarmInfo
     int     stageOrder;               ///< The index of this harmonic in the staged order
 } cuHarmInfo;
 
-/** The complex convolution kernels of a f-∂f plain
+/** The complex multiplication kernels of a f-∂f plain
  */
 typedef struct cuKernel
 {
@@ -321,7 +321,7 @@ typedef struct cuFfdotStack
     // Streams
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the stack
     cudaStream_t fftIStream;          ///< CUDA stream to CUFFT the input data
-    cudaStream_t cnvlStream;          ///< CUDA stream for work on the stack
+    cudaStream_t multStream;          ///< CUDA stream for work on the stack
     cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
 
     // CUDA Texture
@@ -330,20 +330,20 @@ typedef struct cuFfdotStack
     // CUDA Events
     cudaEvent_t normComp;             ///< Normalisation of input data
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
-    cudaEvent_t convComp;             ///< Convolution complete
-    cudaEvent_t plnComp;              ///< Creation (convolution and FFT) of the complex plain complete
+    cudaEvent_t multComp;             ///< Multiplication complete
+    cudaEvent_t plnComp;              ///< Creation (multiplication and FFT) of the complex plain complete
 
     // CUDA TIMING events
-    cudaEvent_t normInit;             ///< Convolution starting
+    cudaEvent_t normInit;             ///< Multiplication starting
     cudaEvent_t inpFFTinit;           ///< Start of the input FFT
-    cudaEvent_t convInit;             ///< Convolution starting
+    cudaEvent_t multInit;             ///< Multiplication starting
     cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
 
 } cuFfdotStack;
 
 /** A collection of f-∂f plain(s) and all its/their sub harmonics
  * This is a collection of stack(s) that make up a harmonic family of f-∂f plain(s)
- * And the device specific convolution kernels which is just another batch
+ * And the device specific multiplication kernels which is just another batch
  */
 typedef struct cuFFdotBatch
 {
@@ -382,8 +382,9 @@ typedef struct cuFFdotBatch
     fcomplexcu* d_iData;              ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
     int haveInput;                    ///< Weather the the plain has input ready to convolve
-    int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
     int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
+    int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
+
 
     uint* d_candSem;                  ///< Semaphore for writing to device candidate list
 
@@ -398,19 +399,19 @@ typedef struct cuFFdotBatch
 
     // Streams
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the batch
-    cudaStream_t convStream;          ///< CUDA stream for convolving
+    cudaStream_t multStream;          ///< CUDA stream for multiplication
     cudaStream_t strmSearch;          ///< CUDA stream for summing and searching the data
 
     // TIMING events
     cudaEvent_t iDataCpyInit;         ///< Copying input data to device
-    cudaEvent_t candCpyInit;          ///< Finished reading candidates from the device
+    cudaEvent_t multInit;             ///< Start of batch multiplication
     cudaEvent_t searchInit;           ///< Sum & Search start
-    cudaEvent_t convInit;             ///< Start of convolve of entire batch
+    cudaEvent_t candCpyInit;          ///< Finished reading candidates from the device
 
     // Synchronisation events
     cudaEvent_t iDataCpyComp;         ///< Copying input data to device
     cudaEvent_t normComp;             ///< Normalise and spread input data
-    cudaEvent_t convComp;             ///< Sum & Search complete (candidates ready for reading)
+    cudaEvent_t multComp;             ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
@@ -431,7 +432,7 @@ typedef struct cuFFdotBatch
     float* copyH2DTime;               ///< Array of floats from timing one for each stack
     float* normTime;                  ///< Array of floats from timing one for each stack
     float* InpFFTTime;                ///< Array of floats from timing one for each stack
-    float* convTime;                  ///< Array of floats from timing one for each stack
+    float* multTime;                  ///< Array of floats from timing one for each stack
     float* InvFFTTime;                ///< Array of floats from timing one for each stack
     float* searchTime;                ///< Array of floats from timing one for each stack
     float* resultTime;                ///< Array of floats from timing one for each stack
@@ -444,10 +445,10 @@ typedef struct cuFFdotBatch
 typedef struct cuMemInfo
 {
     int             noDevices;          ///< The number of devices (GPU's to use in the search)
-    cuFFdotBatch*   kernels;            ///< A list noDevices long of convolution kernels: These hold: basic info, the address of the convolution kernels on the GPU, the CUFFT plan.
+    cuFFdotBatch*   kernels;            ///< A list noDevices long of multiplication kernels: These hold: basic info, the address of the multiplication kernels on the GPU, the CUFFT plan.
 
     int             noBatches;          ///< The total number of batches there across all devices
-    cuFFdotBatch*   batches;            ///< A list noBatches long of convolution kernels: These hold: basic info, the address of the convolution kernels on the GPU, the CUFFT plan.
+    cuFFdotBatch*   batches;            ///< A list noBatches long of multiplication kernels: These hold: basic info, the address of the multiplication kernels on the GPU, the CUFFT plan.
 
     int             noSteps;            ///< The total steps there are across all devices
 

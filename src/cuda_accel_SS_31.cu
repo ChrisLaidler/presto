@@ -74,7 +74,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 
             if        ( FLAGS & FLAG_ITLV_ROW )
             {
-              if      ( FLAGS & FLAG_CNV_CB_OUT )
+              if      ( FLAGS & FLAG_MUL_CB_OUT )
               {
                 //pPowr[step][harm]   = &searchList.powers.val[harm][ ix + searchList.strides.val[harm]*step ] ;
               }
@@ -85,7 +85,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             }
             else if   ( FLAGS & FLAG_ITLV_PLN )
             {
-              if      ( FLAGS & FLAG_CNV_CB_OUT )
+              if      ( FLAGS & FLAG_MUL_CB_OUT )
               {
                 //pPowr[step][harm]   = &searchList.powers.val[harm][ ix + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
               }
@@ -105,7 +105,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
         {
           if        ( FLAGS & FLAG_ITLV_ROW )
           {
-            if ( FLAGS & FLAG_CNV_CB_OUT )
+            if ( FLAGS & FLAG_MUL_CB_OUT )
             {
               //searchList.strides.val[harm] *= noSteps;
             }
@@ -201,7 +201,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
               {
                 if     (FLAGS & FLAG_SAS_TEX)
                 {
-                  if ( FLAGS & FLAG_CNV_CB_OUT )
+                  if ( FLAGS & FLAG_MUL_CB_OUT )
                   {
                     // TODO: NB: use powers and texture memory to interpolate values
                   }
@@ -223,7 +223,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
                 }
                 else
                 {
-                  if ( FLAGS & FLAG_CNV_CB_OUT )
+                  if ( FLAGS & FLAG_MUL_CB_OUT )
                   {
                     float power;
                     if        ( FLAGS & FLAG_ITLV_ROW )
@@ -319,7 +319,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 
 
 template<uint FLAGS, uint noStages>
-__host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps)
+__host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps)
 {
 #if TEMPLATE_SEARCH == 1
   switch (noSteps)
@@ -330,7 +330,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f01 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f01,1><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f01,1><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 2:
@@ -339,7 +339,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f02 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f02,2><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f02,2><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 3:
@@ -348,7 +348,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f03 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f03,3><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f03,3><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 4:
@@ -357,7 +357,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f04 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f04,4><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f04,4><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 5:
@@ -366,7 +366,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f05 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f05,5><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f05,5><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 6:
@@ -375,7 +375,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f06 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f06,6><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f06,6><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 7:
@@ -384,7 +384,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f07 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f07,7><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f07,7><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     case 8:
@@ -393,7 +393,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
       f08 caseArr;
       for (int i = 0; i < noSteps; i++)
         caseArr.arry[i] = rLows[i];
-      add_and_searchCU31<FLAGS, noStages,f08,8><<<dimGrid,  dimBlock, i1, cnvlStream >>>(searchList, d_cands, d_sem, base, caseArr);
+      add_and_searchCU31<FLAGS, noStages,f08,8><<<dimGrid,  dimBlock, i1, multStream >>>(searchList, d_cands, d_sem, base, caseArr);
       break;
     }
     default:
@@ -406,38 +406,38 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   for (int i = 0; i < noSteps; i++)
     caseArr.arry[i] = rLows[i];
 
-  add_and_searchCU31<FLAGS, noStages,fMax> <<<dimGrid, dimBlock, i1, cnvlStream>>>(searchList, d_cands, d_sem, base, caseArr, noSteps);
+  add_and_searchCU31<FLAGS, noStages,fMax> <<<dimGrid, dimBlock, i1, multStream>>>(searchList, d_cands, d_sem, base, caseArr, noSteps);
 #endif
 }
 
 template<uint FLAGS >
-__host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages )
+__host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages )
 {
   switch (noStages)
   {
     case 1:
     {
-      add_and_searchCU31_s<FLAGS, 1> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps );
+      add_and_searchCU31_s<FLAGS, 1> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps );
       break;
     }
     case 2:
     {
-      add_and_searchCU31_s<FLAGS, 2> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps );
+      add_and_searchCU31_s<FLAGS, 2> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps );
       break;
     }
     case 3:
     {
-      add_and_searchCU31_s<FLAGS, 3> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps );
+      add_and_searchCU31_s<FLAGS, 3> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps );
       break;
     }
     case 4:
     {
-      add_and_searchCU31_s<FLAGS, 4> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps );
+      add_and_searchCU31_s<FLAGS, 4> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps );
       break;
     }
     case 5:
     {
-      add_and_searchCU31_s<FLAGS, 5> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps );
+      add_and_searchCU31_s<FLAGS, 5> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps );
       break;
     }
     default:
@@ -446,14 +446,14 @@ __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   }
 }
 
-__host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS )
+__host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS )
 {
-  if        ( FLAGS & FLAG_CNV_CB_OUT )
+  if        ( FLAGS & FLAG_MUL_CB_OUT )
   {
     if      ( FLAGS & FLAG_ITLV_ROW )
-      add_and_searchCU31_p<FLAG_CNV_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_searchCU31_p<FLAG_MUL_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else if ( FLAGS & FLAG_ITLV_PLN )
-      add_and_searchCU31_p<FLAG_CNV_CB_OUT | FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_searchCU31_p<FLAG_MUL_CB_OUT | FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n" );
@@ -463,9 +463,9 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStre
   else
   {
     if      ( FLAGS & FLAG_ITLV_ROW )
-      add_and_searchCU31_p< FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_searchCU31_p< FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else if ( FLAGS & FLAG_ITLV_PLN )
-      add_and_searchCU31_p< FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, cnvlStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_searchCU31_p< FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for flag combination. \n" );

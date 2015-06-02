@@ -546,11 +546,11 @@ int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
 float cuGetMedian(float *data, uint len);
 
-/** Initialise input data for a f-∂f plain(s)  ready for convolution  .
+/** Initialise input data for a f-∂f plain(s)  ready for multiplication  .
  * This:
  *  Normalises the chunk of input data
  *  Spreads it (interbinning)
- *  FFT it ready for convolution
+ *  FFT it ready for multiplication
  *
  * @param plains      The plains
  * @param searchRLow  The index of the low  R bin (1 value for each step)
@@ -562,21 +562,21 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
 
 
-////////////////////////////////////// Convolution Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+////////////////////////////////////// Multiplication Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 int setConstVals_Fam_Order( cuFFdotBatch* batch );
 
-/** Convolve and inverse FFT the complex f-∂f plain using FFT callback
+/** Multiply and inverse FFT the complex f-∂f plain using FFT callback
  * @param plains
  */
-void convolveBatchCUFFT(cuFFdotBatch* batch );
+void multiplyBatchCUFFT(cuFFdotBatch* batch );
 
-/** Convolve and inverse FFT the complex f-∂f plain
+/** Multiply and inverse FFT the complex f-∂f plain
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void convolveBatch(cuFFdotBatch* batch);
-
+void multiplyBatch(cuFFdotBatch* batch);
 
 
 

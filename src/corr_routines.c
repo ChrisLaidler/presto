@@ -562,7 +562,6 @@ int corr_complex(fcomplex * data, int numdata, presto_datainf datainf,
       return fftlen - 2 * numbetween * kern_half_width;
 }
 
-
 void stretch_fft(fcomplex * data, int numdata, fcomplex * result, int numresult)
   /* This routine stretches and/or interpolates an FFT of length    */
   /* numdata.  It zeros 'result' where end-effects have occurred.   */
@@ -595,7 +594,6 @@ void stretch_fft(fcomplex * data, int numdata, fcomplex * result, int numresult)
                 result, numresult, 0, numbetween, kern_half_width, CORR);
    vect_free(kernel);
 }
-
 
 float *corr_loc_pow(float *powers, int numpowers)
   /* This routine determines the local power levels for every         */

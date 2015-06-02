@@ -347,7 +347,7 @@ __host__ void add_and_searchCU3(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream
 {
   const uint FLAGS = batch->flag ;
 
-  if            ( (FLAGS & FLAG_CNV_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if            ( (FLAGS & FLAG_MUL_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
     add_and_searchCU3_PT_f(dimGrid, dimBlock, stream, batch );
   }
@@ -507,7 +507,7 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
       {
         //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
         //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
-        //if ( (batch->flag&FLAG_CNV_CB_OUT) && (batch->flag&FLAG_SAS_TEX) )
+        //if ( (batch->flag&FLAG_MUL_CB_OUT) && (batch->flag&FLAG_SAS_TEX) )
         {
           add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
         }
@@ -866,13 +866,13 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
 
     FOLD // Convolution timing  .
     {
-      if ( !(batch->flag & FLAG_CNV_CB_IN) )
+      if ( !(batch->flag & FLAG_MUL_CB_IN) )
       {
         // Did the convolution by separate kernel
 
-        if ( batch->flag & FLAG_CNV_BATCH )   // Convolution was done on the entire batch  .
+        if ( batch->flag & FLAG_MUL_BATCH )   // Convolution was done on the entire batch  .
         {
-          ret = cudaEventElapsedTime(&time, batch->convInit, batch->convComp);
+          ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
           if ( ret == cudaErrorNotReady )
           {
             //printf("Not ready\n");
@@ -881,7 +881,7 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
           {
             //printf("    ready\n");
 #pragma omp atomic
-            batch->convTime[0] += time;
+            batch->multTime[0] += time;
           }
         }
         else                                // Convolution was on a per stack basis  .
@@ -890,7 +890,7 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
 
-            ret = cudaEventElapsedTime(&time, cStack->convInit, cStack->convComp);
+            ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
             if ( ret == cudaErrorNotReady )
             {
               //printf("Not ready\n");
@@ -899,7 +899,7 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
             {
               //printf("    ready\n");
 #pragma omp atomic
-              batch->convTime[ss] += time;
+              batch->multTime[ss] += time;
             }
           }
         }

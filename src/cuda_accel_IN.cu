@@ -288,15 +288,15 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
           FOLD // Synchronisation  .
           {
-            // Wait for per stack convolutions to finish
+            // Wait for per stack multiplications to finish
             for (int ss = 0; ss< batch->noStacks; ss++)
             {
               cuFfdotStack* cStack = &batch->stacks[ss];
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
             }
 
-            // Wait for batch convolution to finish
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+            // Wait for batch multiplication to finish
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
 
 #ifdef TIMING  // Timing  .
             cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
@@ -422,15 +422,15 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
         FOLD // Synchronisation  .
         {
-          // Wait for per stack convolutions to finish
+          // Wait for per stack multiplications to finish
           for (int ss = 0; ss < batch->noStacks; ss++)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
           }
 
-          // Wait for batch convolution to finish
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->convComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+          // Wait for batch multiplications to finish
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
 
 #ifdef TIMING
           cudaEventRecord(batch->iDataCpyInit, batch->inpStream);

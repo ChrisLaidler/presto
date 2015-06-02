@@ -1231,7 +1231,7 @@ int main(int argc, char *argv[])
                         powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->stridePwrs + cHInfo->halfWidth * 2 ];
                       }
 
-                      if      ( trdBatch->flag & FLAG_CNV_CB_OUT )
+                      if      ( trdBatch->flag & FLAG_MUL_CB_OUT )
                       {
                         //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                         CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
@@ -1341,7 +1341,7 @@ int main(int argc, char *argv[])
               good = true;
               bad  = false;
 
-              if ( trdBatch->flag & FLAG_CNV_CB_OUT )
+              if ( trdBatch->flag & FLAG_MUL_CB_OUT )
               {
                 if ( printDetails )
                   printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);

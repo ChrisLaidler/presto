@@ -374,14 +374,14 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
 
     FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
     {
-      for( int y = 0; y < zeroHeight ; y += cunkSize )               // loop over chunks .
+      for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
       {
         // Initialise powers for each section column to 0
         //#pragma unroll
         for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
         {
           //#pragma unroll
-          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )           // Loop over powers .
+          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
           {
             powers[step][yPlus] = 0;
           }
@@ -422,7 +422,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
 
                   if        ( FLAGS & FLAG_SAS_TEX )
                   {
-                    if      ( FLAGS & FLAG_CNV_CB_OUT )
+                    if      ( FLAGS & FLAG_MUL_CB_OUT )
                     {
                       const float cmpf      = tex2D < float > (texs.val[harm], ix+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
                       powers[step][yPlus]   += cmpf;
@@ -436,7 +436,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
                   }
                   else
                   {
-                    if      ( FLAGS & FLAG_CNV_CB_OUT )
+                    if      ( FLAGS & FLAG_MUL_CB_OUT )
                     {
                       float cmpf            = powersArr[harm][ ix + iy2 ];
                       powers[step][yPlus]  += cmpf;
@@ -712,12 +712,12 @@ __host__ void add_and_searchCU311_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
   const uint FLAGS = batch->flag;
 
     {
-      if        ( FLAGS & FLAG_CNV_CB_OUT )
+      if        ( FLAGS & FLAG_MUL_CB_OUT )
       {
         if      ( FLAGS & FLAG_ITLV_ROW )
-          add_and_searchCU311_p<FLAG_CNV_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
+          add_and_searchCU311_p<FLAG_MUL_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
         else if ( FLAGS & FLAG_ITLV_PLN )
-          add_and_searchCU311_p<FLAG_CNV_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
+          add_and_searchCU311_p<FLAG_MUL_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
         else
         {
           fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );

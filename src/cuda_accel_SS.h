@@ -24,11 +24,11 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
 
 __host__ void add_and_searchCU3_PT_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch );
 
-__host__ void add_and_searchCU31_f  (dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS );
+__host__ void add_and_searchCU31_f  (dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS );
 
 __host__ void add_and_searchCU311_f (dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch );
 
-__host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t cnvlStream,cuSearchList searchList, float* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS );
+__host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, float* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS );
 
 template<int noStages, int canMethoud> __global__ void add_and_searchCU4(cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base);
 

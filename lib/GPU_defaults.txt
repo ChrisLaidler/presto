@@ -10,7 +10,7 @@ IL_PLN # Last Edited by run time script
 NORM_CPU
 
 # FFT_CPU  FFT_GPU
-FFT_CPU # Last Edited by run time script
+FFT_GPU # Last Edited by run time script
 
 
 ###### Convolve ######

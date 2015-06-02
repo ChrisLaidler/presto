@@ -612,7 +612,7 @@ int main(int argc, char *argv[])
       float copyH2DT  = 0;
       float InpNorm   = 0;
       float InpFFT    = 0;
-      float convT     = 0;
+      float multT     = 0;
       float InvFFT    = 0;
       float ss        = 0;
       float resultT   = 0;
@@ -631,13 +631,13 @@ int main(int argc, char *argv[])
         float l_copyH2DT  = 0;
         float l_InpNorm   = 0;
         float l_InpFFT    = 0;
-        float l_convT     = 0;
+        float l_multT     = 0;
         float l_InvFFT    = 0;
         float l_ss        = 0;
         float l_resultT   = 0;
         float l_copyD2HT  = 0;
 
-        //printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input Norm", "Input FFT", "Convolve", "Inverse FFT", "Sum & Search", "Sigma calcs", "Copy D2H" );
+        //printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input Norm", "Input FFT", "Multiply", "Inverse FFT", "Sum & Search", "Sigma calcs", "Copy D2H" );
 
         FOLD // Heading  .
         {
@@ -654,7 +654,7 @@ int main(int argc, char *argv[])
           else
             printf("%s\t","Inp FFT GPU");
 
-          printf("%s\t","Convolve");
+          printf("%s\t","Multiplication");
 
           //printf("%s\t","Convolve BW");
 
@@ -676,9 +676,9 @@ int main(int argc, char *argv[])
         {
           cuFfdotStack*   cStack = &batches->stacks[stack];
 
-          float convDat = cStack->height * cStack->width * batches->noSteps * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
-          convDat       += cStack->kerHeigth * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
-          convDat       += cStack->noInStack * batches->noSteps * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+          //float convDat = cStack->height * cStack->width * batches->noSteps * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+          //convDat       += cStack->kerHeigth * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
+          //convDat       += cStack->noInStack * batches->noSteps * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
 
           //float convT   = batches->convTime[stack] * 1e-3;
           //float convBW  = convDat / convT ;
@@ -686,12 +686,12 @@ int main(int argc, char *argv[])
           //printf("height: %.3f width: %.2f  noSteps: %.2f   sz: %.2f  noSteps: %.2f \n", (float)cStack->height, (float)cStack->width, (float)batches->noSteps, (float)sizeof(fcomplex), (float)cuSrch->noSteps );
           //printf("%.3f GB in %.4f s BW: %.4f \n",  convDat, convT, convBW );
 
-          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->convTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
 
           l_copyH2DT  += batches->copyH2DTime[stack];
           l_InpNorm   += batches->normTime[stack];
           l_InpFFT    += batches->InpFFTTime[stack];
-          l_convT     += batches->convTime[stack];
+          l_multT     += batches->multTime[stack];
           l_InvFFT    += batches->InvFFTTime[stack];
           l_ss        += batches->searchTime[stack];
           l_resultT   += batches->resultTime[stack];
@@ -701,20 +701,20 @@ int main(int argc, char *argv[])
         if ( cuSrch->mInf->noBatches > 1 )
         {
           printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
-          printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", l_copyH2DT, l_InpNorm, l_InpFFT, l_convT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
+          printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", l_copyH2DT, l_InpNorm, l_InpFFT, l_multT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
         }
 
         copyH2DT  += l_copyH2DT;
         InpNorm   += l_InpNorm;
         InpFFT    += l_InpFFT;
-        convT     += l_convT;
+        multT     += l_multT;
         InvFFT    += l_InvFFT;
         ss        += l_ss;
         resultT   += l_resultT;
         copyD2HT  += l_copyD2HT;
       }
       printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
-      printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, convT, InvFFT, ss, resultT, copyD2HT );
+      printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
 
       printf("\n===========================================================================================================================================\n");
 
