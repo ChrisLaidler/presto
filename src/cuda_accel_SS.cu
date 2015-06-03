@@ -32,7 +32,6 @@ extern "C"
 //======================================= Constant memory =================================================\\
 
 __device__ __constant__ int        YINDS[MAX_YINDS];
-//__device__ __constant__ float      YINDS_F[MAX_YINDS];
 __device__ __constant__ float      POWERCUT[MAX_HARM_NO];
 __device__ __constant__ float      NUMINDEP[MAX_HARM_NO];
 
@@ -42,7 +41,7 @@ __device__ __constant__ int        HWIDTH[MAX_HARM_NO];         ///< Plain half 
 
 //====================================== Constant variables  ===============================================\\
 
-__device__ const float FRAC[16]      =  {1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+__device__ const float FRAC[16]      =  { 1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
 __device__ const int   STAGE[5][2]   =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
 __device__ const int   CHUNKSZE[5]   =  { 4, 8, 8, 8, 8 } ;
 
@@ -353,7 +352,14 @@ __host__ void add_and_searchCU3(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream
   }
   else
   {
-    add_and_searchCU311_f(dimGrid, dimBlock, stream, batch );
+    if ( FLAGS & FLAG_SS_00 )
+    {
+      add_and_searchCU32_f(stream, batch );
+    }
+    else
+    {
+      add_and_searchCU311_f(dimGrid, dimBlock, stream, batch );
+    }
   }
 }
 

@@ -317,7 +317,6 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
   }
 }
 
-
 template<uint FLAGS, uint noStages>
 __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, accelcandBasic* d_cands, uint* d_sem, int base, float* rLows, int noSteps)
 {

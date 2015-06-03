@@ -21,7 +21,7 @@ typedef struct s_Cmdline {
   char nbatchP;
   int *nbatch;
   int nbatchC;
-  /***** -width: The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ... */
+  /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   char widthP;
   int width;
   int widthC;

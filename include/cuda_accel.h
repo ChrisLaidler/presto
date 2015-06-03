@@ -65,23 +65,29 @@ extern "C"
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_MUL_TEX        (1<<13)   ///< Use texture memory for multiplication  - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_MUL_CB_IN      (1<<14)   ///< Use an input  callback to do the multiplication      - I found this to be very slow
-#define     FLAG_MUL_CB_OUT     (1<<15)   ///< Use an output callback to create powers           - This is a similar speed
+#define     FLAG_MUL_TEX        (1<<11)   ///< Use texture memory for multiplication  - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_MUL_CB_IN      (1<<12)   ///< Use an input  callback to do the multiplication      - I found this to be very slow
+#define     FLAG_MUL_CB_OUT     (1<<13)   ///< Use an output callback to create powers           - This is a similar speed
 
-#define     FLAG_SAS_TEX        (1<<17)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     (1<<18)   ///< Use liner interpolation in with texture memory - This requires - FLAG_MUL_CB_OUT and FLAG_SAS_TEX
-#define     FLAG_SIG_GPU        (1<<19)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define     FLAG_SAS_TEX        (1<<14)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_INTERP     (1<<15)   ///< Use liner interpolation in with texture memory - This requires - FLAG_MUL_CB_OUT and FLAG_SAS_TEX
+#define     FLAG_SIG_GPU        (1<<16)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     CU_CAND_ARR         (1<<20)   ///< Candidates are stored in an array (requires more memory)
-#define     CU_CAND_LST         (1<<21)   ///< Candidates are stored in a list  (usually a dynamic linked list)
-#define     CU_CAND_QUAD        (1<<22)   ///< Candidates are stored in a dynamic quadtree
+#define     FLAG_SS_00          (1<<17)   ///<
+#define     FLAG_SS_10          (1<<18)   ///<
+#define     FLAG_SS_20          (1<<19)   ///<
+#define     FLAG_SS_30          (1<<20)   ///<
+#define     FLAG_SS_ALL         ( FLAG_SS_00 | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
+
+#define     CU_CAND_ARR         (1<<21)   ///< Candidates are stored in an array (requires more memory)
+#define     CU_CAND_LST         (1<<22)   ///< Candidates are stored in a list  (usually a dynamic linked list)
+#define     CU_CAND_QUAD        (1<<23)   ///< Candidates are stored in a dynamic quadtree
 #define     CU_CAND_ALL         (CU_CAND_ARR | CU_CAND_LST | CU_CAND_QUAD)
 
-#define     FLAG_RETURN_ALL     (1<<23)   ///< Return results for all stages of summing, default is only the final result
+#define     FLAG_RETURN_ALL     (1<<24)   ///< Return results for all stages of summing, default is only the final result
 
-#define     FLAG_STORE_ALL      (1<<24)   ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<25)   ///< Store expanded candidates
+#define     FLAG_STORE_ALL      (1<<25)   ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<26)   ///< Store expanded candidates
 
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2

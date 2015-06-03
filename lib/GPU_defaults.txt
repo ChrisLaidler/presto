@@ -1,8 +1,8 @@
 
 ####### memory #######
 
-# INTERLEAVE_ROW  INTERLEAVE_PLN
-IL_PLN           # Last Edited by run time script
+# INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
+IL_ROW # Last Edited by run time script
 
 ######## Input #######
 
@@ -10,29 +10,31 @@ IL_PLN           # Last Edited by run time script
 NORM_GPU
 
 # FFT_CPU  FFT_GPU
-FFT_GPU              # Last Edited by run time script
+FFT_GPU # Last Edited by run time script
 
 
 ###### Convolve ######
 
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30
-MUL_21            # Last Edited by run time script
+MUL_- # Last Edited by run time script
 
 # Other Convolve options
 # FLAG_MUL_TEX
 
 ####### FFT ##########
 
-#FLAG_MUL_CB_IN # In my testing this is very slow, like 7 times slower (FFT only)!
-FLAG_MUL_CB_OUT # Almost always want this if possible
+#FLAG_MUL_CB_IN       	# In my testing this is very slow, like 7 times slower (FFT only)!
+FLAG_MUL_CB_OUT 		# Almost always want this if possible
 
-#FLAG_NO_CB
+# FLAG_NO_CB
 
 ###### Search ########
 
 #FLAG_SAS_TEX
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
+
+#SS_00
 
 ###### output ########
 
@@ -56,4 +58,5 @@ CU_CAND_ARR
 
 #cuMedianBuffSz 2048
 
-globalInt01 32
+
+globalInt01 8

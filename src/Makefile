@@ -138,7 +138,7 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ARCH =
 #ARCH 	+= -gencode arch=compute_20,code=sm_21
-#ARCH 		+= -gencode arch=compute_30,code=sm_30
+ARCH 		+= -gencode arch=compute_30,code=sm_30
 #ARCH 	+= -gencode arch=compute_35,code=sm_35
 ARCH 		+= -gencode arch=compute_50,code=sm_50
 
@@ -218,7 +218,7 @@ ifeq ($(WITHOMP),yes)
 endif
 
 ifeq ($(WITHCBL),yes)
-  $(info • Compileing with Chris Debug libraries)
+  $(info • Compileing with Chris utility libraries)
 
   # Include and link information for FreeType	
   FTCFLG     = $(shell freetype-config --cflags)
@@ -603,10 +603,12 @@ cleanGPU: cudaclean
 	rm -f ../bin/accelsearch*
 
 cudaclean:
+	rm -f build/debug/*cu.o
 	rm -f build/debug/cuda*.o
 	rm -f build/debug/accelsearch.o 
 	rm -f build/debug/accel_utils.o
 	rm -f build/debug/test_GPUaccel.o
+	rm -f build/release/*cu.o
 	rm -f build/release/cuda*.o
 	rm -f build/release/accelsearch.o 
 	rm -f build/release/accel_utils.o

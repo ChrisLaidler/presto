@@ -346,7 +346,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
         for ( int step = 0; step < noSteps; step++)               /// Loop over steps
         {
           float fx    = (rBin.val[step] + tid)*FRAC[harm] - rBin.val[harm*noSteps + step]  + HWIDTH[harm] ;
-          int   ix    = round(fx) ;
+          int   ix    = roundf(fx) ;
 
           if ( FLAGS & FLAG_ITLV_ROW )
           {
@@ -406,7 +406,7 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
 
                 int iy1     = YINDS[ zeroHeight*harm + trm ];
                 //  OR
-                //int iy1     = round( (HEIGHT[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
+                //int iy1     = roundf( (HEIGHT[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
                 int iy2     = iy1*stride[harm];
 
@@ -461,7 +461,6 @@ __global__ void add_and_searchCU3111(const uint width, accelcandBasic* d_cands, 
               {
                 if  (  powers[step][yPlus] > POWERCUT[stage] )
                 {
-
                   if ( powers[step][yPlus] > candLists[stage][step].sigma )
                   {
                     if ( y + yPlus < zeroHeight )
@@ -596,6 +595,20 @@ __host__ void add_and_searchCU311_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
     //cudaFuncSetCacheConfig(add_and_searchCU3111<FLAGS,noStages,noHarms,cunkSize,noSteps,long64>, cudaFuncCachePreferL1);
     add_and_searchCU3111<FLAGS,noStages,noHarms,cunkSize,noSteps,long64><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
   }
+  else if ( noHarms*noSteps <= 96  )
+  {
+    long96 rBin;
+    for (int i = 0; i < noHarms; i++)
+    {
+      int idx =  batch->pIdx[i];
+      for ( int step = 0; step < noSteps; step++)
+      {
+        rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
+      }
+    }
+    //cudaFuncSetCacheConfig(add_and_searchCU3111<FLAGS,noStages,noHarms,cunkSize,noSteps,long96>, cudaFuncCachePreferL1);
+    add_and_searchCU3111<FLAGS,noStages,noHarms,cunkSize,noSteps,long96><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
+  }
   else if ( noHarms*noSteps <= 128 )
   {
     long128 rBin;
@@ -660,7 +673,7 @@ __host__ void add_and_searchCU311_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t st
     }
     case 8:
     {
-      add_and_searchCU311_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU311_s<FLAGS,noStages,noHarms,cunkSize,8>(dimGrid, dimBlock, stream, batch);
       break;
     }
     default:

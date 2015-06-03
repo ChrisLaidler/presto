@@ -125,7 +125,7 @@ uint optAccellen(float width, int zmax)
  * @param zmax
  * @return
  */
-uint calcAccellen(int width, int zmax)
+uint calcAccellen(float width, float zmax)
 {
   int accelLen;
 
@@ -231,13 +231,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         if ( noHarms > 1 )
         {
-          // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work )
+          // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
           int   oAccelLen2   = calcAccellen(width/2.0, zmax/2.0);
           kernel->accelLen = oAccelLen2*2;
         }
         else
         {
-          kernel->accelLen = calcAccellen(width,zmax);
+          kernel->accelLen = calcAccellen(width, zmax);
         }
 
 
@@ -256,7 +256,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
           if ( ratio < 0.95 )
           {
-            printf(" an non-optimal step-size of %i. (%i)\n", kernel->accelLen );
+            printf(" an non-optimal step-size of %i.\n", kernel->accelLen );
             if ( width > 100 )
             {
               int K              = round(fftLen/1000.0);
@@ -265,7 +265,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           }
           else
           {
-            printf(" an optimal step-size of %i. (%i)\n", kernel->accelLen );
+            printf(" an optimal step-size of %i.\n", kernel->accelLen );
           }
         }
       }
@@ -2178,12 +2178,12 @@ void readAccelDefalts(uint *flags)
         (*flags) |= FLAG_MUL_CB_IN;
       }
 
-      else if ( strCom(line, "FLAG_MUL_CB_OUT" ) )
+      else if ( strCom(line, "FLAG_MUL_CB_OUT" ) || strCom(line, "CB_OUT" ) )
       {
         (*flags) |= FLAG_MUL_CB_OUT;
       }
 
-      else if ( strCom(line, "FLAG_NO_CB" ) )
+      else if ( strCom(line, "FLAG_NO_CB" ) || strCom(line, "NO_CB" ) )
       {
         (*flags) &= ~FLAG_MUL_CB_IN;
         (*flags) &= ~FLAG_MUL_CB_OUT;
@@ -2207,6 +2207,27 @@ void readAccelDefalts(uint *flags)
       else if ( strCom(line, "FLAG_SIG_CPU" ) || strCom(line, "SIG_CPU" ) )
       {
         (*flags) &= ~FLAG_SIG_GPU;
+      }
+
+      else if ( strCom(line, "FLAG_SS_00" ) || strCom(line, "SS_00" ) )
+      {
+        (*flags) &= ~FLAG_SS_ALL;
+        (*flags) |= FLAG_SS_00;
+      }
+      else if ( strCom(line, "FLAG_SS_10" ) || strCom(line, "SS_10" ) )
+      {
+        (*flags) &= ~FLAG_SS_ALL;
+        (*flags) |= FLAG_SS_10;
+      }
+      else if ( strCom(line, "FLAG_SS_10" ) || strCom(line, "SS_20" ) )
+      {
+        (*flags) &= ~FLAG_SS_ALL;
+        (*flags) |= FLAG_SS_10;
+      }
+      else if ( strCom(line, "FLAG_SS_30" ) || strCom(line, "SS_30" ) )
+      {
+        (*flags) &= ~FLAG_SS_ALL;
+        (*flags) |= FLAG_SS_30;
       }
 
       else if ( strCom(line, "CU_CAND_ARR"  ) || strCom(line, "CAND_ARR"  ) )
@@ -3113,22 +3134,39 @@ void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepT
     if ( flags & FLAG_SAS_TEX )
       sprintf(flagStr, "%s", "1");
     else
+    {
       sprintf(flagStr, "%s", "0");
+    }
     cvsLog->csvWrite("SAS_TEX","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & FLAG_TEX_INTERP )
       sprintf(flagStr, "%s", "1");
     else
+    {
       sprintf(flagStr, "%s", "0");
+    }
     cvsLog->csvWrite("SAS_INT","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & FLAG_SIG_GPU )
       sprintf(flagStr, "%s", "GPU");
     else
+    {
       sprintf(flagStr, "%s", "CPU");
+    }
     cvsLog->csvWrite("SIG","flag","%s", flagStr);
+
+    strClear(flagStr);
+    if ( flags & FLAG_SS_00 )
+      sprintf(flagStr, "%s", "SS_00");
+    if ( flags & FLAG_SS_10 )
+      sprintf(flagStr, "%s", "SS_10");
+    if ( flags & FLAG_SS_20 )
+      sprintf(flagStr, "%s", "SS_20");
+    if ( flags & FLAG_SS_30 )
+      sprintf(flagStr, "%s", "SS_30");
+    cvsLog->csvWrite("S&S","flag","%s", flagStr);
 
     strClear(flagStr);
     if ( flags & CU_CAND_ARR )

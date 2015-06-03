@@ -11,7 +11,7 @@
 .\" it edited by clig, remove the respective pair of cligPart-lines.
 .\"
 .\" cligPart TITLE
-.TH "accelsearch" 1 "11Feb15" "Clig-manuals" "Programmer's Manual"
+.TH "accelsearch" 1 "03Jun15" "Clig-manuals" "Programmer's Manual"
 .\" cligPart TITLE end
 
 .\" cligPart NAME
@@ -70,11 +70,11 @@ A list of the number of batches of f-∂f plains to process on each CUDA device,
 .br
 Default: `2'
 .IP -width
-The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ...,
+The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.,
 .br
-1 Int value between 2 and 32.
+1 Int value between 1 and 32.
 .br
-Default: `8'
+Default: `4'
 .IP -lsgpu
 List all available CUDA GPU's and exit.
 .IP -cpu

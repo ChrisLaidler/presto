@@ -279,7 +279,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
       }
     }
 
-    FOLD //  Write results
+    FOLD // Write results  .
     {
 #if TEMPLATE_SEARCH == 1
 #pragma unroll

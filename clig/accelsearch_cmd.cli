@@ -22,10 +22,10 @@ Int -nbatch nbatch      {A list of the number of batches of f-∂f plains to pro
   -r 1 5        \
   -c 0 32       \
   -d 2
-Int -width width        {The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ...} \
-  -r 2 32       \
+Int -width width        {The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.} \
+  -r 1 32       \
   -c 1 1        \
-  -d 8
+  -d 4
 Flag  -lsgpu lsgpu      {List all available CUDA GPU's and exit}
 Flag  -cpu   cpu        {Do a CPU search} 
 Int -ncpus   ncpus      {Number of processors to use with OpenMP} \

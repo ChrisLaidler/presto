@@ -71,7 +71,7 @@ extern "C"
 
 
 #define SS3_X           16                    // X Thread Block
-#define SS3_Y           4                     // Y Thread Block
+#define SS3_Y           8                     // Y Thread Block
 //#define SS3_NPOWERS     21                    // Added by auto-tune script
 
 #define SS4_X           32                    // X Thread Block
@@ -148,6 +148,11 @@ typedef struct long64
 {
     long val[64];
 } long64;
+
+typedef struct long96
+{
+    long val[96];
+} long96;
 
 typedef struct long128
 {
