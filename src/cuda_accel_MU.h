@@ -93,6 +93,8 @@ __host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
  */
 __host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 
+__host__  void mult24_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
+
 /** Multiplication kernel - One plain at a time
  * Each thread reads one input value and loops down over the kernels
  */

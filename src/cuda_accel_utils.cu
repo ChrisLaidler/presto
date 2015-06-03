@@ -114,7 +114,7 @@ uint optAccellen(float width, int zmax)
 {
   float halfwidth       = z_resp_halfwidth(zmax, LOWACC); /// The halfwidth of the maximum zmax, to calculate accel len
   float pow2            = pow(2 , round(log2(width)) );
-  uint oAccelLen        = floor(pow2  - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
+  uint oAccelLen        = floor(pow2 - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
 
   return oAccelLen;
 }
@@ -229,7 +229,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       FOLD // Determine accellen and step size  .
       {
-        kernel->accelLen = calcAccellen(width,zmax);
+        if ( noHarms > 1 )
+        {
+          // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work )
+          int   oAccelLen2   = calcAccellen(width/2.0, zmax/2.0);
+          kernel->accelLen = oAccelLen2*2;
+        }
+        else
+        {
+          kernel->accelLen = calcAccellen(width,zmax);
+        }
+
 
         if ( kernel->accelLen < 100 )
         {
@@ -246,7 +256,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
           if ( ratio < 0.95 )
           {
-            printf(" an non-optimal step-size of %i.\n", kernel->accelLen);
+            printf(" an non-optimal step-size of %i. (%i)\n", kernel->accelLen );
             if ( width > 100 )
             {
               int K              = round(fftLen/1000.0);
@@ -255,7 +265,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           }
           else
           {
-            printf(" an optimal step-size of %i.\n", kernel->accelLen);
+            printf(" an optimal step-size of %i. (%i)\n", kernel->accelLen );
           }
         }
       }

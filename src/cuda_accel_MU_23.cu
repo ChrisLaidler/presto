@@ -15,29 +15,12 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
   if ( tid < width )  // Valid thread  .
   {
     const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
-    const int bStride   = CNV_DIMX*CNV_DIMY;
 
     FOLD  // Stride, kernel, input data & output data  .
     {
       kernels += tid;
       ffdot   += tid;
       inpData += tid;
-    }
-
-    __restrict__ fcomplexcu inpDat[noPlns][noSteps];          // Set of input data for this thread/column
-
-    FOLD // Read all input data  .
-    {
-      for (int step = 0; step < noSteps; step++)
-      {
-        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
-        {
-          fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-          ipd.r                 /= (float) width;
-          ipd.i                 /= (float) width;
-          inpDat[pln][step]     = ipd;
-        }
-      }
     }
 
     int noChunks = ceilf(kerHeight / (float)cv_chunkSZ);
@@ -61,24 +44,31 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
       register fcomplexcu k10  = kernels[(c0+10)*stride];
       register fcomplexcu k11  = kernels[(c0+11)*stride];
 
-//#pragma unroll
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains of the stack  .
       {
         const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
 
-        //const int p0            = c0 - kerYOffset;
         const int p0            = MAX(c0 - kerYOffset,0);
-
-        //const int p1            = c0 + c1 - kerYOffset;
-        //const int p1            = p0 + c1;
-        //const int p1            = MIN(p0 + c1, plnHeight);
         const int p1            = MIN(c0 + c1 - kerYOffset, plnHeight);
 
-        //const int kerAddd       = c1-p1;
         const int kerAddd       = MAX(0, kerYOffset - c0);
 
         const int ns2           = plnHeight * stride;
+
+        __restrict__ fcomplexcu inpDat[noSteps];              // Set of input data for this thread/column
+        FOLD // Read all input data  .
+        {
+          // NOTE: I tested reading the input for plains and steps (2 loops above) but that was slower, here uses less registers as well.
+
+          for (int step = 0; step < noSteps; step++)
+          {
+            fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+            ipd.r                 /= (float) width;
+            ipd.i                 /= (float) width;
+            inpDat[step]     = ipd;
+          }
+        }
 
         for (int plainY = p0; plainY < p1; plainY++)          // Loop over the individual plain  .
         {
@@ -87,11 +77,6 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
           FOLD // Read the kernel value  .
           {
-            //ker   = kernels[(kerYOffset+plainY)*stride];
-            //ker   = ker_sm[(plainY-p0+kerAddd)*bStride + bidx];
-            //ker   = ker_smP[(plainY-p0+kerAddd)];
-            //ker   = ker_smP[y+kerAddd];
-
             switch(y)
             {
               case 0	:
@@ -155,6 +140,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
                 break;
               }
             }
+
           }
 
           int offsetPart1;
@@ -170,7 +156,6 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             }
           }
 
-//#pragma unroll
           for ( int step = 0; step < noSteps; step++ )        // Loop over steps .
           {
             int idx;
@@ -189,19 +174,11 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
             FOLD // Multiply  .
             {
-              //ffdot[idx].r = (inpDat[pln][step].r * ker.r + inpDat[pln][step].i * ker.i);
-              //ffdot[idx].i = (inpDat[pln][step].i * ker.r - inpDat[pln][step].r * ker.i);
-
-              //fcomplexcu vv;
-              //vv.r = (inpDat[pln][step].r * ker.r + inpDat[pln][step].i * ker.i);
-              //vv.i = (inpDat[pln][step].i * ker.r - inpDat[pln][step].r * ker.i);
-              //ffdot[idx] = vv;
-
-              fcomplexcu ipd = inpDat[pln][step];
-              fcomplexcu vv;
-              vv.r = (ipd.r * ker.r + ipd.i * ker.i);
-              vv.i = (ipd.i * ker.r - ipd.r * ker.i);
-              ffdot[idx] = vv;
+              fcomplexcu ipd = inpDat[step];
+              fcomplexcu out;
+              out.r = (ipd.r * ker.r + ipd.i * ker.i);
+              out.i = (ipd.i * ker.r - ipd.r * ker.i);
+              ffdot[idx] = out;
             }
           }
         }
@@ -222,55 +199,55 @@ __host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,1>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,1>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,2>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,2>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,3>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,3>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,4>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,4>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,5>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,5>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,6>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,6>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,7>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,7>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,8>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,8>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9	:
     {
-      cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,9>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,9>, cudaFuncCachePreferL1);
       mult23_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
       break;
     }

@@ -138,7 +138,7 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ARCH =
 #ARCH 	+= -gencode arch=compute_20,code=sm_21
-ARCH 		+= -gencode arch=compute_30,code=sm_30
+#ARCH 		+= -gencode arch=compute_30,code=sm_30
 #ARCH 	+= -gencode arch=compute_35,code=sm_35
 ARCH 		+= -gencode arch=compute_50,code=sm_50
 
@@ -245,6 +245,9 @@ ifeq ($(WITH_CUDA),yes)
   
   NVCCFLAGS  	+= -DCUDA -Xcompiler -fPIC
   NVCLFLAGS  	+= -DCUDA -Xcompiler -fPIC
+  
+  #NVCCFLAGS		+= -ptx -keep
+ 	#NVCLFLAGS		+= -ptx -keep
   
   CFLAGS     	+= -DCUDA $(CUDAINC)
   FLAGS      	+= -DCUDA $(CUDAINC)
@@ -590,8 +593,8 @@ $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
 ###############  Cleans   ################
 
 cleanTIMING:
-	rm -rf build/debug/accelsearch*.o   build/debug/cuda_accel_CV.cu.o   build/debug/cuda_accel_IN.cu.o   build/debug/cuda_accel_SS.cu.o   build/debug/cuda_accel_utils.cu.o
-	rm -rf build/release/accelsearch*.o build/release/cuda_accel_CV.cu.o build/release/cuda_accel_IN.cu.o build/release/cuda_accel_SS.cu.o build/release/cuda_accel_utils.cu.o
+	rm -rf build/debug/accelsearch*.o   build/debug/cuda_accel_MU.cu.o   build/debug/cuda_accel_IN.cu.o   build/debug/cuda_accel_SS.cu.o   build/debug/cuda_accel_utils.cu.o
+	rm -rf build/release/accelsearch*.o build/release/cuda_accel_MU.cu.o build/release/cuda_accel_IN.cu.o build/release/cuda_accel_SS.cu.o build/release/cuda_accel_utils.cu.o
 
 cleanGPU: cudaclean
 	rm -f ../lib/libpresto*

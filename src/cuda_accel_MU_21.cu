@@ -37,18 +37,6 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
       }
     }
 
-    int plnHeight[noPlns];
-    int kerYOffset[noPlns];
-    FOLD // Read all input data  .
-    {
-      for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
-      {
-        plnHeight[pln]     = HEIGHT_FAM_ORDER[firstPlain + pln];
-        kerYOffset[pln]    = (kerHeight - plnHeight[pln])/2;
-      }
-    }
-
-
     for (int y = 0; y < kerHeight; y++)                       // Loop through the kernel .
     {
       fcomplexcu ker;                                         // kernel data
@@ -61,15 +49,12 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
 
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains  .
       {
-        //const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
-        //const int kerYOffset    = (kerHeight - plnHeight)/2;
-        //const int plainY        = y - kerYOffset;
-        //const int ns2           = plnHeight * stride;
+        const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
+        const int kerYOffset    = (kerHeight - plnHeight)/2;
+        const int plainY        = y - kerYOffset;
+        const int ns2           = plnHeight * stride;
 
-        const int plainY        = y - kerYOffset[pln];
-        const int ns2           = plnHeight[pln] * stride;
-
-        if( plainY >= 0 && plainY < plnHeight[pln] )
+        if( plainY >= 0 && plainY < plnHeight )
         {
           int off1;
           FOLD // Calculate partial offset  .
@@ -84,7 +69,6 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
             }
           }
 
-#pragma unroll
           for ( int step = 0; step < noSteps; ++step )        // Loop over steps .
           {
             int idx;
@@ -102,26 +86,16 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
 
             FOLD // Multiply  .
             {
-              //ffdot[idx].r = (inpDat[step][pln].r * ker.r + inpDat[step][pln].i * ker.i);
-              //ffdot[idx].i = (inpDat[step][pln].i * ker.r - inpDat[step][pln].r * ker.i);
-
-              //ffdot[idx].r = (inpDat[step].r * ker.r + inpDat[step].i * ker.i);
-              //ffdot[idx].i = (inpDat[step].i * ker.r - inpDat[step].r * ker.i);
-
-              //fcomplexcu inp = sInputPtr[(pln*noSteps + step)*CNV_DIMX * CNV_DIMY];
-              //ffdot[idx].r = (inp.r * ker.r + inp.i * ker.i);
-              //ffdot[idx].i = (inp.i * ker.r - inp.r * ker.i);
-
               fcomplexcu ipd = inpDat[pln][step];
-              fcomplexcu vv;
-              vv.r = (ipd.r * ker.r + ipd.i * ker.i);
-              vv.i = (ipd.i * ker.r - ipd.r * ker.i);
-              ffdot[idx] = vv;
+              fcomplexcu out;
+              out.r = (ipd.r * ker.r + ipd.i * ker.i);
+              out.i = (ipd.i * ker.r - ipd.r * ker.i);
+              ffdot[idx] = out;
             }
           }
         }
 
-        pHeight += plnHeight[pln] * noSteps * stride;              // Set striding value for next plain
+        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plain
       }
     }
   }

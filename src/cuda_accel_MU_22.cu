@@ -36,10 +36,10 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
       {
         for (int step = 0; step < noSteps; step++)
         {
-          fcomplexcu inp    = inpData[ (int)(plnStrd + step*stride) ];
-          inp.r             /= (float) width;
-          inp.i             /= (float) width;
-          inpDat[step]      = inp;
+          fcomplexcu inp      = inpData[ (int)(plnStrd + step*stride) ];
+          inp.r               /= (float) width;
+          inp.i               /= (float) width;
+          inpDat[step]        = inp;
         }
       }
 
@@ -80,8 +80,14 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
 
           FOLD // Multiply  .
           {
-            ffdot[idx].r = (inpDat[step].r * ker.r + inpDat[step].i * ker.i);
-            ffdot[idx].i = (inpDat[step].i * ker.r - inpDat[step].r * ker.i);
+            //ffdot[idx].r = (inpDat[step].r * ker.r + inpDat[step].i * ker.i);
+            //ffdot[idx].i = (inpDat[step].i * ker.r - inpDat[step].r * ker.i);
+
+            fcomplexcu ipd = inpDat[step];
+            fcomplexcu out;
+            out.r = (ipd.r * ker.r + ipd.i * ker.i);
+            out.i = (ipd.i * ker.r - ipd.r * ker.i);
+            ffdot[idx] = out;
           }
         }
       }
