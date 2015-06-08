@@ -20,7 +20,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
       inpData += tid;
     }
 
-    const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
+    const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
 
     __restrict__ fcomplexcu inpDat[noPlns][noSteps];          // Set of input data for this thread/column
     FOLD // Read all input data  .
@@ -49,7 +49,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
 
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains  .
       {
-        const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
+        const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
         const int plainY        = y - kerYOffset;
         const int ns2           = plnHeight * stride;

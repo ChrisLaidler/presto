@@ -14,7 +14,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
   if ( tid < width )  // Valid thread  .
   {
-    const int kerHeight = HEIGHT_FAM_ORDER[firstPlain];       // The size of the kernel
+    const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
 
     FOLD  // Stride, kernel, input data & output data  .
     {
@@ -46,7 +46,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
       for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains of the stack  .
       {
-        const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
+        const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
 
         const int p0            = MAX(c0 - kerYOffset,0);

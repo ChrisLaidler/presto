@@ -266,7 +266,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             //#pragma unroll
             for( int yPlus = 0; yPlus < CHUNKSZ ; yPlus++ )     // Loop over section
             {
-              if  (  powers[step][yPlus] > POWERCUT[stage] )
+              if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
               {
                 if ( powers[step][yPlus] > candLists[stage][step].sigma )
                 {
@@ -294,7 +294,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
 #pragma unroll
         for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
         {
-          if  ( candLists[stage][step].sigma >  POWERCUT[stage] )
+          if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
           {
             // This can be calculated from stage
             //const short numharm                 = ( 1 << stage );
@@ -304,7 +304,7 @@ __global__ void add_and_searchCU31(cuSearchList searchList, accelcandBasic* d_ca
             {
               const int numharm                 = ( 1 << stage );
               // Calculate sigma value
-              long long numtrials               = NUMINDEP[stage];
+              long long numtrials               = NUMINDEP_STAGE[stage];
               candLists[stage][step].sigma      = (float)candidate_sigma_cu(candLists[stage][step].sigma, numharm, numtrials);
             }
 

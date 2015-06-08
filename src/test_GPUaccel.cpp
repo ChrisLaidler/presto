@@ -852,7 +852,7 @@ int main(int argc, char *argv[])
           float width3          = pow(2, width2);
           float width4          = floor(width3/1000.0);
 
-          added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, ACCEL_USELEN, no, obs.powcut, obs.numindep, flags, CU_FULLCAND, CU_SMALCAND, (void*)candsGPU);
+          added = initHarmonics(&kernels[noKers], master, obs.numharmstages, (int)obs.zhi, fftinf, cmd->gpu[dev], noSteps, ACCEL_USELEN, no, obs.powcut, obs.numindep, flags, CU_CANDFULL, CU_CANDSMAL, (void*)candsGPU);
 
           if ( added && (master == NULL) )
           {

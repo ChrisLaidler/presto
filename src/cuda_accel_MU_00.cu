@@ -167,8 +167,8 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
     for (int pln = 0; pln < noPlns; pln++)                    // Loop through the plains  .
     {
       const int plnStrd       = pln*stride*noSteps;
-      const int plnHeight     = HEIGHT_FAM_ORDER[firstPlain + pln];
-      const int kerYOffset    = (HEIGHT_FAM_ORDER[firstPlain] - plnHeight)/2;
+      const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
+      const int kerYOffset    = (HEIGHT_HARM[firstPlain] - plnHeight)/2;
       const int ns2           = plnHeight * stride;
 
       FOLD // Read input data for this plain

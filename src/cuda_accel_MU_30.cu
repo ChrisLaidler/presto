@@ -16,9 +16,9 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
 
   for (int n = 0; n < noPlains; n++)                  // Loop over plains  .
   {
-    const int stride   = STRIDE_FAM_ORDER[n];
-    const int height   = HEIGHT_FAM_ORDER[n];
-    fcomplexcu* ker    = KERNEL_FAM_ORDER[n] + ix;
+    const int stride   = STRIDE_HARM[n];
+    const int height   = HEIGHT_HARM[n];
+    fcomplexcu* ker    = KERNEL_HARM[n] + ix;
 
     if ( ix < stride )
     {

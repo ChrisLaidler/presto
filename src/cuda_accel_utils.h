@@ -377,18 +377,18 @@ typedef struct fMax
 
 //-------------------  Details in Family order  ------------------------\\
 
-extern __device__ __constant__ int          HEIGHT_FAM_ORDER[MAX_HARM_NO];    ///< Plain  heights   in family
-extern __device__ __constant__ int          STRIDE_FAM_ORDER[MAX_HARM_NO];    ///< Plain  strides   in family
-extern __device__ __constant__ int          WIDTH_FAM_ORDER[MAX_HARM_NO];     ///< Plain  strides   in family
-extern __device__ __constant__ fcomplexcu*  KERNEL_FAM_ORDER[MAX_HARM_NO];    ///< Kernel pointers  in family
+extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  heights   in family
+extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];    ///< Plain  strides   in family
+extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];     ///< Plain  strides   in family
+extern __device__ __constant__ fcomplexcu*  KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointers  in family
 
 //--------------------  Details in stage order  ------------------------\\
 
-extern __device__ __constant__ float        POWERCUT[MAX_HARM_NO];            ///<
-extern __device__ __constant__ float        NUMINDEP[MAX_HARM_NO];            ///<
-extern __device__ __constant__ int          HEIGHT[MAX_HARM_NO];              ///< Plain heights in stage order
-extern __device__ __constant__ int          STRIDE[MAX_HARM_NO];              ///< Plain strides in stage order
-extern __device__ __constant__ int          HWIDTH[MAX_HARM_NO];              ///< Plain half width in stage order
+extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];            ///<
+extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];            ///<
+extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];              ///< Plain heights in stage order
+extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];              ///< Plain strides in stage order
+extern __device__ __constant__ int          HWIDTH_STAGE[MAX_HARM_NO];              ///< Plain half width in stage order
 
 //-------------------  Other constant values  --------------------------\\
 

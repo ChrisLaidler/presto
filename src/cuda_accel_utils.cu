@@ -31,10 +31,10 @@ extern "C"
 #endif
 
 
-__device__ __constant__ int           HEIGHT_FAM_ORDER[MAX_HARM_NO];    ///< Plain  height  in stage order
-__device__ __constant__ int           STRIDE_FAM_ORDER[MAX_HARM_NO];    ///< Plain  stride  in stage order
-__device__ __constant__ int           WIDTH_FAM_ORDER[MAX_HARM_NO];     ///< Plain  strides   in family
-__device__ __constant__ fcomplexcu*   KERNEL_FAM_ORDER[MAX_HARM_NO];    ///< Kernel pointer in stage order
+__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  height  in stage order
+__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plain  stride  in stage order
+__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];     ///< Plain  strides   in family
+__device__ __constant__ fcomplexcu*   KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointer in stage order
 __device__ __constant__ stackInfo     STACKS[64];
 
 
@@ -164,7 +164,7 @@ uint calcAccellen(float width, float zmax)
  * @param outData
  * @return
  */
-int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo* fftinf, int device, int noBatches, int noSteps, int width, float*  powcut, long long*  numindep, int flags = 0, int outType = CU_FULLCAND, void* outData = NULL)
+int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo* fftinf, int device, int noBatches, int noSteps, int width, float*  powcut, long long*  numindep, int flags = 0, int outType = CU_CANDFULL, void* outData = NULL)
 {
   nvtxRangePush("initKernel");
 
@@ -229,6 +229,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       FOLD // Determine accellen and step size  .
       {
+        kernel->flag = flags;
+
         if ( noHarms > 1 )
         {
           // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
@@ -240,6 +242,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           kernel->accelLen = calcAccellen(width, zmax);
         }
 
+        // Now make sure that accelLen is divisible by (noHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
+        if ( kernel->flag & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
+        {
+          kernel->accelLen = floor( kernel->accelLen/(float)(noHarms*ACCEL_RDR) ) * (noHarms*ACCEL_RDR);
+        }
 
         if ( kernel->accelLen < 100 )
         {
@@ -252,9 +259,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           int   oAccelLen   = optAccellen(fftLen, zmax);
           float ratio       = kernel->accelLen/float(oAccelLen);
 
-          printf("• Using max FFT length of %.0f and thus ", fftLen);
+          printf("• Using max FFT length of %.0f and thus", fftLen);
 
-          if ( ratio < 0.95 )
+          if    	( ratio < 0.90 )
           {
             printf(" an non-optimal step-size of %i.\n", kernel->accelLen );
             if ( width > 100 )
@@ -262,6 +269,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
               int K              = round(fftLen/1000.0);
               fprintf(stderr,"    WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 46 32.\n    For a zmax of %i using %iK FFTs the optimal step-size is %i.\n", zmax, K, oAccelLen);
             }
+          }
+          else if ( ratio < 0.95 )
+          {
+            printf(" an close to optimal step-size of %i.\n", kernel->accelLen );
           }
           else
           {
@@ -347,8 +358,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             kernel->pIdx[i]                 = idx;
           }
         }
-
-        kernel->flag = flags;
 
         // Multi-step data layout method  .
         if ( !(kernel->flag & FLAG_ITLV_ALL ) )
@@ -630,7 +639,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       if      (kernel->cndType == CU_NONE     )
       {
         fprintf(stderr,"Warning: No output type specified in %s setting to full candidate info.\n",__FUNCTION__);
-        kernel->cndType = CU_FULLCAND;
+        kernel->cndType = CU_CANDFULL;
       }
       if      (kernel->cndType == CU_CMPLXF   )
       {
@@ -648,21 +657,25 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         candSZ = sizeof(accelcand2);
       }
-      else if (kernel->cndType == CU_SMALCAND )
+      else if (kernel->cndType == CU_CANDMIN )
+      {
+        candSZ = sizeof(candMin);
+      }
+      else if (kernel->cndType == CU_CANDSMAL )
       {
         candSZ = sizeof(accelcandBasic);
       }
-      else if (kernel->cndType == CU_FULLCAND || (kernel->cndType == CU_GSList) )
+      else if (kernel->cndType == CU_CANDFULL || (kernel->cndType == CU_GSList) )
       {
         candSZ = sizeof(cand);
-        kernel->retType = CU_SMALCAND;
+        kernel->retType = CU_CANDSMAL;
       }
       else
       {
         fprintf(stderr,"ERROR: No output type specified in %s setting to full candidate info.\n",__FUNCTION__);
-        kernel->cndType = CU_FULLCAND;
+        kernel->cndType = CU_CANDFULL;
         candSZ = sizeof(cand);
-        kernel->retType = CU_SMALCAND;
+        kernel->retType = CU_CANDSMAL;
       }
     }
 
@@ -684,11 +697,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         retSZ = sizeof(accelcand2);
       }
-      else if (kernel->retType == CU_SMALCAND )
+      else if (kernel->retType == CU_CANDMIN )
+      {
+        retSZ = sizeof(candMin);
+      }
+      else if (kernel->retType == CU_CANDSMAL )
       {
         retSZ = sizeof(accelcandBasic);
       }
-      else if (kernel->retType == CU_FULLCAND )
+      else if (kernel->retType == CU_CANDFULL )
       {
         retSZ = sizeof(cand);
       }
@@ -1675,16 +1692,16 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
       stride[i] = 0;
     }
 
-    cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_FAM_ORDER);
+    cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_HARM);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 
-    cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_FAM_ORDER);
+    cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_HARM);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 
-    cudaGetSymbolAddress((void **)&dcoeffs, WIDTH_FAM_ORDER);
+    cudaGetSymbolAddress((void **)&dcoeffs, WIDTH_HARM);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &width,  MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 
-    cudaGetSymbolAddress((void **)&dcoeffs, KERNEL_FAM_ORDER);
+    cudaGetSymbolAddress((void **)&dcoeffs, KERNEL_HARM);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(fcomplexcu*), cudaMemcpyHostToDevice),      "Copying stages to device");
   }
 
@@ -2219,10 +2236,10 @@ void readAccelDefalts(uint *flags)
         (*flags) &= ~FLAG_SS_ALL;
         (*flags) |= FLAG_SS_10;
       }
-      else if ( strCom(line, "FLAG_SS_10" ) || strCom(line, "SS_20" ) )
+      else if ( strCom(line, "FLAG_SS_20" ) || strCom(line, "SS_20" ) )
       {
         (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_10;
+        (*flags) |= FLAG_SS_20;
       }
       else if ( strCom(line, "FLAG_SS_30" ) || strCom(line, "SS_30" ) )
       {
@@ -2374,12 +2391,20 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   readAccelDefalts(&sSpec.flags);
 
-  sSpec.outType       = CU_FULLCAND ;
+  sSpec.outType       = CU_CANDFULL ;
 
   sSpec.fftInf.fft    = obs->fft;
-  sSpec.fftInf.nor    = obs->N;
+  sSpec.fftInf.nor    = obs->numbins;
   sSpec.fftInf.rlo    = obs->rlo;
   sSpec.fftInf.rhi    = obs->rhi;
+
+  if ( sSpec.flags & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
+  {
+    // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
+
+    //sSpec.fftInf.rlo  = ceil(obs->rlo/(float)cmd->numharm)*cmd->numharm;
+    sSpec.fftInf.rlo  = floor(obs->rlo/(float)cmd->numharm)*cmd->numharm;
+  }
 
   sSpec.noHarmStages  = obs->numharmstages;
   sSpec.zMax          = obs->zhi;

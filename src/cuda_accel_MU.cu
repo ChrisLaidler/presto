@@ -10,8 +10,8 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
   int fIdx        = inf->famIdx;
   int noSteps     = inf->noSteps;
   int noPlains    = inf->noPlains;
-  int stackStrd   = STRIDE_FAM_ORDER[fIdx];
-  int width       = WIDTH_FAM_ORDER[fIdx];
+  int stackStrd   = STRIDE_HARM[fIdx];
+  int width       = WIDTH_HARM[fIdx];
 
   int strd        = stackStrd * noSteps ;                 /// Stride taking into acount steps)
   int gRow        = offset / strd;                        /// Row (ignoring steps)
@@ -22,7 +22,7 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
 
   for ( int i = 0; i < noPlains; i++ )
   {
-    top += HEIGHT_FAM_ORDER[fIdx+i];
+    top += HEIGHT_HARM[fIdx+i];
 
     if ( gRow >= top )
     {
@@ -33,7 +33,7 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
 
   int row         = offset / stackStrd - pHeight*noSteps;
   int pIdx        = fIdx + pln;
-  int plnHeight   = HEIGHT_FAM_ORDER[pIdx];
+  int plnHeight   = HEIGHT_HARM[pIdx];
   int step;
 
   if ( inf->flag & FLAG_ITLV_PLN )
@@ -47,7 +47,7 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
     row   = row / noSteps;
   }
 
-  cufftComplex ker = ((cufftComplex*)(KERNEL_FAM_ORDER[pIdx]))[row*stackStrd + col];      //
+  cufftComplex ker = ((cufftComplex*)(KERNEL_HARM[pIdx]))[row*stackStrd + col];      //
   cufftComplex inp = ((cufftComplex*)inf->d_iData)[(pln*noSteps+step)*stackStrd + col];   //
 
   // Do the multiplication

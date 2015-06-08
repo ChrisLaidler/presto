@@ -2,6 +2,7 @@
 
 /*#undef USEMMAP*/
 
+#undef CUDA  // TMP
 #define CUDA // TMP
 
 #ifdef USEMMAP
@@ -311,22 +312,30 @@ int main(int argc, char *argv[])
 
            cuFFdotBatch* master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
 
-           printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
-
            omp_set_num_threads(cuSrch->mInf->noBatches);
 
-           startr = obs.rlo, lastr = 0, nextr = 0;
+           FOLD // TMP
+           {
+             if ( sSpec.fftInf.rhi != obs.highestbin )
+             {
+               fprintf(stderr,"ERROR: sSpec.fftInf.rhi != obs.highestbin \n");
+             }
+           }
+
+           startr = sSpec.fftInf.rlo, lastr = 0, nextr = 0;
            int ss = 0;
-           int maxxx = ( obs.highestbin - obs.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of plains to make
+           int maxxx = ( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of plains to make
 
            if ( maxxx < 0 )
              maxxx = 0;
 
 #ifndef STPMSG
-           print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
+           print_percent_complete(startr - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 1);
 #else
            printf("GPU loop will process %i steps\n", maxxx);
 #endif
+
+           printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f plains spread across %i device(s) .\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
 
 #ifndef DEBUG // Parallel if we are not in debug mode  .
 #pragma omp parallel
@@ -374,7 +383,7 @@ int main(int argc, char *argv[])
                {
                  if ( step < rest )
                  {
-                   startrs[step] = obs.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+                   startrs[step] = sSpec.fftInf.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
                    lastrs[step]  = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
                  }
                  else
@@ -386,11 +395,11 @@ int main(int argc, char *argv[])
 
                FOLD // Call the CUDA search  .
                {
-                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep);
+                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)sSpec.fftInf.fft, obs.numindep);
                }
 
 #ifndef STPMSG
-               print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
+               print_percent_complete(startrs[0] - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 0);
 #endif
              }
 
@@ -406,12 +415,12 @@ int main(int argc, char *argv[])
                // Finish searching the plains, this is required because of the out of order asynchronous calls
                for ( step = 0 ; step < 2; step++ )
                {
-                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep);
+                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)sSpec.fftInf.fft, obs.numindep);
                }
              }
            }
 
-           print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
+           print_percent_complete(sSpec.fftInf.rhi - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 0);
            printf("\n");
 
            if ( (master->flag & CU_CAND_ARR) )
@@ -674,7 +683,7 @@ int main(int argc, char *argv[])
 
         for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
         {
-          cuFfdotStack*   cStack = &batches->stacks[stack];
+          //cuFfdotStack*   cStack = &batches->stacks[stack];
 
           //float convDat = cStack->height * cStack->width * batches->noSteps * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
           //convDat       += cStack->kerHeigth * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;

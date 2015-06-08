@@ -149,7 +149,9 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
  */
 void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
 {
-  //printf("setStackRVals\n");
+#ifdef STPMSG
+    printf("\tSet Stack R-Vals\n");
+#endif
 
   int       hibin, binoffset;
   double    drlo, drhi;

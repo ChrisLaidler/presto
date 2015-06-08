@@ -101,9 +101,10 @@ extern "C"
 #define     CU_INT              (1<<2)    ///< INT
 #define     CU_FLOAT            (1<<3)    ///< Float
 #define     CU_POWERZ           (1<<4)    ///< A value and a z bin         accelcand2
-#define     CU_SMALCAND         (1<<5)    ///< A compressed candidate      accelcandBasic
-#define     CU_FULLCAND         (1<<6)    ///< Full detailed candidate     cand
-#define     CU_GSList           (1<<7)    ///<
+#define     CU_CANDMIN          (1<<5)    ///< A compressed candidate      candMin
+#define     CU_CANDSMAL         (1<<6)    ///< A compressed candidate      accelcandBasic
+#define     CU_CANDFULL         (1<<7)    ///< Full detailed candidate     cand
+#define     CU_GSList           (1<<8)    ///<
 
 
 //========================================== Macros ======================================================
@@ -131,6 +132,13 @@ typedef struct accelcand2
     float value;        // This cab be Sigma or summed power
     short z;            // Fourier f-dot of first harmonic
 } accelcand2;
+
+///< The most basic accel search candidate to be used in CUDA kernels (numharm can be got from stage)
+typedef struct candMin
+{
+    float sigma;        // Sigma - adjusted for number of trials, NOTE: at some points this value holds the sum of powers from which the sigma value will be calculated
+    int   z;            // Fourier f-dot of first harmonic
+} candMin;
 
 ///< Basic accel search candidate to be used in CUDA kernels
 typedef struct accelcandBasic
@@ -171,7 +179,7 @@ typedef struct fftInfo
 {
     double      rlo;      ///< The Low bin   (of interest)
     double      rhi;      ///< The high bin  (of interest)
-    int         nor;      ///< The number of bins in the FFT
+    long long   nor;      ///< The number of bins in the FFT
     fcomplex*   fft;      ///< An array of complex numbers (nor long)
 } fftInfo;
 

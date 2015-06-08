@@ -32,16 +32,17 @@ extern "C"
 //======================================= Constant memory =================================================\\
 
 __device__ __constant__ int        YINDS[MAX_YINDS];
-__device__ __constant__ float      POWERCUT[MAX_HARM_NO];
-__device__ __constant__ float      NUMINDEP[MAX_HARM_NO];
+__device__ __constant__ float      POWERCUT_STAGE[MAX_HARM_NO];
+__device__ __constant__ float      NUMINDEP_STAGE[MAX_HARM_NO];
 
-__device__ __constant__ int        HEIGHT[MAX_HARM_NO];         ///< Plain heights in stage order
-__device__ __constant__ int        STRIDE[MAX_HARM_NO];         ///< Plain strides in stage order
-__device__ __constant__ int        HWIDTH[MAX_HARM_NO];         ///< Plain half width in stage order
+__device__ __constant__ int        HEIGHT_STAGE[MAX_HARM_NO];         ///< Plain heights in stage order
+__device__ __constant__ int        STRIDE_STAGE[MAX_HARM_NO];         ///< Plain strides in stage order
+__device__ __constant__ int        HWIDTH_STAGE[MAX_HARM_NO];         ///< Plain half width in stage order
 
 //====================================== Constant variables  ===============================================\\
 
-__device__ const float FRAC[16]      =  { 1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+__device__ const float FRAC_STAGE[16]      =  { 1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+__device__ const float FRAC_HARM[16]       =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
 __device__ const int   STAGE[5][2]   =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
 __device__ const int   CHUNKSZE[5]   =  { 4, 8, 8, 8, 8 } ;
 
@@ -352,9 +353,17 @@ __host__ void add_and_searchCU3(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream
   }
   else
   {
-    if ( FLAGS & FLAG_SS_00 )
+    if      ( FLAGS & FLAG_SS_00 )
     {
-      add_and_searchCU32_f(stream, batch );
+      add_and_searchCU00(stream, batch );
+    }
+    else if ( FLAGS & FLAG_SS_20 )
+    {
+      add_and_searchCU32(stream, batch );
+    }
+    else if ( FLAGS & FLAG_SS_30 )
+    {
+      add_and_searchCU33(stream, batch );
     }
     else
     {
@@ -412,7 +421,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
   if ( powcut )
   {
-    cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT);
+    cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, powcut, numharmstages * sizeof(float), cudaMemcpyHostToDevice),      "Copying power cutoff to device");
   }
   else
@@ -422,13 +431,13 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     {
       pw[i] = 0;
     }
-    cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT);
+    cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &pw, numharmstages * sizeof(float), cudaMemcpyHostToDevice),         "Copying power cutoff to device");
   }
 
   if (numindep)
   {
-    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP);
+    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, numindep, numharmstages * sizeof(long long), cudaMemcpyHostToDevice),  "Copying stages to device");
   }
   else
@@ -438,7 +447,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     {
       numi[i] = 0;
     }
-    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP);
+    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &numi, numharmstages * sizeof(long long), cudaMemcpyHostToDevice),      "Copying stages to device");
 
   }
@@ -465,13 +474,13 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
       hwidth[i] = 0;
     }
 
-    cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT);
+    cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 
-    cudaGetSymbolAddress((void **)&dcoeffs, STRIDE);
+    cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 
-    cudaGetSymbolAddress((void **)&dcoeffs, HWIDTH);
+    cudaGetSymbolAddress((void **)&dcoeffs, HWIDTH_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &hwidth, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
   }
 
@@ -509,7 +518,7 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
       dimGrid.x   = ceil(ww);
       dimGrid.y   = 1;
 
-      if ( batch->retType & CU_SMALCAND )
+      if ( batch->retType & CU_CANDSMAL )
       {
         //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
         //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
@@ -578,7 +587,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
           printf("\t\t\tCalculate sigma\n");
 #endif
 
-          if ( batch->retType & CU_SMALCAND )
+          if ( batch->retType & CU_CANDSMAL )
           {
             //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
           }
@@ -591,7 +600,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
               {
                 int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
 
-                if ( batch->retType & CU_SMALCAND )
+                if ( batch->retType & CU_CANDSMAL )
                 {
                   accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
                   poww                  = candB.sigma ;
@@ -604,7 +613,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                     candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
                   }
                 }
-                else if ( batch->retType & CU_FULLCAND )
+                else if ( batch->retType & CU_CANDFULL )
                 {
                   cand candd  = ((cand*)batch->h_retData)[idx] ;
                   poww        = candd.power;
@@ -647,7 +656,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
               {
                 int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
 
-                if ( batch->retType & CU_SMALCAND )
+                if ( batch->retType & CU_CANDSMAL )
                 {
                   accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
                   sig                   = candB.sigma ;
@@ -709,7 +718,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                             grIdx += stage * (batch->SrchSz->noOutpR);      // Stride by size
                           }
 
-                          if ( batch->cndType == CU_FULLCAND )
+                          if ( batch->cndType == CU_CANDFULL )
                           {
                             //#pragma omp critical
                             {
@@ -754,7 +763,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
 #ifdef STPMSG
         printf("\t\t\tDone\n");
 #endif
-        //if ( !(batch->flag & FLAG_SIG_GPU) && (batch->retType & CU_SMALCAND) )
+        //if ( !(batch->flag & FLAG_SIG_GPU) && (batch->retType & CU_CANDSMAL) )
         //  free(powers);
       }
 

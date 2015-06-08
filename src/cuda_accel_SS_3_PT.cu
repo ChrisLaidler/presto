@@ -8,8 +8,8 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
 
   if ( tid < width )
   {
-    const int zeroHeight  = HEIGHT[0];
-    const int oStride     = STRIDE[0];                          /// The stride of the output data
+    const int zeroHeight  = HEIGHT_STAGE[0];
+    const int oStride     = STRIDE_STAGE[0];                          /// The stride of the output data
 
     float           inds      [noSteps][noHarms];
     accelcandBasic  candLists [noStages][noSteps];
@@ -24,11 +24,11 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
 //#pragma unroll
         for ( int step = 0; step < noSteps; step++)             // Loop over steps
         {
-          float fx    = (rBin.val[step] + tid)*FRAC[harm] - rBin.val[harm*noSteps + step]  + HWIDTH[harm];
+          float fx    = (rBin.val[step] + tid)*FRAC_STAGE[harm] - rBin.val[harm*noSteps + step]  + HWIDTH_STAGE[harm];
 
           if        ( FLAGS & FLAG_ITLV_ROW )
           {
-            fx += step*STRIDE[harm] ;
+            fx += step*STRIDE_STAGE[harm] ;
           }
           inds[step][harm]      = fx+0.5f; // Add 0.5 to make centre of pixel
         }
@@ -85,7 +85,7 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
               {
                 int trm     = y + yPlus ;                         ///< True Y index in plain
 
-                float fy1   = (HEIGHT[harm]-1.0)*trm/(float)(zeroHeight-1.0) + 0.5f;
+                float fy1   = (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) + 0.5f;
                 float fy2   = fy1;
 
                 //#pragma unroll
@@ -93,7 +93,7 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
                 {
                   if        ( FLAGS & FLAG_ITLV_PLN )
                   {
-                    fy2 = fy1 + step * HEIGHT[harm];  // stride step by plain
+                    fy2 = fy1 + step * HEIGHT_STAGE[harm];  // stride step by plain
                   }
 
                   float fx              = inds[step][harm] ;
@@ -113,7 +113,7 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
               {
                 for( int yPlus = 0; yPlus < CHUNKSZ ; yPlus++ )     // Loop over section
                 {
-                  if  (  powers[step][yPlus] > POWERCUT[stage] )
+                  if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
                   {
                     if ( powers[step][yPlus] > candLists[stage][step].sigma )
                     {
@@ -141,7 +141,7 @@ __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, 
 //#pragma unroll
         for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
         {
-          if  ( candLists[stage][step].sigma >  POWERCUT[stage] )
+          if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
           {
             // Write to DRAM
             d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
