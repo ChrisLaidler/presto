@@ -32,33 +32,26 @@ __global__ void add_and_searchCU33_k(const uint width, accelcandBasic* d_cands, 
 
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
-      // Calculate the x indices or create a pointer offset by the correct amount
-      for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
+      FOLD // Calculate the x indices or create a pointer offset by the correct amount  .
       {
-        if ( FLAGS & FLAG_ITLV_ROW )
-        {
-          stride[harm] = noSteps*STRIDE_STAGE[harm] ;
-        }
-        else
-        {
-          stride[harm] = STRIDE_STAGE[harm] ;
-        }
-
-        for ( int step = 0; step < noSteps; step++)               /// Loop over steps
+        for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
         {
           // NOTE: the indexing below assume each plain starts on a multiple of noHarms
           int   ix    = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
+          inds[harm]  = ix;
 
-//          if ( FLAGS & FLAG_ITLV_ROW )
-//          {
-//            ix += step*STRIDE_STAGE[harm] ;
-//          }
-
-          inds[harm] = ix;
+          if ( FLAGS & FLAG_ITLV_ROW )
+          {
+            stride[harm] = noSteps*STRIDE_STAGE[harm] ;
+          }
+          else
+          {
+            stride[harm] = STRIDE_STAGE[harm] ;
+          }
         }
       }
 
-      FOLD  // Set the local and return candidate powers to zero
+      FOLD  // Set the local and return candidate powers to zero  .
       {
         for ( int stage = 0; stage < noStages; stage++ )
         {
@@ -75,104 +68,112 @@ __global__ void add_and_searchCU33_k(const uint width, accelcandBasic* d_cands, 
     {
       for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
       {
-        // Initialise powers for each section column to 0
-        for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
+        FOLD // Initialise powers for each section column to 0  .
         {
-          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
+          for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
           {
-            powers[step][yPlus] = 0;
+            for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
+            {
+              powers[step][yPlus] = 0;
+            }
           }
         }
 
         FOLD // Loop over stages, sum and search  .
         {
-          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages .
+          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages  .
           {
             int start = STAGE[stage][0] ;
             int end   = STAGE[stage][1] ;
 
-            // Create a section of summed powers one for each step
-            for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
+            FOLD // Create a section of summed powers one for each step  .
             {
-              int ix        = inds[harm] ;
-              int ix2       = ix;
-              //int h1      = HEIGHT_STAGE[harm]-1;
-
-              for( int yPlus = 0; yPlus < cunkSize; yPlus++ )       // Loop over the chunk  .
+              for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
               {
-                int trm     = y + yPlus ;                           ///< True Y index in plain
+                int ix1       = inds[harm] ;
+                int ix2       = ix1;
+                //int h1      = HEIGHT_STAGE[harm]-1;
 
-                int iy1     = YINDS[ zeroHeight*harm + trm ];
-                //  OR
-                //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
-                // OR
-                //int iy1     = ( h1 * trm + zh2 ) / zh1;
-
-                int iy2     = iy1*stride[harm];
-
-                for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
+                for( int yPlus = 0; yPlus < cunkSize; yPlus++ )       // Loop over the chunk  .
                 {
-                  if        ( FLAGS & FLAG_ITLV_PLN )
-                  {
-                    iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
-                  }
-                  else
-                  {
-                    ix2 = ix + step * STRIDE_STAGE[harm] ;
-                  }
+                  int trm     = y + yPlus ;                           ///< True Y index in plain
 
-                  if        ( FLAGS & FLAG_SAS_TEX )
+                  int iy1     = YINDS[ zeroHeight*harm + trm ];
+                  //  OR
+                  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
+                  // OR
+                  //int iy1     = ( h1 * trm + zh2 ) / zh1;
+
+                  int iy2     = iy1*stride[harm];
+
+                  for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
                   {
-                    if      ( FLAGS & FLAG_MUL_CB_OUT )
+                    if        ( FLAGS & FLAG_ITLV_PLN )
                     {
-                      const float cmpf      = tex2D < float > (texs.val[harm], ix2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
-                      powers[step][yPlus]   += cmpf;
+                      iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
                     }
                     else
                     {
-                      const float r         = tex2D < float > (texs.val[harm], ix2*2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
-                      const float i         = tex2D < float > (texs.val[harm], ix2*2+1.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
-                      powers[step][yPlus]   += r*r+i*i;
+                      ix2 = ix1 + step * STRIDE_STAGE[harm] ;
                     }
-                  }
-                  else
-                  {
-                    if      ( FLAGS & FLAG_MUL_CB_OUT )
+
+                    if        ( FLAGS & FLAG_SAS_TEX )
                     {
-                      float cmpf            = powersArr[harm][ iy2 + ix2 ];
-                      powers[step][yPlus]  += cmpf;
+                      if      ( FLAGS & FLAG_MUL_CB_OUT )
+                      {
+                        const float cmpf      = tex2D < float > (texs.val[harm], ix2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
+                        powers[step][yPlus]   += cmpf;
+                      }
+                      else
+                      {
+                        const float r         = tex2D < float > (texs.val[harm], ix2*2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
+                        const float i         = tex2D < float > (texs.val[harm], ix2*2+1.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
+                        powers[step][yPlus]   += r*r+i*i;
+                      }
                     }
                     else
                     {
-                      fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                      powers[step][yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                      if      ( FLAGS & FLAG_MUL_CB_OUT )
+                      {
+                        float cmpf            = powersArr[harm][ iy2 + ix2 ];
+                        powers[step][yPlus]  += cmpf;
+                      }
+                      else
+                      {
+                        fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
+                        powers[step][yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                      }
                     }
                   }
                 }
               }
             }
 
-            // Search set of powers
-            for ( int step = 0; step < noSteps; step++)           // Loop over steps
+            FOLD // Search set of powers  .
             {
-              for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section
+              for ( int step = 0; step < noSteps; step++)           // Loop over steps  .
               {
-                if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
+                for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section  .
                 {
-                  if ( powers[step][yPlus] > candLists[stage][step].sigma )
+                  if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
                   {
                     if ( y + yPlus < zeroHeight )
                     {
-                      // This is our new max!
-                      candLists[stage][step].sigma  = powers[step][yPlus];
-                      candLists[stage][step].z      = y+yPlus;
+                      if ( powers[step][yPlus] > candLists[stage][step].sigma )
+                      {
+                        // This is our new max!
+                        candLists[stage][step].sigma  = powers[step][yPlus];
+                        candLists[stage][step].z      = y+yPlus;
+                      }
                     }
                   }
                 }
               }
             }
+
           }
         }
+
       }
     }
 
@@ -198,6 +199,7 @@ __global__ void add_and_searchCU33_k(const uint width, accelcandBasic* d_cands, 
         }
       }
     }
+
   }
 }
 

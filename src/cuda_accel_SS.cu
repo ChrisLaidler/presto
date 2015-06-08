@@ -41,10 +41,11 @@ __device__ __constant__ int        HWIDTH_STAGE[MAX_HARM_NO];         ///< Plain
 
 //====================================== Constant variables  ===============================================\\
 
-__device__ const float FRAC_STAGE[16]      =  { 1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
-__device__ const float FRAC_HARM[16]       =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
-__device__ const int   STAGE[5][2]   =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
-__device__ const int   CHUNKSZE[5]   =  { 4, 8, 8, 8, 8 } ;
+__device__ const float FRAC_STAGE[16]     =  { 1.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.375f, 0.625f, 0.875f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+//__device__ const float FRAC_STAGE[16]     =  { 1.0f, 0.5f, 0.75f, 0.25f, 0.375f, 0.625f, 0.875f, 0.125f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+__device__ const float FRAC_HARM[16]      =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
+__device__ const int   STAGE[5][2]        =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
+__device__ const int   CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
 
 
 /** Return x such that 2**x = n
@@ -343,19 +344,23 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
  * @param stream
  * @param batch
  */
-__host__ void add_and_searchCU3(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
 {
   const uint FLAGS = batch->flag ;
 
   if            ( (FLAGS & FLAG_MUL_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
-    add_and_searchCU3_PT_f(dimGrid, dimBlock, stream, batch );
+    add_and_searchCU3_PT_f(stream, batch );
   }
   else
   {
     if      ( FLAGS & FLAG_SS_00 )
     {
       add_and_searchCU00(stream, batch );
+    }
+    else if ( FLAGS & FLAG_SS_10 )
+    {
+      add_and_searchCU31(stream, batch );
     }
     else if ( FLAGS & FLAG_SS_20 )
     {
@@ -367,7 +372,8 @@ __host__ void add_and_searchCU3(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream
     }
     else
     {
-      add_and_searchCU311_f(dimGrid, dimBlock, stream, batch );
+      fprintf(stderr,"ERROR: Invalid sum and search kernel.");
+      exit(EXIT_FAILURE);
     }
   }
 }
@@ -496,7 +502,7 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
 #ifdef STPMSG
     printf("\t\tSum & search kernel\n");
 #endif
-    dim3 dimBlock, dimGrid;
+    //dim3 dimBlock, dimGrid;
 
     int noStages = log(batch->noHarms)/log(2) + 1;
 
@@ -509,22 +515,13 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
 
     FOLD // Call the SS kernel  .
     {
-      dimBlock.x  = SS3_X;
-      dimBlock.y  = SS3_Y;
-
-      float bw    = SS3_X * SS3_Y;
-      float ww    = batch->accelLen / ( bw );
-
-      dimGrid.x   = ceil(ww);
-      dimGrid.y   = 1;
-
       if ( batch->retType & CU_CANDSMAL )
       {
         //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
         //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
         //if ( (batch->flag&FLAG_MUL_CB_OUT) && (batch->flag&FLAG_SAS_TEX) )
         {
-          add_and_searchCU3(dimGrid, dimBlock, batch->strmSearch, batch );
+          add_and_searchCU3(batch->strmSearch, batch );
         }
       }
       else
@@ -627,7 +624,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                 else
                 {
                   fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
-                  exit(1);
+                  exit(EXIT_FAILURE);
                 }
               }
             }
@@ -738,14 +735,14 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                           else
                           {
                             fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
-                            exit(1);
+                            exit(EXIT_FAILURE);
                           }
                         }
                       }
                       else
                       {
                         fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
-                        exit(1);
+                        exit(EXIT_FAILURE);
                       }
                     }
                   }
@@ -753,7 +750,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                 else
                 {
                   fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-                  exit(1);
+                  exit(EXIT_FAILURE);
                 }
               }
             }

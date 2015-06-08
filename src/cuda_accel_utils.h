@@ -58,25 +58,8 @@ extern "C"
 
 #define CHUNKSZ         8                     // Added by run time script
 
-#define SS_X            16                    // X Thread Block
-#define SS_Y            16                    // Y Thread Block
-#define SS_X_TILES      3                     // X No. tiles covered by 1 Thread block
-#define SS_Y_TILES      3                     // Y No. tiles covered by 1 Thread block
-#define SS_X_NUM        (SS_X*SS_X_TILES)     // No X elements covered by 1 Thread Block
-#define SS_Y_NUM        (SS_Y*SS_Y_TILES)     // No Y elements covered by 1 Thread Block
-#define SS_Z_MAX_BUF    0                     // No points to consider for local maxima calculation  ( 8 = 16/2 )
-#define SS_R_MAX_BUF    0                     // No points to consider for local maxima calculation  ( 8 = 16/2 )
-#define SS_X_OVERLAP    0                     // X Overlap between Thread Blocks
-#define SS_Y_OVERLAP    0                     // Y Overlap between Thread Blocks
-
-
 #define SS3_X           16                    // X Thread Block
 #define SS3_Y           8                     // Y Thread Block
-//#define SS3_NPOWERS     21                    // Added by auto-tune script
-
-#define SS4_X           32                    // X Thread Block
-#define SS4_Y           16                    // Y Thread Block
-#define SS4_NB          1                     // Added by auto-tune script
 
 #define CNV_DIMX        16                    // X Thread Block
 #define CNV_DIMY        8                     // Y Thread Block

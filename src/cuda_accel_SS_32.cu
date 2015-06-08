@@ -17,6 +17,8 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
   const int bidx  = threadIdx.y * SS33_X          +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * (SS33_Y*SS33_X) +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
 
+  __shared__ float smBlock[cunkSize][SS33_Y*SS33_X];
+
   if ( tid < width )
   {
     const int zeroHeight  = HEIGHT_STAGE[0];
@@ -25,10 +27,12 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
     //const int zh1         = zeroHeight-1;
     //const int zh2         = zeroHeight-2;
 
-    int             inds      [noHarms];
-    accelcandBasic  candLists [noStages][noSteps];
-    float           powers    [noSteps];                         /// registers to hold values to increase mem cache hits
+    //int             inds      [noHarms];
+    //accelcandBasic  candLists [noStages][noSteps];
+    //float           powers    [noSteps][cunkSize];                /// registers to hold values to increase mem cache hits
     int             stride    [noHarms];
+    int             x0        [noHarms];
+    int             x1        [noHarms];
 
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
@@ -44,18 +48,21 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
           stride[harm] = STRIDE_STAGE[harm] ;
         }
 
-        for ( int step = 0; step < noSteps; step++)               /// Loop over steps
+        //for ( int step = 0; step < noSteps; step++)               /// Loop over steps
         {
           // NOTE: the indexing below assume each plain starts on a multiple of noHarms
           int   ix    = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
 
-          if ( FLAGS & FLAG_ITLV_ROW )
-          {
-            ix += step*STRIDE_STAGE[harm] ;
-          }
+//          if ( FLAGS & FLAG_ITLV_ROW )
+//          {
+//            ix += step*STRIDE_STAGE[harm] ;
+//          }
 
-          inds[harm] = ix;
+          //inds[harm] = ix;
         }
+
+        x0[harm] = roundf( blockIdx.x  * (SS33_Y*SS33_X)*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
+        x1[harm] = roundf( blockIdx.x  * (  (blockIdx.x+1)  * (SS33_Y*SS33_X)-1)*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] - x0[harm] ;
       }
 
       FOLD  // Set the local and return candidate powers to zero
@@ -64,95 +71,127 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
         {
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
-            candLists[stage][step].sigma = POWERCUT_STAGE[stage] ;
+            //candLists[stage][step].sigma = 0 ;
             d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
           }
         }
       }
     }
-    float pc = POWERCUT_STAGE[0];
 
     FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
     {
-      //for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
+      for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
       {
+//        FOLD // Initialise powers for each section column to 0  .
+//        {
+//          for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
+//          {
+//            for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
+//            {
+//              powers[step][yPlus] = 0;
+//            }
+//          }
+//        }
+
         FOLD // Loop over stages, sum and search  .
         {
-
-          for( int y = 0; y < zeroHeight ; y ++ )              // loop over y .
+          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages .
           {
+            int start = STAGE[stage][0] ;
+            int end   = STAGE[stage][1] ;
 
-            for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
+            // Create a section of summed powers one for each step
+            for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
             {
-              powers[step] = 0;
-            }
+              //int ix        = inds[harm] ;
+              //int ix2       = ix;
+              //int h1      = HEIGHT_STAGE[harm]-1;
 
-            for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages .
-            {
-              int start = STAGE[stage][0] ;
-              int end   = STAGE[stage][1] ;
+              int ix        = x0[harm] + bidx ;
+              int ix2       = ix ;
 
-
-
-              // Create a section of summed powers one for each step
-              for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
+              if ( bidx < x1[harm] )
               {
-                int ix        = inds[harm] ;
-                //int h1      = HEIGHT_STAGE[harm]-1;
+
+                int y0 = YINDS[ zeroHeight*harm + y ];
+                int y1 = YINDS[ zeroHeight*harm + y + cunkSize ];
 
                 //for( int yPlus = 0; yPlus < cunkSize; yPlus++ )       // Loop over the chunk  .
-
-                int trm     = y ;                           ///< True Y index in plain
-
-                int iy1     = YINDS[ zeroHeight*harm + trm ];
-                //  OR
-                //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
-                // OR
-                //int iy1     = ( h1 * trm + zh2 ) / zh1;
-
-                int iy2     = iy1*stride[harm];
-
-                for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
+                for( int yPlus = y0; yPlus < y1; yPlus++ )       // Loop over the chunk  .
                 {
+                  //int trm     = y + yPlus ;                           ///< True Y index in plain
 
-                  if        ( FLAGS & FLAG_ITLV_PLN )
+                  //int iy1     = YINDS[ zeroHeight*harm + trm ];
+                  //  OR
+                  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
+                  // OR
+                  //int iy1     = ( h1 * trm + zh2 ) / zh1;
+
+                  int iy1     = yPlus ;
+                  int iy2     = iy1 * stride[harm] ;
+
+                  for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
                   {
-                    iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
-                  }
+                    if        ( FLAGS & FLAG_ITLV_PLN )
+                    {
+                      iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
+                    }
+                    else
+                    {
+                      ix2 = ix + step * STRIDE_STAGE[harm] ;
+                    }
 
-                  float cmpf;
+                    FOLD
+                    {
+                      if      ( FLAGS & FLAG_MUL_CB_OUT )
+                      {
+                        float cmpf            = powersArr[harm][ iy2 + ix2 ];
+                        //powers[step][yPlus]  += cmpf;
 
-                  if      ( FLAGS & FLAG_MUL_CB_OUT )
-                  {
-                    cmpf                   = powersArr[harm][ ix + iy2 ];
-                  }
-                  else
-                  {
-                    fcomplexcu cmpc       = cmplxArr[harm][ ix + iy2 ];
-                    cmpf                  = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                  }
+                        if ( cmpf < 0 ) // TMP
+                          printf("SS33");
+                        //atomicAdd(&smBlock[yPlus][tid], cmpf);
+                      }
+                      else
+                      {
+                        //fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
+                        //float cmpf            = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                        //powers[step][yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
 
-                  powers[step]            += cmpf;
-
-                  //if ( powers[step] > candLists[stage][step].sigma )
-
-                  if ( powers[step] > pc )
-                  {
-                    if ( powers[step] < 0 )
-                      printf("bob");
-
-//                    // This is our new max!
-//                    candLists[stage][step].sigma  = powers[step];
-//                    candLists[stage][step].z      = y;
+//                        if ( cmpf < 0 ) // TMP
+//                          printf("SS33");
+                      }
+                    }
                   }
                 }
               }
             }
+            /*
+            // Search set of powers
+            for ( int step = 0; step < noSteps; step++)           // Loop over steps
+            {
+              for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section
+              {
+                if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
+                {
+                  if ( powers[step][yPlus] > candLists[stage][step].sigma )
+                  {
+                    if ( y + yPlus < zeroHeight )
+                    {
+                      // This is our new max!
+                      candLists[stage][step].sigma  = powers[step][yPlus];
+                      candLists[stage][step].z      = y+yPlus;
+                    }
+                  }
+                }
+              }
+            }
+            */
           }
         }
       }
     }
-
+/*
     FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
       for ( int step = 0; step < noSteps; step++)             // Loop over steps
@@ -175,6 +214,7 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
         }
       }
     }
+*/
   }
 }
 

@@ -309,9 +309,19 @@ __host__ void add_and_searchCU3_PT_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
   }
 }
 
-__host__ void add_and_searchCU3_PT_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void add_and_searchCU3_PT_f(cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const uint FLAGS = batch->flag ;
+  const uint FLAGS = batch->flag;
+  dim3 dimBlock, dimGrid;
+
+  dimBlock.x  = SS3_X;
+  dimBlock.y  = SS3_Y;
+
+  float bw    = SS3_X * SS3_Y;
+  float ww    = batch->accelLen / ( bw );
+
+  dimGrid.x   = ceil(ww);
+  dimGrid.y   = 1;
 
   if        ( (FLAGS & FLAG_MUL_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {

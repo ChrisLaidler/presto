@@ -347,17 +347,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         // Calculate the stage order of the harmonics
         int harmtosum;
         int i = 0;
+        printf("\n");
+
         for (int stage = 0; stage < numharmstages; stage++)
         {
           harmtosum = 1 << stage;
           for (int harm = 1; harm <= harmtosum; harm += 2, i++)
           {
-            float harmFrac                  = 1-harm/ float(harmtosum);
+            float harmFrac                  = 1-harm/float(harmtosum);
+            //float harmFrac                  = harm/float(harmtosum);
             int idx                         = round(harmFrac*noHarms);
+            //int idx                         = noHarms - round(harmFrac*noHarms);
             kernel->hInfos[idx].stageOrder  = i;
             kernel->pIdx[i]                 = idx;
+
+            printf("%.5f, ", kernel->hInfos[idx].harmFrac );
           }
         }
+        printf("\n");
 
         // Multi-step data layout method  .
         if ( !(kernel->flag & FLAG_ITLV_ALL ) )
