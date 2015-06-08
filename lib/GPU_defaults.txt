@@ -2,7 +2,7 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
-IL_PLN # Last Edited by run time script
+IL_PLN
 
 ######## Input #######
 
@@ -34,7 +34,7 @@ FLAG_MUL_CB_OUT 		# Almost always want this if possible
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
-SS_10 # Last Edited by run time script
+SS_30 # Last Edited by run time script
 
 ###### output ########
 

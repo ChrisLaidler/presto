@@ -56,28 +56,22 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
                 {
                   float cmpf            = powersArr[harm][ tid + idx ];
                   batch[yPlus]          = cmpf;
-                  //if ( cmpf < 0 && cmpf > 0 )     // Required so as to not optimise out
-                  //if ( cmpf < 0 )     // Required so as to not optimise out
-                  //{
-                  //  printf("SS\n");
-                  //}
                 }
                 else
                 {
                   fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-
-                  if ( cmpc.r < 0 && cmpc.r > 0 )     // Required so as to not optimise out
-                  {
-                    printf("SS\n");
-                  }
+                  batch[yPlus]          = cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
                 }
               }
             }
             for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
             {
-              if ( batch[yPlus] < 0 )
+              if (yPlus + yBase < nHeight )
               {
-                printf("SS\n");
+                if ( batch[yPlus] < 0 )
+                {
+                  printf("SS\n");
+                }
               }
             }
           }
@@ -128,7 +122,7 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
         FOLD // Read data from plains  .
         {
           //for ( int y = 0; y < nHeight; y++ )
-          for ( int yBase = 0; yBase< nHeight; yBase+=noBatch )
+          for ( int yBase = 0; yBase < nHeight; yBase+=noBatch )
           {
             for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
             {
@@ -140,28 +134,23 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
                 {
                   float cmpf            = powersArr[harm][ tid + idx ];
                   batch[yPlus]          = cmpf;
-                  //if ( cmpf < 0 && cmpf > 0 )     // Required so as to not optimise out
-                  //if ( cmpf < 0 )     // Required so as to not optimise out
-                  //{
-                  //  printf("SS\n");
-                  //}
                 }
                 else
                 {
                   fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-
-                  if ( cmpc.r < 0 && cmpc.r > 0 )     // Required so as to not optimise out
-                  {
-                    printf("SS\n");
-                  }
+                  batch[yPlus]          = cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
                 }
               }
             }
+
             for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
             {
-              if ( batch[yPlus] < 0 )
+              if (yPlus + yBase < nHeight )
               {
-                printf("SS\n");
+                if ( batch[yPlus] < 0 )
+                {
+                  printf("SS\n");
+                }
               }
             }
           }
@@ -224,29 +213,23 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
                 {
                   float cmpf            = powersArr[0][ tid + idx ];
                   batch[yPlus]          = cmpf;
-                  //if ( cmpf < 0 && cmpf > 0 )     // Required so as to not optimise out
-                  //if ( cmpf < 0 )     // Required so as to not optimise out
-                  //{
-                  //  printf("SS\n");
-                  //}
                 }
                 else
                 {
-                  fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-
-                  if ( cmpc.r < 0 && cmpc.r > 0 )     // Required so as to not optimise out
-                  {
-                    printf("SS\n");
-                  }
+                  fcomplexcu cmpc       = cmplxArr[0][ tid + idx ];
+                  batch[yPlus]          = cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
                 }
               }
             }
 
             for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
             {
-              if ( batch[yPlus] < 0 )
+              if (yPlus + yBase < nHeight )
               {
-                printf("SS\n");
+                if ( batch[yPlus] < 0 )
+                {
+                  printf("SS\n");
+                }
               }
             }
           }
@@ -274,21 +257,42 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   fsHarmList powers;
   cHarmList   cmplx;
 
-  for (int i = 0; i < batch->noHarms; i++)
+  if ( 1 )
   {
-    //int idx         = batch->pIdx[i]; // Stage order
-    int idx = 1;
-    powers.val[i]   = batch->plains[idx].d_plainPowers;
-    cmplx.val[i]    = batch->plains[idx].d_plainData;
-  }
+    for (int i = 0; i < batch->noHarms; i++)
+    {
+      int idx         = batch->stageIdx[i]; // Stage order
+      powers.val[i]   = batch->plains[idx].d_plainPowers;
+      cmplx.val[i]    = batch->plains[idx].d_plainData;
+    }
 
-  if        ( FLAGS & FLAG_MUL_CB_OUT )
-  {
-    add_and_searchCU01_k<FLAG_MUL_CB_OUT, 12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+    if        ( FLAGS & FLAG_MUL_CB_OUT )
+    {
+      add_and_searchCU02_k<FLAG_MUL_CB_OUT, 12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+    }
+    else
+    {
+      add_and_searchCU02_k< 0, 12 > <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+    }
   }
   else
   {
-    add_and_searchCU01_k< 0, 12 > <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+
+    for (int i = 0; i < batch->noHarms; i++)
+    {
+      int idx = i;
+      powers.val[i]   = batch->plains[idx].d_plainPowers;
+      cmplx.val[i]    = batch->plains[idx].d_plainData;
+    }
+
+    if        ( FLAGS & FLAG_MUL_CB_OUT )
+    {
+      add_and_searchCU00_k<FLAG_MUL_CB_OUT, 12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+    }
+    else
+    {
+      add_and_searchCU00_k< 0, 12 > <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+    }
   }
 
 }

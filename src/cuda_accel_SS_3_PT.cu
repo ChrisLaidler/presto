@@ -158,7 +158,7 @@ __host__ void add_and_searchCU3_PT_d(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
   tHarmList   texs;
   for (int i = 0; i < noHarms; i++)
   {
-    int idx         = batch->pIdx[i];
+    int idx         = batch->stageIdx[i];
     texs.val[i]     = batch->plains[idx].datTex;
   }
 
@@ -167,7 +167,7 @@ __host__ void add_and_searchCU3_PT_d(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
     long08 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -180,7 +180,7 @@ __host__ void add_and_searchCU3_PT_d(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
     long16 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -193,7 +193,7 @@ __host__ void add_and_searchCU3_PT_d(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
     long32 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -206,7 +206,7 @@ __host__ void add_and_searchCU3_PT_d(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
     long64 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -219,7 +219,7 @@ __host__ void add_and_searchCU3_PT_d(dim3 dimGrid, dim3 dimBlock, cudaStream_t s
     long128 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;

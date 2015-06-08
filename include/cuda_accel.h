@@ -367,7 +367,7 @@ typedef struct cuFFdotBatch
     size_t noSteps;                   ///< The number of steps processed by the batch
     int noHarmStages;                 ///< The number of stages of harmonic summing
 
-    int pIdx[MAX_HARM_NO];            ///< The index of the plains in the Presto harmonic summing order
+    int stageIdx[MAX_HARM_NO];        ///< The index of the plains in the Presto harmonic summing order
 
     cuFfdotStack* stacks;             ///< A list of the stacks
     cuHarmInfo*   hInfos;             ///< A list of the harmonic informations

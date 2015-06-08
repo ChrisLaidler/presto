@@ -285,7 +285,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       for (int i = noHarms; i > 0; i--)
       {
         int idx = noHarms-i;
-        kernel->hInfos[idx].harmFrac    = (i) / (double)noHarms;
+        kernel->hInfos[idx].harmFrac    = (i) / (float)noHarms;
         kernel->hInfos[idx].zmax        = calc_required_z(kernel->hInfos[idx].harmFrac, zmax);
         kernel->hInfos[idx].height      = (kernel->hInfos[idx].zmax / ACCEL_DZ) * 2 + 1;
         kernel->hInfos[idx].halfWidth   = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
@@ -355,13 +355,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           for (int harm = 1; harm <= harmtosum; harm += 2, i++)
           {
             float harmFrac                  = 1-harm/float(harmtosum);
-            //float harmFrac                  = harm/float(harmtosum);
             int idx                         = round(harmFrac*noHarms);
-            //int idx                         = noHarms - round(harmFrac*noHarms);
-            kernel->hInfos[idx].stageOrder  = i;
-            kernel->pIdx[i]                 = idx;
+            if ( harmFrac == 1 )
+              idx = 0;
 
-            printf("%.5f, ", kernel->hInfos[idx].harmFrac );
+            kernel->hInfos[idx].stageOrder  = i;
+            kernel->stageIdx[i]             = idx;
+
+            printf("%.4ff, ", kernel->hInfos[idx].harmFrac );
           }
         }
         printf("\n");

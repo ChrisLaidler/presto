@@ -8,8 +8,8 @@
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
-template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps, typename stpType>
-__global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, stpType rBin, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps/*, typename stpType*/>
+__global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*stpType rBin,*/ tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
   const int bidx  = threadIdx.y * SS3_X         +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * (SS3_Y*SS3_X) +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
@@ -40,24 +40,24 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, st
           stride[harm] = STRIDE_STAGE[harm] ;
         }
 
-        // NOTE: the indexing below assume each plain starts on a multiple of noHarms
+        //// NOTE: the indexing below assume each plain starts on a multiple of noHarms
         int   ix      = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
         inds[harm]    = ix;
 
 
         //#pragma unroll
-        //        for ( int step = 0; step < noSteps; step++)               /// Loop over steps
-        //        {
-        //          float fx    = (rBin.val[step] + tid)*FRAC_STAGE[harm] - rBin.val[harm*noSteps + step]  + HWIDTH_STAGE[harm] ;
-        //          int   ix    = roundf(fx) ;
-        //
-        //          if ( FLAGS & FLAG_ITLV_ROW )
-        //          {
-        //            ix += step*STRIDE_STAGE[harm] ;
-        //          }
-        //
-        //          inds[step][harm] = ix;
-        //        }
+//                for ( int step = 0; step < noSteps; step++)               /// Loop over steps
+//                {
+//                  float fx    = (rBin.val[step] + tid)*FRAC_STAGE[harm] - rBin.val[harm*noSteps + step]  + HWIDTH_STAGE[harm] ;
+//                  int   ix    = roundf(fx) ;
+//
+//                  if ( FLAGS & FLAG_ITLV_ROW )
+//                  {
+//                    ix += step*STRIDE_STAGE[harm] ;
+//                  }
+//
+//                  inds[step][harm] = ix;
+//                }
       }
 
       FOLD  // Set the local and return candidate powers to zero
@@ -119,7 +119,7 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, st
                 //#pragma unroll
                 for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
                 {
-                  //int ix = inds[step][harm] ;
+                  //int ix2 = inds[step][harm] ;
 
                   if        ( FLAGS & FLAG_ITLV_PLN )
                   {
@@ -219,6 +219,7 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, st
   }
 }
 
+/*
 template<uint FLAGS, int noStages, const int noHarms, const int cunkSize, int noSteps>
 __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
@@ -228,7 +229,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   for (int i = 0; i < noHarms; i++)
   {
-    int idx         = batch->pIdx[i];
+    int idx         = batch->stageIdx[i];
     texs.val[i]     = batch->plains[idx].datTex;
     powers.val[i]   = batch->plains[idx].d_plainPowers;
     cmplx.val[i]    = batch->plains[idx].d_plainData;
@@ -239,7 +240,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long04 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -253,7 +254,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long08 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -267,7 +268,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long16 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -281,7 +282,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long32 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -296,7 +297,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long64 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -310,7 +311,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long96 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -324,7 +325,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long128 rBin;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
       for ( int step = 0; step < noSteps; step++)
       {
         rBin.val[i*noSteps + step]  = (*batch->rConvld)[step][idx].expBin ;
@@ -338,52 +339,73 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     fprintf(stderr,"ERROR: %s has not been set up to work with %i elements.",__FUNCTION__, noHarms*noSteps);
   }
 }
+*/
 
 template<uint FLAGS, int noStages, const int noHarms, const int cunkSize>
 __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int noSteps = batch->noSteps ;
 
+  tHarmList   texs;
+  fsHarmList powers;
+  cHarmList   cmplx;
+
+  for (int i = 0; i < noHarms; i++)
+  {
+    int idx         = batch->stageIdx[i];
+    texs.val[i]     = batch->plains[idx].datTex;
+    powers.val[i]   = batch->plains[idx].d_plainPowers;
+    cmplx.val[i]    = batch->plains[idx].d_plainData;
+  }
+
   switch (noSteps)
   {
     case 1:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,1>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,1>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 2:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,2>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,2>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 3:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,3>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,3>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 4:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,4>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,4>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 5:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,5>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,5>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 6:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,6>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,6>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 7:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 8:
     {
-      add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,8>(dimGrid, dimBlock, stream, batch);
+      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     default:

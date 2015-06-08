@@ -228,7 +228,7 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     long long firstBin  = (*batch->rConvld)[step][0].expBin ;
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
 
       long long binb      = (*batch->rConvld)[step][idx].expBin ;
 
@@ -246,7 +246,7 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   for (int i = 0; i < noHarms; i++)
   {
-    int idx         = batch->pIdx[i];
+    int idx         = batch->stageIdx[i];
     texs.val[i]     = batch->plains[idx].datTex;
     powers.val[i]   = batch->plains[idx].d_plainPowers;
     cmplx.val[i]    = batch->plains[idx].d_plainData;

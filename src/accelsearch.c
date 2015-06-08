@@ -290,7 +290,7 @@ int main(int argc, char *argv[])
        {
          candsGPU = NULL;
 
-         //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+         cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
          //cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
 
          FOLD   // Contains main GPU loop  .

@@ -1049,7 +1049,7 @@ int main(int argc, char *argv[])
               {
                 //float frac = (float)(harm)/(float)harmtosum;
                 //int idx = noHarms - frac * noHarms;
-                int idx = trdBatch->pIdx[harm];
+                int idx = trdBatch->stageIdx[harm];
 
                 cuHarmInfo *hinf  = &cuSrch->mInf->kernels[0].hInfos[idx];
 

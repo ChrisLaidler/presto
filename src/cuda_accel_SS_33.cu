@@ -157,9 +157,10 @@ __global__ void add_and_searchCU33_k(const uint width, accelcandBasic* d_cands, 
                 {
                   if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
                   {
-                    if ( y + yPlus < zeroHeight )
+
+                    if ( powers[step][yPlus] > candLists[stage][step].sigma )
                     {
-                      if ( powers[step][yPlus] > candLists[stage][step].sigma )
+                      if ( y + yPlus < zeroHeight )
                       {
                         // This is our new max!
                         candLists[stage][step].sigma  = powers[step][yPlus];
@@ -211,15 +212,17 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for ( int step = 0; step < noSteps; step++)
   {
     long long firstBin  = (*batch->rConvld)[step][0].expBin ;
+
     for (int i = 0; i < noHarms; i++)
     {
-      int idx =  batch->pIdx[i];
+      int idx =  batch->stageIdx[i];
 
       long long binb      = (*batch->rConvld)[step][idx].expBin ;
 
-      if ( firstBin * batch->hInfos[idx].harmFrac != binb )
+      if ( firstBin * FRAC_STAGE[i] != binb )
       {
         fprintf(stderr,"ERROR, in function %s, R values are not properly aligned! Each step should start on a multiple of (2 x No Harms).\n", __FUNCTION__ );
+        fprintf(stderr,"%f != %f.\n", firstBin * FRAC_STAGE[i], (float)binb );
         exit(EXIT_FAILURE);
       }
     }
@@ -231,7 +234,7 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   for (int i = 0; i < noHarms; i++)
   {
-    int idx         = batch->pIdx[i];
+    int idx         = batch->stageIdx[i];
     texs.val[i]     = batch->plains[idx].datTex;
     powers.val[i]   = batch->plains[idx].d_plainPowers;
     cmplx.val[i]    = batch->plains[idx].d_plainData;
@@ -256,6 +259,7 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     }
     case 4:
     {
+      cudaFuncSetCacheConfig(add_and_searchCU33_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
       add_and_searchCU33_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
       break;
     }
