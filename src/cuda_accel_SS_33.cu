@@ -2,6 +2,14 @@
 
 #define SS33_X           16                    // X Thread Block
 #define SS33_Y           8                     // Y Thread Block
+#define SS33BS           (SS33_X*SS33_Y)
+
+
+template<int noStages, int noSteps>
+__device__ __forceinline__ int idxSS(int tid, int stage, int step)
+{
+    return stage * noSteps * SS33BS + SS33BS * step + tid ;
+}
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
@@ -14,8 +22,8 @@
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
 __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
-  const int bidx  = threadIdx.y * SS33_X          +  threadIdx.x;   /// Block index
-  const int tid   = blockIdx.x  * (SS33_Y*SS33_X) +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
+  const int tid   = threadIdx.y * SS33_X          +  threadIdx.x;   /// Block index
+  const int gid   = blockIdx.x  * (SS33_Y*SS33_X) +  tid;           /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
@@ -25,12 +33,16 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
     //const int zh1         = zeroHeight-1;
     //const int zh2         = zeroHeight-2;
 
-    int             inds      [noHarms];
-    //candMin         candLists [noStages][noSteps];
-    float           candPow   [noStages][noSteps];
-    int             candZ     [noStages][noSteps];
-    float           powers    [noSteps][cunkSize];                /// registers to hold values to increase mem cache hits
-    int             stride    [noHarms];
+    int                 inds      [noHarms];
+    //candMin             candLists [noStages][noSteps];
+    float               candPow   [noStages][noSteps];
+    //__shared__ float    candPow   [noStages*noSteps*SS33BS];
+    //int                 candZ     [noStages][noSteps];
+    __shared__ float    candZ     [noStages*noSteps*SS33BS];
+    float               powers    [noSteps][cunkSize];                /// registers to hold values to increase mem cache hits
+    int                 stride    [noHarms];
+
+
 
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
@@ -40,7 +52,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
         for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
         {
           // NOTE: the indexing below assume each plain starts on a multiple of noHarms
-          int   ix    = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
+          int   ix    = roundf( gid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
           inds[harm]  = ix;
 
           if ( FLAGS & FLAG_ITLV_ROW )
@@ -64,7 +76,8 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
           {
             //candLists[stage][step].sigma = 0 ;
             candPow [stage][step]        = 0 ;
-            d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+            //candPow[idxSS<noStages,noSteps>(tid, stage, step)]          = 0 ;
+            d_cands[step*noStages*oStride + stage*oStride + gid ].sigma = 0 ;
           }
         }
       }
@@ -174,6 +187,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
 
                     //if ( powers[step][yPlus] > candLists[stage][step].sigma )
                     if ( powers[step][yPlus] > candPow [stage][step] )
+                    //if ( powers[step][yPlus] > candPow[idxSS<noStages,noSteps>(tid, stage, step)] )
                     {
                       if ( y + yPlus < zeroHeight )
                       {
@@ -182,7 +196,9 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
                         //candLists[stage][step].z      = y+yPlus;
 
                         candPow [stage][step]  = powers[step][yPlus];
-                        candZ   [stage][step]  = y+yPlus;
+                        //candPow[idxSS<noStages,noSteps>(tid, stage, step)] = powers[step][yPlus] ;
+                        //candZ   [stage][step]  = y+yPlus;
+                        candZ[idxSS<noStages,noSteps>(tid, stage, step)] = y+yPlus ;
                       }
                     }
                   }
@@ -206,14 +222,17 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
         {
           //if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
           if  ( candPow [stage][step] >  POWERCUT_STAGE[stage] )
+          //if  ( candPow[idxSS<noStages,noSteps>(tid, stage, step)] >  POWERCUT_STAGE[stage] )
           {
             candMin tt;
 
             tt.sigma = candPow [stage][step];
-            tt.z     = candZ   [stage][step];
+            //tt.sigma = candPow[idxSS<noStages,noSteps>(tid, stage, step)] ;
+            //tt.z     = candZ   [stage][step];
+            tt.z     = candZ[idxSS<noStages,noSteps>(tid, stage, step)] ;
 
             // Write to DRAM
-            d_cands[step*noStages*oStride + stage*oStride + tid] = tt;
+            d_cands[step*noStages*oStride + stage*oStride + gid] = tt;
 
             //candPow [stage][step]  = powers[step][yPlus];
             //candZ   [stage][step]  = y+yPlus;
