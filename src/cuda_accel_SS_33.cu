@@ -8,7 +8,7 @@
 template<int noStages, int noSteps>
 __device__ __forceinline__ int idxSS(int tid, int stage, int step)
 {
-    return stage * noSteps * SS33BS + SS33BS * step + tid ;
+  return stage * noSteps * SS33BS + SS33BS * step + tid ;
 }
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
@@ -37,8 +37,8 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
     //candMin             candLists [noStages][noSteps];
     float               candPow   [noStages][noSteps];
     //__shared__ float    candPow   [noStages*noSteps*SS33BS];
-    //int                 candZ     [noStages][noSteps];
-    __shared__ float    candZ     [noStages*noSteps*SS33BS];
+    int                 candZ     [noStages][noSteps];
+    //__shared__ float    candZ     [noStages*noSteps*SS33BS];
     float               powers    [noSteps][cunkSize];                /// registers to hold values to increase mem cache hits
     int                 stride    [noHarms];
 
@@ -187,7 +187,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
 
                     //if ( powers[step][yPlus] > candLists[stage][step].sigma )
                     if ( powers[step][yPlus] > candPow [stage][step] )
-                    //if ( powers[step][yPlus] > candPow[idxSS<noStages,noSteps>(tid, stage, step)] )
+                      //if ( powers[step][yPlus] > candPow[idxSS<noStages,noSteps>(tid, stage, step)] )
                     {
                       if ( y + yPlus < zeroHeight )
                       {
@@ -197,8 +197,8 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
 
                         candPow [stage][step]  = powers[step][yPlus];
                         //candPow[idxSS<noStages,noSteps>(tid, stage, step)] = powers[step][yPlus] ;
-                        //candZ   [stage][step]  = y+yPlus;
-                        candZ[idxSS<noStages,noSteps>(tid, stage, step)] = y+yPlus ;
+                        candZ   [stage][step]  = y+yPlus;
+                        //candZ[idxSS<noStages,noSteps>(tid, stage, step)] = y+yPlus ;
                       }
                     }
                   }
@@ -222,20 +222,17 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
         {
           //if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
           if  ( candPow [stage][step] >  POWERCUT_STAGE[stage] )
-          //if  ( candPow[idxSS<noStages,noSteps>(tid, stage, step)] >  POWERCUT_STAGE[stage] )
+            //if  ( candPow[idxSS<noStages,noSteps>(tid, stage, step)] >  POWERCUT_STAGE[stage] )
           {
             candMin tt;
 
             tt.sigma = candPow [stage][step];
             //tt.sigma = candPow[idxSS<noStages,noSteps>(tid, stage, step)] ;
-            //tt.z     = candZ   [stage][step];
-            tt.z     = candZ[idxSS<noStages,noSteps>(tid, stage, step)] ;
+            tt.z     = candZ   [stage][step];
+            //tt.z     = candZ[idxSS<noStages,noSteps>(tid, stage, step)] ;
 
             // Write to DRAM
             d_cands[step*noStages*oStride + stage*oStride + gid] = tt;
-
-            //candPow [stage][step]  = powers[step][yPlus];
-            //candZ   [stage][step]  = y+yPlus;
           }
         }
       }
@@ -329,6 +326,88 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
 }
 
+template<uint FLAGS, int noStages, const int noHarms>
+__host__ void add_and_searchCU33_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+{
+  switch (globalInt01)
+  {
+    case 1:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 2:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 3:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 4:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 5:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 6:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 7:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 8:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 9:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 10:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 12:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 16:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 20:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 24:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    default:
+      fprintf(stderr, "ERROR: %s has not been templated for %i stages\n", __FUNCTION__, noStages);
+      exit(EXIT_FAILURE);
+  }
+
+}
+
 template<uint FLAGS >
 __host__ void add_and_searchCU33_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
@@ -338,27 +417,27 @@ __host__ void add_and_searchCU33_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   {
     case 1:
     {
-      add_and_searchCU33_q<FLAGS,1,1,4>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU33_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
       break;
     }
     case 2:
     {
-      add_and_searchCU33_q<FLAGS,2,2,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU33_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
       break;
     }
     case 3:
     {
-      add_and_searchCU33_q<FLAGS,3,4,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU33_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
       break;
     }
     case 4:
     {
-      add_and_searchCU33_q<FLAGS,4,8,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU33_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
       break;
     }
     case 5:
     {
-      add_and_searchCU33_q<FLAGS,5,16,6>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU33_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
       break;
     }
     default:
