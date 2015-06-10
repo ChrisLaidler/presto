@@ -2,6 +2,14 @@
 
 #define SS33_X           16                    // X Thread Block
 #define SS33_Y           8                     // Y Thread Block
+#define SS33BS           (SS33_X*SS33_Y)
+
+
+template<int noStages, int noSteps>
+__device__ __forceinline__ int idxSS(int tid, int stage, int step)
+{
+  return stage * noSteps * SS33BS + SS33BS * step + tid ;
+}
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
@@ -12,12 +20,10 @@
  * @param noSteps
  */
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+__global__ void add_and_searchCU32_k(const uint width, __restrict__ candMin* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
-  const int bidx  = threadIdx.y * SS33_X          +  threadIdx.x;   /// Block index
-  const int tid   = blockIdx.x  * (SS33_Y*SS33_X) +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
-
-  __shared__ float smBlock[cunkSize][SS33_Y*SS33_X];
+  const int tid   = threadIdx.y * SS33_X          +  threadIdx.x;   /// Block index
+  const int gid   = blockIdx.x  * (SS33_Y*SS33_X) +  tid;           /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
@@ -27,52 +33,45 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
     //const int zh1         = zeroHeight-1;
     //const int zh2         = zeroHeight-2;
 
-    //int             inds      [noHarms];
-    //accelcandBasic  candLists [noStages][noSteps];
-    //float           powers    [noSteps][cunkSize];                /// registers to hold values to increase mem cache hits
-    int             stride    [noHarms];
-    int             x0        [noHarms];
-    int             x1        [noHarms];
+    int                 inds      [noHarms];
+    float               candPow   [noStages];
+    int                 candZ     [noStages];
+    float               powers    [cunkSize];                           /// registers to hold values to increase mem cache hits
+    int                 stride    [noHarms];
 
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
-      // Calculate the x indices or create a pointer offset by the correct amount
-      for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
+      FOLD // Calculate the x indices or create a pointer offset by the correct amount  .
       {
-        if ( FLAGS & FLAG_ITLV_ROW )
-        {
-          stride[harm] = noSteps*STRIDE_STAGE[harm] ;
-        }
-        else
-        {
-          stride[harm] = STRIDE_STAGE[harm] ;
-        }
-
-        //for ( int step = 0; step < noSteps; step++)               /// Loop over steps
+#pragma unroll
+        for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
         {
           // NOTE: the indexing below assume each plain starts on a multiple of noHarms
-          int   ix    = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
+          int   ix    = roundf( gid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
+          inds[harm]  = ix;
 
-//          if ( FLAGS & FLAG_ITLV_ROW )
-//          {
-//            ix += step*STRIDE_STAGE[harm] ;
-//          }
-
-          //inds[harm] = ix;
+          if ( FLAGS & FLAG_ITLV_ROW )
+          {
+            stride[harm] = noSteps*STRIDE_STAGE[harm] ;
+          }
+          else
+          {
+            stride[harm] = STRIDE_STAGE[harm] ;
+          }
         }
-
-        x0[harm] = roundf( blockIdx.x  * (SS33_Y*SS33_X)*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
-        x1[harm] = roundf( blockIdx.x  * (  (blockIdx.x+1)  * (SS33_Y*SS33_X)-1)*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] - x0[harm] ;
       }
 
-      FOLD  // Set the local and return candidate powers to zero
+      FOLD  // Set the local and return candidate powers to zero  .
       {
+#pragma unroll
         for ( int stage = 0; stage < noStages; stage++ )
         {
+          candPow [stage]        = 0 ;
+
+#pragma unroll
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
-            //candLists[stage][step].sigma = 0 ;
-            d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+            d_cands[step*noStages*oStride + stage*oStride + gid ].sigma = 0 ;
           }
         }
       }
@@ -80,143 +79,139 @@ __global__ void add_and_searchCU32_k(const uint width, accelcandBasic* d_cands, 
 
     FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
     {
-      for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
+#pragma unroll
+      for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
       {
-//        FOLD // Initialise powers for each section column to 0  .
-//        {
-//          for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
-//          {
-//            for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
-//            {
-//              powers[step][yPlus] = 0;
-//            }
-//          }
-//        }
-
-        FOLD // Loop over stages, sum and search  .
+        for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
         {
-          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages .
+          FOLD // Initialise powers for each section column to 0  .
           {
-            int start = STAGE[stage][0] ;
-            int end   = STAGE[stage][1] ;
-
-            // Create a section of summed powers one for each step
-            for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
+#pragma unroll
+            for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
             {
-              //int ix        = inds[harm] ;
-              //int ix2       = ix;
-              //int h1      = HEIGHT_STAGE[harm]-1;
-
-              int ix        = x0[harm] + bidx ;
-              int ix2       = ix ;
-
-              if ( bidx < x1[harm] )
+#pragma unroll
+              for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
               {
+                powers[yPlus] = 0;
+              }
+            }
+          }
 
-                int y0 = YINDS[ zeroHeight*harm + y ];
-                int y1 = YINDS[ zeroHeight*harm + y + cunkSize ];
+          FOLD // Loop over stages, sum and search  .
+          {
+#pragma unroll
+            for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages  .
+            {
+              int start = STAGE[stage][0] ;
+              int end   = STAGE[stage][1] ;
 
-                //for( int yPlus = 0; yPlus < cunkSize; yPlus++ )       // Loop over the chunk  .
-                for( int yPlus = y0; yPlus < y1; yPlus++ )       // Loop over the chunk  .
+              FOLD // Create a section of summed powers one for 1 step and all plains in stage  .
+              {
+#pragma unroll
+                for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
                 {
-                  //int trm     = y + yPlus ;                           ///< True Y index in plain
+                  int ix1       = inds[harm] ;
+                  int ix2       = ix1;
+                  //int h1      = HEIGHT_STAGE[harm]-1;
 
-                  //int iy1     = YINDS[ zeroHeight*harm + trm ];
-                  //  OR
-                  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
-                  // OR
-                  //int iy1     = ( h1 * trm + zh2 ) / zh1;
-
-                  int iy1     = yPlus ;
-                  int iy2     = iy1 * stride[harm] ;
-
-                  for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
+#pragma unroll
+                  for( int yPlus = 0; yPlus < cunkSize; yPlus++ )       // Loop over the chunk  .
                   {
+                    int trm     = y + yPlus ;                           ///< True Y index in plain
+
+                    int iy1     = YINDS[ zeroHeight*harm + trm ];
+                    //  OR
+                    //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
+                    // OR
+                    //int iy1     = ( h1 * trm + zh2 ) / zh1;
+
+                    int iy2     = iy1*stride[harm];
+
+
                     if        ( FLAGS & FLAG_ITLV_PLN )
                     {
                       iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
                     }
                     else
                     {
-                      ix2 = ix + step * STRIDE_STAGE[harm] ;
+                      ix2 = ix1 + step * STRIDE_STAGE[harm] ;
                     }
 
-                    FOLD
+                    if        ( FLAGS & FLAG_SAS_TEX )
+                    {
+                      if      ( FLAGS & FLAG_MUL_CB_OUT )
+                      {
+                        const float cmpf      = tex2D < float > (texs.val[harm], ix2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
+                        powers[yPlus]   += cmpf;
+                      }
+                      else
+                      {
+                        const float r         = tex2D < float > (texs.val[harm], ix2*2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
+                        const float i         = tex2D < float > (texs.val[harm], ix2*2+1.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
+                        powers[yPlus]   += r*r+i*i;
+                      }
+                    }
+                    else
                     {
                       if      ( FLAGS & FLAG_MUL_CB_OUT )
                       {
                         float cmpf            = powersArr[harm][ iy2 + ix2 ];
-                        //powers[step][yPlus]  += cmpf;
-
-                        if ( cmpf < 0 ) // TMP
-                          printf("SS33");
-                        //atomicAdd(&smBlock[yPlus][tid], cmpf);
+                        powers[yPlus]  += cmpf;
                       }
                       else
                       {
-                        //fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                        //float cmpf            = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                        //powers[step][yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                        fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
+                        powers[yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                      }
+                    }
+                  }
+                }
+              }
 
-//                        if ( cmpf < 0 ) // TMP
-//                          printf("SS33");
+              FOLD // Search set of powers  .
+              {
+#pragma unroll
+                for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section  .
+                {
+                  if  (  powers[yPlus] > POWERCUT_STAGE[stage] )
+                  {
+                    if ( powers[yPlus] > candPow [stage] )
+                    {
+                      if ( y + yPlus < zeroHeight )
+                      {
+                        candPow [stage]  = powers[yPlus];
+                        candZ   [stage]  = y+yPlus;
                       }
                     }
                   }
                 }
               }
             }
-            /*
-            // Search set of powers
-            for ( int step = 0; step < noSteps; step++)           // Loop over steps
-            {
-              for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section
-              {
-                if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
-                {
-                  if ( powers[step][yPlus] > candLists[stage][step].sigma )
-                  {
-                    if ( y + yPlus < zeroHeight )
-                    {
-                      // This is our new max!
-                      candLists[stage][step].sigma  = powers[step][yPlus];
-                      candLists[stage][step].z      = y+yPlus;
-                    }
-                  }
-                }
-              }
-            }
-            */
           }
         }
-      }
-    }
-/*
-    FOLD // Write results back to DRAM and calculate sigma if needed  .
-    {
-      for ( int step = 0; step < noSteps; step++)             // Loop over steps
-      {
-        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
-        {
-          if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
-          {
-            if ( (FLAGS & FLAG_SIG_GPU) && FALSE)             // Calculate the actual sigma value on the GPU
-            {
-              const int numharm                 = ( 1 << stage );
-              // Calculate sigma value
-              long long numtrials               = NUMINDEP_STAGE[stage];
-              candLists[stage][step].sigma      = (float)candidate_sigma_cu(candLists[stage][step].sigma, numharm, numtrials);
-            }
 
-            // Write to DRAM
-            d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
+        FOLD // Write results back to DRAM and calculate sigma if needed  .
+        {
+#pragma unroll
+          for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
+          {
+            if  ( candPow [stage] >  POWERCUT_STAGE[stage] )
+            {
+              candMin tt;
+
+              tt.sigma = candPow [stage];
+              tt.z     = candZ   [stage];
+
+              // Write to DRAM
+              d_cands[step*noStages*oStride + stage*oStride + gid] = tt;
+            }
           }
         }
       }
     }
-*/
   }
 }
+
 
 template<uint FLAGS, int noStages, const int noHarms, const int cunkSize>
 __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
@@ -226,15 +221,17 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for ( int step = 0; step < noSteps; step++)
   {
     long long firstBin  = (*batch->rConvld)[step][0].expBin ;
+
     for (int i = 0; i < noHarms; i++)
     {
       int idx =  batch->stageIdx[i];
 
       long long binb      = (*batch->rConvld)[step][idx].expBin ;
 
-      if ( firstBin * batch->hInfos[idx].harmFrac != binb )
+      if ( firstBin * h_FRAC_STAGE[i] != binb )
       {
         fprintf(stderr,"ERROR, in function %s, R values are not properly aligned! Each step should start on a multiple of (2 x No Harms).\n", __FUNCTION__ );
+        fprintf(stderr,"%f != %f.\n", firstBin * h_FRAC_STAGE[i], (float)binb );
         exit(EXIT_FAILURE);
       }
     }
@@ -256,42 +253,43 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   {
     case 1:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 2:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 3:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 4:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      //cudaFuncSetCacheConfig(add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 5:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 6:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 7:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 8:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     default:
@@ -307,26 +305,26 @@ __host__ void add_and_searchCU32_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   switch (noStages)
   {
-    case 1:
-    {
-      add_and_searchCU32_q<FLAGS,1,1,4>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 2:
-    {
-      add_and_searchCU32_q<FLAGS,2,2,8>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 3:
-    {
-      add_and_searchCU32_q<FLAGS,3,4,8>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 4:
-    {
-      add_and_searchCU32_q<FLAGS,4,8,8>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+    //    case 1:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 2:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 3:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 4:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
     case 5:
     {
       add_and_searchCU32_q<FLAGS,5,16,8>(dimGrid, dimBlock, stream, batch);

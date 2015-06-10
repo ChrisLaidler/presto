@@ -257,7 +257,7 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   fsHarmList powers;
   cHarmList   cmplx;
 
-  if ( 1 )  // Stage order
+  if ( 0 )  // Stage order
   {
     for (int i = 0; i < batch->noHarms; i++)
     {

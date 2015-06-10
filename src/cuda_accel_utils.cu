@@ -354,7 +354,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           harmtosum = 1 << stage;
           for (int harm = 1; harm <= harmtosum; harm += 2, i++)
           {
-            float harmFrac                  = 1-harm/float(harmtosum);
+            float harmFrac                  = harm/float(harmtosum);
             int idx                         = round(harmFrac*noHarms);
             if ( harmFrac == 1 )
               idx = 0;
@@ -399,14 +399,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           {
             cStack->startZ[j]   = cStack->height;
             cStack->height     += cStack->harmInf[j].height;
-            cStack->zUp[j]      = (cStack->kerHeigth - cStack->harmInf[j].height) / 2.0 ;
           }
-
-          for (int j = 0; j < cStack->noInStack; j++)
-          {
-            cStack->zDn[j]      = ( cStack->kerHeigth ) - cStack->zUp[cStack->noInStack - 1 - j ];
-          }
-
 
           FOLD // Allocate temporary device memory to asses input stride  .
           {

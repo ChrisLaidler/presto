@@ -35,12 +35,12 @@ extern "C"
 
 //=========================================== Defines ====================================================
 
-#define   MAX_IN_STACK  10      ///< NOTE: this is 1 to big to handle the init problem
-#define   MAX_HARM_NO   16      ///< The maximum number of harmonics handled by a accel search
-#define   MAX_YINDS     8000    ///< The maximum number of y indices to store in constant memory
-#define   MAX_STEPS     8       ///< The maximum number of steps
-#define   MAX_STKSZ     9       ///< The maximum number of plains in a stack
-#define   MAX_GPUS      32      ///< The maximum number GPU's
+#define     MAX_IN_STACK        10        ///< NOTE: this is 1 to big to handle the init problem
+#define     MAX_HARM_NO         16        ///< The maximum number of harmonics handled by a accel search
+#define     MAX_YINDS           8000      ///< The maximum number of y indices to store in constant memory
+#define     MAX_STEPS           8         ///< The maximum number of steps
+#define     MAX_STKSZ           9         ///< The maximum number of plains in a stack
+#define     MAX_GPUS            32        ///< The maximum number GPU's
 
 //====================================== Bit flag values =================================================
 
@@ -299,6 +299,7 @@ typedef struct cuFfdotStack
     size_t  kerHeigth;                ///< The width of  the entire stack, for one step [ in complex numbers! ]
     size_t  strideCmplx;              ///< The stride of the block of memory  [ in complex numbers! ]
     size_t  stridePwrs;               ///< The stride of the powers
+    uint    flag;                     ///< CUDA accel search flags
 
     // Sub data structures associated with this stack
     cuHarmInfo* harmInf;              ///< A pointer to all the harmonic info's for this stack
@@ -306,11 +307,6 @@ typedef struct cuFfdotStack
     cuFFdot*    plains;               ///< A pointer to all the pains for this stack
 
     int startZ[MAX_IN_STACK];         ///< The y 'start' of the plains in this stack - assuming one step
-
-    // All sub-kernel of the same width are subset of the largest harmonic
-    // Thus all plains in a stack can share one kernel these sub kernels are bounded by zDn and zUp
-    int zUp[MAX_IN_STACK];            ///< The upper bound  (y or z) of the plains in the single kernel
-    int zDn[MAX_IN_STACK];            ///< The lower bound  (y or z) of the plains in the single kernel
 
     // CUFFT details
     cufftHandle   plnPlan;            ///< A cufft plan to fft the entire stack
@@ -397,7 +393,6 @@ typedef struct cuFFdotBatch
     int haveInput;                    ///< Weather the the plain has input ready to convolve
     int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
     int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
-
 
     uint* d_candSem;                  ///< Semaphore for writing to device candidate list
 
