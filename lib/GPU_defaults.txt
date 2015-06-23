@@ -34,7 +34,7 @@ FLAG_MUL_CB_OUT 		# Almost always want this if possible
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
-SS_20 # Last Edited by run time script
+SS_30 # Last Edited by run time script
 
 ###### output ########
 
@@ -59,4 +59,4 @@ CU_CAND_ARR
 #cuMedianBuffSz 2048
 
 
-globalInt01 1            # Last Edited by run time script
+globalInt01 18            # Last Edited by run time script

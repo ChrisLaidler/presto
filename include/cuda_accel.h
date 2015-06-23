@@ -358,18 +358,26 @@ typedef struct cuFFdotBatch
 {
     searchSpecs* sInf;                ///< A pointer to the search info
 
-    size_t noStacks;                  ///< The number of stacks in this batch
-    size_t noHarms;                   ///< The number of harmonics in the family
-    size_t noSteps;                   ///< The number of steps processed by the batch
-    int noHarmStages;                 ///< The number of stages of harmonic summing
+    size_t  noStacks;                 ///< The number of stacks in this batch
+    size_t  noHarms;                  ///< The number of harmonics in the family
+    size_t  noSteps;                  ///< The number of steps processed by the batch
+    int     noHarmStages;             ///< The number of stages of harmonic summing
+    uint    flag;                     ///< CUDA accel search flags
+    uint    accelLen;                 ///< The size to step through the input fft
+    int     noResults;                ///< The number of results from the previous search
+    int     device;                   ///< The CUDA device to run on
+    int     noSSstages;               ///< The number sum and search
+    CUcontext pctx;                   ///< Context for the batch
 
     int stageIdx[MAX_HARM_NO];        ///< The index of the plains in the Presto harmonic summing order
 
+    // Pointers of structures
     cuFfdotStack* stacks;             ///< A list of the stacks
     cuHarmInfo*   hInfos;             ///< A list of the harmonic informations
     cuKernel*     kernels;            ///< A list of the kernels
     cuFFdot*      plains;             ///< A list of the plains
 
+    // Data sizes
     int inpDataSize;                  ///< The size of the input data memory in bytes for one step
     int retDataSize;                  ///< The size of data to return in bytes for one step
     int plnDataSize;                  ///< The size of the complex plain data memory in bytes for one step
@@ -380,12 +388,12 @@ typedef struct cuFFdotBatch
     fcomplexcu* d_plainData;          ///< Plain data for all the stacks
     float*      d_plainPowers;        ///< Powers for all the stack
 
-    int retType;                      ///< The type of output
-    int cndType;                      ///< The type of output
-    void* h_retData;                  ///< The output
-    void* d_retData;                  ///< The output
-    void* h_candidates;               ///< Host memory for candidates
-    void* d_candidates;               ///< Host memory for candidates
+    int     retType;                  ///< The type of output
+    int     cndType;                  ///< The type of output
+    void*   h_retData;                ///< The output
+    void*   d_retData;                ///< The output
+    void*   h_candidates;             ///< Host memory for candidates
+    void*   d_candidates;             ///< Host memory for candidates
 
     fcomplexcu* h_iData;              ///< Pointer to page locked host memory of Input data for t
     fcomplexcu* d_iData;              ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
@@ -401,7 +409,7 @@ typedef struct cuFFdotBatch
 
     float* h_powers;                  ///< Powers used for running double-tophat local-power normalisation
 
-    uint flag;                        ///< CUDA accel search flags
+
 
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
@@ -424,16 +432,9 @@ typedef struct cuFFdotBatch
     cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
 
-    int noResults;                    ///< The number of results from the previous search
-
-    uint accelLen;                    ///< The size to step through the input fft
-
     rVals*** rInput;                  ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
     rVals*** rConvld;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
     rVals*** rSearch;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
-
-    CUcontext pctx;                   ///< Context for the batch
-    int device;                       ///< The CUDA device to run on
 
     // TIMING values
     float* kerGenTime;                ///< Array of floats from timing one for each stack

@@ -296,7 +296,7 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     }
     case 4:
     {
-      cudaFuncSetCacheConfig(add_and_searchCU33_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
+      //cudaFuncSetCacheConfig(add_and_searchCU33_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
       add_and_searchCU33_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
       break;
     }
@@ -331,11 +331,11 @@ __host__ void add_and_searchCU33_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 {
   switch (globalInt01)
   {
-    case 1:
-    {
-      add_and_searchCU33_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+    //    case 1:
+    //    {
+    //      add_and_searchCU33_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
     case 2:
     {
       add_and_searchCU33_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
@@ -386,21 +386,31 @@ __host__ void add_and_searchCU33_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU33_q<FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
       break;
     }
+    case 14:
+    {
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 16:
     {
       add_and_searchCU33_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    case 20:
+    case 18:
     {
-      add_and_searchCU33_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU33_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    case 24:
-    {
-      add_and_searchCU33_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+    //    case 20:
+    //    {
+    //      add_and_searchCU33_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 24:
+    //    {
+    //      add_and_searchCU33_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
     default:
       fprintf(stderr, "ERROR: %s has not been templated for %i stages\n", __FUNCTION__, noStages);
       exit(EXIT_FAILURE);
@@ -415,26 +425,26 @@ __host__ void add_and_searchCU33_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   switch (noStages)
   {
-    case 1:
-    {
-      add_and_searchCU33_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 2:
-    {
-      add_and_searchCU33_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 3:
-    {
-      add_and_searchCU33_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 4:
-    {
-      add_and_searchCU33_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+    //    case 1:
+    //    {
+    //      add_and_searchCU33_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 2:
+    //    {
+    //      add_and_searchCU33_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 3:
+    //    {
+    //      add_and_searchCU33_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 4:
+    //    {
+    //      add_and_searchCU33_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
     case 5:
     {
       add_and_searchCU33_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
