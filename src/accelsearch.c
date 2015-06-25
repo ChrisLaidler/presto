@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
    char candsFile[1024];
    sprintf(candsFile,"%s_hs%02i_zmax%06.1f_sig%06.3f.unoptcands", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
    FILE *file;
-   if ( (file = fopen(candsFile, "rb")) && 0 ) 	// Read candidates from previous search  .
+   if ( (file = fopen(candsFile, "rb")) ) 		  // Read candidates from previous search  .
    {
      printf("\nReading raw candies from \"%s\" previous search.\n", candsFile);
      int numcands;
@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
      }
      fclose(file);
    }
-   else                                       // Run Search  .
+   else                                         // Run Search  .
    {
 
      /* Start the main search loop */
@@ -510,13 +510,12 @@ int main(int argc, char *argv[])
      printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
    }
 
-   if (0)   	// optimization  .
+   if (1)   	// optimization  .
    {                            /* Candidate list trimming and optimization */
       int numcands;
       GSList *listptr;
       accelcand *cand;
       fourierprops *props;
-
 
 #ifdef CUDA
       gettimeofday(&start, NULL);       // Profiling
@@ -526,7 +525,8 @@ int main(int argc, char *argv[])
 
       numcands = g_slist_length(cands);
 
-      if (numcands) {
+      if (numcands)
+      {
 
          /* Sort the candidates according to the optimized sigmas */
 
@@ -550,7 +550,8 @@ int main(int argc, char *argv[])
 
          print_percent_complete(0, 0, NULL, 1);
          listptr = cands;
-         for (ii = 0; ii < numcands; ii++) {
+         for (ii = 0; ii < numcands; ii++)
+         {
             //print_percent_complete(ii, numcands, "optimization", 0);
             cand = (accelcand *) (listptr->data);
 
@@ -567,20 +568,21 @@ int main(int argc, char *argv[])
 
          props = (fourierprops *) malloc(sizeof(fourierprops) * numcands);
          listptr = cands;
-         for (ii = 0; ii < numcands; ii++) {
-            cand = (accelcand *) (listptr->data);
-            /* In case the fundamental harmonic is not significant,  */
-            /* send the originally determined r and z from the       */
-            /* harmonic sum in the search.  Note that the derivs are */
-            /* not used for the computations with the fundamental.   */
-            //if ( ii == 16 )
-            {
-            calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
-            /* Override the error estimates based on power */
-            props[ii].rerr = (float) (ACCEL_DR) / cand->numharm;
-            props[ii].zerr = (float) (ACCEL_DZ) / cand->numharm;
-            }
-            listptr = listptr->next;
+         for (ii = 0; ii < numcands; ii++)
+         {
+           cand = (accelcand *) (listptr->data);
+           /* In case the fundamental harmonic is not significant,  */
+           /* send the originally determined r and z from the       */
+           /* harmonic sum in the search.  Note that the derivs are */
+           /* not used for the computations with the fundamental.   */
+           //if ( ii == 16 )
+           {
+             calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
+             /* Override the error estimates based on power */
+             props[ii].rerr = (float) (ACCEL_DR) / cand->numharm;
+             props[ii].zerr = (float) (ACCEL_DZ) / cand->numharm;
+           }
+           listptr = listptr->next;
 
          }
 

@@ -495,80 +495,88 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
 // FIXME: this shouldn't be a #define, or it shouldn't be here
 void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
 {
-   int ii;
-   int *r_offset;
-   fcomplex **data;
-   double r, z;
+  int ii;
+  int *r_offset;
+  fcomplex **data;
+  double r, z;
 
-   printf("\n%4i  optimize_accelcand  harm %2i   r %10.3f   z %10.3f  pow: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power );
+  printf("\n%4i  optimize_accelcand  harm %2i   r %10.3f   z %10.3f  pow: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power );
 
-   cand->pows = gen_dvect(cand->numharm);
-   cand->hirs = gen_dvect(cand->numharm);
-   cand->hizs = gen_dvect(cand->numharm);
-   r_offset = (int*) malloc(sizeof(int)*cand->numharm);
-   data = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
-   cand->derivs = (rderivs *) malloc(sizeof(rderivs) * cand->numharm);
+  cand->pows   = gen_dvect(cand->numharm);
+  cand->hirs   = gen_dvect(cand->numharm);
+  cand->hizs   = gen_dvect(cand->numharm);
+  r_offset     = (int*) malloc(sizeof(int)*cand->numharm);
+  data         = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
+  cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
 
-   if (obs->use_harmonic_polishing)
-   {
-       if (obs->mmap_file || obs->dat_input)
-       {
-           for(ii=0;ii<cand->numharm;ii++)
-           {
-               r_offset[ii]   = obs->lobin;
-               data[ii]       = obs->fft;
-           }
-           max_rz_arr_harmonics(data,
-                                cand->numharm,
-                                r_offset,
-                                obs->numbins,
-                                cand->r-obs->lobin,
-                                cand->z,
-                                &r,
-                                &z,
-                                cand->derivs,
-                                cand->pows,nn);
-       } else {
-           max_rz_file_harmonics(obs->fftfile,
-                                 cand->numharm,
-                                 obs->lobin,
-                                 cand->r-obs->lobin,
-                                 cand->z,
-                                 &r,
-                                 &z,
-                                 cand->derivs,
-                                 cand->pows,nn);
-       }
-       for(ii=0;ii<cand->numharm;ii++) {
-           cand->hirs[ii]=(r+obs->lobin)*(ii+1);
-           cand->hizs[ii]=z*(ii+1);
-       }
-   } else {
-       for (ii = 0; ii < cand->numharm; ii++) {
-          if (obs->mmap_file || obs->dat_input)
-             cand->pows[ii] = max_rz_arr(obs->fft,
-                                         obs->numbins,
-                                         cand->r * (ii + 1) - obs->lobin,
-                                         cand->z * (ii + 1),
-                                         &(cand->hirs[ii]),
-                                         &(cand->hizs[ii]), &(cand->derivs[ii]));
-          else
-             cand->pows[ii] = max_rz_file(obs->fftfile,
-                                          cand->r * (ii + 1) - obs->lobin,
-                                          cand->z * (ii + 1),
-                                          &(cand->hirs[ii]),
-                                          &(cand->hizs[ii]), &(cand->derivs[ii]));
-          cand->hirs[ii] += obs->lobin;
-       }
-   }
-   free(r_offset);
-   free(data);
+  if (obs->use_harmonic_polishing)
+  {
+    if (obs->mmap_file || obs->dat_input)
+    {
+      for( ii=0; ii<cand->numharm; ii++ )
+      {
+        r_offset[ii]   = obs->lobin;
+        data[ii]       = obs->fft;
+      }
+      max_rz_arr_harmonics(data,
+          cand->numharm,
+          r_offset,
+          obs->numbins,
+          cand->r-obs->lobin,
+          cand->z,
+          &r,
+          &z,
+          cand->derivs,
+          cand->pows,nn);
+    }
+    else
+    {
+      max_rz_file_harmonics(obs->fftfile,
+          cand->numharm,
+          obs->lobin,
+          cand->r-obs->lobin,
+          cand->z,
+          &r,
+          &z,
+          cand->derivs,
+          cand->pows,nn);
+    }
+    for(ii=0;ii<cand->numharm;ii++)
+    {
+      cand->hirs[ii]=(r+obs->lobin)*(ii+1);
+      cand->hizs[ii]=z*(ii+1);
+    }
+  } else {
+    for (ii = 0; ii < cand->numharm; ii++)
+    {
+      if (obs->mmap_file || obs->dat_input)
+      {
+        cand->pows[ii] = max_rz_arr(obs->fft,
+            obs->numbins,
+            cand->r * (ii + 1) - obs->lobin,
+            cand->z * (ii + 1),
+            &(cand->hirs[ii]),
+            &(cand->hizs[ii]), &(cand->derivs[ii]));
+      }
+      else
+      {
+        cand->pows[ii] = max_rz_file(obs->fftfile,
+            cand->r * (ii + 1) - obs->lobin,
+            cand->z * (ii + 1),
+            &(cand->hirs[ii]),
+            &(cand->hizs[ii]), &(cand->derivs[ii]));
+      }
+      cand->hirs[ii] += obs->lobin;
+    }
+  }
+  free(r_offset);
+  free(data);
 
-   cand->sigma = candidate_sigma(cand->power, cand->numharm,
-                                 obs->numindep[twon_to_index(cand->numharm)]);
+  cand->sigma = candidate_sigma(cand->power, cand->numharm,
+      obs->numindep[twon_to_index(cand->numharm)]);
 
-   //cand->r = r+obs->lobin;
-   //cand->z = z;
+  //cand->r = r+obs->lobin;
+  //cand->z = z;
 
 }
 

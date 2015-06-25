@@ -144,10 +144,9 @@ static double power_call_rz_harmonics(double rz[])
     double powargr, powargi;
     fcomplex ans;
 
-    for(i=1; i<=max_num_harmonics; i++) {
-       rz_interp(maxdata_harmonics[i-1], nummaxdata,
-               (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i,
-               max_kern_half_width, &ans);
+    for( i=1; i<=max_num_harmonics; i++ )
+    {
+       rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
        total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
     }
     return -total_power;
@@ -186,16 +185,17 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
    double scale         = 4;
 
    // initialisation
-   locpow       = gen_fvect(num_harmonics);
-   maxlocpow    = gen_fvect(num_harmonics);
-   maxr_offset = r_offset;
-   maxdata_harmonics = data;
+   locpow             = gen_fvect(num_harmonics);
+   maxlocpow          = gen_fvect(num_harmonics);
+   maxr_offset        = r_offset;
+   maxdata_harmonics  = data;
    FILE *stFile;
 
    // Calculate the max power around each harmonic for normalisation
    // FIXME: z needs to be multiplied by i everywhere
    //printf("Normalisation powers \n");
-   for (i=1;i<=num_harmonics;i++) {
+   for ( i=1; i<=num_harmonics; i++ )
+   {
        //locpow[i-1]      = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
        //float ff         = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
        locpow[i-1]      = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
@@ -203,8 +203,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
        //printf("  %02i  %8.3f \n", i, locpow[i-1] );
    }
    //printf("\n");
-   nummaxdata = numdata;
-   max_num_harmonics = num_harmonics;
+   nummaxdata           = numdata;
+   max_num_harmonics    = num_harmonics;
 
    int skp    = 1 ;
    int swrm   = 1 ;
@@ -260,16 +260,13 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
 
    if( swrm ) // particle swarm  .
    {
-     int MaxTrials  = 500;
-     int noBatches  = 1;
-     int noInBatch  = 32;
-     int noCom      = 100;
-
-
+     int MaxTrials        = 500;
+     int noBatches        = 1;
+     int noInBatch        = 32;
+     int noCom            = 100;
      double velocityMax   = 1.25;
      double velocity      = velocityMax;
-
-     float noHit = 0;
+     float noHit          = 0;
 
      if ( num_harmonics == 1 )
      {
@@ -299,17 +296,18 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
        noBatches  = 3;
        scale      = 4;
      }
+
      noInBatch  = 32  ;
      noBatches  = 2  ;
      //scale = 32;
 
-     velocityMax    = scale / 20.0;
-     velocity       = velocityMax;
+     velocityMax          = scale / 20.0;
+     velocity             = velocityMax;
 
-     int noPoints = noBatches * noInBatch;
+     int noPoints         = noBatches * noInBatch;
      double batchBest[10][3];
 
-     int noTrials = ceil(MaxTrials/(float)noPoints);
+     int noTrials         = ceil(MaxTrials/(float)noPoints);
      noTrials             = 40;
 
      int ixc;
@@ -534,7 +532,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
            {
              list[idx].position[0] = rin - scale/2.0 + rand()/(float)RAND_MAX*scale;
              list[idx].position[1] = zin / ZSCALE - scale/2.0 + rand()/(float)RAND_MAX*scale*1;
-             list[idx].value = -power_call_rz_harmonics(list[idx].position);
+             list[idx].value = -power_call_rz_harmonics(list[idx].position);                      // Calculate the inital value
              list[idx].bestVal = list[idx].value;
              list[idx].bestPos[0] = list[idx].position[0];
              list[idx].bestPos[1] = list[idx].position[1];
@@ -669,6 +667,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
                  list[idx].position[0] += list[idx].velocity[0] ;
                  list[idx].position[1] += list[idx].velocity[1] ;
 
+                 // Calculate the new value
                  list[idx].value = -power_call_rz_harmonics(list[idx].position);
 
                  // Update local maximum
@@ -740,7 +739,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
                    }
                  }
 
-                 fprintf(f,"\t%.6f\t%.6f\t%.6f",list[idx].position[0],list[idx].position[1]*ZSCALE,list[idx].value);
+                 fprintf(f, "\t%.6f\t%.6f\t%.6f",list[idx].position[0],list[idx].position[1]*ZSCALE,list[idx].value);
                  fprintf(f2,"%.6f\t%.6f\t%.6f\n",list[idx].position[0],list[idx].position[1]*ZSCALE,list[idx].value);
                }
              }
@@ -1137,7 +1136,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
 
    /* The following calculates derivatives at the peak           */
 
-   for (i=1; i<=num_harmonics; i++) {
+   for (i=1; i<=num_harmonics; i++)
+   {
      locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
      x[0][0] = (r_offset[i-1]+*rout)*i-r_offset[i-1];
      x[0][1] = *zout/ZSCALE * i;

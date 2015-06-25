@@ -36,7 +36,7 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     *cc   = 0.5;
     *ss   = 0.5;
   }
-  else                          //
+  else                          // Auxiliary functions for large argument  .
   {
     x2    = x * x;
     t     = PI * x2;
@@ -52,15 +52,14 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     g     =       t * gn / gd;
 
     t     = PIBYTWO * x2;
-    sincosf(t, &s, &c);
+    sincos(t, &s, &c);
     t     = PI * x;
     *cc   = 0.5 + (f * s - g * c) / t;
     *ss   = 0.5 - (f * c + g * s) / t;
   }
 
-  if (xxa < 0.0)
+  if (xxa < 0.0)                // Swap as function is antisymmetric  .
   {
-    // Swap as function is antisymmetric
     *cc   = -*cc;
     *ss   = -*ss;
   }

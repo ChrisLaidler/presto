@@ -61,6 +61,8 @@
 /* Blocksize to use when reading datafiles or subbands */
 #define SUBSBLOCKLEN 1024
 
+#define FOLD    if(1)
+
 /* various function-like macros */
 
 #ifndef SWAP

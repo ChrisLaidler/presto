@@ -100,9 +100,8 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     *ss   = 0.5 - (f * c + g * s) / t;
   }
 
-  if (xxa < 0.0)
+  if (xxa < 0.0)                // Swap as function is antisymmetric  .
   {
-    // Swap as function is antisymmetric
     *cc   = -*cc;
     *ss   = -*ss;
   }
