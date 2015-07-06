@@ -874,7 +874,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      //float f3 = no*res;
      int tp = 10 ;
 
-     //ffdot(gpuPows, data[0], 1, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
+     ffdot(gpuPows, data[0],  r_offset[0], numdata, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
 
      //no   = 20;
      //res  = 0.1;
