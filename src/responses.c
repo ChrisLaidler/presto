@@ -243,7 +243,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
   /*       contain.                                                    */
 {
    int ii, signz, numkernby2;
-   double absz, zd, tmp, r, xx, Yr, Zr, startr, startroffset;
+   double absz, zd, tmp, q_r, xx, Yr, Zr, startr, startroffset;
    double fressy, frescy, fressz, frescz, tmprl, tmpim;
    double s, c, pibyz, cons, delta;
    fcomplex *response;
@@ -283,20 +283,20 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
 
    /* Begin the calculations */
 
-   startr         = roffset - (0.5 * z);
-   startroffset   = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
-   signz          = (z < 0.0) ? -1 : 1;
-   zd             = signz * SQRT2 / sqrt(absz);
-   cons           = zd / 2.0;
-   pibyz          = PI / z;
-   startr         += numkern / (double) (2 * numbetween);
-   delta          = -1.0 / numbetween;
+   startr             = roffset - (0.5 * z);
+   startroffset       = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
+   signz              = (z < 0.0) ? -1 : 1;
+   zd                 = signz * SQRT2 / sqrt(absz);
+   cons               = zd / 2.0;
+   pibyz              = PI / z;
+   startr             += numkern / (double) (2 * numbetween);
+   delta              = -1.0 / numbetween;
 
-   for ( ii = 0, r = startr; ii < numkern; ii++, r += delta )
+   for ( ii = 0, q_r = startr; ii < numkern; ii++, q_r += delta )
    {
-      Yr              = r * zd;
+      Yr              = q_r * zd;
       Zr              = Yr + z * zd;
-      xx              = pibyz * r * r;
+      xx              = pibyz * q_r * q_r;
       c               = cos(xx);
       s               = sin(xx);
       fresnl(Yr, &fressy, &frescy);
@@ -306,18 +306,21 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
       response[ii].r  = ((tmprl) * c - tmpim * s) * cons;
       response[ii].i  = -(tmprl  * s + tmpim * c) * cons;
 
-      // NB TODO: When I checked the math i think real and ima are inverted??????
+      printf("%03i  q_r %10.5f \n", ii, q_r );
       
-      /*
+      // NB TODO: When I checked the math I think real and ima are inverted ??????
+
       double Ster = fressz - fressy;
       double Cter = frescy - frescz;
       double tR   = cons * (c*Ster + signz*s*Cter);
       double tI   = cons * (s*Ster - signz*c*Cter);
 
-      printf("[(%7.4f %7.4f) ",  response[ii].r,  response[ii].i );
-      printf("(%7.4f %7.4f)] ",  tR,              tI );
-      fflush(stdout);
-      */
+      //response[ii].r = tR;
+      //response[ii].i = tI;
+
+      //printf("[(%7.6f %7.6f) ",  response[ii].r,  response[ii].i );
+      //printf("(%7.6f %7.6f)] ",  tR,              tI );
+      //fflush(stdout);
    }
    //printf("\n");
 

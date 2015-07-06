@@ -139,15 +139,17 @@ static int* maxr_offset;
 
 static double power_call_rz_harmonics(double rz[])
 {
-    int i;
+    int i = 2;
     double total_power = 0.;
     double powargr, powargi;
     fcomplex ans;
 
-    for( i=1; i<=max_num_harmonics; i++ )
+    //for( i=1; i<=max_num_harmonics; i++ )
     {
        rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
        total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
+       //if( i == 1 )
+       //  printf("Harm %02i  Power: %10.4f  %10.4f %10.4f norm: %.5f\n", i, POWER(ans.r, ans.i), ans.r, ans.i, maxlocpow[i-1] );
     }
     return -total_power;
 }
@@ -167,13 +169,9 @@ static double power_call_rz_harmonics_noNorm(double rz[])
     return -total_power;
 }
 
-void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
-                            int r_offset[],
-                            int numdata, double rin, double zin,
-                            double *rout, double *zout, rderivs derivs[],
-                            double power[], int nn)
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
+void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[], int nn)
 {
    double y[3], x[3][2], step = 0.4;
    float *locpow;
@@ -218,6 +216,9 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
    max_kern_half_width = z_resp_halfwidth(fabs(zin*num_harmonics) + 4.0, LOWACC);
    //max_kern_half_width = z_resp_halfwidth(fabs(zin*num_harmonics) + 4.0, HIGHACC);
 
+   //TMP
+   rz_interp_cu(maxdata_harmonics[0], r_offset[0], numdata, 99995.112, -56.23, max_kern_half_width);
+
    double lrgPnt[2][3];
    double smlPnt[2][3];
    double bstGrd[3];
@@ -229,7 +230,10 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics,
    lrgPnt[0][0] = rin;
    lrgPnt[0][1] = zin;
    lrgPnt[0][2] = -power_call_rz_harmonics(x[0]);
-   //printf("Inp Power %7.3f\n",lrgPnt[0][2]);
+   printf("Inp Power %7.3f\n", lrgPnt[0][2] );
+
+
+
 
    /* Initialize the starting simplex */
 

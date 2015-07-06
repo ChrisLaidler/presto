@@ -113,9 +113,7 @@ fcomplex **corr_rz_plane(fcomplex * data, int numdata, int numbetween,
 }
 
 
-fcomplex *corr_rz_interp(fcomplex * data, int numdata, int numbetween,
-    int startbin, double z, int fftlen,
-    presto_interp_acc accuracy, int *nextbin)
+fcomplex *corr_rz_interp(fcomplex * data, int numdata, int numbetween, int startbin, double z, int fftlen, presto_interp_acc accuracy, int *nextbin)
 /* This routine uses the correlation method to do a Fourier        */
 /* complex interpolation of a slice of the f-fdot plane.           */
 /* Arguments:                                                      */
@@ -139,8 +137,7 @@ fcomplex *corr_rz_interp(fcomplex * data, int numdata, int numbetween,
 }
 
 
-void rz_interp(fcomplex * data, int numdata, double r, double z,
-    int kern_half_width, fcomplex * ans)
+void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_width, fcomplex * ans)
 /* This routine uses the correlation method to do a Fourier        */
 /* complex interpolation at a single point in the f-fdot plane.    */
 /* It does the correlations manually. (i.e. no FFTs)               */
@@ -173,22 +170,22 @@ void rz_interp(fcomplex * data, int numdata, double r, double z,
   fracfreq   = modf(r, &dintfreq);
   intfreq    = (int) dintfreq;
 
-  /* Return immediately if 'r' is close to an           */
-  /* integer frequency and z is very close to zero      */
-
-  if (fabs(z) < 1E-4)
+  FOLD // Return immediately if 'r' is close to an integer frequency and z is very close to zero
   {
-    if (fracfreq < 1E-5)
+    if (fabs(z) < 1E-4)
     {
-      ans->r = data[intfreq].r;
-      ans->i = data[intfreq].i;
-      return;
-    }
-    if ((1.0 - fracfreq) < 1E-5)
-    {
-      ans->r = data[intfreq + 1].r;
-      ans->i = data[intfreq + 1].i;
-      return;
+      if (fracfreq < 1E-5)
+      {
+        ans->r = data[intfreq].r;
+        ans->i = data[intfreq].i;
+        return;
+      }
+      if ((1.0 - fracfreq) < 1E-5)
+      {
+        ans->r = data[intfreq + 1].r;
+        ans->i = data[intfreq + 1].i;
+        return;
+      }
     }
   }
 
@@ -234,12 +231,29 @@ void rz_interp(fcomplex * data, int numdata, double r, double z,
 
     for (ii = 0; ii < nsum; ii++)
     {
-      tmpd = *(dataptr++);
-      tmpr = *(respptr++);
-      ans->r += tmpd * tmpr + (*dataptr) * (*respptr);
-      ans->i += (*dataptr) * tmpr - (*respptr) * tmpd;
-      dataptr++;
-      respptr++;
+      if(0)  // Correct method
+      {
+        //float Rd = *(dataptr++);
+        //float Rr = *(respptr++);
+
+        //float Id = *(dataptr++);
+        //float Ir = *(respptr++);
+
+        //ans->r += Rd*Rr - Id*Ir ;
+        //ans->i += Rd*Ir + Rr*Id ;
+        //printf("%03i Data %.4f %.4f  Response: %.4f %.4f   %.4f \n", ii, Rd, Id, Rr, Ir, POWER(ans->r,ans.i) );
+      }
+      else  // Original method
+      {
+        tmpd = *(dataptr++);
+        tmpr = *(respptr++);
+        ans->r += tmpd * tmpr + (*dataptr) * (*respptr);
+        ans->i += (*dataptr) * tmpr - (*respptr) * tmpd;
+        printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, lodata+ii, tmpd, (*dataptr), tmpr, (*respptr), ans->r*ans->r+ans->i*ans->i );
+
+        dataptr++;
+        respptr++;
+      }
     }
   }
 

@@ -221,7 +221,7 @@ __device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int nu
   }
   else
   {
-    /* This is evaluating Eq (38) in:
+    /* This is evaluating Eq (39) in:
      * Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
      *
      * Where: qᵣ  is the variable r and represents the distance from the centre frequency
@@ -232,7 +232,6 @@ __device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int nu
     zd      = signz * (T) SQRT2 / sqrt(absz);
     zd      = signz * sqrt(2.0 / absz);
     cons    = zd / 2.0;                             // 1 / sqrt(2*r')
-
 
     startr  += numkern / (T) (2 * numbetween);
     delta   = -1.0 / numbetween;
@@ -261,9 +260,8 @@ __device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int nu
  * @param response
  * @param maxZ
  * @param fftlen
- * @param frac
  */
-__global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float frac)
+__global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float zSteps, float rSteps)
 {
   int cx, cy;                                   /// The x and y index of this thread in the array
   int rx = -1;                                  /// The x index of the value in the kernel
@@ -272,7 +270,7 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float f
   cx = blockDim.x * blockIdx.x + threadIdx.x;   /// use BLOCKSIZE rather (its constant)
   cy = blockDim.y * blockIdx.y + threadIdx.y;   /// use BLOCKSIZE rather (its constant)
 
-  float z = -maxZ + cy * ACCEL_DZ;              /// The Fourier Frequency derivative
+  float z = -maxZ + cy * 1.0/zSteps;            /// The Fourier Frequency derivative
 
   if ( z < -maxZ || z > maxZ || cx >= fftlen || cx < 0 )
   {
@@ -282,8 +280,10 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float f
 
   // Calculate the response x position from the plain x position
   int kern_half_width = z_resp_halfwidth((double) z);
-  int hw = ACCEL_NUMBETWEEN * kern_half_width;
+  int hw = rSteps * kern_half_width;
   int numkern = 2 * hw;                         /// The number of complex points that the kernel row will contain
+
+  // Calculate the kernel index for this thread (centred on zero and wrapped)
   if (cx < hw)
     rx = cx + hw;
   else if (cx >= fftlen - hw)
@@ -301,11 +301,11 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float f
 
       if (absz < 1E-4 )    // If z~=0 use the normal Fourier interpolation kernel  .
       {
-        gen_r_response<double> (rx, 0.0,    ACCEL_NUMBETWEEN, numkern, &resp.r, &resp.i);
+        gen_r_response<double> (rx, 0.0,     rSteps, numkern, &resp.r, &resp.i);
       }
       else                 // Calculate the complex response value for Fourier f-dot interpolation  .
       {
-        gen_z_response<double> (rx, z, absz, ACCEL_NUMBETWEEN, numkern, &resp.r, &resp.i);
+        gen_z_response<double> (rx, z, absz, rSteps, numkern, &resp.r, &resp.i);
       }
     }
   }
@@ -400,13 +400,13 @@ int createStackKernel(cuFfdotStack* cStack)
   dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
 
   // Set up grid
-  dimGrid.x = ceil(  cStack->width  / ( float ) dimBlock.x );
+  dimGrid.x = ceil(  cStack->width     / ( float ) dimBlock.x );
   dimGrid.y = ceil ( cStack->kerHeigth / ( float ) dimBlock.y );
 
   FOLD // call the CUDA kernels  .
   {
     // Call kernel
-    init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width, cStack->harmInf->harmFrac);
+    init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width, ACCEL_RDZ, ACCEL_RDR);
 
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
@@ -454,4 +454,27 @@ int createStackKernels(cuFfdotStack* cStack)
   }
 
   return 0;
+}
+
+int createOptKernel(cuOptKer* cKer)
+{
+  dim3 dimBlock, dimGrid;
+
+    dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+    dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+
+    // Set up grid
+    dimGrid.x = ceil(  cKer->width     / ( float ) dimBlock.x );
+    dimGrid.y = ceil ( cKer->height / ( float ) dimBlock.y );
+
+    FOLD // call the CUDA kernels  .
+    {
+      // Call kernel
+      init_kernels<<<dimGrid, dimBlock>>>(cKer->d_kerData, cKer->maxZ, cKer->width, cKer->noZ, cKer->noR );
+
+      // Run message
+      CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+    }
+
+    return 0;
 }

@@ -486,6 +486,19 @@ typedef struct cuSearch
 } cuSearch;
 
 
+typedef struct cuOptKer
+{
+    float         maxZ;
+    float         noZ;
+    float         noR;
+    int           widthZ;
+    int           heightR;
+
+    int           width;
+    int           height;
+
+    fcomplexcu*   d_kerData;
+};
 //===================================== Function prototypes ===============================================
 
 /** Read the GPU details from clig command line  .
