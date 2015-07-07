@@ -144,7 +144,8 @@ static double power_call_rz_harmonics(double rz[])
     double powargr, powargi;
     fcomplex ans;
 
-    //for( i=1; i<=max_num_harmonics; i++ )
+    for( i=1; i<=max_num_harmonics; i++ )
+    //i = 1 ;
     {
        rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
        total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
@@ -180,7 +181,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    double bestVal = 0;
    double bestPos[2];
    char dirname[1024];
-   double scale         = 4;
+   double scale         = 5;
 
    // initialisation
    locpow             = gen_fvect(num_harmonics);
@@ -217,7 +218,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    //max_kern_half_width = z_resp_halfwidth(fabs(zin*num_harmonics) + 4.0, HIGHACC);
 
    //TMP
-   rz_interp_cu(maxdata_harmonics[0], r_offset[0], numdata, 99995.112, -56.23, max_kern_half_width);
+   //rz_interp_cu(maxdata_harmonics[0], r_offset[0], numdata, 99995.112, -56.23, max_kern_half_width);
 
    double lrgPnt[2][3];
    double smlPnt[2][3];
@@ -231,9 +232,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    lrgPnt[0][1] = zin;
    lrgPnt[0][2] = -power_call_rz_harmonics(x[0]);
    printf("Inp Power %7.3f\n", lrgPnt[0][2] );
-
-
-
 
    /* Initialize the starting simplex */
 
@@ -259,8 +257,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
    /*  Restart at minimum using HIGHACC to get a better result */
 
-   max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*num_harmonics) + 4.0, HIGHACC);
-   //max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*num_harmonics) + 4.0, LOWACC);
+   max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*ZSCALE*num_harmonics) + 4.0, HIGHACC); //TODO: add the ZSCALE term to PRESTO
+   //max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*ZSCALE*num_harmonics) + 4.0, LOWACC);
 
    if( swrm ) // particle swarm  .
    {
@@ -270,7 +268,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      int noCom            = 100;
      double velocityMax   = 1.25;
      double velocity      = velocityMax;
-     float noHit          = 0;
 
      if ( num_harmonics == 1 )
      {
@@ -293,17 +290,19 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        noBatches  = 2;
        scale      = 5;
      }
-
-     scale      = 5;
      if ( num_harmonics == 16)
      {
        noBatches  = 3;
        scale      = 4;
      }
 
-     noInBatch  = 32  ;
-     noBatches  = 2  ;
-     //scale = 32;
+     FOLD // TMP
+     {
+       scale      = 5;
+       noInBatch  = 32  ;
+       noBatches  = 2  ;
+       //scale = 32;
+     }
 
      velocityMax          = scale / 20.0;
      velocity             = velocityMax;
@@ -459,15 +458,11 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
            cntV[ixc]  = 0;
          }
 
-         int testn;
-
          velocity = velocityMax;
 
          char timeMsg[1024];
-
          time_t rawtime;
          struct tm* ptm;
-
          time ( &rawtime );
          ptm = localtime ( &rawtime );
          sprintf ( timeMsg, "%04i%02i%02i%02i%02i%02i", 1900 + ptm->tm_year, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
@@ -543,7 +538,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
              list[idx].velocity[0] = -velocity/2.0 + rand()/(float)RAND_MAX*velocity;
              list[idx].velocity[1] = (-velocity/2.0 + rand()/(float)RAND_MAX*velocity)*1;
            }
-
 
            FILE *f = fopen("/home/chris/accel/ps.csv", "w");
 
@@ -814,6 +808,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    if( skp  )  // Large points  .
    {
      float szDiff = scale / 1.9 ;
+     float* gpuPows;
 
      lrgPnt[1][0] = x[0][0];
      lrgPnt[1][1] = x[0][1] * ZSCALE;
@@ -845,7 +840,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        no   = 40;
      }
 
-     //no   = 50;
+     no   = 100;
 
      double mx    = MAX(fabs(lrgPnt[0][0]-lrgPnt[1][0]), fabs(lrgPnt[0][1]-lrgPnt[1][1])/ZSCALE);
      double res   = MAX(szDiff/(float)no,mx*1.1/(float)no);
@@ -861,43 +856,34 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        res   = mx2*1.02/(float)no ;
      }
 
-     float* gpuPows = (float*)malloc( no*no*sizeof(float) );
+     int tp   = no*2+1 ;
+     //res*=3;
 
-     //fftInfo fftInf;
-     //fftInf.fft  = data;
-     //fftInf.rlo  = 0;
-     //fftInf.rhi  = numdata;
-     //fftInf.nor  = numdata;
+     FOLD // GPU grid
+     {
+       gpuPows  = (float*)malloc( tp*tp*sizeof(float) );
+       //ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, lrgPnt[0][0], lrgPnt[0][1], (tp-1)*res, (tp-1)*res, tp, tp, max_kern_half_width);
+       ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, (tp-1)*res, (tp-1)*res*ZSCALE, tp, tp, max_kern_half_width);
+     }
 
-     //float f1 = (float)lrgPnt[0][0] ;
-     //float f2 = (float)lrgPnt[0][1]*ZSCALE ;
-     //float f3 = no*res;
-     int tp = 10 ;
-
-     ffdot(gpuPows, data[0],  r_offset[0], numdata, lrgPnt[0][0], lrgPnt[0][1]*ZSCALE, (tp-1)*res, (tp-1)*res, tp, tp);
-
-     //no   = 20;
-     //res  = 0.1;
-
-     //double res   = 0.02 ;
-
-     FILE *f = fopen("/home/chris/accel/lrg.csv", "w");
-     //printf("rin: %.5f   zin %.5f  \n", rin, zin );
+     FILE *f1 = fopen("/home/chris/accel/lrg.csv", "w");
 
      double sx, sy;
      int indx = 0;
      int indy = 0;
      double ff[2];
-     fprintf(f,"%i",num_harmonics);
+     fprintf(f1,"%i",num_harmonics);
      for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
      {
-       fprintf(f,"\t%.6f",sx);
+       fprintf(f1,"\t%.6f",sx);
      }
-     fprintf(f,"\n");
+     fprintf(f1,"\n");
+
      for (sy = zin / ZSCALE - res*no ; indy < no*2+1;  sy += res, indy++ )
      {
        ff[1]=sy;
-       fprintf(f,"%.6f",sy*ZSCALE);
+       fprintf(f1,"%.6f",sy*ZSCALE);
+
        for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
        {
          ff[0]=sx;
@@ -910,18 +896,17 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
            bstGrd[1] = sy;
          }
 
-         fprintf(f,"\t%.6f",yy);
+         double yy2 = gpuPows[indy*tp+indx];
+         fprintf(f1,"\t%.6f",yy);
        }
-       fprintf(f,"\n");
+       fprintf(f1,"\n");
      }
-     fclose(f);
+     fclose(f1);
+
+     system("python ~/bin/bin/plt_lrg.py");
 
      int tmp = 0;
    }
-
-   smlPnt[0][0] = x[0][0];
-   smlPnt[0][1] = x[0][1] * ZSCALE;
-   smlPnt[0][2] = -y[0];
 
    /* Re-Initialize some of the starting simplex */
 
@@ -1076,7 +1061,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
          sprintf(dirname,"%s_g0",dirname );
 
          // Plot swarm
-         if(swrm)
+         if (swrm)
          {
            //system("python ~/bin/pltSwrm2.py");
          }
@@ -1150,8 +1135,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      get_derivs3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0, locpow[i-1], &(derivs[i-1]));
    }
 
-   x[0][0] = *rout;
-   x[0][1] = *zout / ZSCALE;
+   //x[0][0] = *rout;
+   //x[0][1] = *zout / ZSCALE;
    //printf("Out Power %7.3f\n",-power_call_rz_harmonics(x[0]));
 
    vect_free(locpow);

@@ -187,172 +187,273 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
   ans.r = 0.0;
   ans.i = 0.0;
 
-  // Split 'r' into integer and fractional parts
-  fracfreq          = modf(r, &dintfreq); // Double precision
-  intfreq           = (int) dintfreq;
-  numkern           = 2 * kern_half_width;
-  lodata            = intfreq - kern_half_width;
-
-  // Set up values dependent on Z alone
-  absz              = fabs(z);
-  startr            = fracfreq - (0.5 * z);
-  signz             = (z < 0.0) ? -1 : 1;
-  zd                = signz * SQRT2 / sqrt(absz);
-  cons              = zd / 2.0;
-  pibyz             = PI / z;
-  startr            += kern_half_width;
-
-  FOLD // Clamp values to usable bounds  .
+  if ( r > 0 )
   {
-    if ( lodata < 0 )
+    // Split 'r' into integer and fractional parts
+    fracfreq          = modf(r, &dintfreq); // Double precision
+    intfreq           = (int) dintfreq;
+    numkern           = 2 * kern_half_width;
+    lodata            = intfreq - kern_half_width;
+
+    // Set up values dependent on Z alone
+    absz              = fabs(z);
+    startr            = fracfreq - (0.5 * z);
+    signz             = (z < 0.0) ? -1 : 1;
+    zd                = signz * SQRT2 / sqrt(absz);
+    cons              = zd / 2.0;
+    pibyz             = PI / z;
+    startr            += kern_half_width;
+
+    FOLD // Clamp values to usable bounds  .
     {
-      numkern += lodata;
-      startr  += lodata;
-      lodata  = 0;
+      if ( lodata < 0 )
+      {
+        numkern += lodata;
+        startr  += lodata;
+        lodata  = 0;
+      }
+
+      lodata -= loR;
+
+      //printf("lodata + numkern: %i  noR: %i \n", lodata + numkern, noBins );
+      if ( lodata + numkern >= noBins )
+      {
+        numkern = noBins - lodata;
+      }
+      //printf("numkern: %i\n", numkern );
     }
 
-    lodata -= loR;
-
-    printf("lodata + numkern: %i  noR: %i \n", lodata + numkern, noBins );
-    if ( lodata + numkern >= noBins )
+    // Loop over positions, calculate response values and do multiplications
+    for ( ii = 0, q_r = startr; ii < numkern; q_r--, ii++ )
     {
-      numkern = noBins - lodata;
+      FOLD //  Read the input value  .
+      {
+        inp             = data[lodata+ii];
+      }
+
+      FOLD // Calculate response value  .
+      {
+        Yr              = q_r * zd;
+        Zr              = Yr + z * zd;
+        xx              = pibyz * q_r * q_r;
+        c               = cos_t(xx);
+        s               = sin_t(xx);
+        fresnl<T>(Yr, &fressy, &frescy);
+        fresnl<T>(Zr, &fressz, &frescz);
+
+        T Ster          = fressz - fressy;
+        T Cter          = frescy - frescz;
+        tR              = cons * (c*Ster + signz*s*Cter);
+        tI              = cons * (s*Ster - signz*c*Cter);
+      }
+
+      FOLD // Do the multiplication  .
+      {
+        ans.r           += tR * inp.r - tI*inp.i;
+        ans.i           += tR * inp.i + tI*inp.r;
+      }
+
+      //printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, loR+lodata+ii, inp.r, inp.i, tR, tI, POWERR(ans.r, ans.i) );
     }
-    printf("numkern: %i\n", numkern );
-  }
-
-  // Loop over positions, calculate response values and do multiplications
-  for ( ii = 0, q_r = startr; ii < numkern; q_r--, ii++ )
-  {
-    FOLD //  Read the input value  .
-    {
-      inp             = data[lodata+ii];
-    }
-
-    FOLD // Calculate response value  .
-    {
-      Yr              = q_r * zd;
-      Zr              = Yr + z * zd;
-      xx              = pibyz * q_r * q_r;
-      c               = cos_t(xx);
-      s               = sin_t(xx);
-      fresnl<T>(Yr, &fressy, &frescy);
-      fresnl<T>(Zr, &fressz, &frescz);
-
-      T Ster          = fressz - fressy;
-      T Cter          = frescy - frescz;
-      tR              = cons * (c*Ster + signz*s*Cter);
-      tI              = cons * (s*Ster - signz*c*Cter);
-    }
-
-    FOLD // Do the multiplication  .
-    {
-      ans.r           += tR * inp.r - tI*inp.i;
-      ans.i           += tR * inp.i + tI*inp.r;
-    }
-
-    printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, loR+lodata+ii, inp.r, inp.i, tR, tI, POWERR(ans.r, ans.i) );
   }
 
   return ans;
 }
 
-__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms, int halfwidth, float firstR, float firstZ, float rSZ, float zSZ, int noR, int noZ, int iStride, int oStride, int loR)
+__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
 
-  float r = firstR + ix/(float)noR * rSZ ;
-  float z = firstZ - iy/(float)noZ * zSZ ;
-
-  int firstRBin = floor(firstR-halfwidth);
-
-  float total_power = 0;
-
-  for(int i = 1; i <= noHarms; i++)
+  if ( ix < noR && iy < noZ)
   {
-    fcomplexcu ans  = rz_interp_cu<float>(fft, loR, noBin, r, z, halfwidth);
-    total_power     += POWERR(ans.r, ans.i);
+    double r = firstR + ix/(double)(noR-1) * rSZ ;
+    double z = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+    //int firstRBin = floor(firstR-halfwidth);
+
+    float total_power = 0;
+
+    for( int i = 1; i <= noHarms; i++ )
+    //for(int i = 1; i <= 2; i++)
+    //int i = 1;
+    {
+      fcomplexcu ans  = rz_interp_cu<float>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
+      total_power     += POWERR(ans.r, ans.i);
+
+      if ( ix == 0 && iy == 0 )
+      {
+        printf("%02i lor %i  r %.4f  pow %f \n", i, loR.val[i-1], r*i, total_power );
+      }
+    }
+
+    powers[iy*noR + ix] = total_power;
   }
 }
 
-void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ)
+void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth)
 {
   double log2 = log(2.0);
 
-  printf("%f \n", centR );
-  printf("%f \n", centZ );
-  printf("%f \n", rSZ );
-
-  double maxZ = centZ + zSZ/2.0;
-  double minZ = centZ - zSZ/2.0;
-  double minR = centR - rSZ/2.0;
-  double maxR = centR + rSZ/2.0;
-
-  int halfwidth   = z_resp_halfwidth(MAX(fabs(maxZ*1.2), fabs(minZ*1.2)), HIGHACC);
-
-  double rSpread  = ceil(maxR * noHarms + halfwidth) - floor(minR * noHarms - halfwidth);
-
-  size_t rStride, pStride;
-  float *cuPowers;
-  fcomplexcu *cuInp;
-  fcomplexcu *cpuInp;
-  double factor;
-
-  CUDA_SAFE_CALL(cudaMallocPitch(&cuPowers,  &pStride, noR     * sizeof(float),             noZ),   "Failed to allocate device memory for kernel stack.");
-  CUDA_SAFE_CALL(cudaMallocPitch(&cuInp,     &rStride, rSpread * sizeof(cufftComplex),  noHarms),   "Failed to allocate device memory for kernel stack.");
-
-  int noInp = rStride/sizeof(cufftComplex);
-  int noPow = pStride/sizeof(float);
-
-  float*  normPow = (float*) malloc(noInp*sizeof(float));
-  int*    rOff    = (int*)   malloc(noHarms*sizeof(int));
-
-  cpuInp = (fcomplexcu*) malloc(rStride*noHarms);
-
-  for( int h = 0; h < noHarms; h++)
+  //for ( int hh = 1; hh <= noHarms; hh++)
+  int hh = 1;
   {
-    FOLD // Calculate normalisation factor
+    printf("r:    %f \n", centR*hh );
+    printf("z:    %f \n", centZ*hh );
+    printf("rSZ:  %f \n", rSZ*hh );
+
+    double maxZ = (centZ*hh + zSZ*hh/2.0);
+    double minZ = (centZ*hh - zSZ*hh/2.0);
+    double minR = (centR*hh - rSZ*hh/2.0);
+    double maxR = (centR*hh + rSZ*hh/2.0);
+
+    //int halfwidth   = z_resp_halfwidth(MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms)), HIGHACC);
+    //halfwidth = max_kern_half_width;
+
+    //double rSpread  = ceil(maxR * noHarms + halfwidth) - floor(minR * noHarms - halfwidth);
+    double rSpread  = ceil(maxR  + halfwidth) - floor(minR - halfwidth);
+
+    size_t rStride, pStride;
+    float *cuPowers;
+    fcomplexcu *cuInp;
+    fcomplexcu *cpuInp;
+    double factor;
+
+    CUDA_SAFE_CALL(cudaMallocPitch(&cuPowers,  &pStride, noR     * sizeof(float),             noZ),   "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaMallocPitch(&cuInp,     &rStride, rSpread * sizeof(cufftComplex),  noHarms),   "Failed to allocate device memory for kernel stack.");
+
+    int noInp = rStride/sizeof(cufftComplex);
+    int noPow = pStride/sizeof(float);
+
+    float*  normPow = (float*) malloc(noInp*sizeof(float));
+    //int*    rOff    = (int*)   malloc(noHarms*sizeof(int));
+    int16   rOff;
+
+    cpuInp = (fcomplexcu*) malloc(rStride*noHarms);
+
+    for( int h = 0; h < noHarms; h++)
     {
-      rOff[h] = floor( minR*(h+1) - halfwidth );
+      rOff.val[h] = floor( minR*(h+1) - halfwidth );
+
+      int datStart  = rOff.val[h];
+      int datEnd    = datStart + noInp;
+      int novals    = noInp;
+      int noPowers, off;
+      float medianv;
+
+      FOLD // Calculate normalisation factor
+      {
+        if ( datStart < loR )
+        {
+          novals    -=  (loR - datStart);
+          datStart  =   loR;
+        }
+        if ( datEnd >= noBins )
+        {
+          novals    -=  (datEnd - noBins - 1);
+          datEnd    =   noBins-1;
+        }
+
+        noPowers = 0;
+        for ( int i = 0; i < noInp; i++)
+        {
+          off = rOff.val[h] - loR + i;
+          if (off >= 0 && off < noBins )
+          {
+            normPow[noPowers++] = POWERR(fft[off].r, fft[off].i ) ;
+          }
+        }
+
+        medianv       = median(normPow, noPowers);
+        factor        = sqrt(medianv/log2);
+      }
 
       for ( int i = 0; i < noInp; i++)
       {
-        normPow[i] = POWERR(fft[rOff[h]+i].r, fft[rOff[h]+i].i ) ;
+        off = rOff.val[h] - loR + i;
+        if (off >= 0 && off < noBins )
+        {
+          cpuInp[h*noInp + i].r = fft[off].r / factor ;
+          cpuInp[h*noInp + i].i = fft[off].i / factor ;
+        }
+        else
+        {
+          cpuInp[h*noInp + i].r = 0;
+          cpuInp[h*noInp + i].i = 0;
+        }
+        //cpuInp[h*noInp + h].r = fft[rOff.val[h]+i].r / factor ;
+        //cpuInp[h*noInp + h].i = fft[rOff.val[h]+i].i / factor ;
       }
-
-      float medianv = median(normPow, noInp);
-      factor        = sqrt(medianv/log2);
     }
 
-    for ( int i = 0; i < noInp; i++)
+    CUDA_SAFE_CALL(cudaMemcpy(cuInp, cpuInp, rStride*noHarms, cudaMemcpyHostToDevice), "Copying convolution kernels between devices.");
+
+    FOLD // Call kernel  .
     {
-      cpuInp[h*noInp + h].r = fft[rOff[h]+i].r / factor ;
-      cpuInp[h*noInp + h].i = fft[rOff[h]+i].i / factor ;
+      dim3 dimBlock, dimGrid;
+
+      // Blocks of 1024 threads ( the maximum number of threads per block )
+      dimBlock.x = 16;
+      dimBlock.y = 16;
+      dimBlock.z = 1;
+
+      // One block per harmonic, thus we can sort input powers in Shared memory
+      dimGrid.x = ceil(noR/(float)dimBlock.x);
+      dimGrid.y = ceil(noZ/(float)dimBlock.y);
+
+      // Call the kernel to normalise and spread the input data
+      ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff);
+      //ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, 1, halfwidth, minR, maxZ, rSZ*hh, zSZ*hh, noR, noZ, noInp, noPow, rOff);
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
     }
-  }
 
-  CUDA_SAFE_CALL(cudaMemcpy(cuInp, cpuInp, rStride*noHarms, cudaMemcpyHostToDevice), "Copying convolution kernels between devices.");
-
-  FOLD // Call kernel  .
-  {
-    dim3 dimBlock, dimGrid;
-
-    // Blocks of 1024 threads ( the maximum number of threads per block )
-    dimBlock.x = 16;
-    dimBlock.y = 16;
-    dimBlock.z = 1;
-
-    // One block per harmonic, thus we can sort input powers in Shared memory
-    dimGrid.x = ceil(noR/(float)dimBlock.x);
-    dimGrid.y = ceil(noZ/(float)dimBlock.y);
-
-    // Call the kernel to normalise and spread the input data
-    ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noBins, noHarms, halfwidth, minR, minZ, rSZ, zSZ, noR, noZ, noInp,noPow, rOff[0]);
+    CUDA_SAFE_CALL(cudaMemcpy(powers, cuPowers, noR*noZ*sizeof(float), cudaMemcpyDeviceToHost), "Copying convolution kernels between devices.");
 
     cudaDeviceSynchronize();          // TMP
     int TMPP = 0;
+
+    FOLD // Write CVS
+    {
+      char tName[1024];
+      sprintf(tName,"/home/chris/accel/lrg_cu_%02i.csv",hh);
+      FILE *f2 = fopen(tName, "w");
+
+      int indx = 0;
+      int indy = 0;
+
+      fprintf(f2,"%i",noHarms);
+
+      for (int indx = 0; indx < noR ; indx++ )
+      {
+        double r = minR + indx/(double)(noR-1) * (rSZ*hh) ;
+        fprintf(f2,"\t%.6f",r);
+      }
+      fprintf(f2,"\n");
+
+      for (int indy = 0; indy < noZ; indy++ )
+      {
+        double z = maxZ - indy/(double)(noZ-1) * (zSZ*hh) ;
+
+        fprintf(f2,"%.6f",z);
+
+        for (int indx = 0; indx < noR ; indx++ )
+        {
+          float yy2 = powers[indy*noR+indx];
+          fprintf(f2,"\t%.6f",yy2);
+        }
+        fprintf(f2,"\n");
+      }
+      fclose(f2);
+
+      int tmp = 0;
+    }
+
+    CUDA_SAFE_CALL(cudaFree(cuPowers),   "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaFree(cuInp),   "Failed to allocate device memory for kernel stack.");
   }
+
+  system("python ~/bin/bin/plt_sec.py");
 }
 
 __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)

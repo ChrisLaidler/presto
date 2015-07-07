@@ -555,7 +555,7 @@ int main(int argc, char *argv[])
             //print_percent_complete(ii, numcands, "optimization", 0);
             cand = (accelcand *) (listptr->data);
 
-            //if ( ii == 4 )
+            //if ( ii == 6 )
             {
               optimize_accelcand(cand, &obs, ii+1);
             }
