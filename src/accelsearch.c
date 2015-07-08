@@ -123,7 +123,8 @@ int main(int argc, char *argv[])
    create_accelobs(&obs, &idata, cmd, 1);
 
    /* Zap birdies if requested and if in memory */
-   if (cmd->zaplistP && !obs.mmap_file && obs.fft) {
+   if (cmd->zaplistP && !obs.mmap_file && obs.fft)
+   {
       int numbirds;
       double *bird_lobins, *bird_hibins, hibin;
 
@@ -165,10 +166,11 @@ int main(int argc, char *argv[])
    FILE *file;
    if ( (file = fopen(candsFile, "rb")) ) 		  // Read candidates from previous search  .
    {
-     printf("\nReading raw candies from \"%s\" previous search.\n", candsFile);
      int numcands;
      fread( &numcands, sizeof(numcands), 1, file );
      int nc = 0;
+
+     printf("\nReading %i raw candies from \"%s\" previous search.\n", numcands, candsFile);
 
      //accelcand* newCnd = (accelcand*)malloc(sizeof(accelcand)*numcands);
      //fread( newCnd, sizeof(accelcand), 1, file );
@@ -521,13 +523,26 @@ int main(int argc, char *argv[])
       gettimeofday(&start, NULL);       // Profiling
       nvtxRangePush("CPU optimisation");
       gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+
+      char timeMsg[1024], dirname[1024], scmd[1024];
+      time_t rawtime;
+      struct tm* ptm;
+      time ( &rawtime );
+      ptm = localtime ( &rawtime );
+      sprintf ( timeMsg, "%04i%02i%02i%02i%02i%02i", 1900 + ptm->tm_year, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
+
+      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pre", timeMsg );
+      mkdir(dirname, 0755);
+      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/ 2> /dev/null", dirname );
+      system(scmd);
+      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/ 2> /dev/null", dirname );
+      system(scmd);
 #endif
 
       numcands = g_slist_length(cands);
 
       if (numcands)
       {
-
          /* Sort the candidates according to the optimized sigmas */
 
 //#ifdef DEBUG
@@ -601,7 +616,16 @@ int main(int argc, char *argv[])
          fclose(obs.workfile);
          free(props);
          printf("\n\n");
-      } else {
+
+
+         time_t t;
+         FILE *file;
+         time(&t);
+         sprintf(dirname,"/home/chris/accel/Nelder_Mead/swrm_%i", t);
+
+      }
+      else
+      {
          printf("No candidates above sigma = %.2f were found.\n\n", obs.sigma);
       }
 
@@ -609,6 +633,11 @@ int main(int argc, char *argv[])
       nvtxRangePop();
       gettimeofday(&end, NULL);
       optTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
+      mkdir(dirname, 0755);
+      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/", dirname );
+      system(scmd);
 #endif
    }
 

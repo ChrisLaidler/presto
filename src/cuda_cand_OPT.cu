@@ -281,17 +281,17 @@ __global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms
       fcomplexcu ans  = rz_interp_cu<float>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
       total_power     += POWERR(ans.r, ans.i);
 
-      if ( ix == 0 && iy == 0 )
-      {
-        printf("%02i lor %i  r %.4f  pow %f \n", i, loR.val[i-1], r*i, total_power );
-      }
+//      if ( ix == 0 && iy == 0 )
+//      {
+//        printf("%02i lor %i  r %.4f  pow %f \n", i, loR.val[i-1], r*i, total_power );
+//      }
     }
 
     powers[iy*noR + ix] = total_power;
   }
 }
 
-void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth)
+void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac)
 {
   double log2 = log(2.0);
 
@@ -325,8 +325,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     int noInp = rStride/sizeof(cufftComplex);
     int noPow = pStride/sizeof(float);
 
-    float*  normPow = (float*) malloc(noInp*sizeof(float));
-    //int*    rOff    = (int*)   malloc(noHarms*sizeof(int));
+
     int16   rOff;
 
     cpuInp = (fcomplexcu*) malloc(rStride*noHarms);
@@ -341,34 +340,46 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       int noPowers, off;
       float medianv;
 
-      FOLD // Calculate normalisation factor
+      FOLD // Calculate normalisation factor  .
       {
-        if ( datStart < loR )
+        if ( fac == NULL) // Calculate the normalisation factor  .
         {
-          novals    -=  (loR - datStart);
-          datStart  =   loR;
-        }
-        if ( datEnd >= noBins )
-        {
-          novals    -=  (datEnd - noBins - 1);
-          datEnd    =   noBins-1;
-        }
+          float*  normPow = (float*) malloc(noInp*sizeof(float));
 
-        noPowers = 0;
-        for ( int i = 0; i < noInp; i++)
-        {
-          off = rOff.val[h] - loR + i;
-          if (off >= 0 && off < noBins )
+          if ( datStart < loR )
           {
-            normPow[noPowers++] = POWERR(fft[off].r, fft[off].i ) ;
+            novals    -=  (loR - datStart);
+            datStart  =   loR;
           }
-        }
+          if ( datEnd >= noBins )
+          {
+            novals    -=  (datEnd - noBins - 1);
+            datEnd    =   noBins-1;
+          }
 
-        medianv       = median(normPow, noPowers);
-        factor        = sqrt(medianv/log2);
+          noPowers = 0;
+          for ( int i = 0; i < noInp; i++)
+          {
+            off = rOff.val[h] - loR + i;
+            if (off >= 0 && off < noBins )
+            {
+              normPow[noPowers++] = POWERR(fft[off].r, fft[off].i ) ;
+            }
+          }
+
+          medianv       = median(normPow, noPowers);
+          factor        = sqrt(medianv/log2);
+          printf("  %02i  %8.3f \n", h+1, factor );
+
+          free(normPow);
+        }
+        else              // Use precalculated normalisation factor  .
+        {
+          factor = fac[h];
+        }
       }
 
-      for ( int i = 0; i < noInp; i++)
+      for ( int i = 0; i < noInp; i++) // Normalise input  .
       {
         off = rOff.val[h] - loR + i;
         if (off >= 0 && off < noBins )
@@ -381,8 +392,6 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
           cpuInp[h*noInp + i].r = 0;
           cpuInp[h*noInp + i].i = 0;
         }
-        //cpuInp[h*noInp + h].r = fft[rOff.val[h]+i].r / factor ;
-        //cpuInp[h*noInp + h].i = fft[rOff.val[h]+i].i / factor ;
       }
     }
 
@@ -416,7 +425,8 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     FOLD // Write CVS
     {
       char tName[1024];
-      sprintf(tName,"/home/chris/accel/lrg_cu_%02i.csv",hh);
+      //sprintf(tName,"/home/chris/accel/lrg_cu_%02i.csv",hh);
+      sprintf(tName,"/home/chris/accel/lrg_cu.csv");
       FILE *f2 = fopen(tName, "w");
 
       int indx = 0;
@@ -450,7 +460,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     }
 
     CUDA_SAFE_CALL(cudaFree(cuPowers),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaFree(cuInp),   "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaFree(cuInp),       "Failed to allocate device memory for kernel stack.");
   }
 
   system("python ~/bin/bin/plt_sec.py");

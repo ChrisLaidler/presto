@@ -649,7 +649,12 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
         {
           for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
           {
-            rVals* rVal = &((*batch->rSearch)[step][0]);
+            rVals* rVal;
+#ifdef SYNCHRONOUS
+            rVal = &((*batch->rConvld)[step][0]);
+#else
+            rVal = &((*batch->rSearch)[step][0]);
+#endif
 
             for ( int stage = 0; stage < noStages; stage++ )
             {
@@ -841,7 +846,6 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
     {
       SSKer(batch, numindep);
     }
-
 
 #ifdef SYNCHRONOUS
     FOLD // Copy results from device to host  .

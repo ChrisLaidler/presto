@@ -43,7 +43,6 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
     int                 stride    [noHarms];
 
 
-
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
       FOLD // Calculate the x indices or create a pointer offset by the correct amount  .
@@ -224,6 +223,13 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candMin* d_c
           if  ( candPow [stage][step] >  POWERCUT_STAGE[stage] )
             //if  ( candPow[idxSS<noStages,noSteps>(tid, stage, step)] >  POWERCUT_STAGE[stage] )
           {
+
+            if ( gid == 0 )
+            {
+              printf("add_and_searchCU33_k stage %02i  step: %02i  pow: %f\n", stage, step, candPow [stage][step] );
+            }
+
+
             candMin tt;
 
             tt.sigma = candPow [stage][step];
@@ -266,7 +272,7 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
 
   tHarmList   texs;
-  fsHarmList powers;
+  fsHarmList  powers;
   cHarmList   cmplx;
 
   for (int i = 0; i < noHarms; i++)

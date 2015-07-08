@@ -809,7 +809,7 @@ int main(int argc, char *argv[])
       sSpec.pWidth  = ACCEL_USELEN; // NB: must have same accellen for tests!
       cuSrch        = initCuSearch(&sSpec, &gSpec, NULL);
 
-      master      =  &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+      master        =  &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
 
       /*
       if ( cmd->gpuP ) // Determine the index and number of devices
@@ -1167,9 +1167,7 @@ int main(int argc, char *argv[])
                     }
                     else
                     {
-                      subharmonic = subharm_ffdot_plane_DBG(harmtosum, harm, startr, lastr,
-                          &subharminfs[stage][harm - 1],
-                          &obs, &cpuInput[step][idx], &cpuCmplx[step][idx], &cpuPowers[step][idx] );
+                      subharmonic = subharm_ffdot_plane_DBG(harmtosum, harm, startr, lastr, &subharminfs[stage][harm - 1], &obs, &cpuInput[step][idx], &cpuCmplx[step][idx], &cpuPowers[step][idx] );
 
                       if (cmd->otheroptP)
                         add_ffdotpows_ptrs(fundamental, subharmonic, harmtosum, harm);
@@ -1561,6 +1559,198 @@ int main(int argc, char *argv[])
             }
 
             int tmp = 0;
+          }
+
+          FOLD // Check candidates!
+          {
+            double poww, sig;
+            double rr, zz;
+            int numharm;
+            poww = 0;
+
+            FOLD  // Loop over results and find candidates  .
+            {
+              FOLD // ADD candidates to global list  .
+              {
+
+#ifdef STPMSG
+                printf("\t\t\tAdd To List\n");
+#endif
+
+#pragma omp critical
+                {
+                  for ( int step = 0; step < trdBatch->noSteps; step++) // Loop over steps  .
+                  {
+                    startr  = startrs[step];
+                    lastr   = lastrs[step];
+
+                    rVals* rVal;
+#ifdef SYNCHRONOUS
+                    rVal = &((*trdBatch->rConvld)[step][0]);
+#else
+                    rVal = &((*trdBatch->rSearch)[step][0]);
+#endif
+
+                    int noStages = obs.numharmstages;
+
+                    for ( int stage = 0; stage < noStages; stage++ )
+                    {
+                      int harmtosum, harm;
+                      ffdotpows *subharmonic;
+                      numharm = (1<<stage);
+
+                      if ( stage == 0 )
+                      {
+                        fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, &cpuInput[step][0], &cpuCmplx[step][0], &cpuPowers[step][0] );
+                      }
+                      else
+                      {
+                        harmtosum = 1 << stage;
+
+                        for (harm = 1; harm < harmtosum; harm += 2)
+                        {
+                          float frac = (float)(harm)/(float)harmtosum;
+                          int idx = noHarms - frac * noHarms;
+
+                          if (obs.inmem)
+                          {
+                            if (cmd->otheroptP)
+                              inmem_add_ffdotpows_trans(fundamental, &obs, harmtosum, harm);
+                            else
+                              inmem_add_ffdotpows(fundamental, &obs, harmtosum, harm);
+                          }
+                          else
+                          {
+                            subharmonic = subharm_ffdot_plane_DBG(harmtosum, harm, startr, lastr, &subharminfs[stage][harm - 1], &obs, &cpuInput[step][idx], &cpuCmplx[step][idx], &cpuPowers[step][idx] );
+
+                            if (cmd->otheroptP)
+                              add_ffdotpows_ptrs(fundamental, subharmonic, harmtosum, harm);
+                            else
+                              add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
+                            free_ffdotpows(subharmonic);
+                          }
+                        }
+
+                      }
+
+                      for ( int x = 0; x < trdBatch->accelLen; x++ )
+                      {
+                        int idx   = step*noStages*trdBatch->hInfos->width + stage*trdBatch->hInfos->width + x ;
+
+                        if ( trdBatch->retType & CU_CANDSMAL )
+                        {
+                          accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData)[idx] ;
+                          sig                   = candB.sigma ;
+
+                          if ( sig > 0 )
+                          {
+                            if ( !(trdBatch->flag & FLAG_SIG_GPU) )
+                            {
+                              //sig   = candidate_sigma(sig, numharm, numindep[stage]);
+                              poww  = candB.sigma;
+                            }
+                            else
+                            {
+                              poww  = candB.sigma;
+                            }
+
+                            rr      = rVal->drlo + x * ACCEL_DR ;
+                            zz      = ( candB.z * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)numharm ;
+
+                            float cPow;
+                            float *row;
+
+                            row   = fundamental->powers[candB.z];
+                            cPow  = row[x];
+
+                            float p1 = poww;
+                            float p2 = cPow;
+
+                            printf("Candidate r: %9.4f z: %5.2f  CPU pow: %6.2f  GPU pow: %6.2f   %5.3f \n", rr, zz, p2, p1, p2/p1 );
+
+                            int tmp = 0 ;
+
+                            //                            if ( rr < trdBatch->SrchSz->searchRHigh )
+                            //                            {
+                            //                              rr    /=  (double)numharm ;
+                            //                              zz    =   ( candB.z * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)numharm ;
+                            //
+                            //                              if      ( trdBatch->flag & CU_CAND_LST )
+                            //                              {
+                            //                                //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
+                            //                              }
+                            //                              else if ( trdBatch->flag & CU_CAND_ARR )
+                            //                              {
+                            //                                double  rDiff = rr - trdBatch->SrchSz->searchRLow ;
+                            //                                long    grIdx;   /// The index of the candidate in the global list
+                            //
+                            //                                if ( trdBatch->flag & FLAG_STORE_EXP )
+                            //                                {
+                            //                                  grIdx = floor(rDiff*ACCEL_RDR);
+                            //                                }
+                            //                                else
+                            //                                {
+                            //                                  grIdx = floor(rDiff);
+                            //                                }
+                            //
+                            //                                if ( grIdx >= 0 && grIdx < trdBatch->SrchSz->noOutpR )  // Valid index
+                            //                                {
+                            //                                  trdBatch->noResults++;
+                            //
+                            //                                  if ( trdBatch->flag & FLAG_STORE_ALL )               // Store all stages
+                            //                                  {
+                            //                                    grIdx += stage * (trdBatch->SrchSz->noOutpR);      // Stride by size
+                            //                                  }
+                            //
+                            //                                  if ( trdBatch->cndType == CU_CANDFULL )
+                            //                                  {
+                            //                                    //#pragma omp critical
+                            //                                    {
+                            //                                      cand* candidate = &((cand*)trdBatch->h_candidates)[grIdx];
+                            //
+                            //                                      // this sigma is greater than the current sigma for this r value
+                            //                                      if ( candidate->sig < sig )
+                            //                                      {
+                            //                                        candidate->sig      = sig;
+                            //                                        candidate->power    = poww;
+                            //                                        candidate->numharm  = numharm;
+                            //                                        candidate->r        = rr;
+                            //                                        candidate->z        = zz;
+                            //                                      }
+                            //                                    }
+                            //                                  }
+                            //                                  else
+                            //                                  {
+                            //                                    fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
+                            //                                    exit(EXIT_FAILURE);
+                            //                                  }
+                            //                                }
+                            //                              }
+                            //                              else
+                            //                              {
+                            //                                fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
+                            //                                exit(EXIT_FAILURE);
+                            //                              }
+                            //                            }
+                          }
+                        }
+                        else
+                        {
+                          fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+                          exit(EXIT_FAILURE);
+                        }
+                      }
+                    }
+                  }
+                }
+
+#ifdef STPMSG
+                printf("\t\t\tDone\n");
+#endif
+                //if ( !(trdBatch->flag & FLAG_SIG_GPU) && (trdBatch->retType & CU_CANDSMAL) )
+                //  free(powers);
+              }
+            }
           }
 
           print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);

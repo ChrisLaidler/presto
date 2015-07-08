@@ -500,7 +500,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
   fcomplex **data;
   double r, z;
 
-  printf("\n%4i  optimize_accelcand  harm %2i   r %10.3f   z %10.3f  pow: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power );
+  printf("\n%4i  optimize_accelcand  harm %2i   r %10.3f   z %10.3f  pow: %8.3f  sigma: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
   cand->pows   = gen_dvect(cand->numharm);
   cand->hirs   = gen_dvect(cand->numharm);
@@ -1560,6 +1560,10 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
    obs->T = idata->dt * idata->N;
    if (cmd->floP) {
       obs->rlo = floor(cmd->flo * obs->T);
+
+      // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
+      obs->rlo = floor(obs->rlo/(float)cmd->numharm)*cmd->numharm;
+
       if (obs->rlo < obs->lobin)
          obs->rlo = obs->lobin;
       if (obs->rlo > obs->numbins - 1) {
