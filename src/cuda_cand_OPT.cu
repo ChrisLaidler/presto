@@ -269,22 +269,19 @@ __global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms
   {
     double r = firstR + ix/(double)(noR-1) * rSZ ;
     double z = firstZ - iy/(double)(noZ-1) * zSZ ;
-
-    //int firstRBin = floor(firstR-halfwidth);
-
     float total_power = 0;
 
     for( int i = 1; i <= noHarms; i++ )
-    //for(int i = 1; i <= 2; i++)
-    //int i = 1;
+      //for(int i = 1; i <= 2; i++)
+      //int i = 1;
     {
       fcomplexcu ans  = rz_interp_cu<float>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
       total_power     += POWERR(ans.r, ans.i);
 
-//      if ( ix == 0 && iy == 0 )
-//      {
-//        printf("%02i lor %i  r %.4f  pow %f \n", i, loR.val[i-1], r*i, total_power );
-//      }
+      //      if ( ix == 0 && iy == 0 )
+      //      {
+      //        printf("%02i lor %i  r %.4f  pow %f \n", i, loR.val[i-1], r*i, total_power );
+      //      }
     }
 
     powers[iy*noR + ix] = total_power;
@@ -325,10 +322,14 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     int noInp = rStride/sizeof(cufftComplex);
     int noPow = pStride/sizeof(float);
 
-
     int16   rOff;
 
     cpuInp = (fcomplexcu*) malloc(rStride*noHarms);
+
+    for( int h = 0; h < 16; h++)
+    {
+      rOff.val[h] = 0;
+    }
 
     for( int h = 0; h < noHarms; h++)
     {

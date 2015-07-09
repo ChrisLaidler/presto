@@ -26,7 +26,7 @@ static int nbatchDefault[] = {2};
 
 static Cmdline cmd = {
   /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
-  /* gpuP = */ 1,
+  /* gpuP = */ 0,
   /* gpu = */ gpuDefault,
   /* gpuC = */ 0,
   /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */

@@ -519,7 +519,7 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
 
     FOLD // Call the SS kernel  .
     {
-      if ( batch->retType & CU_CANDSMAL )
+      if ( batch->retType & CU_POWERZ )
       {
         //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
         //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
@@ -588,7 +588,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
           printf("\t\t\tCalculate sigma\n");
 #endif
 
-          if ( batch->retType & CU_CANDSMAL )
+          if ( batch->retType & CU_CANDBASC )
           {
             //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
           }
@@ -601,7 +601,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
               {
                 int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
 
-                if ( batch->retType & CU_CANDSMAL )
+                if ( batch->retType & CU_CANDBASC )
                 {
                   accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
                   poww                  = candB.sigma ;
@@ -661,106 +661,113 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
               for ( int x = 0; x < batch->accelLen; x++ )
               {
                 int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
+                poww      = 0;
+                sig       = 0;
+                zz        = 0;
 
-                if ( batch->retType & CU_CANDSMAL )
+                if      ( batch->retType & CU_CANDMIN )
                 {
-                  accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
-                  sig                   = candB.sigma ;
-
-                  if ( sig > 0 )
-                  {
-                    batch->noResults++;
-                    numharm = (1<<stage);
-
-                    if ( !(batch->flag & FLAG_SIG_GPU) )
-                    {
-                      sig   = candidate_sigma(sig, numharm, numindep[stage]);
-                      poww  = candB.sigma;
-                    }
-                    else
-                    {
-                      poww  = candB.sigma;
-                    }
-
-                    if ( !(batch->flag & FLAG_SIG_GPU) )
-                    {
-                      //poww    = powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ];
-                    }
-                    else
-                    {
-                      //poww = candB.sigma;
-                    }
-                    rr      = rVal->drlo + x *  ACCEL_DR ;
-
-                    if ( rr < batch->SrchSz->searchRHigh )
-                    {
-                      rr    /=  (double)numharm ;
-                      zz    =   ( candB.z * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)numharm ;
-
-                      if      ( batch->flag & CU_CAND_LST )
-                      {
-                        //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
-                      }
-                      else if ( batch->flag & CU_CAND_ARR )
-                      {
-                        double  rDiff = rr - batch->SrchSz->searchRLow ;
-                        long    grIdx;   /// The index of the candidate in the global list
-
-                        if ( batch->flag & FLAG_STORE_EXP )
-                        {
-                          grIdx = floor(rDiff*ACCEL_RDR);
-                        }
-                        else
-                        {
-                          grIdx = floor(rDiff);
-                        }
-
-                        if ( grIdx >= 0 && grIdx < batch->SrchSz->noOutpR )  // Valid index
-                        {
-                          batch->noResults++;
-
-                          if ( batch->flag & FLAG_STORE_ALL )               // Store all stages
-                          {
-                            grIdx += stage * (batch->SrchSz->noOutpR);      // Stride by size
-                          }
-
-                          if ( batch->cndType == CU_CANDFULL )
-                          {
-                            //#pragma omp critical
-                            {
-                              cand* candidate = &((cand*)batch->h_candidates)[grIdx];
-
-                              // this sigma is greater than the current sigma for this r value
-                              if ( candidate->sig < sig )
-                              {
-                                candidate->sig      = sig;
-                                candidate->power    = poww;
-                                candidate->numharm  = numharm;
-                                candidate->r        = rr;
-                                candidate->z        = zz;
-                              }
-                            }
-                          }
-                          else
-                          {
-                            fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
-                            exit(EXIT_FAILURE);
-                          }
-                        }
-                      }
-                      else
-                      {
-                        fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
-                        exit(EXIT_FAILURE);
-                      }
-                    }
-                  }
+                  candMin candM         = ((candMin*)batch->h_retData)[idx];
+                  sig                   = candM.power;
+                  poww                  = candM.power;
+                  zz                    = candM.z;
+                }
+                else if ( batch->retType & CU_POWERZ )
+                {
+                  candPZ candM          = ((candPZ*)batch->h_retData)[idx];
+                  sig                   = candM.value;
+                  poww                  = candM.value;
+                  zz                    = candM.z;
+                }
+                else if ( batch->retType & CU_CANDBASC )
+                {
+                  accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx];
+                  poww                  = candB.sigma;
+                  sig                   = candB.sigma;
+                  zz                    = candB.z;
                 }
                 else
                 {
                   fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
                   exit(EXIT_FAILURE);
                 }
+
+                if ( poww > 0 )
+                {
+                  batch->noResults++;
+                  numharm = (1<<stage);
+
+                  if ( !(batch->flag & FLAG_SIG_GPU) ) // Do the sigma calculation
+                  {
+                    sig     = candidate_sigma(poww, numharm, numindep[stage]);
+                  }
+
+                  rr      = rVal->drlo + x *  ACCEL_DR ;
+
+                  if ( rr < batch->SrchSz->searchRHigh )
+                  {
+                    rr    /=  (double)numharm ;
+                    zz    =   ( zz * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)numharm ;
+
+                    if      ( batch->flag & CU_CAND_LST )
+                    {
+                      //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
+                    }
+                    else if ( batch->flag & CU_CAND_ARR )
+                    {
+                      double  rDiff = rr - batch->SrchSz->searchRLow ;
+                      long    grIdx;   /// The index of the candidate in the global list
+
+                      if ( batch->flag & FLAG_STORE_EXP )
+                      {
+                        grIdx = floor(rDiff*ACCEL_RDR);
+                      }
+                      else
+                      {
+                        grIdx = floor(rDiff);
+                      }
+
+                      if ( grIdx >= 0 && grIdx < batch->SrchSz->noOutpR )  // Valid index
+                      {
+                        batch->noResults++;
+
+                        if ( batch->flag & FLAG_STORE_ALL )               // Store all stages
+                        {
+                          grIdx += stage * (batch->SrchSz->noOutpR);      // Stride by size
+                        }
+
+                        if ( batch->cndType == CU_CANDFULL )
+                        {
+                          //#pragma omp critical
+                          {
+                            cand* candidate = &((cand*)batch->h_candidates)[grIdx];
+
+                            // this sigma is greater than the current sigma for this r value
+                            if ( candidate->sig < sig )
+                            {
+                              candidate->sig      = sig;
+                              candidate->power    = poww;
+                              candidate->numharm  = numharm;
+                              candidate->r        = rr;
+                              candidate->z        = zz;
+                            }
+                          }
+                        }
+                        else
+                        {
+                          fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
+                          exit(EXIT_FAILURE);
+                        }
+                      }
+                    }
+                    else
+                    {
+                      fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
+                      exit(EXIT_FAILURE);
+                    }
+                  }
+                }
+
               }
             }
           }
@@ -769,7 +776,7 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
 #ifdef STPMSG
         printf("\t\t\tDone\n");
 #endif
-        //if ( !(batch->flag & FLAG_SIG_GPU) && (batch->retType & CU_CANDSMAL) )
+        //if ( !(batch->flag & FLAG_SIG_GPU) && (batch->retType & CU_CANDBASC) )
         //  free(powers);
       }
 

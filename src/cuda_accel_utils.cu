@@ -347,7 +347,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         // Calculate the stage order of the harmonics
         int harmtosum;
         int i = 0;
-        printf("\n");
+        //printf("\n"); // TMP
 
         for (int stage = 0; stage < numharmstages; stage++)
         {
@@ -362,10 +362,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             kernel->hInfos[idx].stageOrder  = i;
             kernel->stageIdx[i]             = idx;
 
-            printf("%.4ff, ", kernel->hInfos[idx].harmFrac );
+            //printf("%.4ff, ", kernel->hInfos[idx].harmFrac ); // TMP
           }
         }
-        printf("\n");
+        //printf("\n"); // TMP
 
         // Multi-step data layout method  .
         if ( !(kernel->flag & FLAG_ITLV_ALL ) )
@@ -656,7 +656,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
       else if (kernel->cndType == CU_POWERZ   )
       {
-        candSZ = sizeof(accelcand2);
+        candSZ = sizeof(candPZ);
       }
       else if (kernel->cndType == CU_CANDMIN )
       {
@@ -664,19 +664,31 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
       else if (kernel->cndType == CU_CANDSMAL )
       {
+        candSZ = sizeof(candSml);
+      }
+      else if (kernel->cndType == CU_CANDBASC )
+      {
         candSZ = sizeof(accelcandBasic);
       }
       else if (kernel->cndType == CU_CANDFULL || (kernel->cndType == CU_GSList) )
       {
         candSZ = sizeof(cand);
-        kernel->retType = CU_CANDSMAL;
+        if ( kernel->flag  & FLAG_SIG_GPU )
+        {
+          kernel->retType = CU_CANDSMAL;
+        }
+        else
+        {
+          kernel->retType = CU_POWERZ;
+        }
+
       }
       else
       {
         fprintf(stderr,"ERROR: No output type specified in %s setting to full candidate info.\n",__FUNCTION__);
         kernel->cndType = CU_CANDFULL;
         candSZ = sizeof(cand);
-        kernel->retType = CU_CANDSMAL;
+        kernel->retType = CU_CANDBASC;
       }
     }
 
@@ -696,13 +708,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
       else if (kernel->retType == CU_POWERZ   )
       {
-        retSZ = sizeof(accelcand2);
+        retSZ = sizeof(candPZ);
       }
       else if (kernel->retType == CU_CANDMIN )
       {
         retSZ = sizeof(candMin);
       }
       else if (kernel->retType == CU_CANDSMAL )
+      {
+        retSZ = sizeof(candSml);
+      }
+      else if (kernel->retType == CU_CANDBASC )
       {
         retSZ = sizeof(accelcandBasic);
       }

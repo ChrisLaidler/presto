@@ -2,7 +2,7 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
-IL_PLN # Last Edited by run time script
+IL_ROW
 
 ######## Input #######
 

@@ -9,7 +9,7 @@
  * @param noSteps
  */
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps/*, typename stpType*/>
-__global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*stpType rBin,*/ tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+__global__ void add_and_searchCU31(const uint width, candPZ* d_cands, /*stpType rBin,*/ tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
   const int bidx  = threadIdx.y * SS3_X         +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * (SS3_Y*SS3_X) +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
@@ -21,7 +21,7 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*
 
     //int             inds      [noSteps][noHarms];
     int             inds      [noHarms];
-    accelcandBasic  candLists [noStages][noSteps];
+    candPZ          candLists [noStages][noSteps];
     float           powers    [noSteps][cunkSize];                /// registers to hold values to increase mem cache hits
     int             stride    [noHarms];
 
@@ -68,8 +68,8 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*
           //#pragma unroll
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
-            candLists[stage][step].sigma = 0 ;
-            d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+            candLists[stage][step].value = 0 ;
+            d_cands[step*noStages*oStride + stage*oStride + tid ].value = 0;
           }
         }
       }
@@ -114,20 +114,19 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*
                 //  OR
                 //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
-                int iy2     = iy1*stride[harm];
+                int iy2;
 
                 //#pragma unroll
                 for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
                 {
-                  //int ix2 = inds[step][harm] ;
-
                   if        ( FLAGS & FLAG_ITLV_PLN )
                   {
-                    iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
+                    iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * stride[harm];
                   }
                   else
                   {
                     ix2 = ix1 + step * STRIDE_STAGE[harm] ;
+                    iy2 = iy1*stride[harm];
                   }
 
                   if        ( FLAGS & FLAG_SAS_TEX )
@@ -171,12 +170,12 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*
               {
                 if  (  powers[step][yPlus] > POWERCUT_STAGE[stage] )
                 {
-                  if ( powers[step][yPlus] > candLists[stage][step].sigma )
+                  if ( powers[step][yPlus] > candLists[stage][step].value )
                   {
                     if ( y + yPlus < zeroHeight )
                     {
                       // This is our new max!
-                      candLists[stage][step].sigma  = powers[step][yPlus];
+                      candLists[stage][step].value  = powers[step][yPlus];
                       candLists[stage][step].z      = y+yPlus;
                     }
                   }
@@ -196,20 +195,8 @@ __global__ void add_and_searchCU31(const uint width, accelcandBasic* d_cands, /*
         //#pragma unroll
         for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
         {
-          if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
+          if  ( candLists[stage][step].value >  POWERCUT_STAGE[stage] )
           {
-            // This can be calculated from stage
-            //const short numharm                 = ( 1 << stage );
-            //candLists[stage][step].numharm      = numharm;
-
-            if ( (FLAGS & FLAG_SIG_GPU) && FALSE)             // Calculate the actual sigma value on the GPU
-            {
-              const int numharm                 = ( 1 << stage );
-              // Calculate sigma value
-              long long numtrials               = NUMINDEP_STAGE[stage];
-              candLists[stage][step].sigma      = (float)candidate_sigma_cu(candLists[stage][step].sigma, numharm, numtrials);
-            }
-
             // Write to DRAM
             d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
           }
@@ -247,7 +234,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       }
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long08>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long04><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long04><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, rBin, texs, powers, cmplx );
   }
   else if ( noHarms*noSteps <= 8   )
   {
@@ -261,7 +248,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       }
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long08>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long08><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long08><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, rBin, texs, powers, cmplx );
   }
   else if ( noHarms*noSteps <= 16  )
   {
@@ -275,7 +262,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       }
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long16>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long16><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long16><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData,rBin, texs, powers, cmplx );
   }
   else if ( noHarms*noSteps <= 32  )
   {
@@ -290,7 +277,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       //printf("drlo: %.3f \n", (*batch->rConvld)[0][idx].drlo );
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long32>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long32><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long32><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData,rBin, texs, powers, cmplx );
   }
   else if ( noHarms*noSteps <= 64  )
   {
@@ -304,7 +291,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       }
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long64>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long64><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long64><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData,rBin, texs, powers, cmplx );
   }
   else if ( noHarms*noSteps <= 96  )
   {
@@ -318,7 +305,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       }
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long96>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long96><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long96><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData,rBin, texs, powers, cmplx );
   }
   else if ( noHarms*noSteps <= 128 )
   {
@@ -332,7 +319,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       }
     }
     //cudaFuncSetCacheConfig(add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long128>, cudaFuncCachePreferL1);
-    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long128><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData,rBin, texs, powers, cmplx );
+    add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,noSteps,long128><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData,rBin, texs, powers, cmplx );
   }
   else
   {
@@ -363,49 +350,49 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     case 1:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,1>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 2:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,2>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 3:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,3>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 4:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,4>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 5:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,5>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 6:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,6>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 7:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 8:
     {
       //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,8>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     default:

@@ -158,7 +158,13 @@ int main(int argc, char *argv[])
    nvtxRangePop();
    gettimeofday(&end, NULL);
    prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
    cuSearch*     cuSrch;
+   gpuSpecs      gSpec;
+   searchSpecs   sSpec;
+
+   gSpec       = readGPUcmd(cmd);
+   sSpec       = readSrchSpecs(cmd, &obs);
 #endif
 
    char candsFile[1024];
@@ -219,7 +225,8 @@ int main(int argc, char *argv[])
 
          print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
-         while (startr + ACCEL_USELEN * ACCEL_DR < obs.highestbin) {
+         while (startr + ACCEL_USELEN * ACCEL_DR < obs.highestbin)
+         {
            /* Search the fundamental */
            print_percent_complete(startr - obs.rlo,
                obs.highestbin - obs.rlo, "search", 0);
@@ -304,13 +311,7 @@ int main(int argc, char *argv[])
            printf("\n------------------------\nDoing GPU Search \n------------------------\n");
 
            long noCands = 0;
-
-           gpuSpecs      gSpec;
-           searchSpecs   sSpec;
-
-           gSpec       = readGPUcmd(cmd);
-           sSpec       = readSrchSpecs(cmd, &obs);
-           cuSrch      = initCuSearch(&sSpec, &gSpec, NULL);
+           cuSrch       = initCuSearch(&sSpec, &gSpec, NULL);
 
            cuFFdotBatch* master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
 
@@ -537,6 +538,21 @@ int main(int argc, char *argv[])
       system(scmd);
       sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/ 2> /dev/null", dirname );
       system(scmd);
+
+      int device = gSpec.devId[0];
+      if ( device >= getGPUCount() )
+      {
+        fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
+        return 0;
+      }
+      int currentDevvice;
+      CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+      CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+      if (currentDevvice != device)
+      {
+        fprintf(stderr, "ERROR: CUDA Device not set.\n");
+        return(0);
+      }
 #endif
 
       numcands = g_slist_length(cands);

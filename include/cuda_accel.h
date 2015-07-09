@@ -100,11 +100,12 @@ extern "C"
 #define     CU_CMPLXF           (1<<1)    ///< Complex float
 #define     CU_INT              (1<<2)    ///< INT
 #define     CU_FLOAT            (1<<3)    ///< Float
-#define     CU_POWERZ           (1<<4)    ///< A value and a z bin         accelcand2
+#define     CU_POWERZ           (1<<4)    ///< A value and a z bin         candPZ
 #define     CU_CANDMIN          (1<<5)    ///< A compressed candidate      candMin
-#define     CU_CANDSMAL         (1<<6)    ///< A compressed candidate      accelcandBasic
-#define     CU_CANDFULL         (1<<7)    ///< Full detailed candidate     cand
-#define     CU_GSList           (1<<8)    ///<
+#define     CU_CANDSMAL         (1<<6)    ///< A compressed candidate      candSml
+#define     CU_CANDBASC         (1<<7)    ///< A compressed candidate      accelcandBasic
+#define     CU_CANDFULL         (1<<8)    ///< Full detailed candidate     cand
+#define     CU_GSList           (1<<9)    ///<
 
 
 //========================================== Macros ======================================================
@@ -127,18 +128,26 @@ typedef struct fcomplexcu
 
 ///< Basic accel search candidate to be used in CUDA kernels
 ///< Note this may not be the best choice on a GPU as it has a bad size
-typedef struct accelcand2
+typedef struct candPZ
 {
     float value;        // This cab be Sigma or summed power
     short z;            // Fourier f-dot of first harmonic
-} accelcand2;
+} candPZ;
 
 ///< The most basic accel search candidate to be used in CUDA kernels (numharm can be got from stage)
 typedef struct candMin
 {
-    float sigma;        // Sigma - adjusted for number of trials, NOTE: at some points this value holds the sum of powers from which the sigma value will be calculated
+    float power;        // Power
     int   z;            // Fourier f-dot of first harmonic
 } candMin;
+
+///< The most basic accel search candidate to be used in CUDA kernels (numharm can be got from stage)
+typedef struct candSml
+{
+    float sigma;        // Sigma - adjusted for number of trials, NOTE: at some points this value holds the sum of powers from which the sigma value will be calculated
+    float power;        // Power
+    int   z;            // Fourier f-dot of first harmonic
+} candSml;
 
 ///< Basic accel search candidate to be used in CUDA kernels
 typedef struct accelcandBasic

@@ -148,8 +148,8 @@ static double power_call_rz_harmonics(double rz[])
     //i = 1 ;
     {
        rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
-       total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
-       //total_power += POWER(ans.r, ans.i)/maxlocpow[i-1]/maxlocpow[i-1]; // TODO: to properly normalise this should be divided by the square of the nomalisation factor????
+       //total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
+       total_power += POWER(ans.r, ans.i)/maxlocpow[i-1]/maxlocpow[i-1]; // TODO: to properly normalise this should be divided by the square of the nomalisation factor????
        //if( i == 1 )
        //  printf("Harm %02i  Power: %10.4f  %10.4f %10.4f norm: %.5f\n", i, POWER(ans.r, ans.i), ans.r, ans.i, maxlocpow[i-1] );
     }
@@ -262,7 +262,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*ZSCALE*num_harmonics) + 4.0, HIGHACC); //TODO: add the ZSCALE term to PRESTO
    //max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*ZSCALE*num_harmonics) + 4.0, LOWACC);
 
-   if( swrm ) // particle swarm  .
+   if ( swrm ) // particle swarm  .
    {
      int MaxTrials        = 500;
      int noBatches        = 1;
@@ -807,7 +807,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      int tmp = 0;
    }
 
-   if( skp  )  // Large points  .
+   if ( skp  )  // Large points  .
    {
      float szDiff = scale / 1.9 ;
      float* gpuPows;
@@ -842,7 +842,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        no   = 40;
      }
 
-     no   = 50;
+     no   = 100;
 
      double mx    = MAX(fabs(lrgPnt[0][0]-lrgPnt[1][0]), fabs(lrgPnt[0][1]-lrgPnt[1][1])/ZSCALE);
      double res   = MAX(szDiff/(float)no,mx*1.1/(float)no);
@@ -905,6 +905,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      fclose(f1);
 
      system("python ~/bin/bin/plt_lrg.py");
+
+     free(gpuPows);
 
      int tmp = 0;
    }

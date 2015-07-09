@@ -19,7 +19,7 @@
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
 #undef  ACCEL_USELEN
-#define ACCEL_USELEN 3616
+#define ACCEL_USELEN 1760
 
 
 #undef FOLD

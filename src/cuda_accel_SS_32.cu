@@ -20,7 +20,7 @@ __device__ __forceinline__ int idxSS(int tid, int stage, int step)
  * @param noSteps
  */
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU32_k(const uint width, __restrict__ candMin* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+__global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
   const int tid   = threadIdx.y * SS33_X          +  threadIdx.x;   /// Block index
   const int gid   = blockIdx.x  * (SS33_Y*SS33_X) +  tid;           /// Global thread id (ie column) 0 is the first 'good' column
@@ -71,7 +71,7 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candMin* d_c
 #pragma unroll
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
-            d_cands[step*noStages*oStride + stage*oStride + gid ].sigma = 0 ;
+            d_cands[step*noStages*oStride + stage*oStride + gid ].value = 0 ;
           }
         }
       }
@@ -125,16 +125,16 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candMin* d_c
                     // OR
                     //int iy1     = ( h1 * trm + zh2 ) / zh1;
 
-                    int iy2     = iy1*stride[harm];
-
+                    int iy2;
 
                     if        ( FLAGS & FLAG_ITLV_PLN )
                     {
-                      iy2 = iy1 + step * HEIGHT_STAGE[harm];                // stride step by plain
+                      iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * stride[harm];
                     }
                     else
                     {
                       ix2 = ix1 + step * STRIDE_STAGE[harm] ;
+                      iy2 = iy1*stride[harm];
                     }
 
                     if        ( FLAGS & FLAG_SAS_TEX )
@@ -156,7 +156,7 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candMin* d_c
                       if      ( FLAGS & FLAG_MUL_CB_OUT )
                       {
                         float cmpf            = powersArr[harm][ iy2 + ix2 ];
-                        powers[yPlus]  += cmpf;
+                        powers[yPlus]         += cmpf;
                       }
                       else
                       {
@@ -197,9 +197,8 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candMin* d_c
           {
             if  ( candPow [stage] >  POWERCUT_STAGE[stage] )
             {
-              candMin tt;
-
-              tt.sigma = candPow [stage];
+              candPZ tt;
+              tt.value = candPow [stage];
               tt.z     = candZ   [stage];
 
               // Write to DRAM
@@ -253,43 +252,43 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   {
     case 1:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 2:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 3:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 4:
     {
       //cudaFuncSetCacheConfig(add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 5:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 6:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 7:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 8:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candMin*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     default:
