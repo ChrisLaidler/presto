@@ -163,23 +163,20 @@ int main(int argc, char *argv[])
    gpuSpecs      gSpec;
    searchSpecs   sSpec;
 
-   gSpec       = readGPUcmd(cmd);
-   sSpec       = readSrchSpecs(cmd, &obs);
+   gSpec        = readGPUcmd(cmd);
+   sSpec        = readSrchSpecs(cmd, &obs);
 #endif
 
    char candsFile[1024];
    sprintf(candsFile,"%s_hs%02i_zmax%06.1f_sig%06.3f.unoptcands", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
    FILE *file;
-   if ( (file = fopen(candsFile, "rb")) ) 		  // Read candidates from previous search  .
+   if ( (file = fopen(candsFile, "rb")) ) 		  // Read candidates from previous search  . // TMP
    {
      int numcands;
      fread( &numcands, sizeof(numcands), 1, file );
      int nc = 0;
 
      printf("\nReading %i raw candies from \"%s\" previous search.\n", numcands, candsFile);
-
-     //accelcand* newCnd = (accelcand*)malloc(sizeof(accelcand)*numcands);
-     //fread( newCnd, sizeof(accelcand), 1, file );
 
      for (nc = 0; nc < numcands; nc++)
      {

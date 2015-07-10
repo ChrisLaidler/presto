@@ -1224,6 +1224,7 @@ GSList *search_ffdotpows(ffdotpows * ffdot, int numharm,
    for (ii = 0; ii < ffdot->numzs; ii++) {
       for (jj = 0; jj < ffdot->numrs; jj++) {
          if (ffdot->powers[ii][jj] > powcut) {
+
             float pow, sig;
             double rr, zz;
             int added = 0;
@@ -1616,12 +1617,12 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
       if (obs->numz == 1)
          obs->numindep[ii] = (obs->rhi - obs->rlo) / index_to_twon(ii);
       else
+      {
          /* The numz+1 takes care of the small amount of  */
          /* search we get above zmax and below zmin.      */
-         obs->numindep[ii] = (obs->rhi - obs->rlo) * (obs->numz + 1) *
-             (obs->dz / 6.95) / index_to_twon(ii);
-      obs->powcut[ii] = power_for_sigma(obs->sigma,
-                                        index_to_twon(ii), obs->numindep[ii]);
+         obs->numindep[ii] = (obs->rhi - obs->rlo) * (obs->numz + 1) * (obs->dz / 6.95) / index_to_twon(ii);
+      }
+      obs->powcut[ii] = power_for_sigma(obs->sigma, index_to_twon(ii), obs->numindep[ii]);
    }
    obs->numzap = 0;
    /*

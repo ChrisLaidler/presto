@@ -858,55 +858,63 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        res   = mx2*1.02/(float)no ;
      }
 
-     int tp   = no*2+1 ;
-
      FOLD // GPU grid
      {
+       int tp     = (no)*2+1 ;
+       double rSz = (tp-1)*res;
+       double zSz = (tp-1)*res*ZSCALE ;
        gpuPows  = (float*)malloc( tp*tp*sizeof(float) );
-       //ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, lrgPnt[0][0], lrgPnt[0][1], (tp-1)*res, (tp-1)*res, tp, tp, max_kern_half_width, locpow);
-       ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, (tp-1)*res, (tp-1)*res*ZSCALE, tp, tp, max_kern_half_width, locpow);
+       ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, rSz, zSz, tp, tp, max_kern_half_width, locpow);
      }
 
-     FILE *f1 = fopen("/home/chris/accel/lrg.csv", "w");
-
-     double sx, sy;
-     int indx = 0;
-     int indy = 0;
-     double ff[2];
-     fprintf(f1,"%i",num_harmonics);
-     for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
+     FOLD // CPU Points
      {
-       fprintf(f1,"\t%.6f",sx);
-     }
-     fprintf(f1,"\n");
+       char tName[1024];
+       sprintf(tName,"/home/chris/accel/lrg_CPU.csv");
+       FILE *f1 = fopen(tName, "w");
 
-     for (sy = zin / ZSCALE - res*no ; indy < no*2+1;  sy += res, indy++ )
-     {
-       ff[1]=sy;
-       fprintf(f1,"%.6f",sy*ZSCALE);
-
+       double sx, sy;
+       int indx = 0;
+       int indy = 0;
+       double ff[2];
+       fprintf(f1,"%i",num_harmonics);
        for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
        {
-         ff[0]=sx;
-         double yy = -power_call_rz_harmonics(ff);
-
-         if (yy > bstGrd[2] )
-         {
-           bstGrd[2] = yy;
-           bstGrd[0] = sx;
-           bstGrd[1] = sy;
-         }
-
-         double yy2 = gpuPows[indy*tp+indx];
-         fprintf(f1,"\t%.6f",yy);
+         fprintf(f1,"\t%.6f",sx);
        }
        fprintf(f1,"\n");
+
+       for (sy = zin / ZSCALE - res*no ; indy < no*2+1;  sy += res, indy++ )
+       {
+         ff[1]=sy;
+         fprintf(f1,"%.6f",sy*ZSCALE);
+
+         for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
+         {
+           ff[0]=sx;
+           double yy = -power_call_rz_harmonics(ff);
+
+           if (yy > bstGrd[2] )
+           {
+             bstGrd[2] = yy;
+             bstGrd[0] = sx;
+             bstGrd[1] = sy;
+           }
+           fprintf(f1,"\t%.6f",yy);
+         }
+         fprintf(f1,"\n");
+       }
+       fclose(f1);
+
+       printf("Making lrg_CPU.png    \t... ");
+       fflush(stdout);
+       char cmd[1024];
+       sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+       system(cmd);
+       printf("Done\n");
+
+       free(gpuPows);
      }
-     fclose(f1);
-
-     system("python ~/bin/bin/plt_lrg.py");
-
-     free(gpuPows);
 
      int tmp = 0;
    }
@@ -981,7 +989,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      int indx = 0;
      int indy = 0;
      double ff[2];
-     fprintf(f,"        ");
+     fprintf(f,"%i",num_harmonics);
      for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
      {
        fprintf(f,"\t%.6f",sx);
@@ -1019,9 +1027,10 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
      fclose(fp);
 
 
-     // Plot combined
+     printf("Making plt.py     \t... ");
+     fflush(stdout);
      system("python ~/bin/bin/plt.py");
-     //system("python ~/bin/bin/pltSwrm2.py");
+     printf("Done\n");
 
      double d1 = bstGrd[0] - smlPnt[1][0];
      double d2 = bstGrd[1] - smlPnt[1][1];
@@ -1105,7 +1114,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
        char scmd[1024];
 
-       sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/", dirname );
+       sprintf(scmd,"mv /home/chris/accel/*.png %s/", dirname );
        system(scmd);
 
        sprintf(scmd,"mv /home/chris/accel/*.csv %s/", dirname );

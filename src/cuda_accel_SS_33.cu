@@ -220,23 +220,12 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZ* d_ca
 #pragma unroll
         for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
         {
-          //if  ( candLists[stage][step].sigma >  POWERCUT_STAGE[stage] )
           if  ( candPow [stage][step] >  POWERCUT_STAGE[stage] )
-            //if  ( candPow[idxSS<noStages,noSteps>(tid, stage, step)] >  POWERCUT_STAGE[stage] )
           {
-
-            if ( gid == 0 )
-            {
-              printf("add_and_searchCU33_k stage %02i  step: %02i  pow: %f\n", stage, step, candPow [stage][step] );
-            }
-
-
             candPZ tt;
 
             tt.value = candPow [stage][step];
-            //tt.sigma = candPow[idxSS<noStages,noSteps>(tid, stage, step)] ;
             tt.z     = candZ   [stage][step];
-            //tt.z     = candZ[idxSS<noStages,noSteps>(tid, stage, step)] ;
 
             // Write to DRAM
             d_cands[step*noStages*oStride + stage*oStride + gid] = tt;

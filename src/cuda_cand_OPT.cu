@@ -295,9 +295,9 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
   //for ( int hh = 1; hh <= noHarms; hh++)
   int hh = 1;
   {
-    printf("r:    %f \n", centR*hh );
-    printf("z:    %f \n", centZ*hh );
-    printf("rSZ:  %f \n", rSZ*hh );
+    //printf("r:    %f \n", centR*hh );
+    //printf("z:    %f \n", centZ*hh );
+    //printf("rSZ:  %f \n", rSZ*hh );
 
     double maxZ = (centZ*hh + zSZ*hh/2.0);
     double minZ = (centZ*hh - zSZ*hh/2.0);
@@ -426,8 +426,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     FOLD // Write CVS
     {
       char tName[1024];
-      //sprintf(tName,"/home/chris/accel/lrg_cu_%02i.csv",hh);
-      sprintf(tName,"/home/chris/accel/lrg_cu.csv");
+      sprintf(tName,"/home/chris/accel/lrg_GPU.csv");
       FILE *f2 = fopen(tName, "w");
 
       int indx = 0;
@@ -457,14 +456,26 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       }
       fclose(f2);
 
+      FOLD // Make image
+      {
+        printf("Making lrg_GPU.png    \t... ");
+        fflush(stdout);
+        char cmd[1024];
+        sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+        system(cmd);
+        printf("Done\n");
+      }
+
       int tmp = 0;
     }
 
     CUDA_SAFE_CALL(cudaFree(cuPowers),   "Failed to allocate device memory for kernel stack.");
     CUDA_SAFE_CALL(cudaFree(cuInp),       "Failed to allocate device memory for kernel stack.");
+
+
   }
 
-  system("python ~/bin/bin/plt_sec.py");
+
 }
 
 __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)

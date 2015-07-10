@@ -66,8 +66,6 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 #pragma unroll
         for ( int stage = 0; stage < noStages; stage++ )
         {
-          candPow [stage]        = 0 ;
-
 #pragma unroll
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
@@ -82,6 +80,15 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 #pragma unroll
       for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
       {
+        FOLD // Initialise candidate to zero
+        {
+#pragma unroll
+          for ( int stage = 0; stage < noStages; stage++ )
+          {
+            candPow [stage]        = 0 ;
+          }
+        }
+
         for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
         {
           FOLD // Initialise powers for each section column to 0  .
@@ -157,6 +164,14 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
                       {
                         float cmpf            = powersArr[harm][ iy2 + ix2 ];
                         powers[yPlus]         += cmpf;
+
+//                        if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
+//                        {
+//                          if ( candPow [stage] < cmpf )
+//                            printf("%03i %15.3f  %15.3f  %04i %04i New best! \n", trm, cmpf, candPow [stage], iy2, ix2 );
+//                          else
+//                            printf("%03i %15.3f  %15.3f  %04i %04i \n",trm, cmpf, candPow [stage], iy2, ix2 );
+//                        }
                       }
                       else
                       {
@@ -173,12 +188,21 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 #pragma unroll
                 for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section  .
                 {
+//                  if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
+//                  {
+//                    printf("  %03i %12.3f  %15.3f  %15.3f \n", yPlus, powers[yPlus], candPow [stage], POWERCUT_STAGE[stage] );
+//                  }
+
                   if  (  powers[yPlus] > POWERCUT_STAGE[stage] )
                   {
                     if ( powers[yPlus] > candPow [stage] )
                     {
                       if ( y + yPlus < zeroHeight )
                       {
+//                        if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
+//                        {
+//                          printf("-- New Max --\n");
+//                        }
                         candPow [stage]  = powers[yPlus];
                         candZ   [stage]  = y+yPlus;
                       }
@@ -200,6 +224,11 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
               candPZ tt;
               tt.value = candPow [stage];
               tt.z     = candZ   [stage];
+
+//              if ( gid == 0 && stage == 0 && step == 1 ) // TMP
+//              {
+//                printf(" GPU MAX %f z: %i at %i \n", tt.value, tt.z, step*noStages*oStride + stage*oStride + gid );
+//              }
 
               // Write to DRAM
               d_cands[step*noStages*oStride + stage*oStride + gid] = tt;

@@ -234,8 +234,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         if ( noHarms > 1 )
         {
           // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-          int   oAccelLen2   = calcAccellen(width/2.0, zmax/2.0);
-          kernel->accelLen = oAccelLen2*2;
+          int   oAccelLen1  = calcAccellen(width,     zmax);
+          int   oAccelLen2  = calcAccellen(width/2.0, zmax/2.0);
+          kernel->accelLen  = MIN(oAccelLen2*2, oAccelLen1);
+
+          // Check
+          float fftLen      = round(calc_fftlen3(1, zmax, kernel->accelLen)/1000.0);
+          if ( fftLen != width )
+          {
+            fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
+            exit(EXIT_FAILURE);
+          }
         }
         else
         {
@@ -2627,9 +2636,9 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
         srch->numindep[ii] = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) / srch->noHarms;
       else
       {
-        srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * (ACCEL_DZ / 6.95) / srch->noHarms;
-        srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, srch->noHarms, srch->numindep[ii]);
+        srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * (ACCEL_DZ / 6.95) / (double)(1<<ii);
       }
+      srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
     }
   }
 

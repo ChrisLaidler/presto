@@ -759,6 +759,9 @@ int main(int argc, char *argv[])
   long long badInp  = 0;
   long long badCplx = 0;
 
+  long long badCands  = 0;
+  long long goodCands = 0;
+
   /* Start the main search loop */
 
   FOLD //  -- Main Loop --
@@ -805,10 +808,16 @@ int main(int argc, char *argv[])
 
       gSpec         = readGPUcmd(cmd);
       sSpec         = readSrchSpecs(cmd, &obs);
-      sSpec.pWidth  = ACCEL_USELEN; // NB: must have same accellen for tests!
+      //sSpec.pWidth  = ACCEL_USELEN; // NB: must have same accellen for tests!
       cuSrch        = initCuSearch(&sSpec, &gSpec, NULL);
 
       master        =  &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+
+      if ( master->accelLen != ACCEL_USELEN )
+      {
+        fprintf(stderr, "ERROR: GPU and CPU step size do not match!\n");
+        exit(EXIT_FAILURE);
+      }
 
       /*
       if ( cmd->gpuP ) // Determine the index and number of devices
@@ -979,6 +988,7 @@ int main(int argc, char *argv[])
       int firstStep       = 0;
       bool printDetails   = false;
       bool printBadLines  = false;
+      bool CSV            = true;
 
       printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
       printf("\nWill check all input and plains and report ");
@@ -1124,103 +1134,6 @@ int main(int argc, char *argv[])
             search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep);
           }
 
-          FOLD // Now do an equivalent CPU search  .
-          {
-            for ( int step = 0; (step < trdBatch->noSteps) && ( firstStep+step < maxxx) ; step ++) // Loop over steps
-            {
-              startr  = startrs[step];
-              lastr   = lastrs[step];
-
-              rVals* rVal;
-#ifdef SYNCHRONOUS
-              rVal = &((*trdBatch->rConvld)[step][0]);
-#else
-              rVal = &((*trdBatch->rSearch)[step][0]);
-#endif
-
-              //printf("\n Step %04i \n",step);
-
-              //candsCPU    = search_ffdotpows(fundamental, 1, &obs, candsCPU);
-
-              //if (obs.numharmstages > 1)    /* Search the subharmonics */
-              {
-                int stage, harmtosum, harm;
-                ffdotpows *subharmonic;
-
-                // Copy the fundamental's ffdot plane to the full in-core one
-                for (stage = 0; stage < obs.numharmstages; stage++)
-                {
-                  harmtosum   = 1 << stage;
-
-                  if (stage == 0)
-                  {
-                    fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, &cpuInput[step][0], &cpuCmplx[step][0], &cpuPowers[step][0] );
-                  }
-                  else
-                  {
-                    for (harm = 1; harm < harmtosum; harm += 2)
-                    {
-                      float frac = (float)(harm)/(float)harmtosum;
-                      int idx = noHarms - frac * noHarms;
-                      {
-                        subharmonic = subharm_ffdot_plane_DBG(harmtosum, harm, startr, lastr, &subharminfs[stage][harm - 1], &obs, &cpuInput[step][idx], &cpuCmplx[step][idx], &cpuPowers[step][idx] );
-
-                        add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
-
-                        free_ffdotpows(subharmonic);
-                      }
-                    }
-                  }
-
-                  candsCPU = search_ffdotpows(fundamental, harmtosum, &obs, candsCPU);
-
-                  int numcands = g_slist_length(candsCPU);
-
-                  FOLD // Write CVS  .
-                  {
-                    double rr, zz;
-                    char tName[1024];
-                    sprintf(tName,"/home/chris/accel/h%02i_%015.4f-%015.4f.csv", harmtosum, rVal->drlo / (double)harmtosum, (rVal->drlo + (trdBatch->accelLen-1)*ACCEL_DR) / (double)harmtosum );
-                    FILE *f2 = fopen(tName, "w");
-
-                    fprintf(f2,"%i",harmtosum);
-
-                    for ( int x = 0; x < trdBatch->accelLen; x++ )
-                    {
-                      rr      = ( rVal->drlo + x *  ACCEL_DR )                            / (double)harmtosum ;
-                      fprintf(f2,"\t%.6f",rr);
-                    }
-                    fprintf(f2,"\n");
-
-                    for ( int y = 0; y < trdBatch->hInfos->height; y++ )
-                    {
-                      zz      = ( y * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)harmtosum ;
-                      fprintf(f2,"%.6f",zz);
-
-                      for ( int x = 0; x < trdBatch->accelLen; x++ )
-                      {
-                        float yy2 = fundamental->powers[y][x];
-                        fprintf(f2,"\t%.6f",yy2);
-                      }
-                      fprintf(f2,"\n");
-                    }
-                    fclose(f2);
-
-                    if ( noCands != numcands )
-                    {
-//                      char cmd[1024];
-//                      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
-//                      system(cmd);
-                    }
-                  }
-
-                  noCands = numcands;
-                }
-              }
-              free_ffdotpows(fundamental);
-            }
-          }
-
           FOLD // Copy data from device  .
           {
             ulong sz  = 0;
@@ -1272,11 +1185,11 @@ int main(int argc, char *argv[])
                         //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                         CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                         /*
-                                   for( int jj = 0; jj < plan->numrs[step]; jj++)
-                                   {
-                                     float *add = gpuPowers[step][harm].getP(jj*2+1,y);
-                                     gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
-                                   }
+                                             for( int jj = 0; jj < plan->numrs[step]; jj++)
+                                             {
+                                               float *add = gpuPowers[step][harm].getP(jj*2+1,y);
+                                               gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
+                                             }
                          */
                       }
                       else
@@ -1298,6 +1211,201 @@ int main(int argc, char *argv[])
               cudaEventRecord(cStack->plnComp,  cStack->fftPStream);
             }
           }
+
+          FOLD // Now do an equivalent CPU search  .
+          {
+            for ( int step = 0; (step < trdBatch->noSteps) && ( firstStep+step < maxxx) ; step ++) // Loop over steps
+            {
+              double poww, sig, rr, zz;
+
+              startr  = startrs[step];
+              lastr   = lastrs[step];
+
+              rVals* rVal;
+#ifdef SYNCHRONOUS
+              rVal = &((*trdBatch->rConvld)[step][0]);
+#else
+              rVal = &((*trdBatch->rSearch)[step][0]);
+#endif
+
+              FOLD // ????  .
+              {
+                int stage, harmtosum, harm;
+                ffdotpows *subharmonic;
+
+                // Copy the fundamental's ffdot plane to the full in-core one
+                for (stage = 0; stage < obs.numharmstages; stage++)
+                {
+                  harmtosum   = 1 << stage;
+
+                  if (stage == 0)
+                  {
+                    fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, &cpuInput[step][0], &cpuCmplx[step][0], &cpuPowers[step][0] );
+                  }
+                  else
+                  {
+                    for (harm = 1; harm < harmtosum; harm += 2)
+                    {
+                      float frac = (float)(harm)/(float)harmtosum;
+                      int idx = noHarms - frac * noHarms;
+                      {
+                        subharmonic = subharm_ffdot_plane_DBG(harmtosum, harm, startr, lastr, &subharminfs[stage][harm - 1], &obs, &cpuInput[step][idx], &cpuCmplx[step][idx], &cpuPowers[step][idx] );
+
+                        add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
+
+                        free_ffdotpows(subharmonic);
+                      }
+                    }
+                  }
+
+                  candsCPU = search_ffdotpows(fundamental, harmtosum, &obs, candsCPU);
+
+                  int numcands = g_slist_length(candsCPU);
+
+                  Fout // Tempt output  .
+                  {
+                    if ( stage == 0 && step == 0 )
+                    {
+                      float max = 0;
+                      float vall;
+
+                      printf("\n============================ CPU ============================ \n");
+
+                      for ( int y = 0; y < trdBatch->hInfos->height; y++ )
+                      {
+                        vall = fundamental->powers[y][1022];
+
+                        if ( vall > max )
+                        {
+                          printf("%03i %15.3f  %04i %04i New best! \n", y, vall, 0, 0 );
+                          max = vall;
+                        }
+                        else
+                        {
+                          printf("%03i %15.3f  %04i %04i \n", y, vall, 0, 0 );
+                        }
+                      }
+
+                      int tmp = 0;
+                    }
+                  }
+
+                  FOLD // Compare candidates
+                  {
+                    for ( int x = 0; x < trdBatch->accelLen; x++ )
+                    {
+                      int idx   = step*obs.numharmstages*trdBatch->hInfos->width + stage*trdBatch->hInfos->width + x ;
+
+                      int iz    = 0;
+                      poww      = 0;
+                      sig       = 0;
+                      zz        = 0;
+
+                      if      ( trdBatch->retType & CU_CANDMIN  )
+                      {
+                        candMin candM         = ((candMin*)trdBatch->h_retData)[idx];
+                        sig                   = candM.power;
+                        poww                  = candM.power;
+                        iz                    = candM.z;
+                      }
+                      else if ( trdBatch->retType & CU_POWERZ   )
+                      {
+                        candPZ candM          = ((candPZ*)trdBatch->h_retData)[idx];
+                        sig                   = candM.value;
+                        poww                  = candM.value;
+                        iz                    = candM.z;
+                      }
+                      else if ( trdBatch->retType & CU_CANDBASC )
+                      {
+                        accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData)[idx];
+                        poww                  = candB.sigma;
+                        sig                   = candB.sigma;
+                        iz                    = candB.z;
+                      }
+                      else
+                      {
+                        fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+                        exit(EXIT_FAILURE);
+                      }
+
+                      if ( poww > 0 )
+                      {
+                        rr      = ( rVal->drlo + x *  ACCEL_DR )                            / (double)harmtosum ;
+                        zz      = ( iz * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)harmtosum ;
+
+                        float cPow;
+                        float *row;
+
+                        row   = fundamental->powers[iz];
+                        cPow  = row[x];
+
+                        float p1 = poww;
+                        float p2 = cPow;
+
+                        float err = fabs(1-p2/p1);
+
+                        if ( err > 0.001 )
+                        {
+                          printf("Candidate r: %9.4f z: %5.2f  CPU pow: %6.2f  GPU pow: %6.2f   %8.6f \n", rr, zz, p2, p1, fabs(1-p2/p1) );
+                          badCands++;
+                        }
+                        else
+                        {
+                          goodCands++;
+                        }
+
+                        int tmp = 0 ;
+                      }
+
+                    }
+                  }
+
+                  if ( CSV ) // Write CVS  .
+                  {
+                    double rr, zz;
+                    char tName[1024];
+                    sprintf(tName,"/home/chris/accel/h%02i_%015.4f-%015.4f.csv", harmtosum, rVal->drlo / (double)harmtosum, (rVal->drlo + (trdBatch->accelLen-1)*ACCEL_DR) / (double)harmtosum );
+                    FILE *f2 = fopen(tName, "w");
+
+                    fprintf(f2,"%i",harmtosum);
+
+                    for ( int x = 0; x < trdBatch->accelLen; x++ )
+                    {
+                      rr      = ( rVal->drlo + x *  ACCEL_DR )                            / (double)harmtosum ;
+                      fprintf(f2,"\t%.6f",rr);
+                    }
+                    fprintf(f2,"\n");
+
+                    for ( int y = 0; y < trdBatch->hInfos->height; y++ )
+                    {
+                      zz      = ( y * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)harmtosum ;
+                      fprintf(f2,"%.6f",zz);
+
+                      for ( int x = 0; x < trdBatch->accelLen; x++ )
+                      {
+                        float yy2 = fundamental->powers[y][x];
+                        fprintf(f2,"\t%.6f",yy2);
+                      }
+                      fprintf(f2,"\n");
+                    }
+                    fclose(f2);
+
+                    if ( noCands != numcands )
+                    {
+                      //                      char cmd[1024];
+                      //                      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+                      //                      system(cmd);
+                    }
+                  }
+
+                  noCands = numcands;
+                }
+              }
+              free_ffdotpows(fundamental);
+            }
+          }
+
+
 
           FOLD // Print MSE  .
           {
@@ -1599,150 +1707,6 @@ int main(int argc, char *argv[])
             int tmp = 0;
           }
 
-          FOLD // Check candidates!
-          {
-            double poww, sig;
-            double rr, zz;
-            int numharm;
-            poww = 0;
-
-            FOLD  // Loop over results and find candidates  .
-            {
-              FOLD // ADD candidates to global list  .
-              {
-
-#ifdef STPMSG
-                printf("\t\t\tAdd To List\n");
-#endif
-
-#pragma omp critical
-                {
-                  for ( int step = 0; step < trdBatch->noSteps; step++) // Loop over steps  .
-                  {
-                    startr  = startrs[step];
-                    lastr   = lastrs[step];
-
-                    rVals* rVal;
-#ifdef SYNCHRONOUS
-                    rVal = &((*trdBatch->rConvld)[step][0]);
-#else
-                    rVal = &((*trdBatch->rSearch)[step][0]);
-#endif
-
-                    int noStages = obs.numharmstages;
-
-                    for ( int stage = 0; stage < noStages; stage++ )
-                    {
-                      int harmtosum, harm;
-                      ffdotpows *subharmonic;
-                      numharm = (1<<stage);
-
-                      if ( stage == 0 )
-                      {
-                        fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, &cpuInput[step][0], &cpuCmplx[step][0], &cpuPowers[step][0] );
-                      }
-                      else
-                      {
-                        harmtosum = 1 << stage;
-
-                        for (harm = 1; harm < harmtosum; harm += 2)
-                        {
-                          float frac = (float)(harm)/(float)harmtosum;
-                          int idx = noHarms - frac * noHarms;
-
-                          if (obs.inmem)
-                          {
-                            if (cmd->otheroptP)
-                              inmem_add_ffdotpows_trans(fundamental, &obs, harmtosum, harm);
-                            else
-                              inmem_add_ffdotpows(fundamental, &obs, harmtosum, harm);
-                          }
-                          else
-                          {
-                            subharmonic = subharm_ffdot_plane_DBG(harmtosum, harm, startr, lastr, &subharminfs[stage][harm - 1], &obs, &cpuInput[step][idx], &cpuCmplx[step][idx], &cpuPowers[step][idx] );
-
-                            if (cmd->otheroptP)
-                              add_ffdotpows_ptrs(fundamental, subharmonic, harmtosum, harm);
-                            else
-                              add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
-                            free_ffdotpows(subharmonic);
-                          }
-                        }
-
-                      }
-
-                      for ( int x = 0; x < trdBatch->accelLen; x++ )
-                      {
-                        int idx   = step*noStages*trdBatch->hInfos->width + stage*trdBatch->hInfos->width + x ;
-
-                        int iz    = 0;
-                        poww      = 0;
-                        sig       = 0;
-                        zz        = 0;
-
-                        if      ( trdBatch->retType & CU_CANDMIN )
-                        {
-                          candMin candM         = ((candMin*)trdBatch->h_retData)[idx];
-                          sig                   = candM.power;
-                          poww                  = candM.power;
-                          iz                    = candM.z;
-                        }
-                        else if ( trdBatch->retType & CU_POWERZ )
-                        {
-                          candPZ candM          = ((candPZ*)trdBatch->h_retData)[idx];
-                          sig                   = candM.value;
-                          poww                  = candM.value;
-                          iz                    = candM.z;
-                        }
-                        else if ( trdBatch->retType & CU_CANDBASC )
-                        {
-                          accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData)[idx];
-                          poww                  = candB.sigma;
-                          sig                   = candB.sigma;
-                          iz                    = candB.z;
-                        }
-                        else
-                        {
-                          fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-                          exit(EXIT_FAILURE);
-                        }
-
-                        if ( poww > 0 )
-                        {
-                          rr      = ( rVal->drlo + x *  ACCEL_DR )                            / (double)numharm ;
-                          zz      = ( iz * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)numharm ;
-
-                          float cPow;
-                          float *row;
-
-                          row   = fundamental->powers[iz];
-                          cPow  = row[x];
-
-                          float p1 = poww;
-                          float p2 = cPow;
-
-                          float err = fabs(1-p2/p1);
-
-                          if ( err > 0.001 )
-                            printf("Candidate r: %9.4f z: %5.2f  CPU pow: %6.2f  GPU pow: %6.2f   %8.6f \n", rr, zz, p2, p1, fabs(1-p2/p1) );
-
-                          int tmp = 0 ;
-                        }
-
-                      }
-                    }
-                  }
-                }
-
-#ifdef STPMSG
-                printf("\t\t\tDone\n");
-#endif
-                //if ( !(trdBatch->flag & FLAG_SIG_GPU) && (trdBatch->retType & CU_CANDBASC) )
-                //  free(powers);
-              }
-            }
-          }
-
           print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
         }
 
@@ -1822,8 +1786,11 @@ int main(int argc, char *argv[])
   }
 
   printf("\n\nDone searching.\n");
-  printf("   We got %lli bad input values.\n",      badInp  );
-  printf("   We got %lli bad complex plains.\n\n",  badCplx );
+  printf("   We got %7lli bad input values.\n",             badInp  );
+  printf("   We got %7lli bad complex plains.\n",           badCplx );
+  printf("   Found  %7lli GPU values above %.2f sigma.\n",  badCands+goodCands, obs.sigma);
+  printf("          %6.2f%% were similar to CPU values.\n", goodCands/double(badCands+goodCands)*100.0 );
+  printf("\n");
   
   compareCands(candsCPU, candsGPU );
 

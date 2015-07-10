@@ -658,21 +658,41 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
 
             for ( int stage = 0; stage < noStages; stage++ )
             {
+              numharm = (1<<stage);
+
+              double loR = rVal->drlo/(double)numharm;
+              double hiR = (rVal->drlo+batch->accelLen*ACCEL_DR)/(double)numharm;
+
+
+              if ( numharm == 4 && loR < 61441.8 && hiR > 61441.8 ) // TMP
+              {
+                int tmp = 0;
+              }
+
               for ( int x = 0; x < batch->accelLen; x++ )
               {
+                FOLD // TMP
+                {
+                  double trr = ( rVal->drlo + x *  ACCEL_DR ) / (double)numharm;
+                  if ( trr == 543.0 )
+                  {
+                    int tmp = 0;
+                  }
+                }
+
                 int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
                 poww      = 0;
                 sig       = 0;
                 zz        = 0;
 
-                if      ( batch->retType & CU_CANDMIN )
+                if      ( batch->retType & CU_CANDMIN  )
                 {
                   candMin candM         = ((candMin*)batch->h_retData)[idx];
                   sig                   = candM.power;
                   poww                  = candM.power;
                   zz                    = candM.z;
                 }
-                else if ( batch->retType & CU_POWERZ )
+                else if ( batch->retType & CU_POWERZ   )
                 {
                   candPZ candM          = ((candPZ*)batch->h_retData)[idx];
                   sig                   = candM.value;
@@ -695,7 +715,6 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                 if ( poww > 0 )
                 {
                   batch->noResults++;
-                  numharm = (1<<stage);
 
                   if ( !(batch->flag & FLAG_SIG_GPU) ) // Do the sigma calculation
                   {
@@ -767,8 +786,9 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                     }
                   }
                 }
-
               }
+
+              int tmp; // TMP
             }
           }
         }
