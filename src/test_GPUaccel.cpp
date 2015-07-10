@@ -715,7 +715,6 @@ int main(int argc, char *argv[])
   printf("\n\n");
   printf("    Fourier-Domain Acceleration Search Routine\n");
   printf("               by Scott M. Ransom\n");
-
 #ifdef CUDA
   printf("              With GPU additions by:\n");
   printf("                 Chris Laidler\n");
@@ -1177,7 +1176,7 @@ int main(int argc, char *argv[])
 
                   int numcands = g_slist_length(candsCPU);
 
-                  FOLD // Write CVS
+                  FOLD // Write CVS  .
                   {
                     double rr, zz;
                     char tName[1024];
@@ -1209,9 +1208,9 @@ int main(int argc, char *argv[])
 
                     if ( noCands != numcands )
                     {
-                      char cmd[1024];
-                      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
-                      system(cmd);
+//                      char cmd[1024];
+//                      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+//                      system(cmd);
                     }
                   }
 
