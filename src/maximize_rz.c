@@ -200,7 +200,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        //float ff         = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
        locpow[i-1]      = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
        maxlocpow[i-1]   = locpow[i-1];
-       //printf("  %02i  %8.3f \n", i, locpow[i-1] );
+       printf("  %02i  %8.3f \n", i, locpow[i-1] );
    }
    //printf("\n");
    nummaxdata           = numdata;

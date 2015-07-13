@@ -304,11 +304,10 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     double minR = (centR*hh - rSZ*hh/2.0);
     double maxR = (centR*hh + rSZ*hh/2.0);
 
-    //int halfwidth   = z_resp_halfwidth(MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms)), HIGHACC);
-    //halfwidth = max_kern_half_width;
+    int halfwidth2    = z_resp_halfwidth(MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms)), HIGHACC);
+    halfwidth         = MAX(halfwidth,halfwidth2);
 
-    //double rSpread  = ceil(maxR * noHarms + halfwidth) - floor(minR * noHarms - halfwidth);
-    double rSpread  = ceil(maxR  + halfwidth) - floor(minR - halfwidth);
+    double rSpread    = ceil(maxR  + halfwidth) - floor(minR - halfwidth);
 
     size_t rStride, pStride;
     float *cuPowers;
@@ -333,7 +332,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
 
     for( int h = 0; h < noHarms; h++)
     {
-      rOff.val[h] = floor( minR*(h+1) - halfwidth );
+      rOff.val[h]   = floor( minR*(h+1) - halfwidth );
 
       int datStart  = rOff.val[h];
       int datEnd    = datStart + noInp;
@@ -374,7 +373,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
 
           free(normPow);
         }
-        else              // Use precalculated normalisation factor  .
+        else              // Use precalcualted normalisation factor  .
         {
           factor = fac[h];
         }
@@ -471,11 +470,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
 
     CUDA_SAFE_CALL(cudaFree(cuPowers),   "Failed to allocate device memory for kernel stack.");
     CUDA_SAFE_CALL(cudaFree(cuInp),       "Failed to allocate device memory for kernel stack.");
-
-
   }
-
-
 }
 
 __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)
