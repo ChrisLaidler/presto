@@ -216,6 +216,9 @@ fcomplex *gen_r_response(double roffset, int numbetween, int numkern)
          sinc = s / r;
       response[ii].r = c * sinc;
       response[ii].i = s * sinc;
+
+      //printf("%04i response: %15.10f %15.10f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", ii, response[ii].r, response[ii].i, r, c, s, sinc );
+
       c = alpha * (tmp = c) - beta * s + c;
       s = alpha * s + beta * tmp + s;
    }

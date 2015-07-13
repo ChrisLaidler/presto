@@ -583,7 +583,7 @@ int main(int argc, char *argv[])
             //print_percent_complete(ii, numcands, "optimization", 0);
             cand = (accelcand *) (listptr->data);
 
-            if ( ii == 3 )
+            //if ( ii == 3 )
             {
               optimize_accelcand(cand, &obs, ii+1);
             }
@@ -655,6 +655,8 @@ int main(int argc, char *argv[])
    }
 
 #ifdef CUDA 	// Timing message  .
+   if (cuSrch)
+   {
       printf("\n Timing:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
       writeLogEntry("/home/chris/accelsearch_log.csv",&obs, cuSrch, prepTime, cupTime, gpuTime, optTime);
@@ -773,7 +775,7 @@ int main(int argc, char *argv[])
 
 
 #endif
-
+   }
 #endif
 
    /* Finish up */

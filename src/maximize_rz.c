@@ -147,11 +147,12 @@ static double power_call_rz_harmonics(double rz[])
     for( i=1; i<= max_num_harmonics; i++ )
     //i = 1 ;
     {
+      //printf("\nHarm %02i\n",i);
        rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
        //total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
        total_power += POWER(ans.r, ans.i)/maxlocpow[i-1]/maxlocpow[i-1]; // TODO: to properly normalise this should be divided by the square of the nomalisation factor????
        //if( i == 1 )
-       //  printf("Harm %02i  Power: %10.4f  %10.4f %10.4f norm: %.5f\n", i, POWER(ans.r, ans.i), ans.r, ans.i, maxlocpow[i-1] );
+       //printf("Harm %02i  Power: %10.4f  %10.4f %10.4f norm: %.5f\n", i, POWER(ans.r, ans.i), ans.r, ans.i, maxlocpow[i-1] );
     }
     return -total_power;
 }
@@ -200,7 +201,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
        //float ff         = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
        locpow[i-1]      = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
        maxlocpow[i-1]   = locpow[i-1];
-       printf("  %02i  %8.3f \n", i, locpow[i-1] );
+       //printf("  %02i  %8.3f \n", i, locpow[i-1] );
    }
    //printf("\n");
    nummaxdata           = numdata;
@@ -219,7 +220,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    //max_kern_half_width = z_resp_halfwidth(fabs(zin*num_harmonics) + 4.0, HIGHACC);
 
    //TMP
-   //rz_interp_cu(maxdata_harmonics[0], r_offset[0], numdata, 99995.112, -56.23, max_kern_half_width);
+   rz_interp_cu(maxdata_harmonics[0], r_offset[0], numdata, 100.112, -0.00001, max_kern_half_width);
 
    double lrgPnt[2][3];
    double smlPnt[2][3];
@@ -809,8 +810,9 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
    if ( skp  )  // Large points  .
    {
-     float szDiff = scale / 1.9 ;
+     float  szDiff = scale / 1.9 ;
      float* gpuPows;
+     int    tp;
 
      lrgPnt[1][0] = x[0][0];
      lrgPnt[1][1] = x[0][1] * ZSCALE;
@@ -860,39 +862,66 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
      FOLD // GPU grid
      {
-       int tp     = (no)*2+1 ;
+       tp         = (no)*2+1 ;
        double rSz = (tp-1)*res;
        double zSz = (tp-1)*res*ZSCALE ;
        gpuPows  = (float*)malloc( tp*tp*sizeof(float) );
+       //printf("\n\n ----===== UUUU ======------\n"); // TMP
        ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, rSz, zSz, tp, tp, max_kern_half_width, locpow);
      }
 
      FOLD // CPU Points
      {
-       char tName[1024];
-       sprintf(tName,"/home/chris/accel/lrg_CPU.csv");
-       FILE *f1 = fopen(tName, "w");
+       //printf("\n\n ----===== CCC ======------\n"); // TMP
+
+       char tName1[1024];
+       char tName2[1024];
+       sprintf(tName1,"/home/chris/accel/lrg_1_CPU.csv");
+       sprintf(tName2,"/home/chris/accel/lrg_3_DIFF.csv");
+       FILE *f1 = fopen(tName1, "w");
+       FILE *f2 = fopen(tName2, "w");
+       float mX, mY, mxDiff = 0;
+       int miX, miY;
 
        double sx, sy;
        int indx = 0;
        int indy = 0;
        double ff[2];
        fprintf(f1,"%i",num_harmonics);
+       fprintf(f2,"%i",num_harmonics);
+
        for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
        {
          fprintf(f1,"\t%.6f",sx);
+         fprintf(f2,"\t%.6f",sx);
        }
        fprintf(f1,"\n");
+       fprintf(f2,"\n");
 
-       for (sy = zin / ZSCALE - res*no ; indy < no*2+1;  sy += res, indy++ )
+       for (sy = zin / ZSCALE + res*no ; indy < no*2+1;  sy -= res, indy++ )
        {
          ff[1]=sy;
          fprintf(f1,"%.6f",sy*ZSCALE);
+         fprintf(f2,"%.6f",sy*ZSCALE);
 
          for (sx = rin - res*no, indx = 0; indx < no*2+1 ; sx += res, indx++ )
          {
            ff[0]=sx;
-           double yy = -power_call_rz_harmonics(ff);
+           double yy  = -power_call_rz_harmonics(ff);
+           fprintf(f1,"\t%.6f", yy);
+
+           float  gv  = gpuPows[indy*tp+indx];
+           float diff = yy - gv;
+           fprintf(f2,"\t%.6f",diff);
+
+           if ( fabs(diff) > fabs(mxDiff) )
+           {
+             mX       = sx;
+             mY       = sy;
+             miX      = indx;
+             miY      = indy;
+             mxDiff   = diff;
+           }
 
            if (yy > bstGrd[2] )
            {
@@ -900,16 +929,27 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
              bstGrd[0] = sx;
              bstGrd[1] = sy;
            }
-           fprintf(f1,"\t%.6f",yy);
+
          }
          fprintf(f1,"\n");
+         fprintf(f2,"\n");
        }
        fclose(f1);
+       fclose(f2);
+
+       //printf("Max Diff %.4f  x: %.6f   y: %.6f  (%i %i)\n", mxDiff, mX, mY, miX, miY);
 
        printf("Making lrg_CPU.png    \t... ");
        fflush(stdout);
        char cmd[1024];
-       sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+       sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName1);
+       system(cmd);
+       printf("Done\n");
+
+
+       printf("Making lrg_DIFF.png    \t... ");
+       fflush(stdout);
+       sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName2);
        system(cmd);
        printf("Done\n");
 

@@ -245,8 +245,8 @@ void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_wi
       }
       else  // Original method
       {
-        tmpd = *(dataptr++);
-        tmpr = *(respptr++);
+        tmpd    = *(dataptr++);
+        tmpr    = *(respptr++);
         ans->r += tmpd * tmpr + (*dataptr) * (*respptr);
         ans->i += (*dataptr) * tmpr - (*respptr) * tmpd;
         //printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, lodata+ii, tmpd, (*dataptr), tmpr, (*respptr), ans->r*ans->r+ans->i*ans->i );

@@ -178,7 +178,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
   int ii, lodata;
   T absz, zd, q_r, xx, Yr, Zr, startr;
   T fressy, frescy, fressz, frescz;
-  T s, c, pibyz, cons;
+  T s, c, pibyz, cons, sinc;
   fcomplexcu inp;
   fcomplexcu ans;
 
@@ -204,20 +204,29 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
     pibyz             = PI / z;
     startr            += kern_half_width;
 
+    if ( absz < 1E-4 )
+    {
+      startr = r - lodata;
+    }
+
     FOLD // Clamp values to usable bounds  .
     {
       if ( lodata < 0 )
       {
+        //printf("lodata < 0\n");
         numkern += lodata;
         startr  += lodata;
         lodata  = 0;
       }
 
+      //printf("lodata: %i    loR: %i  \n", lodata, loR);
       lodata -= loR;
 
       //printf("lodata + numkern: %i  noR: %i \n", lodata + numkern, noBins );
       if ( lodata + numkern >= noBins )
       {
+//        printf("lodata + numkern >= noBins\n");
+//        printf("%i + %i >= %i\n", lodata, numkern, noBins );
         numkern = noBins - lodata;
       }
       //printf("numkern: %i\n", numkern );
@@ -233,18 +242,38 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
 
       FOLD // Calculate response value  .
       {
-        Yr              = q_r * zd;
-        Zr              = Yr + z * zd;
-        xx              = pibyz * q_r * q_r;
-        c               = cos_t(xx);
-        s               = sin_t(xx);
-        fresnl<T>(Yr, &fressy, &frescy);
-        fresnl<T>(Zr, &fressz, &frescz);
+        if ( absz < 1E-4 ) // Just do a Fourier Interpolation
+        {
+          xx              = PI*q_r ;
 
-        T Ster          = fressz - fressy;
-        T Cter          = frescy - frescz;
-        tR              = cons * (c*Ster + signz*s*Cter);
-        tI              = cons * (s*Ster - signz*c*Cter);
+          c               = cos_t(xx);
+          s               = sin_t(xx);
+
+          if (q_r == 0.0)
+             sinc = 1.0;
+          else
+             sinc = s / xx;
+
+          tR              = c * sinc;
+          tI              = s * sinc;
+
+          //printf("%04i response: %15.10f %15.10f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", ii, tR, tI, q_r, c, s, sinc );
+        }
+        else
+        {
+          Yr              = q_r * zd;
+          Zr              = Yr + z * zd;
+          xx              = pibyz * q_r * q_r;
+          c               = cos_t(xx);
+          s               = sin_t(xx);
+          fresnl<T>(Yr, &fressy, &frescy);
+          fresnl<T>(Zr, &fressz, &frescz);
+
+          T Ster          = fressz - fressy;
+          T Cter          = frescy - frescz;
+          tR              = cons * (c*Ster + signz*s*Cter);
+          tI              = cons * (s*Ster - signz*c*Cter);
+        }
       }
 
       FOLD // Do the multiplication  .
@@ -260,7 +289,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
   return ans;
 }
 
-__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR)
+__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR, float16 norm)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -272,11 +301,17 @@ __global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms
     float total_power = 0;
 
     for( int i = 1; i <= noHarms; i++ )
-      //for(int i = 1; i <= 2; i++)
-      //int i = 1;
     {
       fcomplexcu ans  = rz_interp_cu<float>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
+      //total_power     += POWERR(ans.r, ans.i)/norm.val[i-1];
       total_power     += POWERR(ans.r, ans.i);
+
+//      if ( ix == 92 && iy == 26 )
+//      {
+//        printf("\nHarm %02i\n", i );
+//        fcomplexcu ans  = rz_interp_cu<double>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
+//        printf("Harm %02i  Power: %10.4f  %10.4f %10.4f %i %i \n", i, POWERR(ans.r, ans.i), ans.r, ans.i, ix, iy );
+//      }
 
       //      if ( ix == 0 && iy == 0 )
       //      {
@@ -304,10 +339,10 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     double minR = (centR*hh - rSZ*hh/2.0);
     double maxR = (centR*hh + rSZ*hh/2.0);
 
-    int halfwidth2    = z_resp_halfwidth(MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms)), HIGHACC);
+    int halfwidth2    = z_resp_halfwidth(MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms))+4, HIGHACC);
     halfwidth         = MAX(halfwidth,halfwidth2);
 
-    double rSpread    = ceil(maxR  + halfwidth) - floor(minR - halfwidth);
+    double rSpread    = ceil(maxR*noHarms  + halfwidth) - floor(minR*noHarms - halfwidth);
 
     size_t rStride, pStride;
     float *cuPowers;
@@ -322,6 +357,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     int noPow = pStride/sizeof(float);
 
     int16   rOff;
+    float16 norm;
 
     cpuInp = (fcomplexcu*) malloc(rStride*noHarms);
 
@@ -333,6 +369,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     for( int h = 0; h < noHarms; h++)
     {
       rOff.val[h]   = floor( minR*(h+1) - halfwidth );
+      //printf("%i  %f   %i\n", (int)floor(minR*(h+1)), minR*(h+1), halfwidth );
 
       int datStart  = rOff.val[h];
       int datEnd    = datStart + noInp;
@@ -369,7 +406,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
 
           medianv       = median(normPow, noPowers);
           factor        = sqrt(medianv/log2);
-          printf("  %02i  %8.3f \n", h+1, factor );
+          //printf("  %02i  %8.3f \n", h+1, factor );
 
           free(normPow);
         }
@@ -377,6 +414,8 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
         {
           factor = fac[h];
         }
+        norm.val[h] = fac[h];
+        //factor = 1.0;
       }
 
       for ( int i = 0; i < noInp; i++) // Normalise input  .
@@ -411,8 +450,8 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       dimGrid.y = ceil(noZ/(float)dimBlock.y);
 
       // Call the kernel to normalise and spread the input data
-      ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff);
-      //ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, 1, halfwidth, minR, maxZ, rSZ*hh, zSZ*hh, noR, noZ, noInp, noPow, rOff);
+      ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm);
+      //ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, 1, halfwidth, minR, maxZ, rSZ*hh, zSZ*hh, noR, noZ, noInp, noPow, rOff, norm);
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
     }
@@ -425,7 +464,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
     FOLD // Write CVS
     {
       char tName[1024];
-      sprintf(tName,"/home/chris/accel/lrg_GPU.csv");
+      sprintf(tName,"/home/chris/accel/lrg_2_GPU.csv");
       FILE *f2 = fopen(tName, "w");
 
       int indx = 0;
@@ -481,7 +520,7 @@ __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int 
   //fcomplexcu ans      = rz_interp_cu<double>(fft, loR, noBins, r, z, halfwidth);
   total_power         += POWERR(ans.r, ans.i)/normFactor;
 
-  printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERR(ans.r, ans.i), ans.r, ans.i);
+  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERR(ans.r, ans.i), ans.r, ans.i);
 }
 
 void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ, int halfwidth)
@@ -515,7 +554,6 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
       rOff          -= lodata;
     }
 
-    printf("rOff + noInp: %i  noR: %i \n", rOff + noInp, noBins);
     if ( rOff + noInp >= noBins )
     {
       fprintf(stderr, "WARNING: attempting to do a f-∂f interpolation beyond the end of the FFT.\n");
