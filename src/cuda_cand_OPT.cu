@@ -225,8 +225,8 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
       //printf("lodata + numkern: %i  noR: %i \n", lodata + numkern, noBins );
       if ( lodata + numkern >= noBins )
       {
-//        printf("lodata + numkern >= noBins\n");
-//        printf("%i + %i >= %i\n", lodata, numkern, noBins );
+        //        printf("lodata + numkern >= noBins\n");
+        //        printf("%i + %i >= %i\n", lodata, numkern, noBins );
         numkern = noBins - lodata;
       }
       //printf("numkern: %i\n", numkern );
@@ -250,9 +250,9 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
           s               = sin_t(xx);
 
           if (q_r == 0.0)
-             sinc = 1.0;
+            sinc = 1.0;
           else
-             sinc = s / xx;
+            sinc = s / xx;
 
           tR              = c * sinc;
           tI              = s * sinc;
@@ -289,7 +289,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
   return ans;
 }
 
-__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR, float16 norm)
+__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR, float16 norm)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -302,24 +302,19 @@ __global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noBin, int noHarms
 
     for( int i = 1; i <= noHarms; i++ )
     {
-      fcomplexcu ans  = rz_interp_cu<float>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
+      fcomplexcu ans  = rz_interp_cu<float>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfwidth);
+
       //total_power     += POWERR(ans.r, ans.i)/norm.val[i-1];
       total_power     += POWERR(ans.r, ans.i);
 
-//      if ( ix == 92 && iy == 26 )
+//      if( ix == 0 && iy > 70 )
 //      {
-//        printf("\nHarm %02i\n", i );
-//        fcomplexcu ans  = rz_interp_cu<double>(&fft[iStride*(i-1)], loR.val[i-1], noBin, r*i, z*i, halfwidth);
-//        printf("Harm %02i  Power: %10.4f  %10.4f %10.4f %i %i \n", i, POWERR(ans.r, ans.i), ans.r, ans.i, ix, iy );
+//        printf("%03i %.3f\n", iy, POWERR(ans.r, ans.i) );
 //      }
-
-      //      if ( ix == 0 && iy == 0 )
-      //      {
-      //        printf("%02i lor %i  r %.4f  pow %f \n", i, loR.val[i-1], r*i, total_power );
-      //      }
     }
 
-    powers[iy*noR + ix] = total_power;
+    //powers[iy*noR + ix] = total_power;
+    powers[iy*oStride + ix] = total_power;
   }
 }
 
@@ -344,22 +339,22 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
 
     double rSpread    = ceil(maxR*noHarms  + halfwidth) - floor(minR*noHarms - halfwidth);
 
-    size_t rStride, pStride;
+    size_t iStride, pStride;
     float *cuPowers;
     fcomplexcu *cuInp;
     fcomplexcu *cpuInp;
     double factor;
 
     CUDA_SAFE_CALL(cudaMallocPitch(&cuPowers,  &pStride, noR     * sizeof(float),             noZ),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMallocPitch(&cuInp,     &rStride, rSpread * sizeof(cufftComplex),  noHarms),   "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaMallocPitch(&cuInp,     &iStride, rSpread * sizeof(cufftComplex),  noHarms),   "Failed to allocate device memory for kernel stack.");
 
-    int noInp = rStride/sizeof(cufftComplex);
+    int noInp = iStride/sizeof(cufftComplex);
     int noPow = pStride/sizeof(float);
 
     int16   rOff;
     float16 norm;
 
-    cpuInp = (fcomplexcu*) malloc(rStride*noHarms);
+    cpuInp = (fcomplexcu*) malloc(iStride*noHarms);
 
     for( int h = 0; h < 16; h++)
     {
@@ -371,9 +366,9 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       rOff.val[h]   = floor( minR*(h+1) - halfwidth );
       //printf("%i  %f   %i\n", (int)floor(minR*(h+1)), minR*(h+1), halfwidth );
 
-      int datStart  = rOff.val[h];
-      int datEnd    = datStart + noInp;
-      int novals    = noInp;
+      int datStart  = floor( minR*(h+1) - halfwidth );
+      int datEnd    = ceil ( maxR*(h+1) + halfwidth );
+      int novals    = datEnd - datStart;
       int noPowers, off;
       float medianv;
 
@@ -412,7 +407,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
         }
         else              // Use precalcualted normalisation factor  .
         {
-          factor = fac[h];
+          factor = sqrt(fac[h]);
         }
         norm.val[h] = fac[h];
         //factor = 1.0;
@@ -421,7 +416,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       for ( int i = 0; i < noInp; i++) // Normalise input  .
       {
         off = rOff.val[h] - loR + i;
-        if (off >= 0 && off < noBins )
+        if (off >= 0 && off < noBins && i < novals)
         {
           cpuInp[h*noInp + i].r = fft[off].r / factor ;
           cpuInp[h*noInp + i].i = fft[off].i / factor ;
@@ -434,7 +429,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       }
     }
 
-    CUDA_SAFE_CALL(cudaMemcpy(cuInp, cpuInp, rStride*noHarms, cudaMemcpyHostToDevice), "Copying convolution kernels between devices.");
+    CUDA_SAFE_CALL(cudaMemcpy(cuInp, cpuInp, iStride*noHarms, cudaMemcpyHostToDevice), "Copying optimisation input to the device");
 
     FOLD // Call kernel  .
     {
@@ -450,13 +445,12 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       dimGrid.y = ceil(noZ/(float)dimBlock.y);
 
       // Call the kernel to normalise and spread the input data
-      ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm);
-      //ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noInp, 1, halfwidth, minR, maxZ, rSZ*hh, zSZ*hh, noR, noZ, noInp, noPow, rOff, norm);
+      ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm);
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
     }
 
-    CUDA_SAFE_CALL(cudaMemcpy(powers, cuPowers, noR*noZ*sizeof(float), cudaMemcpyDeviceToHost), "Copying convolution kernels between devices.");
+    CUDA_SAFE_CALL(cudaMemcpy(powers, cuPowers, pStride*noZ, cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
 
     cudaDeviceSynchronize();          // TMP
     int TMPP = 0;
@@ -487,7 +481,7 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
 
         for (int indx = 0; indx < noR ; indx++ )
         {
-          float yy2 = powers[indy*noR+indx];
+          float yy2 = powers[indy*noPow+indx];
           fprintf(f2,"\t%.6f",yy2);
         }
         fprintf(f2,"\n");
@@ -507,9 +501,137 @@ void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, doubl
       int tmp = 0;
     }
 
-    CUDA_SAFE_CALL(cudaFree(cuPowers),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaFree(cuInp),       "Failed to allocate device memory for kernel stack.");
+
+    CUDA_SAFE_CALL(cudaFree(cuPowers),    "Failed free device memory for optimisation powers.");
+    CUDA_SAFE_CALL(cudaFree(cuInp),       "Failed free device memory for optimisation inputs.");
   }
+}
+
+void ffdot( cuFDotPlain* pln, fftInfo* fft )
+{
+  double maxZ       = (pln->centZ + pln->zSize/2.0);
+  double minZ       = (pln->centZ - pln->zSize/2.0);
+  double maxR       = (pln->centR + pln->rSize/2.0);
+  double minR       = (pln->centR - pln->rSize/2.0);
+
+  pln->halfWidth    = z_resp_halfwidth(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)), HIGHACC);
+  double rSpread    = ceil(maxR*pln->noHarms  + pln->halfWidth) - floor(minR*pln->noHarms - pln->halfWidth);
+
+  if ( rSpread > pln->inpStride )
+  {
+    fprintf(stderr, "ERROR: In function %s, cuFDotPlain not created with large enough input buffer.", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+
+  int16   rOff;
+  float16 norm;
+  int     off;
+
+  for( int h = 0; h < 16; h++)
+  {
+    rOff.val[h] = 0;
+  }
+
+  for( int h = 0; h < pln->noHarms; h++)
+  {
+    int datStart    = floor( minR*(h+1) - pln->halfWidth );
+    int datEnd      = ceil(  maxR*(h+1) + pln->halfWidth );
+    int noDat       = datEnd - datStart;
+    rOff.val[h]     = datStart;
+
+    double factor   = sqrt(pln->norm[h]);
+    norm.val[h]     = factor;
+
+    for ( int i = 0; i < pln->inpStride; i++ ) // Normalise input  .
+    {
+      off = rOff.val[h] - fft->rlo + i;
+
+      if ( off >= 0 && off < fft->nor && i < noDat )
+      {
+        pln->h_inp[h*pln->inpStride + i].r = fft->fft[off].r / factor ;
+        pln->h_inp[h*pln->inpStride + i].i = fft->fft[off].i / factor ;
+      }
+      else
+      {
+        pln->h_inp[h*pln->inpStride + i].r = 0;
+        pln->h_inp[h*pln->inpStride + i].i = 0;
+      }
+    }
+  }
+
+  CUDA_SAFE_CALL(cudaMemcpy(pln->d_inp, pln->h_inp, pln->inpStride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice), "Copying optimisation input to the device");
+
+  FOLD // Call kernel  .
+  {
+    dim3 dimBlock, dimGrid;
+
+    // Blocks of 1024 threads ( the maximum number of threads per block )
+    dimBlock.x = 16;
+    dimBlock.y = 16;
+    dimBlock.z = 1;
+
+    // One block per harmonic, thus we can sort input powers in Shared memory
+    dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
+    dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+    // Call the kernel to normalise and spread the input data
+    ffdot_ker<<<dimGrid, dimBlock, 0, 0>>>(pln->d_powers, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->powerStride, rOff, norm);
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
+  }
+
+  CUDA_SAFE_CALL(cudaMemcpy(pln->h_powers, pln->d_powers, pln->powerStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
+
+  int TMPP = 0;
+
+  Fout // Write CVS  .
+  {
+    cudaDeviceSynchronize();          // TMP
+
+    char tName[1024];
+    sprintf(tName,"/home/chris/accel/lrg_4_GPU.csv");
+    FILE *f2 = fopen(tName, "w");
+
+    int indx = 0;
+    int indy = 0;
+
+    fprintf(f2,"%i",pln->noHarms);
+
+    for (int indx = 0; indx < pln->noR ; indx++ )
+    {
+      double r = minR + indx/(double)(pln->noR-1) * (pln->rSize) ;
+      fprintf(f2,"\t%.6f",r);
+    }
+    fprintf(f2,"\n");
+
+    for (int indy = 0; indy < pln->noZ; indy++ )
+    {
+      double z = maxZ - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+
+      fprintf(f2,"%.6f",z);
+
+      for (int indx = 0; indx < pln->noR ; indx++ )
+      {
+        float yy2 = pln->h_powers[indy*pln->powerStride+indx];
+        fprintf(f2,"\t%.6f",yy2);
+      }
+      fprintf(f2,"\n");
+    }
+    fclose(f2);
+
+    FOLD // Make image
+    {
+      printf("Making lrg_GPU.png    \t... ");
+      fflush(stdout);
+      char cmd[1024];
+      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+      system(cmd);
+      printf("Done\n");
+    }
+
+    int tmp = 0;
+  }
+
 }
 
 __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)
@@ -600,5 +722,60 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
 
     cudaDeviceSynchronize();          // TMP
     int TMPP = 0;
+  }
+}
+
+
+void optimize_accelcand_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
+{
+  int ii;
+  int *r_offset;
+  fcomplex **data;
+  double r, z;
+
+  struct timeval start, end, start1, end1;
+  double timev1, timev2, timev3;
+
+  //printf("\n%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sigma: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
+
+  cand->pows   = gen_dvect(cand->numharm);
+  cand->hirs   = gen_dvect(cand->numharm);
+  cand->hizs   = gen_dvect(cand->numharm);
+  cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
+
+  int numdata   = obs->numbins;
+
+  pln->centR    = cand->r ;
+  pln->centZ    = cand->z ;
+  pln->noHarms  = cand->numharm;
+
+  fftInfo fft;
+  fft.fft       = obs->fft;
+  fft.rlo       = obs->lobin;
+  fft.nor       = obs->numbins;
+  fft.rhi       = obs->lobin + obs->numbins;
+
+  //printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f \n", nn, pln->noHarms, pln->centR, pln->centZ, 0 );
+
+  for ( int i=1; i <= cand->numharm; i++ )
+  {
+    pln->norm[i-1]  = get_scaleFactorZ(fft.fft, numdata, (fft.rlo+pln->centR)*i-fft.rlo, pln->centZ*i, 0.0);
+  }
+
+  if ( obs->use_harmonic_polishing )
+  {
+    if ( obs->mmap_file || obs->dat_input )
+    {
+      FOLD // GPU grid
+      {
+        gettimeofday(&start, NULL);       // TMP
+
+        ffdot(pln, &fft);
+
+        gettimeofday(&end, NULL);         // TMP
+        timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
+        printf("%.5f\t",timev1); // TMP
+      }
+    }
   }
 }

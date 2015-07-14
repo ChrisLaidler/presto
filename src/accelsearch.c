@@ -167,8 +167,12 @@ int main(int argc, char *argv[])
    sSpec        = readSrchSpecs(cmd, &obs);
 #endif
 
+   char fname[1024];
+   sprintf(fname,"%s_hs%02i_zmax%06.1f_sig%06.3f", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
+
    char candsFile[1024];
-   sprintf(candsFile,"%s_hs%02i_zmax%06.1f_sig%06.3f.unoptcands", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
+   sprintf(candsFile,"%s.unoptcands", fname );
+
    FILE *file;
    if ( (file = fopen(candsFile, "rb")) ) 		  // Read candidates from previous search  . // TMP
    {
@@ -284,7 +288,10 @@ int main(int argc, char *argv[])
          nvtxRangePop();
 
 #ifndef DEBUG
-         printCands("CPU_Cands.csv", candsCPU);
+         char name [100];
+         sprintf(name,"%s_CPU_01_Cands.csv",fname);
+         printCands(name, candsCPU);
+         //printCands("CPU_Cands.csv", candsCPU);
 #endif
 
          free_subharminfos(&obs, subharminfs);
@@ -436,6 +443,12 @@ int main(int argc, char *argv[])
              int numharm;
              poww = 0;
 
+             FILE * pFile;
+             char name [100];
+             sprintf(name,"%s_GPU_ARRAY.csv",fname);
+             pFile = fopen (name,"w");
+             fprintf (pFile, "idx;rr;zz;sig;harm\n");
+
              cand* candidate = (cand*)master->h_candidates;
 
              for (cdx = 0; cdx < (int)master->SrchSz->noOutpR; cdx++)  // Loop
@@ -445,18 +458,19 @@ int main(int argc, char *argv[])
                if ( poww > 0 )
                {
                  numharm   = candidate[cdx].numharm;
-                 //numindep  = obs.numindep[twon_to_index(numharm)];
                  sig       = candidate[cdx].sig;
                  rr        = candidate[cdx].r;
                  zz        = candidate[cdx].z;
 
                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+                 fprintf (pFile, "%i;%.2f;%.2f;%.2f;%i\n",cdx,rr, zz,sig,numharm);
                  if (added)
                  {
                    noCands++;
                  }
                }
              }
+             fclose (pFile);
            }
 
            //ccd udaProfilerStop(); // For profiling of only the 'critical' GPU section
@@ -470,7 +484,7 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG
            char name [100];
-           sprintf(name,"%s_hs%02i_zmax%06.1f_sig%06.3f_GPU_Cands.csv", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
+           sprintf(name,"%s_GPU_01_Cands.csv",fname);
            printCands(name, candsGPU);
 #endif
          }
@@ -550,6 +564,33 @@ int main(int argc, char *argv[])
         fprintf(stderr, "ERROR: CUDA Device not set.\n");
         return(0);
       }
+
+      size_t iStride, pStride;
+      cuFDotPlain oPln;
+      memset(&oPln, 0, sizeof(oPln));
+      int noHarms         = (1<<sSpec.noHarmStages);
+
+      int       noP       = 50;
+      noP = ceil(sqrt(200));
+      float     scale     = 10;
+
+      oPln.maxNoR         = 1024;
+      oPln.maxNoZ         = 1024;
+      oPln.noZ            = noP*2 + 1;
+      oPln.noR            = noP*2 + 1;
+      oPln.rSize          = scale;
+      oPln.zSize          = scale*4.0;
+
+      oPln.maxHalfWidth   = z_resp_halfwidth(sSpec.zMax+oPln.zSize/2.0, HIGHACC);
+
+      CUDA_SAFE_CALL(cudaMallocPitch(&oPln.d_powers,    &pStride, oPln.maxNoR * sizeof(float),                                        oPln.maxNoZ),   "Failed to allocate device memory for kernel stack.");
+      CUDA_SAFE_CALL(cudaMallocPitch(&oPln.d_inp,       &iStride, ( oPln.maxNoR * noHarms+2*oPln.maxHalfWidth)*sizeof(cufftComplex),  noHarms),       "Failed to allocate device memory for kernel stack.");
+
+      CUDA_SAFE_CALL(cudaMallocHost(&oPln.h_powers,    pStride*oPln.maxNoZ),    "Failed to allocate device memory for kernel stack.");
+      CUDA_SAFE_CALL(cudaMallocHost(&oPln.h_inp,       iStride*noHarms),        "Failed to allocate device memory for kernel stack.");
+
+      oPln.powerStride  = pStride/sizeof(float);
+      oPln.inpStride    = iStride/sizeof(fcomplexcu);
 #endif
 
       numcands = g_slist_length(cands);
@@ -559,7 +600,9 @@ int main(int argc, char *argv[])
          /* Sort the candidates according to the optimized sigmas */
 
 //#ifdef DEBUG
-        printCands("Cands_Raw.csv", cands);
+        char name [1024];
+        sprintf(name,"%s_GPU_02_Cands_Raw.csv",fname);
+        printCands(name, cands);
 //#endif
 
          cands = sort_accelcands(cands);
@@ -571,8 +614,11 @@ int main(int argc, char *argv[])
          }
 
 //#ifdef DEBUG
-         printCands("Cands_Thinned.csv", cands);
+         sprintf(name,"%s_GPU_04_Cands_Thinned.csv",fname);
+         printCands(name, cands);
 //#endif
+
+
 
          /* Now optimize each candidate and its harmonics */
 
@@ -585,12 +631,23 @@ int main(int argc, char *argv[])
 
             //if ( ii == 3 )
             {
-              optimize_accelcand(cand, &obs, ii+1);
+              //optimize_accelcand(cand, &obs, ii+1);
+
+#ifdef CUDA
+              optimize_accelcand_cu(cand, &obs, ii+1, &oPln);
+#endif
+              printf("\n");
+
             }
 
             listptr = listptr->next;
          }
          print_percent_complete(ii, numcands, "optimization", 0);
+
+         exit(0);
+
+         // Re sort with new sigam values
+         //cands = sort_accelcands(cands);
 
          /* Calculate the properties of the fundamentals */
 
@@ -613,6 +670,11 @@ int main(int argc, char *argv[])
            listptr = listptr->next;
 
          }
+
+//#ifdef DEBUG
+         sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
+         printCands(name, cands);
+//#endif
 
          /* Write the fundamentals to the output text file */
 

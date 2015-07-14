@@ -12,7 +12,8 @@
 #define SWAP(a,b) tempzz=(a);(a)=(b);(b)=tempzz;
 #endif
 
-static double amotry(double p[3][2], double *y, double *psum, double (*funk) (double[]), int ihi, double fac, FILE *f);
+//static double amotry(double p[3][2], double *y, double *psum, double (*funk) (double[]), int ihi, double fac, FILE *f);
+static double amotry(double p[3][2], double *y, double *psum, double (*funk) (double[]), int ihi, double fac);
 
 void amoeba(double p[3][2], double *y, double ftol,
     double (*funk) (double[]), int *nfunk)
@@ -30,11 +31,11 @@ void amoeba(double p[3][2], double *y, double ftol,
   psum[0] = p[0][0] + p[1][0] + p[2][0];
   psum[1] = p[0][1] + p[1][1] + p[2][1];
 
-  char tmpstr[1024];
-  sprintf(tmpstr,"/home/chris/accel/amoeba_%.12f.csv",ftol);
-  FILE *f = fopen(tmpstr, "w");
+  //char tmpstr[1024];
+  //sprintf(tmpstr,"/home/chris/accel/amoeba_%.12f.csv",ftol);
+  //FILE *f = fopen(tmpstr, "w");
 
-  fprintf(f,"%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n", p[0][0], p[0][1]*4.0, p[1][0], p[1][1]*4.0, p[2][0], p[2][1]*4.0 );
+  //fprintf(f,"%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n", p[0][0], p[0][1]*4.0, p[1][0], p[1][1]*4.0, p[2][0], p[2][1]*4.0 );
 
   for (;;)
   {
@@ -76,7 +77,8 @@ void amoeba(double p[3][2], double *y, double ftol,
         break;
       }
 
-      if (*nfunk >= 5000) // Break condition  .
+      //if (*nfunk >= 5000) // Break condition  .
+      if (*nfunk >= 200) // Break condition  .
       {
         /*
             printf("\nWarning:  amoeba() exceeded %d iterations for r=%f  z=%f.\n",
@@ -92,14 +94,14 @@ void amoeba(double p[3][2], double *y, double ftol,
 
       // First extrapolate by a factor -1 through the face of the simplex across from the high point, i.e., reflect the simplex from the high point.
       //printf("  Reflection\n");
-      ytry = amotry(p, y, psum, funk, ihi, -1.0, f); // Calculate centroid value  .
+      ytry = amotry(p, y, psum, funk, ihi, -1.0/*, f*/); // Calculate centroid value  .
       noEvals++;
 
       if (ytry <= y[ilo])
       {
         // Gave a result better than the best point, so try an additional extrapolation by a factor 2.
         //printf("  Expansion\n");
-        ytry = amotry(p, y, psum, funk, ihi, 2.0, f);
+        ytry = amotry(p, y, psum, funk, ihi, 2.0/*, f*/);
         noEvals++;
       }
       else if (ytry >= y[inhi])
@@ -107,7 +109,7 @@ void amoeba(double p[3][2], double *y, double ftol,
         // The reflected point is worse than the second-highest, so look for an intermediate lower point, i.e., do a one-dimensional contraction.
         ysave = y[ihi];
         //printf("  Contraction\n");
-        ytry = amotry(p, y, psum, funk, ihi, 0.5, f);
+        ytry = amotry(p, y, psum, funk, ihi, 0.5/*, f*/);
         noEvals++;
 
         if (ytry >= ysave)
@@ -141,7 +143,7 @@ void amoeba(double p[3][2], double *y, double ftol,
     }
   }
 
-  fclose(f);
+  //fclose(f);
 
   //printf("amoeba %i evals;\n", noEvals);
 }
@@ -160,7 +162,7 @@ void amoeba(double p[3][2], double *y, double ftol,
  * @return
  */
 static double amotry(double p[3][2], double *y, double *psum,
-    double (*funk) (double[]), int ihi, double fac, FILE *f)
+    double (*funk) (double[]), int ihi, double fac /*, FILE *f */ )
 {
   double fac1, fac2, ytry, ptry[2];
 
@@ -182,7 +184,7 @@ static double amotry(double p[3][2], double *y, double *psum,
     psum[1] += ptry[1] - p[ihi][1];
     p[ihi][1] = ptry[1];
 
-    fprintf(f,"%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n", p[0][0], p[0][1]*4.0, p[1][0], p[1][1]*4.0, p[2][0], p[2][1]*4.0 );
+    //fprintf(f,"%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n", p[0][0], p[0][1]*4.0, p[1][0], p[1][1]*4.0, p[2][0], p[2][1]*4.0 );
   }
 
   return ytry;

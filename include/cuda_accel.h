@@ -495,19 +495,37 @@ typedef struct cuSearch
 } cuSearch;
 
 
-typedef struct cuOptKer
+typedef struct cuFDotPlain
 {
-    float         maxZ;
-    float         noZ;
-    float         noR;
-    int           widthZ;
-    int           heightR;
+    double        centR;
+    double        centZ;
+    double        rSize;
+    double        zSize;
 
-    int           width;
-    int           height;
+    int           noZ;
+    int           noR;
 
-    fcomplexcu*   d_kerData;
-};
+    int           halfWidth;
+
+    int           noHarms;
+
+    double        norm[16];
+    int           loR[16];
+
+    int           maxHalfWidth;
+    int           maxNoR;
+    int           maxNoZ;
+
+    fcomplexcu*   d_inp;
+    float*        d_powers;
+
+    fcomplexcu*   h_inp;
+    float*        h_powers;
+
+    int           powerStride;
+    int           inpStride;
+} cuFDotPlain;
+
 //===================================== Function prototypes ===============================================
 
 /** Read the GPU details from clig command line  .

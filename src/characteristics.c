@@ -147,8 +147,6 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   int binsperside, kern_half_width,ii;
   fcomplex ans;
 
-  //printf("\nget_localpower3d   r: %12.5f   z: %12.5f   w: %12.5f\n", r, z, w );
-
   binsperside = NUMLOCPOWAVG / 2;
   kern_half_width = w_resp_halfwidth(z, w, LOWACC);
 
@@ -175,20 +173,21 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   powers = gen_fvect(numamps);
 
   /* Step through the input FFT and create powers */
-  for (ii = 0; ii < numamps; ii++) {
+  for (ii = 0; ii < numamps; ii++)
+  {
     float powargr, powargi;
     powers[ii] = POWER(data[(int)lo1+ii].r, data[(int)lo1+ii].i);
   }
 
   /* Calculate initial values */
   medianv = median(powers, numamps);
-  //norm = 1.0 / sqrt(median/log(2.0));
-  norm = sqrt(medianv/log(2.0));
+
+  //norm = sqrt(medianv/log(2.0));
+  norm = medianv/log(2.0);           // Powers need to be divided by the sqr of the true normalisation factor
 
   //printf("Norm factor %8.3f\n",norm);
 
   return norm;
-
 }
 
 void get_derivs3d(fcomplex * data, int numdata, double r,

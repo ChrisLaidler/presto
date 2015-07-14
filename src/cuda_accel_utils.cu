@@ -1984,12 +1984,12 @@ void printCands(const char* fileName, GSList *cands)
     fprintf ( stderr, "ERROR: Unable to open log file %s\n", fileName );
   else
   {
-    fprintf(myfile, "# ; r ; z ; sig ; power ; harm \n");
+    fprintf(myfile, "#\tr\tz\tsig\tpower\tharm \n");
     int i = 0;
 
     while ( inp_list->next )
     {
-      fprintf(myfile, "%i ; %14.5f ; %14.2f ; %-7.4f ; %7.2f ; %i \n", i, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->z, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
+      fprintf(myfile, "%i\t%14.5f\t%14.2f\t%-7.4f\t%7.2f\t%i \n", i, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->z, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
       inp_list = inp_list->next;
       i++;
     }
