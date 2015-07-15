@@ -456,25 +456,25 @@ int createStackKernels(cuFfdotStack* cStack)
   return 0;
 }
 
-int createOptKernel(cuOptKer* cKer)
-{
-  dim3 dimBlock, dimGrid;
-
-    dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-    dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-
-    // Set up grid
-    dimGrid.x = ceil(  cKer->width     / ( float ) dimBlock.x );
-    dimGrid.y = ceil ( cKer->height / ( float ) dimBlock.y );
-
-    FOLD // call the CUDA kernels  .
-    {
-      // Call kernel
-      init_kernels<<<dimGrid, dimBlock>>>(cKer->d_kerData, cKer->maxZ, cKer->width, cKer->noZ, cKer->noR );
-
-      // Run message
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
-    }
-
-    return 0;
-}
+//int createOptKernel(cuOptKer* cKer)
+//{
+//  dim3 dimBlock, dimGrid;
+//
+//    dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+//    dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+//
+//    // Set up grid
+//    dimGrid.x = ceil(  cKer->width     / ( float ) dimBlock.x );
+//    dimGrid.y = ceil ( cKer->height / ( float ) dimBlock.y );
+//
+//    FOLD // call the CUDA kernels  .
+//    {
+//      // Call kernel
+//      init_kernels<<<dimGrid, dimBlock>>>(cKer->d_kerData, cKer->maxZ, cKer->width, cKer->noZ, cKer->noR );
+//
+//      // Run message
+//      CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+//    }
+//
+//    return 0;
+//}

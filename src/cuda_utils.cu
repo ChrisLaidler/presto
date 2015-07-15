@@ -223,3 +223,26 @@ void listDevices()
 
   printf("\n");
 }
+
+int getMemAlignment()
+{
+  size_t stride;
+  float* rnd;
+
+  CUDA_SAFE_CALL(cudaMallocPitch(&rnd,    &stride, sizeof(float), 1),   "Failed to allocate device memory for getMemAlignment.");
+  CUDA_SAFE_CALL(cudaFree(rnd),                                         "Failed to free device memory for getMemAlignment.");
+
+  return stride;
+}
+
+int getStrie(int noEls, int elSz, int blockSz)
+{
+  int     noBlocks = ceil(noEls*elSz/(float)blockSz);
+  float   elStride = noBlocks * blockSz / (float)elSz;
+
+  float rem = elStride - (int)elStride;
+  if ( rem != 0 )
+    fprintf(stderr, "ERROR: Memory not aligned to the size of stride.\n");
+
+  return elStride;
+}

@@ -271,7 +271,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
   printf("%i\t%.5f\t", numeval, timev1); // TMP
 
-  if ( numeval > 200 )
+  if ( nn == 1  )
   {
 //    skp   = 1 ;
 //    swrm  = 1 ;
@@ -899,7 +899,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   if ( skp  )  		// Large points  .
   {
     float  szDiff = scale / 1.9 ;
-    float* gpuPows;
+    float* gpuPows = NULL;
     int    tp;
 
     lrgPnt[1][0] = x[0][0];
@@ -948,6 +948,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 //      res   = mx2*1.02/(float)no ;
 //    }
 
+    int pStride;
+
     FOLD // GPU grid
     {
       gettimeofday(&start, NULL);       // TMP
@@ -955,16 +957,16 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       tp         = (no)*2+1 ;
       double rSz = (tp-1)*res;
       double zSz = (tp-1)*res*ZSCALE ;
-      gpuPows  = (float*)malloc( tp*tp*sizeof(float) );
-      //printf("\n\n ----===== UUUU ======------\n"); // TMP
-      ffdot(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, rSz, zSz, tp, tp, max_kern_half_width, locpow);
+      gpuPows    = (float*)malloc( tp*tp*sizeof(float)*2 );
+
+      pStride = ffdotPln(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, rSz, zSz, tp, tp, max_kern_half_width, locpow);
 
       gettimeofday(&end, NULL);       // TMP
       timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
       printf("%.5f\t",timev1); // TMP
     }
 
-    if(0) // CPU Points
+    FOLD // CPU Points
     {
       //printf("\n\n ----===== CCC ======------\n"); // TMP
 
@@ -1004,7 +1006,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
           double yy  = -power_call_rz_harmonics(ff);
           fprintf(f1,"\t%.6f", yy);
 
-          float  gv  = gpuPows[indy*tp+indx];
+          float  gv  = gpuPows[indy*pStride+indx];
           float diff = yy - gv;
           fprintf(f2,"\t%.6f",diff);
 
@@ -1047,7 +1049,11 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       system(cmd);
       printf("Done\n");
 
-      free(gpuPows);
+      if (gpuPows)
+      {
+        free(gpuPows);
+        gpuPows = 0;
+      }
     }
 
     int tmp = 0;
@@ -1084,17 +1090,12 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
     double rin = minX + ( maxX - minX)/2.0 ;
     double zin = minY + ( maxY - minY)/2.0 ;
 
-    //double rin = bestPos[0] ;
-    //double zin = bestPos[1]*ZSCALE ;
-
     int no       = 30;
 
     double res   = MAX((maxX-rin)/(double)no,(maxY-zin)/(double)no/ZSCALE);
     res         *= 1.05 ;
-    //res          = 1e-1;
 
     FILE *f = fopen("/home/chris/accel/sml.csv", "w");
-    //printf("rin: %.5f   zin %.5f  \n", rin, zin );
 
     double sx, sy;
     int indx = 0;

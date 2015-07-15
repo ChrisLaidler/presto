@@ -597,9 +597,9 @@ static void center_string(char *outstring, char *instring, int width)
   char *tmp;
 
   len = strlen(instring);
-  if (width < len) {
-    printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n",
-        len, instring, width);
+  if (width < len)
+  {
+    //printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n", len, instring, width);
   }
   tmp = memset(outstring, ' ', width);
   outstring[width] = '\0';
@@ -1688,3 +1688,4 @@ void free_accelobs(accelobs * obs)
     vect_free(obs->ffdotplane);
   }
 }
+

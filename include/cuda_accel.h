@@ -513,16 +513,18 @@ typedef struct cuFDotPlain
     int           loR[16];
 
     int           maxHalfWidth;
-    int           maxNoR;
-    int           maxNoZ;
+    int           inpSz;                  /// The size in bytes of device input buffer
+    int           outSz;                  /// The size in bytes of device output buffer
+
+    int           alignment;              /// The memory alignment block size in bytes
 
     fcomplexcu*   d_inp;
-    float*        d_powers;
+    void*         d_out;
 
     fcomplexcu*   h_inp;
-    float*        h_powers;
+    void*         h_out;
 
-    int           powerStride;
+    int           outStride;
     int           inpStride;
 } cuFDotPlain;
 

@@ -104,7 +104,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals);
  **/
 ExternC unsigned long getFreeRamCU();
 
-ExternC void ffdot(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
+ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
 ExternC void rz_interp_cu(fcomplex* fft, int loR, int noR, double centR, double centZ, int halfwidth);
 ExternC void optimize_accelcand_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln);
 
@@ -119,5 +119,7 @@ ExternC int getGPUCount();
  */
 ExternC void listDevices();
 
+ExternC int getMemAlignment();
+ExternC int getStrie(int noEls, int elSz, int blockSz);
 
 #endif /* CUDA_UTILS_H_ */
