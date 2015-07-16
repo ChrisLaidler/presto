@@ -1,7 +1,9 @@
+#include <curand.h>
+#include <curand_kernel.h>
+
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
-
 
 extern "C"
 {
@@ -317,7 +319,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
 }
 
 template<typename T>
-__global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR, float16 norm)
+__global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR, float16 norm)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -344,6 +346,145 @@ __global__ void ffdot_ker(float* powers, fcomplexcu* fft, int noHarms, int halfw
     //powers[iy*noR + ix] = total_power;
     powers[iy*oStride + ix] = total_power;
   }
+}
+
+__global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)
+{
+  float total_power   = 0;
+
+  fcomplexcu ans      = rz_interp_cu<float>(fft, loR, noBins, r, z, halfwidth);
+  //fcomplexcu ans      = rz_interp_cu<double>(fft, loR, noBins, r, z, halfwidth);
+  total_power         += POWERR(ans.r, ans.i)/normFactor;
+
+  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERR(ans.r, ans.i), ans.r, ans.i);
+}
+
+/*
+
+ curandState *d_state;
+  cudaMalloc(&d_state, sizeof(curandState));
+
+
+ */
+template<typename T>
+__global__ void ffdotSwarm_ker(unsigned long long seed, float* powers, fcomplexcu* fft, int loR, int noBins, int noHarms, int noReps, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, float16 norm)
+{
+  const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
+  const int iy        = blockIdx.y * blockDim.y + threadIdx.y;
+  const int idx       = iy * gridDim.x*blockDim.x + ix;
+  const int wrpNo     = 0;
+  const int wrpIdx    = 0;
+  curandState state;
+
+  float a = 0.8;
+  float b = 0.4;
+  float c = 0.7;
+
+  float velocityMax          = rSZ / 20.0;
+
+  double r, z;
+  float power;
+
+  double  bestR, bestZ;
+  float   bestP;
+
+  double  nBestR, nBestZ;
+  float   nBestP;
+
+  float r1, r2;
+  float d1, d2, d3;
+
+  float2 velocity;
+
+  bestR     = 0;
+  bestZ     = 0;
+  bestP   = 0;
+
+  if ( ix < noR && iy < noZ)
+  {
+    curand_init(seed, idx, 0, &state);
+
+    FOLD // Initial values
+    {
+      r       = firstR + ix/(double)(noR-1) * rSZ ;
+      z       = firstZ - iy/(double)(noZ-1) * zSZ ;
+      power   = 0;
+
+      for( int i = 0; i < noHarms; i++ )
+      {
+        fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, r*i, z*i, halfwidth);
+        power           += POWERR(ans.r, ans.i)/norm.val[i];
+      }
+      bestR   = r;
+      bestZ   = z;
+      bestP   = power;
+    }
+
+    if ( idx == 0 )
+    {
+      printf("%03i r: %.5f   z: %.5f  power: %.6f\n", 0, bestR, bestZ, bestP);
+    }
+
+    for (int rep = 0; rep < 30; rep ++)
+    {
+      r1 = curand_uniform(&state);
+      r2 = curand_uniform(&state);
+
+      d2 = bestR - r;
+      d3 = bestZ - z;
+
+      double dst = sqrt(d2*d2 + d3*d3) ;
+
+      velocity.x = a*velocity.x + b*d2*r1 + c*r2 ;
+      if (velocity.x > velocityMax )
+        velocity.x = velocityMax;
+      if (velocity.x < -velocityMax )
+        velocity.x = -velocityMax;
+
+      r1 = curand_uniform(&state);
+      r2 = curand_uniform(&state);
+
+      velocity.y = a*velocity.y + b*d3*r1 + c*r2 ;
+      if (velocity.y > velocityMax )
+        velocity.y = velocityMax;
+      if (velocity.y < -velocityMax )
+        velocity.y = -velocityMax;
+
+      r += velocity.x;
+      z += velocity.y;
+
+      power = 0;
+      for( int i = 0; i < noHarms; i++ )
+      {
+        fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, r*i, z*i, halfwidth);
+        power           += POWERR(ans.r, ans.i)/norm.val[i];
+      }
+
+      if ( power > bestP )
+      {
+        bestR   = r;
+        bestZ   = z;
+        bestP   = power;
+      }
+
+      nBestR = __shfl_up(bestR,1);
+      nBestZ = __shfl_up(bestZ,1);
+      nBestP = __shfl_up(bestP,1);
+
+      if ( nBestP > bestP )
+      {
+        bestR   = nBestR;
+        bestZ   = nBestZ;
+        bestP   = nBestP;
+      }
+
+      if ( idx == 0 )
+      {
+        printf("%03i r: %.5f   z: %.5f  power: %.6f\n", rep, bestR, bestZ, bestP);
+      }
+    }
+  }
+
 }
 
 int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac)
@@ -467,9 +608,9 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
     dimGrid.y = ceil(noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    ffdot_ker<float><<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm);
+    ffdotPln_ker<float><<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm);
 
-    CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
+    CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdotPln_ker kernel.");
   }
 
   CUDA_SAFE_CALL(cudaMemcpy(powers, cuPowers, pStride*noZ, cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
@@ -600,9 +741,10 @@ void ffdotPln( cuFDotPlain* pln, fftInfo* fft )
     dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    ffdot_ker<T><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm);
+    //ffdotPln_ker<T><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm);
+    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, 0>>>(time(NULL), (float*)pln->d_out, pln->d_inp, 0, 100, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
 
-    //ffdot_ker<double><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_powers, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->powerStride, rOff, norm);
+    //ffdotPln_ker<double><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_powers, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->powerStride, rOff, norm);
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
   }
@@ -610,17 +752,6 @@ void ffdotPln( cuFDotPlain* pln, fftInfo* fft )
   CUDA_SAFE_CALL(cudaMemcpy(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
 
   int TMPP = 0;
-}
-
-__global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)
-{
-  float total_power   = 0;
-
-  fcomplexcu ans      = rz_interp_cu<float>(fft, loR, noBins, r, z, halfwidth);
-  //fcomplexcu ans      = rz_interp_cu<double>(fft, loR, noBins, r, z, halfwidth);
-  total_power         += POWERR(ans.r, ans.i)/normFactor;
-
-  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERR(ans.r, ans.i), ans.r, ans.i);
 }
 
 void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ, int halfwidth)
@@ -704,7 +835,7 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
 }
 
 template<typename T>
-void opt_cand(accelcand* cand, fftInfo* fft, cuFDotPlain* pln, int noP, double scale, int plt = -1, int nn = 0 )
+void opt_candByPln(accelcand* cand, fftInfo* fft, cuFDotPlain* pln, int noP, double scale, int plt = -1, int nn = 0 )
 {
   FOLD // Large points  .
   {
@@ -790,7 +921,7 @@ void opt_cand(accelcand* cand, fftInfo* fft, cuFDotPlain* pln, int noP, double s
 
 }
 
-void optimize_accelcand_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
+void opt_candPlns_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
 {
   int ii;
   int *r_offset;
@@ -852,16 +983,16 @@ void optimize_accelcand_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* 
         printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
 
         noP = 40 ;
-        opt_cand<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+        opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
         printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
         sz = (sz/(float)noP)*2;
 
         noP = 20 ;
-        opt_cand<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+        opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
         printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
         sz = (sz/(float)noP)*2;
 
-        opt_cand<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+        opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
         printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
         sz = (sz/(float)noP)*2;
 

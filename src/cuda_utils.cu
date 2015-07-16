@@ -246,3 +246,4 @@ int getStrie(int noEls, int elSz, int blockSz)
 
   return elStride;
 }
+

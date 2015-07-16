@@ -482,6 +482,9 @@ int main(int argc, char *argv[])
           cands = candsGPU;
           printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
+
+          // TODO: free GPU memory
+
 #ifdef DEBUG
           char name [100];
           sprintf(name,"%s_GPU_01_Cands.csv",fname);
@@ -615,8 +618,6 @@ int main(int argc, char *argv[])
       printCands(name, cands);
       //#endif
 
-
-
       /* Now optimize each candidate and its harmonics */
 
       print_percent_complete(0, 0, NULL, 1);
@@ -636,7 +637,7 @@ int main(int argc, char *argv[])
           //if ( ii < 3 )
           {
           nvtxRangePush("opt");
-          optimize_accelcand_cu(cand, &obs, ii+1, &oPln);
+          opt_candPlns_cu(cand, &obs, ii+1, &oPln);
           nvtxRangePop();
           }
 #endif

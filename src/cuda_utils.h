@@ -22,6 +22,10 @@
 #define   POWERCU(r,i)  ((r)*(r) + (i)*(i))   /// The sum of powers of two number
 #define   POWERC(c)     POWERCU(c.r, c.i)     /// The sum of powers of a complex number
 
+// Free a pointer and set value to zero
+#define freeNull(pointer) { if (pointer) free ( pointer ); pointer = NULL; }
+#define cudaFreeNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFree(pointer), "Failed to free device memory."); pointer = NULL; }
+#define cudaFreeHostNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFreeHost(pointer), "Failed to free host memory."); pointer = NULL; }
 
 // cuFFT API errors
 #ifdef _CUFFT_H_
@@ -106,7 +110,7 @@ ExternC unsigned long getFreeRamCU();
 
 ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
 ExternC void rz_interp_cu(fcomplex* fft, int loR, int noR, double centR, double centZ, int halfwidth);
-ExternC void optimize_accelcand_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln);
+ExternC void opt_candPlns_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln);
 
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
 ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);

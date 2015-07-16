@@ -1061,41 +1061,14 @@ void freeKernel(cuFFdotBatch* kernrl, cuFFdotBatch* master)
 {
   FOLD // Allocate device memory for all the kernels data  .
   {
-    CUDA_SAFE_CALL(cudaFree(kernrl->d_kerData), "Failed to allocate device memory for kernel stack.");
+    cudaFreeNull(kernrl->d_kerData);
     CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error allocation of device memory for kernel?.\n");
-  }
-
-  FOLD // Create texture memory from kernels  .
-  {
-    if ( kernrl->flag & FLAG_MUL_TEX )
-    {
-      cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
-
-      for (int i = 0; i< kernrl->noStacks; i++)           // Loop through Stacks
-      {
-        cuFfdotStack* cStack = &kernrl->stacks[i];
-
-        cudaDestroyTextureObject(cStack->kerDatTex);
-        CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from the stack of kernel data.");
-
-        // Create the actual texture object
-        for (int j = 0; j< cStack->noInStack; j++)        // Loop through plains in stack
-        {
-          cuKernel* cKer = &cStack->kernels[j];
-
-          cudaDestroyTextureObject(cKer->kerDatTex);
-          CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
-        }
-      }
-    }
   }
 
   FOLD // Decide how to handle input and output and allocate required memory  .
   {
     if ( master == kernrl )
-      free(kernrl->SrchSz);
+      freeNull(kernrl->SrchSz);
 
     FOLD // Allocate global (device independent) host memory
     {
@@ -1104,10 +1077,7 @@ void freeKernel(cuFFdotBatch* kernrl, cuFFdotBatch* master)
       {
         if( kernrl->flag | CU_CAND_ARR )
         {
-          if ( kernrl->h_candidates )
-          {
-            free(kernrl->h_candidates);
-          }
+          freeNull(kernrl->h_candidates);
         }
       }
     }
@@ -1115,20 +1085,9 @@ void freeKernel(cuFFdotBatch* kernrl, cuFFdotBatch* master)
     CUDA_SAFE_CALL(cudaGetLastError(), "Failed to create memory for candidate list or input data.");
   }
 
-  FOLD // Create CUFFT plans, ( 1 - set per device )  .
-  {
-    for (int i = 0; i < kernrl->noStacks; i++)
-    {
-      cuFfdotStack* cStack  = &kernrl->stacks[i];
-      CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack.");
-      CUFFT_SAFE_CALL(cufftDestroy(cStack->inpPlan), "Destroying plan for complex data of stack.");
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
-    }
-  }
-
   FOLD // Allocate all the memory for the stack data structures  .
   {
-    free(kernrl->stacks);
+    freeNull(kernrl->stacks);
   }
 }
 
@@ -1827,6 +1786,68 @@ void freeBatch(cuFFdotBatch* batch)
   }
 
   //free(batch);
+}
+
+
+/** Free batch data structure  .
+ *
+ * @param batch
+ */
+void freeBatchGPUmem(cuFFdotBatch* batch)
+{
+  FOLD // Allocate all device and host memory for the stacks  .
+  {
+    FOLD // Allocate page-locked host memory for input data
+    {
+      cudaFreeHostNull(batch->h_iData);
+
+      if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation
+      {
+        freeNull(batch->h_powers);
+      }
+    }
+
+    FOLD // Allocate device Memory for Plain Stack & input data (steps)  .
+    {
+      // Allocate device memory
+      cudaFreeNull(batch->d_iData);
+      cudaFreeNull(batch->d_plainData );
+
+      if ( batch->flag & FLAG_MUL_CB_OUT )
+      {
+        cudaFreeNull(batch->d_plainPowers);
+      }
+    }
+
+    FOLD // Allocate device & page-locked host memory for candidate  data  .
+    {
+      cudaFreeNull(batch->d_retData);
+      cudaFreeHostNull(batch->h_retData);
+    }
+  }
+
+  FOLD // Create textures for the f-∂f plains  .
+  {
+    if ( batch->flag & FLAG_SAS_TEX )
+    {
+      for (int i = 0; i< batch->noStacks; i++)
+      {
+        cuFfdotStack* cStack = &batch->stacks[i];
+
+        for (int j = 0; j< cStack->noInStack; j++)
+        {
+          cuFFdot* cPlain = &cStack->plains[j];
+
+          if(cPlain->datTex)
+          {
+            CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlain->datTex), "Creating texture from the plain data.");
+            cPlain->datTex = NULL;
+          }
+        }
+      }
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plain data.");
+    }
+  }
 }
 
 void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
@@ -2654,6 +2675,25 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
   return srch;
 }
 
+void freeAccelMem(cuMemInfo* aInf)
+{
+  FOLD // Free plains  .
+  {
+    for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
+    {
+      freeBatchGPUmem(&aInf->batches[batch]);
+    }
+  }
+
+  FOLD // Free kernels  .
+  {
+    for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
+    {
+      cudaFree(aInf->kernels[dev].d_kerData);
+    }
+  }
+}
+
 void freeCuAccel(cuMemInfo* aInf)
 {
   FOLD // Free plains  .
@@ -2676,20 +2716,15 @@ void freeCuAccel(cuMemInfo* aInf)
   {
     for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
     {
-      free(aInf->h_stackInfo[dev]);
+      freeNull(aInf->h_stackInfo[dev]);
     }
   }
 
-  free(aInf->batches);
-  aInf->batches = NULL;
-  free(aInf->kernels);
-  aInf->kernels = NULL;
+  freeNull(aInf->batches);
+  freeNull(aInf->kernels);
 
-  free(aInf->h_stackInfo);
-  aInf->h_stackInfo = NULL;
-  free(aInf->devNoStacks);
-  aInf->devNoStacks = NULL;
-
+  freeNull(aInf->h_stackInfo);
+  freeNull(aInf->devNoStacks);
 }
 
 void accelMax(cuSearch* srch)

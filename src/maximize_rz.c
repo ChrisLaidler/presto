@@ -746,7 +746,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
                 drat = fabs(0.1/d2);
 
                 list[idx].velocity[1] = a*list[idx].velocity[1] + b*r1*prefL*(list[idx].bestPos[1] - list[idx].position[1]) + c*r2*prefG*(batchBest[btch][1] - list[idx].position[1]);
-
                 if (list[idx].velocity[1] > velocityMax )
                   list[idx].velocity[1] = velocityMax;
                 if (list[idx].velocity[1] < -velocityMax )
