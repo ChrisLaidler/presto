@@ -150,10 +150,12 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   binsperside = NUMLOCPOWAVG / 2;
   kern_half_width = w_resp_halfwidth(z, w, LOWACC);
 
+  const int extra = 50;
+
   /* Set the bounds of our summation */
 
-  lo1 = r - DELTAAVGBINS - binsperside - kern_half_width - 10;
-  hi1 = r + DELTAAVGBINS + binsperside + kern_half_width + 10;
+  lo1 = r - DELTAAVGBINS - binsperside - kern_half_width - extra;
+  hi1 = r + DELTAAVGBINS + binsperside + kern_half_width + extra;
 
   /* Make sure we don't try to read non-existant data */
 

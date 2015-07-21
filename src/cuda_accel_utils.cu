@@ -1621,6 +1621,93 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   return batch->noSteps;
 }
 
+cuOptCand* initOptPln(searchSpecs* sSpec)
+{
+  int       noP       = 20;
+  float     scale     = 6;
+  int maxNoR          = 512;
+  int maxNoZ          = 512;
+  int noHarms         = (1<<sSpec->noHarmStages);
+
+  cuOptCand* oPln;
+  oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
+  memset(oPln, 0, sizeof(cuOptCand));
+
+  oPln->noZ           = noP*2 + 1;
+  oPln->noR           = noP*2 + 1;
+  oPln->rSize         = scale;
+  oPln->zSize         = scale*4.0;
+  oPln->alignment     = getMemAlignment();
+  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax+oPln->zSize/2.0, HIGHACC);
+  oPln->outSz         = maxNoR * maxNoZ * sizeof(float);
+  oPln->inpSz         = (maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex);
+
+  CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+  CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+
+  CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+  CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+
+  return(oPln);
+}
+
+cuOptCand* initOptSwrm(searchSpecs* sSpec)
+{
+  char strBuff[1024];
+  size_t freeMem, totalMem;
+  ulong freeRam;                      /// The amount if free host memory
+
+  int       noP       = 20;
+  float     scale     = 6;
+  int maxNoR          = 512;
+  int maxNoZ          = 512;
+  int noHarms         = (1<<sSpec->noHarmStages);
+
+  cuOptCand* oPln;
+  oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
+  memset(oPln, 0, sizeof(cuOptCand));
+
+  oPln->noZ           = noP*2 + 1;
+  oPln->noR           = noP*2 + 1;
+  oPln->rSize         = scale;
+  oPln->zSize         = scale*4.0;
+  oPln->alignment     = getMemAlignment();
+  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax+oPln->zSize/2.0, HIGHACC);
+  oPln->outSz         = maxNoR * maxNoZ * sizeof(candOpt);
+  oPln->inpSz         = sSpec->fftInf.nor * sizeof(fcomplex) ;
+
+  //CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+  //CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+
+  //CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+  //CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+
+  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+  freeRam = getFreeRamCU();
+  printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n",totalMem / 1073741824.0, (freeMem)  / 1073741824.0, freeRam / 1073741824.0 );
+
+
+  if ( (oPln->inpSz) > freeMem )
+  {
+    printf("Not enough GPU memory to create any more stacks.\n");
+    free(oPln);
+    return NULL;
+  }
+  else
+  {
+    // Allocate device memory
+    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),    "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),    "Failed to allocate device memory for kernel stack.");
+
+    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out, oPln->outSz), "Failed to allocate device memory for kernel stack.");
+
+    // Copy FFT to device memory
+    CUDA_SAFE_CALL(cudaMemcpy(oPln->d_inp, sSpec->fftInf.fft, oPln->inpSz, cudaMemcpyHostToDevice),      "Copying FFT to device");
+  }
+
+  return(oPln);
+}
+
 int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
 {
   stackInfo* dcoeffs;
@@ -2592,6 +2679,69 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
   return aInf;
 }
 
+void freeAccelMem(cuMemInfo* aInf)
+{
+  size_t freeMem, totalMem;
+  ulong freeRam;                      /// The amount if free host memory
+
+  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+  freeRam = getFreeRamCU();
+  printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n", totalMem / 1073741824.0, (freeMem) / 1073741824.0, freeRam / 1073741824.0 );
+
+  FOLD // Free plains  .
+  {
+    for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
+    {
+      freeBatchGPUmem(&aInf->batches[batch]);
+    }
+  }
+
+  FOLD // Free kernels  .
+  {
+    for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
+    {
+      cudaFreeNull(aInf->kernels[dev].d_kerData);
+    }
+  }
+
+  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+  freeRam = getFreeRamCU();
+  printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n", totalMem / 1073741824.0, (freeMem) / 1073741824.0, freeRam / 1073741824.0 );
+}
+
+void freeCuAccel(cuMemInfo* mInf)
+{
+  FOLD // Free plains  .
+  {
+    for ( int batch = 0 ; batch < mInf->noBatches; batch++ )  // Batches
+    {
+      freeBatch(&mInf->batches[batch]);
+    }
+  }
+
+  FOLD // Free kernels  .
+  {
+    for ( int dev = 0 ; dev < mInf->noDevices; dev++)  // Loop over devices
+    {
+      freeKernel(&mInf->kernels[dev], &mInf->kernels[0] );
+    }
+  }
+
+  FOLD // Stack infos  .
+  {
+    for ( int dev = 0 ; dev < mInf->noDevices; dev++)  // Loop over devices
+    {
+      freeNull(mInf->h_stackInfo[dev]);
+    }
+  }
+
+  freeNull(mInf->batches);
+  freeNull(mInf->kernels);
+
+  freeNull(mInf->h_stackInfo);
+  freeNull(mInf->devNoStacks);
+}
+
 cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   bool same   = true;
@@ -2673,58 +2823,6 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
   }
 
   return srch;
-}
-
-void freeAccelMem(cuMemInfo* aInf)
-{
-  FOLD // Free plains  .
-  {
-    for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
-    {
-      freeBatchGPUmem(&aInf->batches[batch]);
-    }
-  }
-
-  FOLD // Free kernels  .
-  {
-    for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
-    {
-      cudaFree(aInf->kernels[dev].d_kerData);
-    }
-  }
-}
-
-void freeCuAccel(cuMemInfo* aInf)
-{
-  FOLD // Free plains  .
-  {
-    for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
-    {
-      freeBatch(&aInf->batches[batch]);
-    }
-  }
-
-  FOLD // Free kernels  .
-  {
-    for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
-    {
-      freeKernel(&aInf->kernels[dev], &aInf->kernels[0] );
-    }
-  }
-
-  FOLD // Stack infos  .
-  {
-    for ( int dev = 0 ; dev < aInf->noDevices; dev++)  // Loop over devices
-    {
-      freeNull(aInf->h_stackInfo[dev]);
-    }
-  }
-
-  freeNull(aInf->batches);
-  freeNull(aInf->kernels);
-
-  freeNull(aInf->h_stackInfo);
-  freeNull(aInf->devNoStacks);
 }
 
 void accelMax(cuSearch* srch)

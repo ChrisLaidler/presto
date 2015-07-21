@@ -167,6 +167,65 @@ static double power_call_rz_harmonics_noNorm(double rz[])
   return -total_power;
 }
 
+void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int numdata, double r, double z, rderivs derivs[], double power[], int nn)
+{
+  float *locpow;
+  int i, ii;
+  double x[2];
+
+  // initialisation
+  locpow             = gen_fvect(num_harmonics);
+
+  for (i=1; i<=num_harmonics; i++)
+  {
+    //locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
+    locpow[i-1]      = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+r)*i-r_offset[i-1], (z)*i, 0.0);
+    x[0] = (r_offset[i-1]+z)*i-r_offset[i-1];
+    x[1] = z/ZSCALE * i;
+    //maxdata = data[i-1];
+    power[i-1] = -power_call_rz(x);
+    get_derivs3d(data[i-1], numdata, (r_offset[i-1]+r)*i-r_offset[i-1], (z)*i, 0.0, locpow[i-1], &(derivs[i-1]));
+
+    //maxlocpow[i-1]   = locpow[i-1];
+    //printf("cand->pows[%02i] %f\n", i-1, power[i-1]);
+  }
+  vect_free(locpow);
+
+  /*
+
+
+  for ( i = 1; i <= cand->numharm; i++ )
+  {
+    double rH = (obs->lobin+cand->r)*i-obs->lobin;
+    double rZ = cand->z*i;
+    double x[2];
+
+    float locpow = get_scaleFactorZ(obs->fft, obs->numbins, rH, rZ, 0.0);
+    x[0] = rH;
+    x[1] = rZ / ZSCALE;
+    cand->pows[i-1] = -power_call_rz(x[0]);
+    get_derivs3d(obs->fft, obs->numbins, rH, rZ, 0.0, locpow, &cand->derivs[i-1] );
+  }
+
+  for( ii=1; ii <= cand->numharm; ii++ )
+  {
+    cand->hirs[ii-1]=(cand->r+obs->lobin)*(ii);
+    cand->hizs[ii-1]=cand->z*(ii);
+  }
+
+  FOLD // Update fundamental values to the optimised ones
+  {
+    cand->power = 0;
+    for( ii=0; ii<cand->numharm; ii++ )
+    {
+      cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;;
+    }
+  }
+
+  cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[twon_to_index(cand->numharm)]);
+  */
+}
+
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
 void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[], int nn)
@@ -236,7 +295,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   lrgPnt[0][2] = -power_call_rz_harmonics(x[0]);
   //printf("Inp Power %7.3f\n", lrgPnt[0][2] );
   //printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f \n", nn, num_harmonics, rin, zin, lrgPnt[0][2] );
-  printf("%04i\t%02i\t%20.4f\t%8.3f\t",nn, num_harmonics, rin, zin); // TMP
+  //printf("%04i\t%02i\t%20.4f\t%8.3f\t",nn, num_harmonics, rin, zin); // TMP
 
   /* Initialize the starting simplex */
 
@@ -269,7 +328,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   amoeba(x, y, 1.0e-7, power_call_rz_harmonics, &numeval);
   gettimeofday(&end, NULL);       // TMP
   timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
-  printf("%i\t%.5f\t", numeval, timev1); // TMP
+  //printf("%i\t%.5f\t", numeval, timev1); // TMP
 
   if ( nn == 1  )
   {
@@ -339,7 +398,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   amoeba(x, y, 1.0e-10, power_call_rz_harmonics, &numeval);
   gettimeofday(&end, NULL);       // TMP
   timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
-  printf("%i\t%.5f\t",numeval, timev1); // TMP
+  //printf("%i\t%.5f\t",numeval, timev1); // TMP
 
   if ( numeval > 200 )
   {
@@ -1272,7 +1331,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
   gettimeofday(&end1, NULL);       // TMP
   timev1 = ((end1.tv_sec - start1.tv_sec) * 1e6 + (end1.tv_usec - start1.tv_usec)); // TMP
-  printf("%.5f\t",timev1); // TMP
+  //printf("%.5f\t",timev1); // TMP
 }
 
 void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
@@ -1315,3 +1374,4 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
   free(r_offset);
   free(filedata);
 }
+

@@ -249,6 +249,11 @@ accelcand *create_accelcand(float power, float sigma,
   return obj;
 }
 
+accelcand *create_accelcandp(accelcand *cand)
+{
+  return create_accelcand(cand->power,cand->sigma, cand->numharm, cand->r, cand->z);
+}
+
 void free_accelcand(gpointer data, gpointer user_data)
 {
   user_data = NULL;
@@ -587,7 +592,6 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
   free(data);
 
   cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[twon_to_index(cand->numharm)]);
-  //printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sigma: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 }
 
 

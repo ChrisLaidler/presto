@@ -1,6 +1,8 @@
 #include <curand.h>
+#include <math.h>             // log
 #include <curand_kernel.h>
 
+#include "cuda_math_ext.h"
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
@@ -259,6 +261,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
         //        printf("%i + %i >= %i\n", lodata, numkern, noBins );
         numkern = noBins - lodata;
       }
+
       //printf("numkern: %i\n", numkern );
     }
 
@@ -314,6 +317,10 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
       //printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, loR+lodata+ii, inp.r, inp.i, tR, tI, POWERR(ans.r, ans.i) );
     }
   }
+  else
+  {
+    //printf("r < 0: %.6f\n", r );
+  }
 
   return ans;
 }
@@ -333,14 +340,13 @@ __global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int ha
     for( int i = 1; i <= noHarms; i++ )
     {
       fcomplexcu ans  = rz_interp_cu<T>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfwidth);
-
       //total_power     += POWERR(ans.r, ans.i)/norm.val[i-1];
       total_power     += POWERR(ans.r, ans.i);
 
-//      if( ix == 0 && iy > 70 )
-//      {
-//        printf("%03i %.3f\n", iy, POWERR(ans.r, ans.i) );
-//      }
+      //      if( ix == 0 && iy > 70 )
+      //      {
+      //        printf("%03i %.3f\n", iy, POWERR(ans.r, ans.i) );
+      //      }
     }
 
     //powers[iy*noR + ix] = total_power;
@@ -367,124 +373,201 @@ __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int 
 
  */
 template<typename T>
-__global__ void ffdotSwarm_ker(unsigned long long seed, float* powers, fcomplexcu* fft, int loR, int noBins, int noHarms, int noReps, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, float16 norm)
+__global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu* fft, int loR, int noBins, int noHarms, int noReps, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, float16 norm)
 {
   const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy        = blockIdx.y * blockDim.y + threadIdx.y;
-  const int idx       = iy * gridDim.x*blockDim.x + ix;
-  const int wrpNo     = 0;
-  const int wrpIdx    = 0;
+  const int idx       = iy * noR + ix;
+  const int wrpNo     = floor(idx/32.0);
+  const int sz        = 32 ; // noR * noZ - wrpNo * 32 ;
+  const int lane      = idx % sz;
+  const int oLane     = (lane+1) % sz;
+
   curandState state;
 
   float a = 0.8;
   float b = 0.4;
   float c = 0.7;
 
-  float velocityMax          = rSZ / 20.0;
+  float   velocityMax       = rSZ / 20.0;
 
-  double r, z;
-  float power;
-
-  double  bestR, bestZ;
-  float   bestP;
+  float   power             = 0;
+  float   gBestP            = 0;
+  float   lBestP            = 0;
 
   double  nBestR, nBestZ;
   float   nBestP;
 
-  float r1, r2;
-  float d1, d2, d3;
+  double2 lGlo;
+  double2 lLoc;
+  double2 pos;
+  double2 vel;
+  double2 dGlo;
+  double2 dLoc;
 
-  float2 velocity;
-
-  bestR     = 0;
-  bestZ     = 0;
-  bestP   = 0;
+  lGlo.x = 0;
+  lGlo.y = 0;
 
   if ( ix < noR && iy < noZ)
   {
     curand_init(seed, idx, 0, &state);
 
-    FOLD // Initial values
+    FOLD // Initial values  .
     {
-      r       = firstR + ix/(double)(noR-1) * rSZ ;
-      z       = firstZ - iy/(double)(noZ-1) * zSZ ;
-      power   = 0;
+      pos.x       = firstR + ix/(double)(noR-1) * rSZ ;
+      pos.y       = firstZ - iy/(double)(noZ-1) * zSZ ;
+      power       = 0;
 
-      for( int i = 0; i < noHarms; i++ )
+      for( int i = 1; i <= noHarms ; i++ )
       {
-        fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, r*i, z*i, halfwidth);
-        power           += POWERR(ans.r, ans.i)/norm.val[i];
+        //if ( idx == 1001 )
+        {
+          fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
+          power            += POWERR(ans.r, ans.i)/norm.val[i-1];
+
+          //          if ( idx == 1001 )  // TMP
+          //          {
+          //            printf(" Pow: %10.2f  %10.2f %10.2f Norm: %10.3f   Accum: %10.3f\n", POWERR(ans.r, ans.i), ans.r, ans.i, norm.val[i-1], power );
+          //          }
+        }
       }
-      bestR   = r;
-      bestZ   = z;
-      bestP   = power;
+
+      // Set local best
+      lLoc     = pos;
+      lBestP   = power;
+
+      // Global local best
+      lGlo      = lLoc;
+      gBestP    = lBestP;
+
+      FOLD // Velocity  .
+      {
+        vel.x = curand_uniform(&state);
+        vel.y = curand_uniform(&state);
+        float lenn = sqrt(vel.x*vel.x+vel.y*vel.y) ; // len(vel);
+        vel *= velocityMax/lenn;
+      }
     }
 
-    if ( idx == 0 )
+    //    if ( idx == 1001 ) // TMP
+    //    {
+    //      double gDst = len(lGlo - pos);
+    //      printf("%03i Current r: %10.5f z: %10.5f  power: %20.6f  -  Local r: %10.5f z: %10.5f  power: %20.6f  -  Best r: %10.5f z: %10.5f  power: %20.6f    Dist %9.6f\n", 0, pos.x, pos.y, power, lLoc.x, lLoc.y, lBestP, lGlo.x, lGlo.y, gBestP, gDst);
+    //    }
+
+    if(1)
     {
-      printf("%03i r: %.5f   z: %.5f  power: %.6f\n", 0, bestR, bestZ, bestP);
+      for (int rep = 0; rep < 10; rep++)
+      {
+        //d2 = gBestR - pos.x;
+        //d3 = gBestZ - pos.y;
+
+        dLoc = lLoc - pos;
+        dGlo = lGlo - pos;
+
+        //double lDst = len(dLoc);
+        //double gDst = len(dGlo);
+
+        //r1 = curand_uniform(&state);
+        //r2 = curand_uniform(&state);
+
+        vel = a*vel+b*dLoc+c*dGlo;
+
+        float lenn = len(vel);
+        if ( lenn > velocityMax )
+        {
+          vel *= velocityMax/lenn;
+        }
+
+        pos += vel;
+
+        power = 0;
+        for( int i = 1; i <= noHarms; i++ )
+        {
+          fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
+          power           += POWERR(ans.r, ans.i)/norm.val[i-1];
+        }
+
+        //        if ( isnan(power) ) // TMP  .
+        //        {
+        //          printf("idx: %03i   r: %.1f \n", idx, pos.x );
+        //        }
+
+        if ( power > lBestP ) // Update Local bets  .
+        {
+          lLoc      = pos;
+          lBestP    = power;
+        }
+
+        if ( power > gBestP ) // Update Global bets  .
+        {
+          lGlo      = pos;
+          gBestP    = power;
+        }
+
+
+        FOLD // Check Global best with neighbour  .
+        {
+          //nBestR = lGlo.x;
+          //nBestZ = lGlo.y;
+          //nBestP = gBestP;
+          //nBestR = __shfl(lGlo.x,oLane);
+          //nBestZ = __shfl(lGlo.y,oLane);
+
+          int2 tmpForExchIn, tmpForExchOut;
+          float tt = gBestP;
+
+          for ( int ln = 0; ln < 32; ln++) // Shuffle with all elements in the warp
+          {
+            // get R
+            tmpForExchIn = *(int2 *)(&lGlo.x);
+            tmpForExchOut.x = __shfl(tmpForExchIn.x, ln);
+            tmpForExchOut.y = __shfl(tmpForExchIn.y, ln);
+            nBestR = *(double *)(&tmpForExchOut);
+
+            // get Z
+            tmpForExchIn = *(int2 *)(&lGlo.y);
+            tmpForExchOut.x = __shfl(tmpForExchIn.x, ln);
+            tmpForExchOut.y = __shfl(tmpForExchIn.y, ln);
+            nBestZ = *(double *)(&tmpForExchOut);
+
+            // power
+            nBestP = __shfl(gBestP, ln);
+
+            if ( nBestP > gBestP )
+            {
+              //            if ( idx == 0 ) // TMP
+              //            {
+              //              printf("Got a new best!\n");
+              //            }
+              lGlo.x   = nBestR;
+              lGlo.y   = nBestZ;
+              gBestP   = nBestP;
+            }
+            else if ( idx == 0 ) // TMP
+            {
+              //printf("Shuffle got Current r: %.5f z: %.5f   power %15.6f vs %15.6f!\n", nBestR, nBestZ, nBestP, gBestP );
+            }
+          }
+        }
+
+        //        if ( idx == 1001 ) // TMP
+        //        {
+        //          double gDst = len(lGlo - pos);
+        //          printf("%03i Current r: %10.5f z: %10.5f  power: %20.6f  -  Local r: %10.5f z: %10.5f  power: %20.6f  -  Best r: %10.5f z: %10.5f  power: %20.6f    Dist %9.6f\n", rep+1, pos.x, pos.y, power, lLoc.x, lLoc.y, lBestP, lGlo.x, lGlo.y, gBestP, gDst);
+        //        }
+      }
     }
 
-    for (int rep = 0; rep < 30; rep ++)
+    FOLD // Output  .
     {
-      r1 = curand_uniform(&state);
-      r2 = curand_uniform(&state);
-
-      d2 = bestR - r;
-      d3 = bestZ - z;
-
-      double dst = sqrt(d2*d2 + d3*d3) ;
-
-      velocity.x = a*velocity.x + b*d2*r1 + c*r2 ;
-      if (velocity.x > velocityMax )
-        velocity.x = velocityMax;
-      if (velocity.x < -velocityMax )
-        velocity.x = -velocityMax;
-
-      r1 = curand_uniform(&state);
-      r2 = curand_uniform(&state);
-
-      velocity.y = a*velocity.y + b*d3*r1 + c*r2 ;
-      if (velocity.y > velocityMax )
-        velocity.y = velocityMax;
-      if (velocity.y < -velocityMax )
-        velocity.y = -velocityMax;
-
-      r += velocity.x;
-      z += velocity.y;
-
-      power = 0;
-      for( int i = 0; i < noHarms; i++ )
-      {
-        fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, r*i, z*i, halfwidth);
-        power           += POWERR(ans.r, ans.i)/norm.val[i];
-      }
-
-      if ( power > bestP )
-      {
-        bestR   = r;
-        bestZ   = z;
-        bestP   = power;
-      }
-
-      nBestR = __shfl_up(bestR,1);
-      nBestZ = __shfl_up(bestZ,1);
-      nBestP = __shfl_up(bestP,1);
-
-      if ( nBestP > bestP )
-      {
-        bestR   = nBestR;
-        bestZ   = nBestZ;
-        bestP   = nBestP;
-      }
-
-      if ( idx == 0 )
-      {
-        printf("%03i r: %.5f   z: %.5f  power: %.6f\n", rep, bestR, bestZ, bestP);
-      }
+      candOpt outP;
+      outP.r     = lGlo.x;
+      outP.z     = lGlo.y;
+      outP.power = gBestP;
+      out[idx]   = outP;
     }
   }
-
 }
 
 int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac)
@@ -671,7 +754,7 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
 }
 
 template<typename T>
-void ffdotPln( cuFDotPlain* pln, fftInfo* fft )
+void ffdotPln( cuOptCand* pln, fftInfo* fft )
 {
   double maxZ       = (pln->centZ + pln->zSize/2.0);
   double minZ       = (pln->centZ - pln->zSize/2.0);
@@ -684,7 +767,7 @@ void ffdotPln( cuFDotPlain* pln, fftInfo* fft )
   pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
   if ( pln->inpStride*pln->noHarms*sizeof(cufftComplex) > pln->inpSz )
   {
-    fprintf(stderr, "ERROR: In function %s, cuFDotPlain not created with large enough input buffer.", __FUNCTION__);
+    fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
     exit(EXIT_FAILURE);
   }
 
@@ -741,15 +824,78 @@ void ffdotPln( cuFDotPlain* pln, fftInfo* fft )
     dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    //ffdotPln_ker<T><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm);
-    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, 0>>>(time(NULL), (float*)pln->d_out, pln->d_inp, 0, 100, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
-
-    //ffdotPln_ker<double><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_powers, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->powerStride, rOff, norm);
+    ffdotPln_ker<T><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm);
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
   }
 
   CUDA_SAFE_CALL(cudaMemcpy(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
+
+  int TMPP = 0;
+}
+
+template<typename T>
+void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
+{
+  double maxZ       = (pln->centZ + pln->zSize/2.0);
+  double minZ       = (pln->centZ - pln->zSize/2.0);
+  double maxR       = (pln->centR + pln->rSize/2.0);
+  double minR       = (pln->centR - pln->rSize/2.0);
+
+  pln->halfWidth    = z_resp_halfwidth(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4, HIGHACC);
+  double rSpread    = ceil(maxR*pln->noHarms  + pln->halfWidth) - floor(minR*pln->noHarms - pln->halfWidth);
+  //pln->inpStride    = getStrie(rSpread, sizeof(cufftComplex), pln->alignment);
+  //pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
+  //  if ( pln->inpStride*pln->noHarms*sizeof(cufftComplex) > pln->inpSz )
+  //  {
+  //    fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
+  //    exit(EXIT_FAILURE);
+  //  }
+
+  int16   rOff;
+  float16 norm;
+  int     off;
+  int datStart,  datEnd, noDat;
+
+  for( int h = 0; h < 16; h++)
+  {
+    rOff.val[h] = 0;
+  }
+
+  for( int h = 0; h < pln->noHarms; h++)
+  {
+    norm.val[h]     = pln->norm[h];
+  }
+
+  FOLD // Call kernel  .
+  {
+    dim3 dimBlock, dimGrid;
+
+    // Blocks of 1024 threads ( the maximum number of threads per block )
+    dimBlock.x = 16;
+    dimBlock.y = 16;
+    dimBlock.z = 1;
+
+    // One block per harmonic, thus we can sort input powers in Shared memory
+    dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
+    dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+    // Call the kernel to normalise and spread the input data
+    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, 0>>>(time(NULL), (candOpt*)pln->d_out, pln->d_inp, fft->idx, fft->nor, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
+  }
+
+  //cudaDeviceSynchronize();          // TMP
+
+  if ( pln->noZ*pln->noR*sizeof(candOpt) > pln->outSz )
+  {
+    fprintf(stderr,"ERROR, not enough space for output!\n");
+  }
+  else
+  {
+    CUDA_SAFE_CALL(cudaMemcpy(pln->h_out, pln->d_out, pln->noZ*pln->noR*sizeof(candOpt), cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
+  }
 
   int TMPP = 0;
 }
@@ -835,7 +981,7 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
 }
 
 template<typename T>
-void opt_candByPln(accelcand* cand, fftInfo* fft, cuFDotPlain* pln, int noP, double scale, int plt = -1, int nn = 0 )
+void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale, int plt = -1, int nn = 0 )
 {
   FOLD // Large points  .
   {
@@ -846,16 +992,16 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuFDotPlain* pln, int noP, dou
     pln->rSize          = scale;
     pln->zSize          = scale*4.0;
 
-//          gettimeofday(&start, NULL);       // TMP
+    //          gettimeofday(&start, NULL);       // TMP
 
     ffdotPln<T>(pln, fft);
 
-//          gettimeofday(&end, NULL);         // TMP
-//          timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
-//          printf("%.5f\t",timev1);          // TMP
+    //          gettimeofday(&end, NULL);         // TMP
+    //          timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
+    //          printf("%.5f\t",timev1);          // TMP
   }
 
-  if (plt >= 0 ) // Write CVS  .
+  if ( plt >= 0 ) // Write CVS  .
   {
     cudaDeviceSynchronize();          // TMP
 
@@ -921,7 +1067,47 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuFDotPlain* pln, int noP, dou
 
 }
 
-void opt_candPlns_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
+template<typename T>
+void opt_candBySwrm(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale, int plt = -1, int nn = 0 )
+{
+  FOLD // Large points  .
+  {
+    pln->centR          = cand->r;
+    pln->centZ          = cand->z;
+    pln->noZ            = noP*2 + 1;
+    pln->noR            = noP*2 + 1;
+    pln->rSize          = scale;
+    pln->zSize          = scale*4.0;
+
+    ffdotSwrm<T>(pln, fft);
+  }
+
+  FOLD // Get new max  .
+  {
+    float max = ((candOpt*)pln->h_out)[0].power;
+
+    for (int indy = 0; indy < pln->noZ; indy++ )
+    {
+      for (int indx = 0; indx < pln->noR ; indx++ )
+      {
+        float yy2 = ((candOpt*)pln->h_out)[indy*pln->noR+indx].power;
+        if ( yy2 > max )
+        {
+          max = yy2;
+          cand->r     = ((candOpt*)pln->h_out)[indy*pln->noR+indx].r;
+          cand->z     = ((candOpt*)pln->h_out)[indy*pln->noR+indx].z;
+          cand->power = yy2;
+
+          //printf("New max at %04i r: %15.3f   z: %15.3f \n", indy*pln->noR+indx, cand->r, cand->z );
+        }
+      }
+    }
+  }
+
+  //printf("Best point Current r: %10.5f z: %10.5f  power: %20.6f \n", cand->r, cand->z, cand->power);
+}
+
+void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 {
   int ii;
   int *r_offset;
@@ -933,14 +1119,14 @@ void opt_candPlns_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
   struct timeval start, end, start1, end1;
   double timev1, timev2, timev3;
 
-  //printf("\n%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sigma: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
-
-  cand->pows   = gen_dvect(cand->numharm);
-  cand->hirs   = gen_dvect(cand->numharm);
-  cand->hizs   = gen_dvect(cand->numharm);
-  cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
-
   int numdata   = obs->numbins;
+
+  cand->pows    = gen_dvect(cand->numharm);
+  cand->hirs    = gen_dvect(cand->numharm);
+  cand->hizs    = gen_dvect(cand->numharm);
+  cand->derivs  = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
+  r_offset      = (int*) malloc(sizeof(int)*cand->numharm);
+  data          = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
 
   pln->centR    = cand->r ;
   pln->centZ    = cand->z ;
@@ -950,23 +1136,168 @@ void opt_candPlns_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
   fft.fft       = obs->fft;
   fft.rlo       = obs->lobin;
   fft.nor       = obs->numbins;
+  fft.idx       = obs->lobin;
   fft.rhi       = obs->lobin + obs->numbins;
 
   //printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f \n", nn, pln->noHarms, pln->centR, pln->centZ, 0 );
 
   for ( int i=1; i <= cand->numharm; i++ )
   {
-    pln->norm[i-1]  = get_scaleFactorZ(fft.fft, numdata, (fft.rlo+pln->centR)*i-fft.rlo, pln->centZ*i, 0.0);
+    pln->norm[i-1]  = get_scaleFactorZ(fft.fft, fft.nor, (fft.idx+pln->centR)*i-fft.rlo, pln->centZ*i, 0.0);
   }
 
   if ( obs->use_harmonic_polishing )
   {
     if ( obs->mmap_file || obs->dat_input )
     {
+      for( ii=0; ii<cand->numharm; ii++ )
+      {
+        r_offset[ii]   = obs->lobin;
+        data[ii]       = obs->fft;
+      }
+
       FOLD // GPU grid
       {
         int rep = 0;
         int noP = 30;
+        float sz;
+        float v1, v2;
+
+        if ( cand->numharm == 1  )
+          sz = 16;
+        if ( cand->numharm == 2  )
+          sz = 14;
+        if ( cand->numharm == 4  )
+          sz = 12;
+        if ( cand->numharm == 8  )
+          sz = 10;
+        if ( cand->numharm == 16 )
+          sz = 8;
+
+        //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
+
+        noP = 40 ;
+        do
+        {
+          pln->centR    = cand->r ;
+          pln->centZ    = cand->z ;
+          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+        }
+        while ( v1 > 0.8 || v2 > 0.8 );
+        sz = (sz/(float)noP)*2 ;
+
+        noP = 20 ;
+        do
+        {
+          pln->centR    = cand->r ;
+          pln->centZ    = cand->z ;
+          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+        }
+        while ( v1 > 0.8 || v2 > 0.8 );
+        sz = (sz/(float)noP)*2 ;
+
+        noP = 10 ;
+        do
+        {
+          pln->centR    = cand->r ;
+          pln->centZ    = cand->z ;
+          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+        }
+        while ( v1 > 0.8 || v2 > 0.8 );
+        sz = (sz/(float)noP)*2 ;
+
+        do
+        {
+          pln->centR    = cand->r ;
+          pln->centZ    = cand->z ;
+          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+        }
+        while ( v1 > 0.8 || v2 > 0.8 );
+        sz = (sz/(float)noP)*2 ;
+
+        int tmp = 0;
+      }
+
+      FOLD // Optimise derivatives  .
+      {
+        optemiseDerivs(data, cand->numharm, r_offset, numdata, cand->r, cand->z, cand->derivs, cand->pows, nn);
+
+        for( ii=0; ii < cand->numharm; ii++ )
+        {
+          cand->hirs[ii]=(cand->r+obs->lobin)*(ii+1);
+          cand->hizs[ii]=cand->z*(ii+1);
+        }
+
+        FOLD // Update fundamental values to the optimised ones
+        {
+          cand->power = 0;
+          for( ii=0; ii < cand->numharm; ii++ )
+          {
+            cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;
+          }
+        }
+
+        int noStages = log2((double)cand->numharm)+1;
+        cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
+      }
+
+    }
+  }
+}
+
+void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
+{
+  int ii;
+  int *r_offset;
+  fcomplex **data;
+
+  int numdata   = obs->numbins;
+
+  cand->pows    = gen_dvect(cand->numharm);
+  cand->hirs    = gen_dvect(cand->numharm);
+  cand->hizs    = gen_dvect(cand->numharm);
+  cand->derivs  = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
+  r_offset      = (int*) malloc(sizeof(int)*cand->numharm);
+  data          = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
+
+  pln->centR    = cand->r ;
+  pln->centZ    = cand->z ;
+  pln->noHarms  = cand->numharm ;
+
+  fftInfo fft;
+  fft.fft       = obs->fft;
+  fft.rlo       = obs->lobin;
+  fft.nor       = obs->numbins;
+  fft.idx       = obs->lobin;
+  fft.rhi       = obs->lobin + obs->numbins;
+
+  for ( int i=1; i <= cand->numharm; i++ )
+  {
+    pln->norm[i-1]  = get_scaleFactorZ(fft.fft, fft.nor, (fft.idx+pln->centR)*i-fft.rlo, pln->centZ*i, 0.0);
+  }
+
+  if ( obs->use_harmonic_polishing )
+  {
+    if ( obs->mmap_file || obs->dat_input )
+    {
+      for( ii=0; ii<cand->numharm; ii++ )
+      {
+        r_offset[ii]   = obs->lobin;
+        data[ii]       = obs->fft;
+      }
+
+      FOLD // GPU swarm  .
+      {
+        int rep = 0;
+        int noP = 20;
         float sz;
 
         if ( cand->numharm == 1 )
@@ -980,60 +1311,37 @@ void opt_candPlns_cu(accelcand* cand, accelobs* obs, int nn, cuFDotPlain* pln)
         if ( cand->numharm == 16 )
           sz = 8;
 
-        printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
+        //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
 
-        noP = 40 ;
-        opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-        printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
-        sz = (sz/(float)noP)*2;
-
-        noP = 20 ;
-        opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-        printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
-        sz = (sz/(float)noP)*2;
-
-        opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-        printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
-        sz = (sz/(float)noP)*2;
-
-        //opt_cand<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-        //printf("     r: %15.6f   z: %12.6f  %8.6f\n", nn, cand->r, cand->z, sz);
+        opt_candBySwrm<float>(cand, &fft, pln, noP, sz,  rep++, nn );
 
         int tmp = 0;
+      }
 
-        for ( int i = 1; i <= cand->numharm; i++ )
-        {
-          double rH = (obs->lobin+r)*i-obs->lobin;
-          double rZ = z*i;
-          double x[2];
-
-          float locpow = get_scaleFactorZ(obs->fft, obs->numbins, rH, rZ, 0.0);
-          x[0] = rH;
-          x[1] = rZ/4.0;
-          //maxdata = data[i-1];
-          //cand->pows[i-1] = -power_call_rz(x[0]);
-          get_derivs3d(obs->fft, obs->numbins, rH, rZ, 0.0, locpow, &cand->derivs[i-1] );
-        }
+      FOLD // Optimise derivatives  .
+      {
+        optemiseDerivs(data, cand->numharm, r_offset, numdata, cand->r, cand->z, cand->derivs, cand->pows, nn);
 
         for( ii=0; ii < cand->numharm; ii++ )
         {
-          cand->hirs[ii]=(r+obs->lobin)*(ii+1);
-          cand->hizs[ii]=z*(ii+1);
+          cand->hirs[ii]=(cand->r+obs->lobin)*(ii+1);
+          cand->hizs[ii]=cand->z*(ii+1);
         }
 
-        FOLD // Update fundamental values to the optemised ones
+        FOLD // Update fundamental values to the optimised ones
         {
           cand->power = 0;
-          for( ii=0; ii<cand->numharm; ii++ )
+          for( ii=0; ii < cand->numharm; ii++ )
           {
-            cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;;
+            cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;
           }
-          cand->r     = r+obs->lobin;
-          cand->z     = z;
         }
 
-        //cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[twon_to_index(cand->numharm)]);
+        int noStages = log2((double)cand->numharm)+1;
+        cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
       }
+
+      //printf("Opt point          r: %10.5f z: %10.5f  power: %20.6f   sigma: %6.3f \n", cand->r, cand->z, cand->power, cand->sigma);
     }
   }
 }

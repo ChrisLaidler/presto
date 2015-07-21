@@ -82,7 +82,7 @@ extern "C"
 #define BS_DIM        1024    // compute 3.x +
 //#define BS_DIM        576   // compute 2.x
 
-#define POWERR(r,i) (r)*(r)+(i)*(i)
+#define POWERR(r,i) ((r)*(r)+(i)*(i))
 
 
 typedef struct iList

@@ -1173,6 +1173,11 @@ double max_rz_file(FILE *fftfile, double rin, double zin, \
   /* maximizes the power of the candidate in 'fftfile'.       */
 
 
+void optemiseDerivs(fcomplex * data[], int num_harmonics,
+                            int r_offset[],
+                            int numdata, double r, double z,
+                            rderivs derivs[], double power[], int nn);
+
 void max_rz_arr_harmonics(fcomplex * data[], int num_harmonics,
                             int r_offset[],
                             int numdata, double rin, double zin,

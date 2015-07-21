@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
   sprintf(candsFile,"%s.unoptcands", fname );
 
   FILE *file;
-  if ( (file = fopen(candsFile, "rb")) ) 		  // Read candidates from previous search  . // TMP
+  if ( (file = fopen(candsFile, "rb")) && 1 ) 		  // Read candidates from previous search  . // TMP
   {
     int numcands;
     fread( &numcands, sizeof(numcands), 1, file );
@@ -484,6 +484,7 @@ int main(int argc, char *argv[])
 
 
           // TODO: free GPU memory
+          freeAccelMem(cuSrch->mInf);
 
 #ifdef DEBUG
           char name [100];
@@ -532,6 +533,8 @@ int main(int argc, char *argv[])
     int numcands;
     GSList *listptr;
     accelcand *cand;
+    accelcand *candGPU;
+    accelcand *candGPUP;
     fourierprops *props;
 
 #ifdef CUDA
@@ -568,29 +571,35 @@ int main(int argc, char *argv[])
       return(0);
     }
 
-    size_t iStride, pStride;
-    cuFDotPlain oPln;
-    memset(&oPln, 0, sizeof(oPln));
-    int noHarms         = (1<<sSpec.noHarmStages);
-    int       noP       = 20;
-    float     scale     = 6;
-    int maxNoR          = 512;
-    int maxNoZ          = 512;
+    //    size_t iStride, pStride;
+    //    cuOptCand oPln;
+    //    memset(&oPln, 0, sizeof(oPln));
+    //    int noHarms         = (1<<sSpec.noHarmStages);
+    //    int       noP       = 20;
+    //    float     scale     = 6;
+    //    int maxNoR          = 512;
+    //    int maxNoZ          = 512;
+    //
+    //    oPln->noZ            = noP*2 + 1;
+    //    oPln->noR            = noP*2 + 1;
+    //    oPln->rSize          = scale;
+    //    oPln->zSize          = scale*4.0;
+    //    oPln->alignment      = getMemAlignment();
+    //    oPln->maxHalfWidth   = z_resp_halfwidth(sSpec.zMax+oPln->zSize/2.0, HIGHACC);
+    //    oPln->outSz          = maxNoR * maxNoZ * sizeof(float);
+    //    oPln->inpSz          = (maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex);
+    //
+    //    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+    //    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+    //
+    //    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+    //    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
 
-    oPln.noZ            = noP*2 + 1;
-    oPln.noR            = noP*2 + 1;
-    oPln.rSize          = scale;
-    oPln.zSize          = scale*4.0;
-    oPln.alignment      = getMemAlignment();
-    oPln.maxHalfWidth   = z_resp_halfwidth(sSpec.zMax+oPln.zSize/2.0, HIGHACC);
-    oPln.outSz          = maxNoR * maxNoZ * sizeof(float);
-    oPln.inpSz          = (maxNoR + 2*oPln.maxHalfWidth)*noHarms*sizeof(cufftComplex);
+    cuOptCand* oPlnPln;
+    cuOptCand* oPlnSwrm;
 
-    CUDA_SAFE_CALL(cudaMalloc(&oPln.d_out,  oPln.outSz),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMalloc(&oPln.d_inp,  oPln.inpSz),   "Failed to allocate device memory for kernel stack.");
-
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln.h_out,  oPln.outSz), "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln.h_inp,  oPln.inpSz), "Failed to allocate device memory for kernel stack.");
+    oPlnPln   = initOptPln(&sSpec);
+    oPlnSwrm  = initOptSwrm(&sSpec);
 #endif
 
     numcands = g_slist_length(cands);
@@ -622,24 +631,46 @@ int main(int argc, char *argv[])
 
       print_percent_complete(0, 0, NULL, 1);
       listptr = cands;
-      for (ii = 0; ii < numcands; ii++)
+
+      for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----
       {
         //print_percent_complete(ii, numcands, "optimization", 0);
-        cand = (accelcand *) (listptr->data);
+        cand      = (accelcand *) (listptr->data);
+        candGPU   = create_accelcandp(cand);
+        candGPUP  = create_accelcandp(cand);
 
         //if ( ii == 3 )
         {
-//          nvtxRangePush("opt");
-//          optimize_accelcand(cand, &obs, ii+1);
-//          nvtxRangePop();
+          printf("Initial point %3i  r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f \n", ii+1, cand->r, cand->z, cand->power, cand->sigma);
+
+          nvtxRangePush("opt");
+          optimize_accelcand(cand, &obs, ii+1);
+          nvtxRangePop();
+          printf("CPU Opt point      r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f \n", cand->r, cand->z, cand->power, cand->sigma);
+          float sig1 = cand->sigma;
 
 #ifdef CUDA
-          //if ( ii < 3 )
-          {
           nvtxRangePush("opt");
-          opt_candPlns_cu(cand, &obs, ii+1, &oPln);
+          opt_candPlns(candGPUP, &obs, ii+1, oPlnPln);
           nvtxRangePop();
-          }
+          printf("GPU Pln            r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f  ", candGPUP->r, candGPUP->z, candGPUP->power, candGPUP->sigma);
+          if ( candGPUP->sigma > sig1)
+            printf("better\n");
+          else if ( ( sig1 / candGPUP->sigma) < 1.01 )
+            printf("similar\n");
+          else
+            printf("worse\n");
+
+          nvtxRangePush("opt");
+          opt_candSwrm(candGPU, &obs, ii+1, oPlnSwrm);
+          nvtxRangePop();
+          printf("GPU Swrm           r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f  ", candGPU->r, candGPU->z, candGPU->power, candGPU->sigma);
+          if ( candGPUP->sigma > sig1)
+            printf("better\n");
+          else if ( ( sig1 / candGPUP->sigma) < 1.01 )
+            printf("similar\n");
+          else
+            printf("worse\n");
 #endif
 
           printf("\n");

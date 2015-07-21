@@ -188,10 +188,19 @@ typedef struct fftInfo
 {
     double      rlo;      ///< The Low bin   (of interest)
     double      rhi;      ///< The high bin  (of interest)
-    long long   nor;      ///< The number of bins in the FFT
-    fcomplex*   fft;      ///< An array of complex numbers (nor long)
+
+    long long   idx;      ///< The FFT bin index of the first memory location
+    long long   nor;      ///< The number of bins in the memory location
+
+    fcomplex*   fft;      ///< The array of complex numbers (nor long)
 } fftInfo;
 
+typedef struct candOpt
+{
+    float   power;
+    double  r;            /// TODO: Should this be a double?
+    double  z;
+} candOpt;
 
 //------------- Data structures for, plains, stacks, batches etc ----------------
 
@@ -495,7 +504,7 @@ typedef struct cuSearch
 } cuSearch;
 
 
-typedef struct cuFDotPlain
+typedef struct cuOptCand
 {
     double        centR;
     double        centZ;
@@ -526,7 +535,11 @@ typedef struct cuFDotPlain
 
     int           outStride;
     int           inpStride;
-} cuFDotPlain;
+
+    int           device;
+    int           flags;
+} cuOptCand;
+
 
 //===================================== Function prototypes ===============================================
 
@@ -562,6 +575,13 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
  * @return                Returns the number of steps covered. Main details are written to aInf
  */
 //ExternC int initCuAccel(cuMemInfo* aInf, fftInfo* fftinf, int numharmstages, int zMax, int width, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
+
+ExternC void freeAccelMem(cuMemInfo* mInf);
+
+
+ExternC cuOptCand* initOptPln(searchSpecs* sSpec);
+ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
+
 
 /** Initialise the template structure and kernels for a multi-step batches  .
  * This is called once per device
