@@ -511,6 +511,9 @@ typedef struct cuOptCand
     double        rSize;
     double        zSize;
 
+    int           maxNoR;
+    int           maxNoZ;
+
     int           noZ;
     int           noR;
 
@@ -538,6 +541,17 @@ typedef struct cuOptCand
 
     int           device;
     int           flags;
+
+    // Streams
+    cudaStream_t  stream;                 ///< CUDA stream for work
+
+    // Events
+    cudaEvent_t   inpInit;                ///< Copying input data to device
+    cudaEvent_t   inpCmp;                 ///< Copying input data to device
+    cudaEvent_t   compInit;               ///< Copying input data to device
+    cudaEvent_t   compCmp;                ///< Copying input data to device
+    cudaEvent_t   outInit;                ///< Copying input data to device
+    cudaEvent_t   outCmp;                 ///< Copying input data to device
 } cuOptCand;
 
 

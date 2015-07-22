@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
     }
     fclose(file);
   }
-  else                                         // Run Search  .
+  else                                              // Run Search  .
   {
 
     /* Start the main search loop */
@@ -319,8 +319,6 @@ int main(int argc, char *argv[])
 
           cuFFdotBatch* master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
 
-          omp_set_num_threads(cuSrch->mInf->noBatches);
-
           FOLD // TMP
           {
             if ( sSpec.fftInf.rhi != obs.highestbin )
@@ -344,8 +342,9 @@ int main(int argc, char *argv[])
 
           printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f plains spread across %i device(s) .\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
 
-#ifndef DEBUG // Parallel if we are not in debug mode  .
-#pragma omp parallel
+#ifndef DEBUG 	// Parallel if we are not in debug mode  .
+          omp_set_num_threads(cuSrch->mInf->noBatches);
+          #pragma omp parallel
 #endif
           FOLD  // Main GPU loop  .
           {
@@ -430,7 +429,7 @@ int main(int argc, char *argv[])
           print_percent_complete(sSpec.fftInf.rhi - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 0);
           printf("\n");
 
-          if ( (master->flag & CU_CAND_ARR) )
+          if ( (master->flag & CU_CAND_ARR) ) // Copying candidates from array to list for optimisation  .
           {
             printf("\nCopying candidates from array to list for optimisation.\n");
 
@@ -473,7 +472,7 @@ int main(int argc, char *argv[])
             fclose (pFile);
           }
 
-          //ccd udaProfilerStop(); // For profiling of only the 'critical' GPU section
+          //cudaProfilerStop(); // For profiling of only the 'critical' GPU section
 
           // Basic timing
           gettimeofday(&end, NULL);
@@ -539,8 +538,10 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA
     gettimeofday(&start, NULL);       // Profiling
-    nvtxRangePush("CPU optimisation");
+    nvtxRangePush("Optimisation");
     gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+
+    //cudaProfilerStart();              // TMP Start profiling, only really necessary for debug and profiling, surprise surprise
 
     char timeMsg[1024], dirname[1024], scmd[1024];
     time_t rawtime;
@@ -556,50 +557,6 @@ int main(int argc, char *argv[])
     sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/ 2> /dev/null", dirname );
     system(scmd);
 
-    int device = gSpec.devId[0];
-    if ( device >= getGPUCount() )
-    {
-      fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
-      return 0;
-    }
-    int currentDevvice;
-    CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
-    CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
-    if (currentDevvice != device)
-    {
-      fprintf(stderr, "ERROR: CUDA Device not set.\n");
-      return(0);
-    }
-
-    //    size_t iStride, pStride;
-    //    cuOptCand oPln;
-    //    memset(&oPln, 0, sizeof(oPln));
-    //    int noHarms         = (1<<sSpec.noHarmStages);
-    //    int       noP       = 20;
-    //    float     scale     = 6;
-    //    int maxNoR          = 512;
-    //    int maxNoZ          = 512;
-    //
-    //    oPln->noZ            = noP*2 + 1;
-    //    oPln->noR            = noP*2 + 1;
-    //    oPln->rSize          = scale;
-    //    oPln->zSize          = scale*4.0;
-    //    oPln->alignment      = getMemAlignment();
-    //    oPln->maxHalfWidth   = z_resp_halfwidth(sSpec.zMax+oPln->zSize/2.0, HIGHACC);
-    //    oPln->outSz          = maxNoR * maxNoZ * sizeof(float);
-    //    oPln->inpSz          = (maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex);
-    //
-    //    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-    //    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
-    //
-    //    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-    //    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
-
-    cuOptCand* oPlnPln;
-    cuOptCand* oPlnSwrm;
-
-    oPlnPln   = initOptPln(&sSpec);
-    oPlnSwrm  = initOptSwrm(&sSpec);
 #endif
 
     numcands = g_slist_length(cands);
@@ -629,57 +586,148 @@ int main(int argc, char *argv[])
 
       /* Now optimize each candidate and its harmonics */
 
-      print_percent_complete(0, 0, NULL, 1);
-      listptr = cands;
-
-      for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----
+      Fout // CPU optimisation
       {
-        //print_percent_complete(ii, numcands, "optimization", 0);
-        cand      = (accelcand *) (listptr->data);
-        candGPU   = create_accelcandp(cand);
-        candGPUP  = create_accelcandp(cand);
+        print_percent_complete(0, 0, NULL, 1);
+        listptr = cands;
 
-        //if ( ii == 3 )
+        for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----
         {
-          printf("Initial point %3i  r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f \n", ii+1, cand->r, cand->z, cand->power, cand->sigma);
+          //print_percent_complete(ii, numcands, "optimization", 0);
+          cand      = (accelcand *) (listptr->data);
+          candGPU   = create_accelcandp(cand);
+          candGPUP  = create_accelcandp(cand);
 
-          nvtxRangePush("opt");
-          optimize_accelcand(cand, &obs, ii+1);
-          nvtxRangePop();
-          printf("CPU Opt point      r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f \n", cand->r, cand->z, cand->power, cand->sigma);
-          float sig1 = cand->sigma;
+          //if ( ii == 165 )
+          {
+            printf("Initial point %3i  r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f \n", ii+1, cand->r, cand->z, cand->power, cand->sigma);
 
-#ifdef CUDA
-          nvtxRangePush("opt");
-          opt_candPlns(candGPUP, &obs, ii+1, oPlnPln);
-          nvtxRangePop();
-          printf("GPU Pln            r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f  ", candGPUP->r, candGPUP->z, candGPUP->power, candGPUP->sigma);
-          if ( candGPUP->sigma > sig1)
-            printf("better\n");
-          else if ( ( sig1 / candGPUP->sigma) < 1.01 )
-            printf("similar\n");
-          else
-            printf("worse\n");
+            nvtxRangePush("CPU opt");
+            optimize_accelcand(cand, &obs, ii+1);
+            nvtxRangePop();
+            printf("CPU Opt point      r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f \n", cand->r, cand->z, cand->power, cand->sigma);
+            float sig1 = cand->sigma;
+            float dist;
 
-          nvtxRangePush("opt");
-          opt_candSwrm(candGPU, &obs, ii+1, oPlnSwrm);
-          nvtxRangePop();
-          printf("GPU Swrm           r: %13.5f   z: %10.5f   power: %20.6f   sigma: %7.3f  ", candGPU->r, candGPU->z, candGPU->power, candGPU->sigma);
-          if ( candGPUP->sigma > sig1)
-            printf("better\n");
-          else if ( ( sig1 / candGPUP->sigma) < 1.01 )
-            printf("similar\n");
-          else
-            printf("worse\n");
+            printf("\n");
+
+          }
+
+          listptr = listptr->next;
+        }
+        print_percent_complete(ii, numcands, "optimization", 0);
+      }
+
+
+#ifdef CUDA   // --=== The GPU Search == --  .
+      if ( cmd->gpuP > 0 )
+      {
+        print_percent_complete(0, 0, NULL, 1);
+        listptr = cands;
+        ii = 0;
+
+#ifndef DEBUG   // Parallel if we are not in debug mode  .
+        omp_set_num_threads(4);
+
+#pragma omp parallel
 #endif
+        FOLD  // Main GPU loop  .
+        {
+          accelcand *candCPU;
+          accelcand *candGPU;
+          accelcand *candGPUP;
+          int tid = omp_get_thread_num();
 
-          printf("\n");
+          FOLD  // Set device
+          {
+            int device = gSpec.devId[0];
+            if ( device >= getGPUCount() )
+            {
+              fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
+              exit(EXIT_FAILURE);
+            }
+            int currentDevvice;
+            CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+            CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+            if (currentDevvice != device)
+            {
+              fprintf(stderr, "ERROR: CUDA Device not set.\n");
+              exit(EXIT_FAILURE);
+            }
+          }
 
+          cuOptCand* oPlnPln;
+          cuOptCand* oPlnSwrm;
+
+          int       ti = 0;
+
+          oPlnPln   = initOptPln(&sSpec);
+          //oPlnSwrm  = initOptSwrm(&sSpec);
+
+          while (listptr)
+          {
+
+#pragma omp critical
+            FOLD // Calcularte canidate  .
+            {
+              if ( listptr )
+              {
+                //candCPU   = (accelcand *) (listptr->data);
+                //candGPU   = create_accelcandp((accelcand *) (listptr->data));
+                //candGPUP  = create_accelcandp((accelcand *) (listptr->data));
+
+                candGPUP  = (accelcand *) (listptr->data);
+
+                listptr  = listptr->next;
+
+                ii++;
+                ti = ii;
+              }
+              else
+              {
+                candGPUP = NULL;
+              }
+            }
+
+            if ( candGPUP )
+            {
+              float sig1 = candCPU->sigma;
+              float dist;
+
+              nvtxRangePush("Pln opt");
+              opt_candPlns(candGPUP, &obs, ti, oPlnPln);
+              nvtxRangePop();
+
+//              printf("GPU Pln            r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f  ", candGPUP->r, candGPUP->z, candGPUP->power, candGPUP->sigma);
+//              dist = sqrt( (candCPU->r-candGPUP->r)*(candCPU->r-candGPUP->r) + (candCPU->z-candGPUP->z)*(candCPU->z-candGPUP->z) );
+//              printf(" Dist %10.6f   ", dist );
+//              if ( candGPUP->sigma > sig1)
+//                printf("better\n");
+//              else if ( ( sig1 / candGPUP->sigma) < 1.01 )
+//                printf("similar\n");
+//              else
+//                printf("worse\n");
+
+//              nvtxRangePush("Swrm opt");
+//              opt_candSwrm(candGPU, &obs, ii+1, oPlnSwrm);
+//              nvtxRangePop();
+//              printf("GPU Swrm           r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f  ", candGPU->r, candGPU->z, candGPU->power, candGPU->sigma);
+//              dist = sqrt( (cand->r-candGPU->r)*(cand->r-candGPU->r) + (cand->z-candGPU->z)*(cand->z-candGPU->z) );
+//              printf(" Dist %10.6f   ", dist );
+//              if ( candGPU->sigma > sig1)
+//                printf("better\n");
+//              else if ( ( sig1 / candGPU->sigma) < 1.01 )
+//                printf("similar\n");
+//              else
+//                printf("worse\n");
+
+//              printf("\n");
+            }
+          }
         }
 
-        listptr = listptr->next;
       }
-      print_percent_complete(ii, numcands, "optimization", 0);
+#endif
 
       // Re sort with new sigam values
       //cands = sort_accelcands(cands);
@@ -703,8 +751,8 @@ int main(int argc, char *argv[])
           props[ii].zerr = (float) (ACCEL_DZ) / cand->numharm;
         }
         listptr = listptr->next;
-
       }
+
 
       //#ifdef DEBUG
       sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
@@ -746,8 +794,14 @@ int main(int argc, char *argv[])
 
     sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
     mkdir(dirname, 0755);
-    sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/", dirname );
+    sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/    2>/dev/null", dirname );
     system(scmd);
+
+#ifdef CUDA
+    cuProfilerStop(); // TMP
+    return (0); // TMP
+#endif
+
 #endif
   }
 
@@ -898,6 +952,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA
   //cudaDeviceReset();
   cuProfilerStop(); // TMP
+  return (0); // TMP
 #endif
   //#endif
 

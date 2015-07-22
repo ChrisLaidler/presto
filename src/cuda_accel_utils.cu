@@ -91,7 +91,7 @@ void printData_cu(cuFFdotBatch* batch, const int FLAGS, int harmonic, int nX, in
   //cuFFdot* cPlain       = &batch->plains[harmonic];
   //printfData<<<1,1,0,0>>>((float*)cPlain->d_iData, nX, nY, cPlain->harmInf->inpStride, sX, sY);
 }
-*/
+ */
 
 /* The fft length needed to properly process a subharmonic */
 static int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen)
@@ -1621,73 +1621,84 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   return batch->noSteps;
 }
 
-cuOptCand* initOptPln(searchSpecs* sSpec)
+cuOptCand* initOptCand(searchSpecs* sSpec)
 {
-  int       noP       = 20;
-  float     scale     = 6;
-  int maxNoR          = 512;
-  int maxNoZ          = 512;
-  int noHarms         = (1<<sSpec->noHarmStages);
-
   cuOptCand* oPln;
+
   oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
   memset(oPln, 0, sizeof(cuOptCand));
 
-  oPln->noZ           = noP*2 + 1;
-  oPln->noR           = noP*2 + 1;
-  oPln->rSize         = scale;
-  oPln->zSize         = scale*4.0;
+  oPln->maxNoR        = 512;
+  oPln->maxNoZ        = 512;
+  oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;   // This needs to be multiplied by the size of the output element
   oPln->alignment     = getMemAlignment();
-  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax+oPln->zSize/2.0, HIGHACC);
-  oPln->outSz         = maxNoR * maxNoZ * sizeof(float);
-  oPln->inpSz         = (maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex);
+  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax*1.2, HIGHACC);
 
-  CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-  CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
 
-  CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-  CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+  // Create streams
+  CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
+  nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
+
+  // Events
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp.");
+
+  return oPln;
+}
+
+cuOptCand* initOptPln(searchSpecs* sSpec)
+{
+  size_t freeMem, totalMem;
+  ulong freeRam;                      /// The amount if free host memory
+
+  int       noHarms   = (1<<sSpec->noHarmStages);
+
+  cuOptCand* oPln     = initOptCand(sSpec);
+
+  oPln->outSz         *= sizeof(float);
+  oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex);
+
+  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+  freeRam = getFreeRamCU();
+
+  if ( (oPln->inpSz + oPln->outSz) > freeMem )
+  {
+    printf("Not enough GPU memory to create any more stacks.\n");
+    free(oPln);
+    return NULL;
+  }
+  else
+  {
+    // Allocate device memory
+    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+
+    // Allocate host memory
+    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+  }
 
   return(oPln);
 }
 
 cuOptCand* initOptSwrm(searchSpecs* sSpec)
 {
-  char strBuff[1024];
   size_t freeMem, totalMem;
   ulong freeRam;                      /// The amount if free host memory
 
-  int       noP       = 20;
-  float     scale     = 6;
-  int maxNoR          = 512;
-  int maxNoZ          = 512;
-  int noHarms         = (1<<sSpec->noHarmStages);
+  cuOptCand* oPln     = initOptCand(sSpec);
 
-  cuOptCand* oPln;
-  oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
-  memset(oPln, 0, sizeof(cuOptCand));
-
-  oPln->noZ           = noP*2 + 1;
-  oPln->noR           = noP*2 + 1;
-  oPln->rSize         = scale;
-  oPln->zSize         = scale*4.0;
-  oPln->alignment     = getMemAlignment();
-  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax+oPln->zSize/2.0, HIGHACC);
-  oPln->outSz         = maxNoR * maxNoZ * sizeof(candOpt);
+  oPln->outSz         *= sizeof(candOpt);
   oPln->inpSz         = sSpec->fftInf.nor * sizeof(fcomplex) ;
-
-  //CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-  //CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
-
-  //CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-  //CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
   freeRam = getFreeRamCU();
-  printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n",totalMem / 1073741824.0, (freeMem)  / 1073741824.0, freeRam / 1073741824.0 );
 
-
-  if ( (oPln->inpSz) > freeMem )
+  if ( (oPln->inpSz + oPln->outSz) > freeMem )
   {
     printf("Not enough GPU memory to create any more stacks.\n");
     free(oPln);
@@ -1699,6 +1710,7 @@ cuOptCand* initOptSwrm(searchSpecs* sSpec)
     CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),    "Failed to allocate device memory for kernel stack.");
     CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),    "Failed to allocate device memory for kernel stack.");
 
+    // Allocate host memory
     CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out, oPln->outSz), "Failed to allocate device memory for kernel stack.");
 
     // Copy FFT to device memory
@@ -2497,6 +2509,67 @@ void readAccelDefalts(uint *flags)
       {
         rest = &line[ strlen("globalInt05")+1];
         globalInt05 = atoi(rest);
+      }
+
+
+      // Optimisation vars
+
+      else if ( strCom(line, "optpln01" ) )
+      {
+        rest      = &line[ strlen("optpln01")+1];
+        optpln01  = atoi(rest);
+      }
+      else if ( strCom(line, "optpln02" ) )
+      {
+        rest      = &line[ strlen("optpln02")+1];
+        optpln02  = atoi(rest);
+      }
+      else if ( strCom(line, "optpln03" ) )
+      {
+        rest      = &line[ strlen("optpln03")+1];
+        optpln03  = atoi(rest);
+      }
+      else if ( strCom(line, "optpln04" ) )
+      {
+        rest      = &line[ strlen("optpln04")+1];
+        optpln04  = atoi(rest);
+      }
+      else if ( strCom(line, "optpln05" ) )
+      {
+        rest      = &line[ strlen("optpln05")+1];
+        optpln05  = atoi(rest);
+      }
+
+      else if ( strCom(line, "optSz01" ) )
+      {
+        rest      = &line[ strlen("optSz01")+1];
+        optSz01   = atof(rest);
+      }
+      else if ( strCom(line, "optSz02" ) )
+      {
+        rest      = &line[ strlen("optSz02")+1];
+        optSz02   = atof(rest);
+      }
+      else if ( strCom(line, "optSz04" ) )
+      {
+        rest      = &line[ strlen("optSz04")+1];
+        optSz04   = atof(rest);
+      }
+      else if ( strCom(line, "optSz08" ) )
+      {
+        rest      = &line[ strlen("optSz08")+1];
+        optSz08   = atof(rest);
+      }
+      else if ( strCom(line, "optSz16" ) )
+      {
+        rest      = &line[ strlen("optSz16")+1];
+        optSz16   = atof(rest);
+      }
+
+      else if ( strCom(line, "pltOpt" ) )
+      {
+        rest      = &line[ strlen("pltOpt")+1];
+        pltOpt    = atoi(rest);
       }
     }
 

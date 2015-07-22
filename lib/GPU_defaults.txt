@@ -60,3 +60,24 @@ CU_CAND_ARR
 
 
 globalInt01 18            # Last Edited by run time script
+
+
+optpln01 50
+optpln02 30
+optpln03 20
+optpln04 20
+optpln05 20
+
+#optpln01 10
+#optpln02 10
+#optpln03 10
+#optpln04 10
+#optpln05 10
+
+#optSz01 16
+#optSz02 14
+#optSz04 12
+#optSz08 10
+#optSz16 8
+
+pltOpt   -100

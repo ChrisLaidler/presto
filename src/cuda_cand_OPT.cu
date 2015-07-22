@@ -13,6 +13,19 @@ extern "C"
 #include "accel.h"
 }
 
+int    optpln01 = 50;
+int    optpln02 = 30;
+int    optpln03 = 20;
+int    optpln04 = 20;
+int    optpln05 = 20;
+
+float  optSz01 = 16;
+float  optSz02 = 14;
+float  optSz04 = 12;
+float  optSz08 = 10;
+float  optSz16 = 8;
+
+int    pltOpt = -100;
 
 __device__ inline double cos_t(double x)
 {
@@ -54,6 +67,11 @@ __device__ inline void sincos_t(float x, float* s, float* c )
 template<typename T>
 __device__ void fresnl(T xxa, T* ss, T* cc)
 {
+  *ss = 1;
+  *cc = 1;
+
+  return;
+
   T f, g, c, s, t, u;
   T x, x2;
 
@@ -84,10 +102,27 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     u     = 1.0 / (t * t);
     t     = 1.0 / t;
 
-    T fn  = (T)3.76329711269987889006e-20+((T)1.34283276233062758925e-16+((T)1.72010743268161828879e-13+((T)1.02304514164907233465e-10+((T)3.05568983790257605827e-8 +((T)4.63613749287867322088e-6+((T)3.45017939782574027900e-4+((T)1.15220955073585758835e-2+((T)1.43407919780758885261e-1+ (T)4.21543555043677546506e-1*u)*u)*u)*u)*u)*u)*u)*u)*u;
-    T fd  = (T)1.25443237090011264384e-20+((T)4.52001434074129701496e-17+((T)5.88754533621578410010e-14+((T)3.60140029589371370404e-11+((T)1.12699224763999035261e-8 +((T)1.84627567348930545870e-6+((T)1.55934409164153020873e-4+((T)6.44051526508858611005e-3+((T)1.16888925859191382142e-1+((T)7.51586398353378947175e-1+u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-    T gn  = (T)1.86958710162783235106e-22+((T)8.36354435630677421531e-19+((T)1.37555460633261799868e-15+((T)1.08268041139020870318e-12+((T)4.45344415861750144738e-10+((T)9.82852443688422223854e-8+((T)1.15138826111884280931e-5+((T)6.84079380915393090172e-4+((T)1.87648584092575249293e-2+((T)1.97102833525523411709e-1+ (T)5.04442073643383265887e-1*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-    T gd  = (T)1.86958710162783236342e-22+((T)8.39158816283118707363e-19+((T)1.38796531259578871258e-15+((T)1.10273215066240270757e-12+((T)4.60680728146520428211e-10+((T)1.04314589657571990585e-7+((T)1.27545075667729118702e-5+((T)8.14679107184306179049e-4+((T)2.53603741420338795122e-2+((T)3.37748989120019970451e-1+((T)1.47495759925128324529e0 +u)*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+//    T fn  = (T)3.76329711269987889006e-20+((T)1.34283276233062758925e-16+((T)1.72010743268161828879e-13+((T)1.02304514164907233465e-10+((T)3.05568983790257605827e-8 +((T)4.63613749287867322088e-6+((T)3.45017939782574027900e-4+((T)1.15220955073585758835e-2+((T)1.43407919780758885261e-1+ (T)4.21543555043677546506e-1*u)*u)*u)*u)*u)*u)*u)*u)*u;
+//    T fd  = (T)1.25443237090011264384e-20+((T)4.52001434074129701496e-17+((T)5.88754533621578410010e-14+((T)3.60140029589371370404e-11+((T)1.12699224763999035261e-8 +((T)1.84627567348930545870e-6+((T)1.55934409164153020873e-4+((T)6.44051526508858611005e-3+((T)1.16888925859191382142e-1+((T)7.51586398353378947175e-1+u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+//    T gn  = (T)1.86958710162783235106e-22+((T)8.36354435630677421531e-19+((T)1.37555460633261799868e-15+((T)1.08268041139020870318e-12+((T)4.45344415861750144738e-10+((T)9.82852443688422223854e-8+((T)1.15138826111884280931e-5+((T)6.84079380915393090172e-4+((T)1.87648584092575249293e-2+((T)1.97102833525523411709e-1+ (T)5.04442073643383265887e-1*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+//    T gd  = (T)1.86958710162783236342e-22+((T)8.39158816283118707363e-19+((T)1.38796531259578871258e-15+((T)1.10273215066240270757e-12+((T)4.60680728146520428211e-10+((T)1.04314589657571990585e-7+((T)1.27545075667729118702e-5+((T)8.14679107184306179049e-4+((T)2.53603741420338795122e-2+((T)3.37748989120019970451e-1+((T)1.47495759925128324529e0 +u)*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+
+    T u01  = u;
+    T u02  = u01*u;
+    T u03  = u02*u;
+    T u04  = u03*u;
+    T u05  = u04*u;
+    T u06  = u05*u;
+    T u07  = u06*u;
+    T u08  = u07*u;
+    T u09  = u08*u;
+    T u10  = u09*u;
+    T u11 = u10*u;
+    T fn  = (T)3.76329711269987889006e-20 + (T)1.34283276233062758925e-16*u01 + (T)1.72010743268161828879e-13*u02 + (T)1.02304514164907233465e-10*u03 + (T)3.05568983790257605827e-8 *u04 + (T)4.63613749287867322088e-6*u05 + (T)3.45017939782574027900e-4*u06 + (T)1.15220955073585758835e-2*u07 + (T)1.43407919780758885261e-1*u08 + (T)4.21543555043677546506e-1*u09;
+    T fd  = (T)1.25443237090011264384e-20 + (T)4.52001434074129701496e-17*u01 + (T)5.88754533621578410010e-14*u02 + (T)3.60140029589371370404e-11*u03 + (T)1.12699224763999035261e-8 *u04 + (T)1.84627567348930545870e-6*u05 + (T)1.55934409164153020873e-4*u06 + (T)6.44051526508858611005e-3*u07 + (T)1.16888925859191382142e-1*u08 + (T)7.51586398353378947175e-1*u09 + u10;
+    T gn  = (T)1.86958710162783235106e-22 + (T)8.36354435630677421531e-19*u01 + (T)1.37555460633261799868e-15*u02 + (T)1.08268041139020870318e-12*u03 + (T)4.45344415861750144738e-10*u04 + (T)9.82852443688422223854e-8*u05 + (T)1.15138826111884280931e-5*u06 + (T)6.84079380915393090172e-4*u07 + (T)1.87648584092575249293e-2*u08 + (T)1.97102833525523411709e-1*u09 + (T)5.04442073643383265887e-1*u10 ;
+    T gd  = (T)1.86958710162783236342e-22 + (T)8.39158816283118707363e-19*u01 + (T)1.38796531259578871258e-15*u02 + (T)1.10273215066240270757e-12*u03 + (T)4.60680728146520428211e-10*u04 + (T)1.04314589657571990585e-7*u05 + (T)1.27545075667729118702e-5*u06 + (T)8.14679107184306179049e-4*u07 + (T)2.53603741420338795122e-2*u08 + (T)3.37748989120019970451e-1*u09 + (T)1.47495759925128324529e0 *u10 + u11 ;
+
 
     f     = 1.0 - u * fn / fd;
     g     =       t * gn / gd;
@@ -95,6 +130,7 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     t     = (T)PIBYTWO * x2;
     sincos(t, &s, &c);
     t     = (T)PI * x;
+
     *cc   = 0.5 + (f * s - g * c) / t;
     *ss   = 0.5 - (f * c + g * s) / t;
   }
@@ -698,7 +734,7 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
 
   CUDA_SAFE_CALL(cudaMemcpy(powers, cuPowers, pStride*noZ, cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
 
-  cudaDeviceSynchronize();          // TMP
+  //cudaDeviceSynchronize();          // TMP
   int TMPP = 0;
 
   FOLD // Write CVS
@@ -808,11 +844,16 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
     }
   }
 
-  CUDA_SAFE_CALL(cudaMemcpy(pln->d_inp, pln->h_inp, pln->inpStride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice), "Copying optimisation input to the device");
+  //CUDA_SAFE_CALL(cudaEventRecord(pln->inpInit, pln->stream),"Recording event: inpInit");
+  CUDA_SAFE_CALL(cudaMemcpyAsync(pln->d_inp, pln->h_inp, pln->inpStride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, pln->stream), "Copying optimisation input to the device");
+  //CUDA_SAFE_CALL(cudaEventRecord(pln->inpCmp, pln->stream),"Recording event: inpCmp");
 
   FOLD // Call kernel  .
   {
     dim3 dimBlock, dimGrid;
+
+    // Event
+    //CUDA_SAFE_CALL(cudaEventRecord(pln->compInit, pln->stream),"Recording event: inpInit");
 
     // Blocks of 1024 threads ( the maximum number of threads per block )
     dimBlock.x = 16;
@@ -824,12 +865,17 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
     dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    ffdotPln_ker<T><<<dimGrid, dimBlock, 0, 0>>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm);
+    ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm);
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
+
+    // Event
+    //CUDA_SAFE_CALL(cudaEventRecord(pln->compCmp, pln->stream),"Recording event: inpInit");
   }
 
-  CUDA_SAFE_CALL(cudaMemcpy(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
+  //CUDA_SAFE_CALL(cudaEventRecord(pln->outInit, pln->stream),"Recording event: outInit");
+  CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
+  CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
 
   int TMPP = 0;
 }
@@ -871,6 +917,9 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
   {
     dim3 dimBlock, dimGrid;
 
+    // Event
+    CUDA_SAFE_CALL(cudaEventRecord(pln->compInit, pln->stream),"Recording event: inpInit");
+
     // Blocks of 1024 threads ( the maximum number of threads per block )
     dimBlock.x = 16;
     dimBlock.y = 16;
@@ -881,9 +930,12 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
     dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, 0>>>(time(NULL), (candOpt*)pln->d_out, pln->d_inp, fft->idx, fft->nor, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
+    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>(time(NULL), (candOpt*)pln->d_out, pln->d_inp, fft->idx, fft->nor, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
+
+    // Event
+    CUDA_SAFE_CALL(cudaEventRecord(pln->compCmp, pln->stream),"Recording event: inpInit");
   }
 
   //cudaDeviceSynchronize();          // TMP
@@ -894,7 +946,9 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
   }
   else
   {
-    CUDA_SAFE_CALL(cudaMemcpy(pln->h_out, pln->d_out, pln->noZ*pln->noR*sizeof(candOpt), cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
+    CUDA_SAFE_CALL(cudaEventRecord(pln->outInit, pln->stream),"Recording event: outInit");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, pln->noZ*pln->noR*sizeof(candOpt), cudaMemcpyDeviceToHost, pln->stream ), "Copying optimisation results back from the device.");
+    CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
   }
 
   int TMPP = 0;
@@ -975,7 +1029,7 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
     // Call the kernel to normalise and spread the input data
     rz_interp_ker<<<dimGrid, dimBlock, 0, 0>>>(centR, centZ, cuInp, rOff, noInp, halfwidth, factor);
 
-    cudaDeviceSynchronize();          // TMP
+    //cudaDeviceSynchronize();          // TMP
     int TMPP = 0;
   }
 }
@@ -1001,9 +1055,12 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
     //          printf("%.5f\t",timev1);          // TMP
   }
 
+  // A blocking synchronisation to ensure results are ready to be proceeded by the host
+  CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+
   if ( plt >= 0 ) // Write CVS  .
   {
-    cudaDeviceSynchronize();          // TMP
+    nvtxRangePush("Write CVS");
 
     char tName[1024];
     sprintf(tName,"/home/chris/accel/lrg_GPU_%05i_%02i_h%02i.csv", nn, plt, cand->numharm );
@@ -1033,21 +1090,29 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
     }
     fclose(f2);
 
-    FOLD // Make image
+    FOLD // Make image  .
     {
+      nvtxRangePush("Image");
+
       //printf("Making lrg_GPU.png    \t... ");
       //fflush(stdout);
       char cmd[1024];
       sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
       system(cmd);
       //printf("Done\n");
+
+      nvtxRangePop();
     }
+
+    nvtxRangePop();
 
     int tmp = 0;
   }
 
   FOLD // Get new max  .
   {
+    nvtxRangePush("Get Max");
+
     float max = ((float*)pln->h_out)[0];
 
     for (int indy = 0; indy < pln->noZ; indy++ )
@@ -1063,6 +1128,8 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
         }
       }
     }
+
+    nvtxRangePop();
   }
 
 }
@@ -1081,6 +1148,9 @@ void opt_candBySwrm(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doub
 
     ffdotSwrm<T>(pln, fft);
   }
+
+  // A blocking synchronisation to ensure results are ready to be proceeded by the host
+  CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
 
   FOLD // Get new max  .
   {
@@ -1156,78 +1226,108 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
         data[ii]       = obs->fft;
       }
 
-      FOLD // GPU grid
+      FOLD // GPU grid  .
       {
-        int rep = 0;
+        int rep = pltOpt;
         int noP = 30;
         float sz;
         float v1, v2;
 
         if ( cand->numharm == 1  )
-          sz = 16;
+          sz = optSz01;
         if ( cand->numharm == 2  )
-          sz = 14;
+          sz = optSz02;
         if ( cand->numharm == 4  )
-          sz = 12;
+          sz = optSz04;
         if ( cand->numharm == 8  )
-          sz = 10;
+          sz = optSz08;
         if ( cand->numharm == 16 )
-          sz = 8;
+          sz = optSz16;
 
         //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
 
-        noP = 40 ;
-        do
+        if ( optpln01 > 0 )
         {
-          pln->centR    = cand->r ;
-          pln->centZ    = cand->z ;
-          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
-          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          noP = optpln01 ;
+          do
+          {
+            pln->centR    = cand->r ;
+            pln->centZ    = cand->z ;
+            opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+            v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+            v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          }
+          while ( v1 > 0.8 || v2 > 0.8 );
+          sz = (sz/(float)noP)*2 ;
         }
-        while ( v1 > 0.8 || v2 > 0.8 );
-        sz = (sz/(float)noP)*2 ;
 
-        noP = 20 ;
-        do
+        if ( optpln02 > 0 )
         {
-          pln->centR    = cand->r ;
-          pln->centZ    = cand->z ;
-          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
-          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          noP = optpln02 ;
+          do
+          {
+            pln->centR    = cand->r ;
+            pln->centZ    = cand->z ;
+            opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+            v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+            v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          }
+          while ( v1 > 0.8 || v2 > 0.8 );
+          sz = (sz/(float)noP)*2 ;
         }
-        while ( v1 > 0.8 || v2 > 0.8 );
-        sz = (sz/(float)noP)*2 ;
 
-        noP = 10 ;
-        do
+        if ( optpln03 > 0 )
         {
-          pln->centR    = cand->r ;
-          pln->centZ    = cand->z ;
-          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
-          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          noP = optpln03 ;
+          do
+          {
+            pln->centR    = cand->r ;
+            pln->centZ    = cand->z ;
+            opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+            v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+            v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          }
+          while ( v1 > 0.8 || v2 > 0.8 );
+          sz = (sz/(float)noP)*2 ;
         }
-        while ( v1 > 0.8 || v2 > 0.8 );
-        sz = (sz/(float)noP)*2 ;
 
-        do
+        if ( optpln04 > 0 )
         {
-          pln->centR    = cand->r ;
-          pln->centZ    = cand->z ;
-          opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
-          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          noP = optpln04 ;
+          do
+          {
+            pln->centR    = cand->r ;
+            pln->centZ    = cand->z ;
+            opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+            v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+            v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          }
+          while ( v1 > 0.8 || v2 > 0.8 );
+          sz = (sz/(float)noP)*2 ;
         }
-        while ( v1 > 0.8 || v2 > 0.8 );
-        sz = (sz/(float)noP)*2 ;
+
+        if ( optpln05 > 0 )
+        {
+          noP = optpln05 ;
+          do
+          {
+            pln->centR    = cand->r ;
+            pln->centZ    = cand->z ;
+            opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
+            v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+            v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+          }
+          while ( v1 > 0.8 || v2 > 0.8 );
+          sz = (sz/(float)noP)*2 ;
+        }
 
         int tmp = 0;
       }
 
       FOLD // Optimise derivatives  .
       {
+        nvtxRangePush("Opt derivs");
+
         optemiseDerivs(data, cand->numharm, r_offset, numdata, cand->r, cand->z, cand->derivs, cand->pows, nn);
 
         for( ii=0; ii < cand->numharm; ii++ )
@@ -1245,8 +1345,10 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           }
         }
 
-        int noStages = log2((double)cand->numharm)+1;
+        int noStages = log2((double)cand->numharm);
         cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
+
+        nvtxRangePop();
       }
 
     }
@@ -1337,7 +1439,7 @@ void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           }
         }
 
-        int noStages = log2((double)cand->numharm)+1;
+        int noStages = log2((double)cand->numharm);
         cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
       }
 

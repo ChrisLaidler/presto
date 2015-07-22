@@ -599,4 +599,18 @@ extern float  globalFloat04;
 extern float  globalFloat05;
 
 
+extern int    optpln01;
+extern int    optpln02;
+extern int    optpln03;
+extern int    optpln04;
+extern int    optpln05;
+
+extern float  optSz01;
+extern float  optSz02;
+extern float  optSz04;
+extern float  optSz08;
+extern float  optSz16;
+
+extern int    pltOpt;
+
 #endif // CUDA_ACCEL_UTILS_INCLUDED
