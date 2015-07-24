@@ -408,7 +408,7 @@ __host__ void add_and_searchCU33_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     //      break;
     //    }
     default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i stages\n", __FUNCTION__, noStages);
+      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
       exit(EXIT_FAILURE);
   }
 
@@ -421,26 +421,26 @@ __host__ void add_and_searchCU33_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   switch (noStages)
   {
-    //    case 1:
-    //    {
-    //      add_and_searchCU33_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 2:
-    //    {
-    //      add_and_searchCU33_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 3:
-    //    {
-    //      add_and_searchCU33_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 4:
-    //    {
-    //      add_and_searchCU33_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 1:
+    {
+      add_and_searchCU33_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 2:
+    {
+      add_and_searchCU33_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 3:
+    {
+      add_and_searchCU33_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 4:
+    {
+      add_and_searchCU33_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 5:
     {
       add_and_searchCU33_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);

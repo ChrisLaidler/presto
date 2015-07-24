@@ -77,8 +77,8 @@ void amoeba(double p[3][2], double *y, double ftol,
         break;
       }
 
-      //if (*nfunk >= 5000) // Break condition  .
-      if (*nfunk >= 200) // Break condition  .
+      if (*nfunk >= 5000) // Break condition  .
+      //if (*nfunk >= 300) // Break condition  .
       {
         /*
             printf("\nWarning:  amoeba() exceeded %d iterations for r=%f  z=%f.\n",

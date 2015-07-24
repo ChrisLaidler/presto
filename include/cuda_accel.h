@@ -114,8 +114,12 @@ extern "C"
 #define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
 #define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
 
+//====================================== Global variables ================================================
+
+extern int    useUnopt;
 
 //======================================== Type defines ==================================================
+
 
 ///< A complex float in device texture memory
 typedef cudaTextureObject_t fCplxTex;
@@ -592,7 +596,6 @@ ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* sr
 
 ExternC void freeAccelMem(cuMemInfo* mInf);
 
-
 ExternC cuOptCand* initOptPln(searchSpecs* sSpec);
 ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
 
@@ -642,7 +645,7 @@ ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
 
 ExternC void setContext(cuFFdotBatch* stkList) ;
 
-ExternC void printCands(const char* fileName, GSList *candsCPU);
+ExternC void printCands(const char* fileName, GSList *candsCPU, double T);
 
 ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep );
 
@@ -656,7 +659,6 @@ ExternC void printFlags(uint flags);
 
 ExternC void printCommandLine(int argc, char *argv[]);
 
-ExternC void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime);
-
+ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
 
 #endif // CUDA_ACCEL_INCLUDED

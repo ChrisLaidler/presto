@@ -249,7 +249,7 @@ accelcand *create_accelcand(float power, float sigma,
   return obj;
 }
 
-accelcand *create_accelcandp(accelcand *cand)
+accelcand *duplicate_accelcand(accelcand *cand)
 {
   return create_accelcand(cand->power,cand->sigma, cand->numharm, cand->r, cand->z);
 }
@@ -403,6 +403,34 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
   return list;
 }
 
+GSList *copy_accelcands(GSList * list)
+{
+  return g_slist_copy(list);
+}
+
+GSList *duplicate_accelcands(GSList * list)
+{
+  GSList* prevList  = NULL;
+  GSList* head      = NULL;;
+
+  while ( list )
+  {
+    GSList* newEl = g_slist_alloc();
+    if ( !head )
+      head = newEl;
+
+    newEl->data = duplicate_accelcand(list->data);
+
+    if (prevList)
+    {
+      prevList->next = newEl;
+    }
+    list            = list->next;
+    prevList        = newEl;
+  }
+
+  return head;
+}
 
 GSList *eliminate_harmonics(GSList * cands, int *numcands)
 /* Eliminate obvious but less-significant harmonically-related candidates */
@@ -419,7 +447,7 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
 
   currentptr = cands;
   while (currentptr->next) {
-    fprintf(pFile, "Cand  %03i \n",nn++);
+    fprintf(pFile, "Cand  %03i \n", ++nn);
     current_cand = (accelcand *) (currentptr->data);
     otherptr = currentptr->next;
     do {

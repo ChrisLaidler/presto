@@ -28,6 +28,8 @@
 #include "dmalloc.h"
 #endif
 
+int     pltOpt    = 0;
+
 extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
 
 static void print_percent_complete(int current, int number, char *what, int reset)
@@ -77,8 +79,9 @@ int main(int argc, char *argv[])
   Cmdline *cmd;
 
   // Timing vars
-  long long prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0;
+  long long prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0, cpuOptTime = 0, gpuOptTime = 0;
   struct timeval start, end;
+  struct timeval start01, end01;
 
   /* Prep the timer */
 
@@ -153,7 +156,6 @@ int main(int argc, char *argv[])
   printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
   printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
-
 #ifdef CUDA  	  // Profiling  .
   nvtxRangePop();
   gettimeofday(&end, NULL);
@@ -174,7 +176,7 @@ int main(int argc, char *argv[])
   sprintf(candsFile,"%s.unoptcands", fname );
 
   FILE *file;
-  if ( (file = fopen(candsFile, "rb")) && 1 ) 		  // Read candidates from previous search  . // TMP
+  if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		  // Read candidates from previous search  . // TMP
   {
     int numcands;
     fread( &numcands, sizeof(numcands), 1, file );
@@ -287,12 +289,9 @@ int main(int argc, char *argv[])
 
         nvtxRangePop();
 
-#ifndef DEBUG
         char name [100];
         sprintf(name,"%s_CPU_01_Cands.csv",fname);
-        printCands(name, candsCPU);
-        //printCands("CPU_Cands.csv", candsCPU);
-#endif
+        printCands(name, candsCPU, obs.T);
 
         free_subharminfos(&obs, subharminfs);
 #endif
@@ -446,7 +445,7 @@ int main(int argc, char *argv[])
             char name [100];
             sprintf(name,"%s_GPU_ARRAY.csv",fname);
             pFile = fopen (name,"w");
-            fprintf (pFile, "idx;rr;zz;sig;harm\n");
+            fprintf (pFile, "idx;rr;f;zz;sig;harm\n");
 
             cand* candidate = (cand*)master->h_candidates;
 
@@ -462,7 +461,7 @@ int main(int argc, char *argv[])
                 zz        = candidate[cdx].z;
 
                 candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
-                fprintf (pFile, "%i;%.2f;%.2f;%.2f;%i\n",cdx,rr, zz,sig,numharm);
+                fprintf (pFile, "%i;%.2f;%.3f;%.2f;%.2f;%i\n",cdx+1,rr, rr/obs.T, zz, sig, numharm);
                 if (added)
                 {
                   noCands++;
@@ -472,8 +471,6 @@ int main(int argc, char *argv[])
             fclose (pFile);
           }
 
-          //cudaProfilerStop(); // For profiling of only the 'critical' GPU section
-
           // Basic timing
           gettimeofday(&end, NULL);
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -481,14 +478,13 @@ int main(int argc, char *argv[])
           cands = candsGPU;
           printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
-
           // TODO: free GPU memory
           freeAccelMem(cuSrch->mInf);
 
 #ifdef DEBUG
           char name [100];
           sprintf(name,"%s_GPU_01_Cands.csv",fname);
-          printCands(name, candsGPU);
+          printCands(name, candsGPU, obs.T);
 #endif
         }
       }
@@ -524,7 +520,7 @@ int main(int argc, char *argv[])
       }
     }
 
-    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
+    printf("\nDone searching.  Now optimizing each candidate.\n\n");
   }
 
   if (1)   	// optimization  .
@@ -532,17 +528,10 @@ int main(int argc, char *argv[])
     int numcands;
     GSList *listptr;
     accelcand *cand;
-    accelcand *candGPU;
-    accelcand *candGPUP;
     fourierprops *props;
+    numcands = g_slist_length(cands);
 
 #ifdef CUDA
-    gettimeofday(&start, NULL);       // Profiling
-    nvtxRangePush("Optimisation");
-    gettimeofday(&start, NULL);       // Note could start the timer after kernel init
-
-    //cudaProfilerStart();              // TMP Start profiling, only really necessary for debug and profiling, surprise surprise
-
     char timeMsg[1024], dirname[1024], scmd[1024];
     time_t rawtime;
     struct tm* ptm;
@@ -552,26 +541,29 @@ int main(int argc, char *argv[])
 
     sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pre", timeMsg );
     mkdir(dirname, 0755);
+
     sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/ 2> /dev/null", dirname );
     system(scmd);
+
     sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/ 2> /dev/null", dirname );
     system(scmd);
 
-#endif
+    sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.csv %s/ 2> /dev/null", dirname );
+    system(scmd);
 
-    numcands = g_slist_length(cands);
+    nvtxRangePush("Optimisation");
+    gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+#endif
 
     if (numcands)
     {
       /* Sort the candidates according to the optimized sigmas */
 
-      //#ifdef DEBUG
-      char name [1024];
-      sprintf(name,"%s_GPU_02_Cands_Raw.csv",fname);
-      printCands(name, cands);
-      //#endif
-
       cands = sort_accelcands(cands);
+
+      char name [1024];
+      sprintf(name,"%s_GPU_02_Cands_Sorted.csv",fname);
+      printCands(name, cands, obs.T);
 
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
@@ -579,52 +571,60 @@ int main(int argc, char *argv[])
         eliminate_harmonics(cands, &numcands);
       }
 
-      //#ifdef DEBUG
+      // Update the number of candidates
+      numcands = g_slist_length(cands);
+
       sprintf(name,"%s_GPU_04_Cands_Thinned.csv",fname);
-      printCands(name, cands);
-      //#endif
+      printCands(name, cands, obs.T);
 
       /* Now optimize each candidate and its harmonics */
 
-      Fout // CPU optimisation
+      printf("Optimising %i candidates.\n\n", numcands);
+
+      if ( cmd->cpuP ) // CPU optimisation  .
       {
-        print_percent_complete(0, 0, NULL, 1);
+#ifdef CUDA // Profiling  .
+
+        if (cmd->gpuP)
+          candsGPU = duplicate_accelcands(cands);
+
+        nvtxRangePush("CPU");
+        gettimeofday(&start01, NULL);       // Profiling
+
+#endif
+
+        accelcand *candCPU;
         listptr = cands;
+        print_percent_complete(0, 0, NULL, 1);
 
-        for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----
+        for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----  .
         {
-          //print_percent_complete(ii, numcands, "optimization", 0);
-          cand      = (accelcand *) (listptr->data);
-          candGPU   = create_accelcandp(cand);
-          candGPUP  = create_accelcandp(cand);
-
-          //if ( ii == 165 )
-          {
-            printf("Initial point %3i  r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f \n", ii+1, cand->r, cand->z, cand->power, cand->sigma);
-
-            nvtxRangePush("CPU opt");
-            optimize_accelcand(cand, &obs, ii+1);
-            nvtxRangePop();
-            printf("CPU Opt point      r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f \n", cand->r, cand->z, cand->power, cand->sigma);
-            float sig1 = cand->sigma;
-            float dist;
-
-            printf("\n");
-
-          }
-
+          candCPU   = (accelcand *) (listptr->data);
+          optimize_accelcand(candCPU, &obs, ii+1);
           listptr = listptr->next;
+          print_percent_complete(ii, numcands, "optimization", 0);
         }
-        print_percent_complete(ii, numcands, "optimization", 0);
+
+#ifdef CUDA // Profiling  .
+        nvtxRangePop();
+        gettimeofday(&end01, NULL);
+        cpuOptTime += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+#endif
+
       }
 
-
-#ifdef CUDA   // --=== The GPU Search == --  .
-      if ( cmd->gpuP > 0 )
+#ifdef CUDA   // --=== The GPU Optimisation == --  .
+      if ( cmd->gpuP > 0  )
       {
+        if (cmd->cpuP)
+          cands = candsGPU; // This is the original unoptimised list
+
+        nvtxRangePush("GPU Opt");
+        gettimeofday(&start01, NULL);       // Profiling
+
         print_percent_complete(0, 0, NULL, 1);
         listptr = cands;
-        ii = 0;
+        ii      = 0;
 
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
         omp_set_num_threads(4);
@@ -633,8 +633,6 @@ int main(int argc, char *argv[])
 #endif
         FOLD  // Main GPU loop  .
         {
-          accelcand *candCPU;
-          accelcand *candGPU;
           accelcand *candGPUP;
           int tid = omp_get_thread_num();
 
@@ -656,30 +654,21 @@ int main(int argc, char *argv[])
             }
           }
 
-          cuOptCand* oPlnPln;
-          cuOptCand* oPlnSwrm;
+          int       ti = 0; // tread specific index
 
-          int       ti = 0;
+          cuOptCand* oPlnPln;
 
           oPlnPln   = initOptPln(&sSpec);
-          //oPlnSwrm  = initOptSwrm(&sSpec);
 
-          while (listptr)
+          while (listptr)  // Main Loop  .
           {
-
 #pragma omp critical
-            FOLD // Calcularte canidate  .
+            FOLD // Calculate candidate  .
             {
               if ( listptr )
               {
-                //candCPU   = (accelcand *) (listptr->data);
-                //candGPU   = create_accelcandp((accelcand *) (listptr->data));
-                //candGPUP  = create_accelcandp((accelcand *) (listptr->data));
-
                 candGPUP  = (accelcand *) (listptr->data);
-
-                listptr  = listptr->next;
-
+                listptr   = listptr->next;
                 ii++;
                 ti = ii;
               }
@@ -689,48 +678,36 @@ int main(int argc, char *argv[])
               }
             }
 
-            if ( candGPUP )
+            if ( candGPUP ) // Optimise  .
             {
-              float sig1 = candCPU->sigma;
-              float dist;
-
-              nvtxRangePush("Pln opt");
               opt_candPlns(candGPUP, &obs, ti, oPlnPln);
-              nvtxRangePop();
-
-//              printf("GPU Pln            r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f  ", candGPUP->r, candGPUP->z, candGPUP->power, candGPUP->sigma);
-//              dist = sqrt( (candCPU->r-candGPUP->r)*(candCPU->r-candGPUP->r) + (candCPU->z-candGPUP->z)*(candCPU->z-candGPUP->z) );
-//              printf(" Dist %10.6f   ", dist );
-//              if ( candGPUP->sigma > sig1)
-//                printf("better\n");
-//              else if ( ( sig1 / candGPUP->sigma) < 1.01 )
-//                printf("similar\n");
-//              else
-//                printf("worse\n");
-
-//              nvtxRangePush("Swrm opt");
-//              opt_candSwrm(candGPU, &obs, ii+1, oPlnSwrm);
-//              nvtxRangePop();
-//              printf("GPU Swrm           r: %13.5f   z: %10.5f   power: %20.6f   sigma: %9.3f  ", candGPU->r, candGPU->z, candGPU->power, candGPU->sigma);
-//              dist = sqrt( (cand->r-candGPU->r)*(cand->r-candGPU->r) + (cand->z-candGPU->z)*(cand->z-candGPU->z) );
-//              printf(" Dist %10.6f   ", dist );
-//              if ( candGPU->sigma > sig1)
-//                printf("better\n");
-//              else if ( ( sig1 / candGPU->sigma) < 1.01 )
-//                printf("similar\n");
-//              else
-//                printf("worse\n");
-
-//              printf("\n");
+              print_percent_complete(ti, numcands, "optimization", 0);
             }
           }
         }
 
+        nvtxRangePop();
+        gettimeofday(&end01, NULL);
+        gpuOptTime += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
       }
 #endif
 
-      // Re sort with new sigam values
-      //cands = sort_accelcands(cands);
+      printf("\n\n");
+
+      // Re sort with new sigma values
+      cands = sort_accelcands(cands);
+
+      sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
+      printCands(name, cands, obs.T);
+
+      /* Eliminate (most of) the harmonically related candidates */
+      if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
+      {
+        eliminate_harmonics(cands, &numcands);
+      }
+
+      // Update the number of candidates
+      numcands = g_slist_length(cands);
 
       /* Calculate the properties of the fundamentals */
 
@@ -753,11 +730,8 @@ int main(int argc, char *argv[])
         listptr = listptr->next;
       }
 
-
-      //#ifdef DEBUG
-      sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
-      printCands(name, cands);
-      //#endif
+      sprintf(name,"%s_GPU_06_Cands_Optemised_cleaned.csv",fname);
+      printCands(name, cands, obs.T);
 
       /* Write the fundamentals to the output text file */
 
@@ -772,15 +746,13 @@ int main(int argc, char *argv[])
       obs.workfile = chkfopen(obs.candnm, "wb");
       chkfwrite(props, sizeof(fourierprops), numcands, obs.workfile);
       fclose(obs.workfile);
-      free(props);
-      printf("\n\n");
 
+      free(props);
+      printf("\n\nDone optimizing.\n\n");
 
       time_t t;
       FILE *file;
       time(&t);
-      sprintf(dirname,"/home/chris/accel/Nelder_Mead/swrm_%i", t);
-
     }
     else
     {
@@ -789,28 +761,33 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA
     nvtxRangePop();
+
     gettimeofday(&end, NULL);
     optTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
-    sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
-    mkdir(dirname, 0755);
-    sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/    2>/dev/null", dirname );
-    system(scmd);
+    if ( pltOpt > 0 )
+    {
+      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
+      mkdir(dirname, 0755);
 
-#ifdef CUDA
-    cuProfilerStop(); // TMP
-    return (0); // TMP
-#endif
+      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/     2>/dev/null", dirname );
+      system(scmd);
 
+      sprintf(scmd,"mv /home/chris/accel/*.png %s/              2>/dev/null", dirname );
+      system(scmd);
+
+      sprintf(scmd,"mv /home/chris/accel/*.csv %s/              2>/dev/null", dirname );
+      system(scmd);
+    }
 #endif
   }
 
 #ifdef CUDA 	// Timing message  .
   if (cuSrch)
   {
-    printf("\n Timing:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
+    printf("\nTiming:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
-    writeLogEntry("/home/chris/accelsearch_log.csv",&obs, cuSrch, prepTime, cupTime, gpuTime, optTime);
+    writeLogEntry("/home/chris/accelsearch_log.csv",&obs, cuSrch, prepTime, cupTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
 
 #ifdef TIMING  // Advanced timing massage  .
 
@@ -843,8 +820,6 @@ int main(int argc, char *argv[])
       float l_resultT   = 0;
       float l_copyD2HT  = 0;
 
-      //printf("\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Copy H2D", "Input Norm", "Input FFT", "Multiply", "Inverse FFT", "Sum & Search", "Sigma calcs", "Copy D2H" );
-
       FOLD // Heading  .
       {
         printf("\t\t");
@@ -862,8 +837,6 @@ int main(int argc, char *argv[])
 
         printf("%s\t","Multiplication");
 
-        //printf("%s\t","Convolve BW");
-
         printf("%s\t","Inverse FFT");
 
         printf("%s\t","Sum & Search");
@@ -880,18 +853,6 @@ int main(int argc, char *argv[])
 
       for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
       {
-        //cuFfdotStack*   cStack = &batches->stacks[stack];
-
-        //float convDat = cStack->height * cStack->width * batches->noSteps * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
-        //convDat       += cStack->kerHeigth * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
-        //convDat       += cStack->noInStack * batches->noSteps * cStack->width * sizeof(fcomplex) * cuSrch->noSteps * 1e-9;
-
-        //float convT   = batches->convTime[stack] * 1e-3;
-        //float convBW  = convDat / convT ;
-
-        //printf("height: %.3f width: %.2f  noSteps: %.2f   sz: %.2f  noSteps: %.2f \n", (float)cStack->height, (float)cStack->width, (float)batches->noSteps, (float)sizeof(fcomplex), (float)cuSrch->noSteps );
-        //printf("%.3f GB in %.4f s BW: %.4f \n",  convDat, convT, convBW );
-
         printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
 
         l_copyH2DT  += batches->copyH2DTime[stack];
@@ -932,9 +893,9 @@ int main(int argc, char *argv[])
   /* Finish up */
 
   printf("Searched the following approx numbers of independent points:\n");
-  printf("  %d harmonic:   %9lld\n", 1, obs.numindep[0]);
-  for (ii = 1; ii < obs.numharmstages; ii++)
-    printf("  %d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
+  //printf("  %d harmonic:   %9lld\n", 1, obs.numindep[0]);
+  for (ii = 0; ii < obs.numharmstages; ii++)
+    printf("  %2d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
 
   printf("\nTiming summary:\n");
   tott = times(&runtimes)   / (double) CLK_TCK - tott;
@@ -948,13 +909,9 @@ int main(int argc, char *argv[])
   printf("Final candidates in binary format are in '%s'.\n", obs.candnm);
   printf("Final Candidates in a text format are in '%s'.\n\n", obs.accelnm);
 
-  //#ifndef DEBUG
 #ifdef CUDA
-  //cudaDeviceReset();
   cuProfilerStop(); // TMP
-  return (0); // TMP
 #endif
-  //#endif
 
   free_accelobs(&obs);
   g_slist_foreach(cands, free_accelcand, NULL);

@@ -161,6 +161,10 @@ GSList *search_ffdotpows(ffdotpows *ffdot, int numharm,
                          accelobs *obs, GSList *cands);
 void free_accelobs(accelobs *obs);
 
+accelcand *duplicate_accelcand(accelcand *cand);
+GSList *copy_accelcands(GSList * list);
+GSList *duplicate_accelcands(GSList * list);
+
 //static
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
 GSList *insert_accelcand(GSList * list, accelcand *cand);

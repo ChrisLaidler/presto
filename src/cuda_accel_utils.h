@@ -387,6 +387,35 @@ extern long long time2;       /// Global variable used for timing
 extern long long time3;       /// Global variable used for timing
 extern long long time4;       /// Global variable used for timing
 
+extern int    globalInt01;
+extern int    globalInt02;
+extern int    globalInt03;
+extern int    globalInt04;
+extern int    globalInt05;
+
+extern float  globalFloat01;
+extern float  globalFloat02;
+extern float  globalFloat03;
+extern float  globalFloat04;
+extern float  globalFloat05;
+
+
+extern int    optpln01;
+extern int    optpln02;
+extern int    optpln03;
+extern int    optpln04;
+extern int    optpln05;
+extern int    optpln06;
+
+extern float  downScale;
+
+extern float  optSz01;
+extern float  optSz02;
+extern float  optSz04;
+extern float  optSz08;
+extern float  optSz16;
+
+extern int    pltOpt;
 
 //-------------------------  Prototypes  -------------------------------\\
 
@@ -585,32 +614,5 @@ void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers);
 
 
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-
-extern int    globalInt01;
-extern int    globalInt02;
-extern int    globalInt03;
-extern int    globalInt04;
-extern int    globalInt05;
-
-extern float  globalFloat01;
-extern float  globalFloat02;
-extern float  globalFloat03;
-extern float  globalFloat04;
-extern float  globalFloat05;
-
-
-extern int    optpln01;
-extern int    optpln02;
-extern int    optpln03;
-extern int    optpln04;
-extern int    optpln05;
-
-extern float  optSz01;
-extern float  optSz02;
-extern float  optSz04;
-extern float  optSz08;
-extern float  optSz16;
-
-extern int    pltOpt;
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED

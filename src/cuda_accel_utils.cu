@@ -50,6 +50,8 @@ float  globalFloat03  = 0;
 float  globalFloat04  = 0;
 float  globalFloat05  = 0;
 
+int     useUnopt      = 0;
+
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
   //printf("\n");
@@ -238,12 +240,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           int   oAccelLen2  = calcAccellen(width/2.0, zmax/2.0);
           kernel->accelLen  = MIN(oAccelLen2*2, oAccelLen1);
 
-          // Check
-          float fftLen      = round(calc_fftlen3(1, zmax, kernel->accelLen)/1000.0);
-          if ( fftLen != width )
+          if ( width < 100 ) // Check  .
           {
-            fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
-            exit(EXIT_FAILURE);
+            float fftLen      = round(calc_fftlen3(1, zmax, kernel->accelLen)/1000.0);
+            if ( fftLen != width )
+            {
+              fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
+              exit(EXIT_FAILURE);
+            }
           }
         }
         else
@@ -255,12 +259,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         if ( kernel->flag & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
         {
           kernel->accelLen = floor( kernel->accelLen/(float)(noHarms*ACCEL_RDR) ) * (noHarms*ACCEL_RDR);
+
+          if ( width > 100 ) // Check  .
+          {
+            if ( width != kernel->accelLen )
+            {
+              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by noHarms*ACCEL_RDR, %i\n", noHarms*ACCEL_RDR );
+              exit(EXIT_FAILURE);
+            }
+          }
         }
 
         if ( kernel->accelLen < 100 )
         {
           fprintf(stderr,"ERROR: With a width of %i, the step-size would be %i and this is too small, try with a wider width or lower z-max.\n", width, kernel->accelLen);
-          return(1);
+          exit(EXIT_FAILURE);
         }
         else
         {
@@ -1632,7 +1645,7 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
   oPln->maxNoZ        = 512;
   oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;   // This needs to be multiplied by the size of the output element
   oPln->alignment     = getMemAlignment();
-  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax*1.2, HIGHACC);
+  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax*2, HIGHACC);
 
 
   // Create streams
@@ -1660,7 +1673,7 @@ cuOptCand* initOptPln(searchSpecs* sSpec)
   cuOptCand* oPln     = initOptCand(sSpec);
 
   oPln->outSz         *= sizeof(float);
-  oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex);
+  oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
   freeRam = getFreeRamCU();
@@ -2090,7 +2103,7 @@ int selectDevice(int device, int print)
   return ((deviceProp.major<< 4)+ deviceProp.minor);
 }
 
-void printCands(const char* fileName, GSList *cands)
+void printCands(const char* fileName, GSList *cands, double T)
 {
   if ( cands == NULL  )
     return;
@@ -2104,12 +2117,12 @@ void printCands(const char* fileName, GSList *cands)
     fprintf ( stderr, "ERROR: Unable to open log file %s\n", fileName );
   else
   {
-    fprintf(myfile, "#\tr\tz\tsig\tpower\tharm \n");
+    fprintf(myfile, "#\tr\tf\tz\tfd\tsig\tpower\tharm \n");
     int i = 0;
 
     while ( inp_list->next )
     {
-      fprintf(myfile, "%i\t%14.5f\t%14.2f\t%-7.4f\t%7.2f\t%i \n", i, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->z, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
+      fprintf(myfile, "%i\t%14.5f\t%10.6f\t%14.2f\t%13.10f\t%-7.4f\t%7.2f\t%i \n", i+1, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->r / T, ((accelcand *) (inp_list->data))->z,((accelcand *) (inp_list->data))->z/T/T, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
       inp_list = inp_list->next;
       i++;
     }
@@ -2539,6 +2552,18 @@ void readAccelDefalts(uint *flags)
         rest      = &line[ strlen("optpln05")+1];
         optpln05  = atoi(rest);
       }
+      else if ( strCom(line, "optpln06" ) )
+      {
+        rest      = &line[ strlen("optpln06")+1];
+        optpln06  = atoi(rest);
+      }
+
+      else if ( strCom(line, "downScale" ) )
+      {
+        rest      = &line[ strlen("downScale")+1];
+        downScale = atof(rest);
+      }
+
 
       else if ( strCom(line, "optSz01" ) )
       {
@@ -2568,8 +2593,16 @@ void readAccelDefalts(uint *flags)
 
       else if ( strCom(line, "pltOpt" ) )
       {
-        rest      = &line[ strlen("pltOpt")+1];
-        pltOpt    = atoi(rest);
+        pltOpt    = 1;
+      }
+      else if ( strCom(line, "PLT_OPT" ) )
+      {
+        pltOpt    = 1;
+      }
+
+      else if ( strCom(line, "UNOPT" ) )
+      {
+        useUnopt    = 1;
       }
     }
 
@@ -2759,7 +2792,6 @@ void freeAccelMem(cuMemInfo* aInf)
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
   freeRam = getFreeRamCU();
-  printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n", totalMem / 1073741824.0, (freeMem) / 1073741824.0, freeRam / 1073741824.0 );
 
   FOLD // Free plains  .
   {
@@ -2776,10 +2808,6 @@ void freeAccelMem(cuMemInfo* aInf)
       cudaFreeNull(aInf->kernels[dev].d_kerData);
     }
   }
-
-  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-  freeRam = getFreeRamCU();
-  printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n", totalMem / 1073741824.0, (freeMem) / 1073741824.0, freeRam / 1073741824.0 );
 }
 
 void freeCuAccel(cuMemInfo* mInf)
@@ -3190,292 +3218,94 @@ void printCommandLine(int argc, char *argv[])
   printf("\n");
 }
 
-void writeLogEntry(char* fname, accelobs *obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime )
+void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
 {
   //#ifdef CBL
-
-  searchSpecs*  sSpec;              ///< Specifications of the search
-  //gpuSpecs*     gSpec;              ///< Specifications of the GPU's to use
-
-  cuMemInfo*    mInf;               ///< The allocated Device and host memory and data structures to create plains including the kernels
-
+  searchSpecs* sSpec;  ///< Specifications of the search
+  cuMemInfo* mInf;  ///< The allocated Device and host memory and data structures to create plains including the kernels
   cuFFdotBatch* batch;
-
-  sSpec   = cuSrch->sSpec;
-  //gSpec   = cuSrch->gSpec;
-  mInf    = cuSrch->mInf;
-  batch   = cuSrch->mInf->batches;
-
+  sSpec = cuSrch->sSpec;
+  mInf = cuSrch->mInf;
+  batch = cuSrch->mInf->batches;
   char hostname[1024];
   gethostname(hostname, 1024);
-
-  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo ;
-
+  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
   // get the current time
   time_t rawtime;
-  tm * ptm;
-  time ( &rawtime );
-  ptm = gmtime ( &rawtime );
-
+  tm* ptm;
+  time(&rawtime);
+  ptm = gmtime(&rawtime);
   Logger* cvsLog = new Logger(fname, 1);
   cvsLog->sedCsvDeliminator('\t');
+  cvsLog->csvWrite("Obs N", "#", "%7.3f", obs->N * 1e-6);
+  cvsLog->csvWrite("R bins", "#", "%7.3f", noRR * 1e-6);
+  cvsLog->csvWrite("Harms", "#", "%2li", cuSrch->noHarms);
+  cvsLog->csvWrite("Z max", "#", "%03i", sSpec->zMax);
+  cvsLog->csvWrite("sigma", "#", "%4.2f", sSpec->sigma);
 
-  cvsLog->csvWrite("Obs N","#","%7.3f",obs->N*1e-6);
-  cvsLog->csvWrite("R bins","#","%7.3f",noRR*1e-6);
-  cvsLog->csvWrite("Harms","#","%2li",cuSrch->noHarms);
-  cvsLog->csvWrite("Z max","#","%03i",sSpec->zMax);
-  cvsLog->csvWrite("sigma","#","%4.2f",sSpec->sigma);
-  cvsLog->csvWrite("ACCEL_LEN","#","%5i",ACCEL_USELEN);
-  cvsLog->csvWrite("Width","#","%4i",sSpec->pWidth);
-  cvsLog->csvWrite("Step Sz","#","%5i",batch->accelLen);
-  cvsLog->csvWrite("Stride","#","%5i",batch->stacks->strideCmplx);
-  cvsLog->csvWrite("Steps","#","%2i",batch->noSteps);
-  cvsLog->csvWrite("Batches","#","%2i",mInf->noBatches);
-  cvsLog->csvWrite("Devices","#","%2i",mInf->noDevices);
-
-  cvsLog->csvWrite("Prep","s","%9.4f", prepTime * 1e-6);
-  cvsLog->csvWrite("CPU", "s","%9.4f", cupTime * 1e-6);
-  cvsLog->csvWrite("GPU", "s","%9.4f", gpuTime * 1e-6);
-  cvsLog->csvWrite("Opt", "s","%9.4f", optTime * 1e-6);
-
-
-#ifdef TIMING  // Advanced timing massage  .
-
-  float copyH2DT  = 0;
-  float InpNorm   = 0;
-  float InpFFT    = 0;
-  float multT     = 0;
-  float InvFFT    = 0;
-  float ss        = 0;
-  float resultT   = 0;
-  float copyD2HT  = 0;
-
+  cvsLog->csvWrite("Width", "#", "%4i", sSpec->pWidth);
+  cvsLog->csvWrite("Step Sz", "#", "%5i", batch->accelLen);
+  cvsLog->csvWrite("Stride", "#", "%5i", batch->stacks->strideCmplx);
+  cvsLog->csvWrite("Steps", "#", "%2i", batch->noSteps);
+  cvsLog->csvWrite("Batches", "#", "%2i", mInf->noBatches);
+  cvsLog->csvWrite("Devices", "#", "%2i", mInf->noDevices);
+  cvsLog->csvWrite("Prep", "s", "%9.4f", prepTime * 1e-6);
+  cvsLog->csvWrite("CPU Srch", "s", "%9.4f", cupTime * 1e-6);
+  cvsLog->csvWrite("GPU Srch", "s", "%9.4f", gpuTime * 1e-6);
+  cvsLog->csvWrite("Opt", "s", "%9.4f", optTime * 1e-6);
+  cvsLog->csvWrite("CPU Opt", "s", "%9.4f", cpuOptTime * 1e-6);
+  cvsLog->csvWrite("GPU Opt", "s", "%9.4f", gpuOptTime * 1e-6);
+  float copyH2DT = 0;
+  float InpNorm = 0;
+  float InpFFT = 0;
+  float multT = 0;
+  float InvFFT = 0;
+  float ss = 0;
+  float resultT = 0;
+  float copyD2HT = 0;
   for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
   {
-    float l_copyH2DT  = 0;
-    float l_InpNorm   = 0;
-    float l_InpFFT    = 0;
-    float l_multT     = 0;
-    float l_InvFFT    = 0;
-    float l_ss        = 0;
-    float l_resultT   = 0;
-    float l_copyD2HT  = 0;
-
+    float l_copyH2DT = 0;
+    float l_InpNorm = 0;
+    float l_InpFFT = 0;
+    float l_multT = 0;
+    float l_InvFFT = 0;
+    float l_ss = 0;
+    float l_resultT = 0;
+    float l_copyD2HT = 0;
     for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
     {
-      cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
-
-      l_copyH2DT  += batches->copyH2DTime[stack];
-      l_InpNorm   += batches->normTime[stack];
-      l_InpFFT    += batches->InpFFTTime[stack];
-      l_multT     += batches->multTime[stack];
-      l_InvFFT    += batches->InvFFTTime[stack];
-      l_ss        += batches->searchTime[stack];
-      l_resultT   += batches->resultTime[stack];
-      l_copyD2HT  += batches->copyD2HTime[stack];
+      cuFFdotBatch* batches = &cuSrch->mInf->batches[batch];
+      l_copyH2DT += batches->copyH2DTime[stack];
+      l_InpNorm += batches->normTime[stack];
+      l_InpFFT += batches->InpFFTTime[stack];
+      l_multT += batches->multTime[stack];
+      l_InvFFT += batches->InvFFTTime[stack];
+      l_ss += batches->searchTime[stack];
+      l_resultT += batches->resultTime[stack];
+      l_copyD2HT += batches->copyD2HTime[stack];
     }
-
-    copyH2DT  += l_copyH2DT;
-    InpNorm   += l_InpNorm;
-    InpFFT    += l_InpFFT;
-    multT     += l_multT;
-    InvFFT    += l_InvFFT;
-    ss        += l_ss;
-    resultT   += l_resultT;
-    copyD2HT  += l_copyD2HT;
+    copyH2DT += l_copyH2DT;
+    InpNorm += l_InpNorm;
+    InpFFT += l_InpFFT;
+    multT += l_multT;
+    InvFFT += l_InvFFT;
+    ss += l_ss;
+    resultT += l_resultT;
+    copyD2HT += l_copyD2HT;
   }
+  cvsLog->csvWrite("copyH2D", "ms", "%12.6f", copyH2DT);
+  cvsLog->csvWrite("InpNorm", "ms", "%12.6f", InpNorm);
+  cvsLog->csvWrite("InpFFT", "ms", "%12.6f", InpFFT);
+  cvsLog->csvWrite("Mult", "ms", "%12.6f", multT);
+  cvsLog->csvWrite("InvFFT", "ms", "%12.6f", InvFFT);
+  cvsLog->csvWrite("Sum & Srch", "ms", "%12.6f", ss);
+  cvsLog->csvWrite("result", "ms", "%12.6f", resultT);
+  cvsLog->csvWrite("copyD2H", "ms", "%12.6f", copyD2HT);
 
-  cvsLog->csvWrite("copyH2D","ms","%12.6f", copyH2DT);
-  cvsLog->csvWrite("InpNorm","ms","%12.6f", InpNorm);
-  cvsLog->csvWrite("InpFFT","ms","%12.6f", InpFFT);
-  cvsLog->csvWrite("Mult","ms","%12.6f", multT);
-  cvsLog->csvWrite("InvFFT","ms","%12.6f", InvFFT);
-  cvsLog->csvWrite("Sum & Srch","ms","%12.6f", ss);
-  cvsLog->csvWrite("result","ms","%12.6f", resultT);
-  cvsLog->csvWrite("copyD2H","ms","%12.6f", copyD2HT);
-
-#endif
-
-#ifdef TIMING
-  cvsLog->csvWrite("TIMING","s","1");
-#else
-  cvsLog->csvWrite("TIMING","s","0");
-#endif
-
-#ifdef SYNCHRONOUS
-  cvsLog->csvWrite("SYNC","s","1");
-#else
-  cvsLog->csvWrite("SYNC","s","0");
-#endif
-
-#ifdef DEBUG
-  cvsLog->csvWrite("DEBUG","s","1");
-#else
-  cvsLog->csvWrite("DEBUG","s","0");
-#endif
-
-  cvsLog->csvWrite("Time","-","%04i/%02i/%02i %02i:%02i:%02i", 1900 + ptm->tm_year, ptm->tm_mon, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
-  cvsLog->csvWrite("hostname","s","%s",hostname);
-
-  FOLD  // Flags  .
-  {
-    uint flags = batch->flag;
-
-    char flagStr[1024];
-
-    strClear(flagStr);
-    if ( flags & FLAG_ITLV_ROW )
-      sprintf(flagStr, "%s", "ROW");
-    if ( flags & FLAG_ITLV_PLN )
-      sprintf(flagStr, "%s", "PLN");
-    cvsLog->csvWrite("ITLV","flag","%s", flagStr);
-
-
-    strClear(flagStr);
-    if ( flags & CU_NORM_CPU )
-      sprintf(flagStr, "%s", "CPU");
-    if ( flags & CU_NORM_GPU )
-      sprintf(flagStr, "%s", "GPU");
-    cvsLog->csvWrite("NORM","flag","%s", flagStr);
-
-
-    strClear(flagStr);
-    if ( flags & CU_INPT_CPU_FFT )
-      sprintf(flagStr, "%s", "CPU");
-    else
-      sprintf(flagStr, "%s", "GPU");
-    cvsLog->csvWrite("INP FFT","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_MUL_00 )
-      sprintf(flagStr, "%s", "MUL_00");
-    if ( flags & FLAG_MUL_10 )
-    {
-      if ( flags & FLAG_MUL_TEX )
-        sprintf(flagStr, "%s", "MUL_12");
-      else
-        sprintf(flagStr, "%s", "MUL_11");
-    }
-    if ( flags & FLAG_MUL_21 )
-      sprintf(flagStr, "%s", "MUL_21");
-    if ( flags & FLAG_MUL_22 )
-      sprintf(flagStr, "%s", "MUL_22");
-    if ( flags & FLAG_MUL_23 )
-      sprintf(flagStr, "%s", "MUL_23");
-    if ( flags & FLAG_MUL_30 )
-      sprintf(flagStr, "%s", "MUL_30");
-    cvsLog->csvWrite("MULT","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_MUL_TEX )
-      sprintf(flagStr, "%s", "1");
-    else
-      sprintf(flagStr, "%s", "0");
-    cvsLog->csvWrite("MUL_TEX","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_MUL_CB_IN )
-      sprintf(flagStr, "%s", "1");
-    else
-      sprintf(flagStr, "%s", "0");
-    cvsLog->csvWrite("CB_IN","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_MUL_CB_OUT )
-      sprintf(flagStr, "%s", "1");
-    else
-      sprintf(flagStr, "%s", "0");
-    cvsLog->csvWrite("CB_OUT","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_SAS_TEX )
-      sprintf(flagStr, "%s", "1");
-    else
-    {
-      sprintf(flagStr, "%s", "0");
-    }
-    cvsLog->csvWrite("SAS_TEX","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_TEX_INTERP )
-      sprintf(flagStr, "%s", "1");
-    else
-    {
-      sprintf(flagStr, "%s", "0");
-    }
-    cvsLog->csvWrite("SAS_INT","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_SIG_GPU )
-      sprintf(flagStr, "%s", "GPU");
-    else
-    {
-      sprintf(flagStr, "%s", "CPU");
-    }
-    cvsLog->csvWrite("SIG","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_SS_00 )
-      sprintf(flagStr, "%s", "SS_00");
-    if ( flags & FLAG_SS_10 )
-      sprintf(flagStr, "%s", "SS_10");
-    if ( flags & FLAG_SS_20 )
-      sprintf(flagStr, "%s", "SS_20");
-    if ( flags & FLAG_SS_30 )
-      sprintf(flagStr, "%s", "SS_30");
-    cvsLog->csvWrite("S&S","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & CU_CAND_ARR )
-      sprintf(flagStr, "%s", "ARR");
-    if ( flags & CU_CAND_LST )
-      sprintf(flagStr, "%s", "LST");
-    if ( flags & CU_CAND_QUAD )
-      sprintf(flagStr, "%s", "QUAD");
-    cvsLog->csvWrite("CAND","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_RETURN_ALL )
-      sprintf(flagStr, "%s", "ALL");
-    else
-      sprintf(flagStr, "%s", "FINAL");
-    cvsLog->csvWrite("RET","flag","%s", flagStr);
-
-    if ( flags & FLAG_STORE_ALL )
-      sprintf(flagStr, "%s", "ALL");
-    else
-      sprintf(flagStr, "%s", "BST");
-    cvsLog->csvWrite("STR","flag","%s", flagStr);
-
-    if ( flags & FLAG_STORE_EXP )
-      sprintf(flagStr, "%s", "EXP");
-    else
-      sprintf(flagStr, "%s", "CMP");
-    cvsLog->csvWrite("STR","flag","%s", flagStr);
-
-
-    strClear(flagStr);
-    if ( flags & FLAG_RAND_1 )
-      sprintf(flagStr, "%s", "1");
-    cvsLog->csvWrite("RND1","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_RAND_2 )
-      sprintf(flagStr, "%s", "1");
-    cvsLog->csvWrite("RND2","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_RAND_3 )
-      sprintf(flagStr, "%s", "1");
-    cvsLog->csvWrite("RND3","flag","%s", flagStr);
-
-    strClear(flagStr);
-    if ( flags & FLAG_RAND_4 )
-      sprintf(flagStr, "%s", "1");
-    cvsLog->csvWrite("RND4","flag","%s", flagStr);
-  }
+  cvsLog->csvWrite("Time", "-", "%04i/%02i/%02i %02i:%02i:%02i", 1900 + ptm->tm_year, ptm->tm_mon, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+  cvsLog->csvWrite("hostname", "s", "%s", hostname);
 
   cvsLog->csvEndLine();
-
   //#endif
 }

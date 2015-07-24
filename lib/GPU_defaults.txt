@@ -7,7 +7,7 @@ IL_ROW
 ######## Input #######
 
 # NORM_CPU NORM_GPU
-NORM_GPU
+NORM_CPU
 
 # FFT_CPU  FFT_GPU
 FFT_GPU # Last Edited by run time script
@@ -34,6 +34,7 @@ FLAG_MUL_CB_OUT 		# Almost always want this if possible
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
+# SS_00  SS_10  SS_20  SS_30
 SS_30 # Last Edited by run time script
 
 ###### output ########
@@ -59,25 +60,22 @@ CU_CAND_ARR
 #cuMedianBuffSz 2048
 
 
-globalInt01 18            # Last Edited by run time script
+globalInt01 8
 
 
 optpln01 50
 optpln02 30
-optpln03 20
-optpln04 20
-optpln05 20
+optpln03 10
+optpln04 10
+optpln05 0
+optpln06 0
 
-#optpln01 10
-#optpln02 10
-#optpln03 10
-#optpln04 10
-#optpln05 10
-
-#optSz01 16
-#optSz02 14
-#optSz04 12
+#optSz01 10
+#optSz02 10
+#optSz04 10
 #optSz08 10
-#optSz16 8
+#optSz16 10
 
-pltOpt   -100
+#PLT_OPT
+#UNOPT
+

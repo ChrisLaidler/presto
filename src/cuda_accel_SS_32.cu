@@ -165,13 +165,13 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
                         float cmpf            = powersArr[harm][ iy2 + ix2 ];
                         powers[yPlus]         += cmpf;
 
-//                        if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
-//                        {
-//                          if ( candPow [stage] < cmpf )
-//                            printf("%03i %15.3f  %15.3f  %04i %04i New best! \n", trm, cmpf, candPow [stage], iy2, ix2 );
-//                          else
-//                            printf("%03i %15.3f  %15.3f  %04i %04i \n",trm, cmpf, candPow [stage], iy2, ix2 );
-//                        }
+                        //                        if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
+                        //                        {
+                        //                          if ( candPow [stage] < cmpf )
+                        //                            printf("%03i %15.3f  %15.3f  %04i %04i New best! \n", trm, cmpf, candPow [stage], iy2, ix2 );
+                        //                          else
+                        //                            printf("%03i %15.3f  %15.3f  %04i %04i \n",trm, cmpf, candPow [stage], iy2, ix2 );
+                        //                        }
                       }
                       else
                       {
@@ -188,10 +188,10 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 #pragma unroll
                 for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section  .
                 {
-//                  if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
-//                  {
-//                    printf("  %03i %12.3f  %15.3f  %15.3f \n", yPlus, powers[yPlus], candPow [stage], POWERCUT_STAGE[stage] );
-//                  }
+                  //                  if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
+                  //                  {
+                  //                    printf("  %03i %12.3f  %15.3f  %15.3f \n", yPlus, powers[yPlus], candPow [stage], POWERCUT_STAGE[stage] );
+                  //                  }
 
                   if  (  powers[yPlus] > POWERCUT_STAGE[stage] )
                   {
@@ -199,10 +199,10 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
                     {
                       if ( y + yPlus < zeroHeight )
                       {
-//                        if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
-//                        {
-//                          printf("-- New Max --\n");
-//                        }
+                        //                        if ( gid == 1022 && stage == 0 && step == 0 ) // TMP
+                        //                        {
+                        //                          printf("-- New Max --\n");
+                        //                        }
                         candPow [stage]  = powers[yPlus];
                         candZ   [stage]  = y+yPlus;
                       }
@@ -225,10 +225,10 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
               tt.value = candPow [stage];
               tt.z     = candZ   [stage];
 
-//              if ( gid == 0 && stage == 0 && step == 1 ) // TMP
-//              {
-//                printf(" GPU MAX %f z: %i at %i \n", tt.value, tt.z, step*noStages*oStride + stage*oStride + gid );
-//              }
+              //              if ( gid == 0 && stage == 0 && step == 1 ) // TMP
+              //              {
+              //                printf(" GPU MAX %f z: %i at %i \n", tt.value, tt.z, step*noStages*oStride + stage*oStride + gid );
+              //              }
 
               // Write to DRAM
               d_cands[step*noStages*oStride + stage*oStride + gid] = tt;
@@ -326,6 +326,99 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
 }
 
+template<uint FLAGS, int noStages, const int noHarms>
+__host__ void add_and_searchCU32_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+{
+  switch (globalInt01)
+  {
+    //    case 1:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    case 2:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 3:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 4:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 5:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 6:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 7:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 8:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 9:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 10:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 12:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 14:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 16:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 18:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    //    case 20:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 24:
+    //    {
+    //      add_and_searchCU32_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    default:
+      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+      exit(EXIT_FAILURE);
+  }
+
+}
+
+
 template<uint FLAGS >
 __host__ void add_and_searchCU32_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
@@ -333,29 +426,29 @@ __host__ void add_and_searchCU32_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   switch (noStages)
   {
-    //    case 1:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 2:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 3:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 4:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 1:
+    {
+      add_and_searchCU32_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 2:
+    {
+      add_and_searchCU32_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 3:
+    {
+      add_and_searchCU32_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 4:
+    {
+      add_and_searchCU32_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 5:
     {
-      add_and_searchCU32_q<FLAGS,5,16,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU32_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
       break;
     }
     default:

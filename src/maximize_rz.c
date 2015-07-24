@@ -306,12 +306,12 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   x[2][0] = rin + step;
   x[2][1] = zin / ZSCALE;
 
-  x[0][0] = rin;
-  x[0][1] = zin / ZSCALE;
-  x[1][0] = rin - step;
-  x[1][1] = zin / ZSCALE - step;
-  x[2][0] = rin + step;
-  x[2][1] = zin / ZSCALE - step;
+//  x[0][0] = rin;
+//  x[0][1] = zin / ZSCALE;
+//  x[1][0] = rin - step;
+//  x[1][1] = zin / ZSCALE - step;
+//  x[2][0] = rin + step;
+//  x[2][1] = zin / ZSCALE - step;
 
   //printf("Simplex 01\n");
 
@@ -398,14 +398,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   amoeba(x, y, 1.0e-10, power_call_rz_harmonics, &numeval);
   gettimeofday(&end, NULL);       // TMP
   timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
-  //printf("%i\t%.5f\t",numeval, timev1); // TMP
 
-  if ( numeval > 200 )
-  {
-//    skp   = 1 ;
-//    swrm  = 1 ;
-  }
-
+  // Set the output locations
   *rout = x[0][0];
   *zout = x[0][1] * ZSCALE;
 
