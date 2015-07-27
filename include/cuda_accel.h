@@ -431,8 +431,6 @@ typedef struct cuFFdotBatch
 
     float* h_powers;                  ///< Powers used for running double-tophat local-power normalisation
 
-
-
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
     // Streams

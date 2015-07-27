@@ -435,19 +435,19 @@ int main(int argc, char *argv[])
             nvtxRangePush("Add to list");
             int cdx;
 
-            double poww, sig;
-            double rr, zz;
-            int added = 0;
-            int numharm;
-            poww = 0;
+            double  poww, sig;
+            double  rr, zz;
+            int     added = 0;
+            int     numharm;
+            cand*   candidate = (cand*)master->h_candidates;
+            poww    = 0;
 
             FILE * pFile;
-            char name [100];
+            char name [1024];
             sprintf(name,"%s_GPU_ARRAY.csv",fname);
             pFile = fopen (name,"w");
             fprintf (pFile, "idx;rr;f;zz;sig;harm\n");
 
-            cand* candidate = (cand*)master->h_candidates;
 
             for (cdx = 0; cdx < (int)master->SrchSz->noOutpR; cdx++)  // Loop
             {
@@ -482,7 +482,7 @@ int main(int argc, char *argv[])
           freeAccelMem(cuSrch->mInf);
 
 #ifdef DEBUG
-          char name [100];
+          char name [1024];
           sprintf(name,"%s_GPU_01_Cands.csv",fname);
           printCands(name, candsGPU, obs.T);
 #endif

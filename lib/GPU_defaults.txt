@@ -2,7 +2,7 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
-IL_ROW
+IL_PLN # Last Edited by run time script
 
 ######## Input #######
 
@@ -60,7 +60,7 @@ CU_CAND_ARR
 #cuMedianBuffSz 2048
 
 
-globalInt01 8
+globalInt01 12            # Last Edited by run time script
 
 
 optpln01 50

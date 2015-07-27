@@ -331,11 +331,11 @@ __host__ void add_and_searchCU32_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 {
   switch (globalInt01)
   {
-    //    case 1:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 1:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 2:
     {
       add_and_searchCU32_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
@@ -401,16 +401,16 @@ __host__ void add_and_searchCU32_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU32_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    //    case 20:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 24:
-    //    {
-    //      add_and_searchCU32_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 20:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 24:
+    {
+      add_and_searchCU32_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     default:
       fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
       exit(EXIT_FAILURE);
