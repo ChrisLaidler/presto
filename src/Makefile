@@ -198,9 +198,9 @@ else
   # vectorisation output 
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
   
-  NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true 
+  NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo
   #-lineinfo -g
-  NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true 
+  NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo
   #-lineinfo -g
 
   # Global memory accesses cached in both L1 and L2 (default)
