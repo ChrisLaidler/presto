@@ -30,9 +30,6 @@ extern "C"
 
 #pragma once
 
-#define   TEMPLATE_CONVOLVE 1
-#define   TEMPLATE_SEARCH   1
-
 #define   MAXMUL        (1e3)                 /// Not sure what this is?
 
 #define   SEMFREE       2147483647            /// The value to indicate that a semaphore is free
@@ -55,11 +52,6 @@ extern "C"
 //#define ACCEL_USELEN 6000     // 8K    up to zmax=900
 //#define ACCEL_USELEN 6990     // 8K    up to zmax=500
 //#define ACCEL_USELEN 1200     // 4K    up to zmax=1200
-
-#define CHUNKSZ         8                     // Added by run time script
-
-#define SS3_X           16                    // X Thread Block
-#define SS3_Y           8                     // Y Thread Block
 
 #define CNV_DIMX        16                    // X Thread Block
 #define CNV_DIMY        8                     // Y Thread Block

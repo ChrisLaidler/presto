@@ -1,5 +1,10 @@
 #include "cuda_accel_SS.h"
 
+#define SM31_X           16                    // X Thread Block
+#define SM31_Y           8                     // Y Thread Block
+#define SM31BS           (SM31_X*SM31_Y)
+
+#define CHUNKSZ         6
 
 /** Sum and Search - loop down - column max - multi-step  .
  *
@@ -9,16 +14,11 @@
  * @param base
  * @param noSteps
  */
-#if TEMPLATE_SEARCH == 1
 template<uint FLAGS, int noStages, typename stpType, int noSteps>
 __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d_sem, int base, stpType rLows )
-#else
-template<uint FLAGS, /*typename sType,*/ int noStages, typename stpType>
-__global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d_sem, int base, stpType rLows, int noSteps )
-#endif
 {
-  const int bidx  = threadIdx.y * SS3_X         +  threadIdx.x;   /// Block index
-  const int tid   = blockIdx.x  * (SS3_Y*SS3_X) +  bidx;          /// Global thread id (ie column)
+  const int bidx  = threadIdx.y * SM31_X  +  threadIdx.x;   /// Block index
+  const int tid   = blockIdx.x  * SM31BS  +  bidx;          /// Global thread id (ie column)
   const int width = searchList.widths.val[0];                     /// The width of usable data
 
   if ( tid < width )
@@ -27,17 +27,10 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
     const int zeroHeight  = searchList.heights.val[0];
     const int oStride     = searchList.strides.val[0];
 
-#if TEMPLATE_SEARCH == 1
     float       candLists[noSteps];
     int         inds[noSteps][noHarms];
     fcomplexcu* pData[noSteps][noHarms];
     float       powers[noSteps][CHUNKSZ];               // registers to hold values to increase mem cache hits
-#else
-    float       candLists[MAX_STEPS];
-    int         inds[MAX_STEPS][noHarms];
-    fcomplexcu* pData[MAX_STEPS][noHarms];
-    float       powers[MAX_STEPS][CHUNKSZ];             // registers to hold values to increase mem cache hits
-#endif
 
     int iy, ix;                                         ///< Global indices scaled to sub-batch
     int y;
@@ -48,9 +41,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 //#pragma unroll
       for ( int harm = 0; harm < noHarms; harm++ )      // loop over harmonic  .
       {
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
+//#pragma unroll
         for ( int step = 0; step < noSteps; step++)     // Loop over steps  .
         {
           int drlo = (int) ( ACCEL_RDR * rLows.arry[step] * searchList.frac.val[harm] + 0.5 ) * ACCEL_DR ;
@@ -118,9 +109,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 
       FOLD // Set the stored   .
       {
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
+//#pragma unroll
         for ( int step = 0; step < noSteps; step++)   // Loop over steps
         {
           candLists[step] = 0 ;
@@ -138,12 +127,10 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
           int end     = 0;
 
           // Initialise powers for each section column to 0
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
+//#pragma unroll
           for ( int step = 0; step < noSteps; step++)             // Loop over steps .
           {
-#pragma unroll
+//#pragma unroll
             for( int i = 0; i < CHUNKSZ ; i++ )                   // Loop over powers .
             {
               powers[step][i] = 0;
@@ -192,9 +179,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 
                 iy            = YINDS[ searchList.yInds.val[harm] + trm ];
 
-#if TEMPLATE_SEARCH == 1
 //#pragma unroll
-#endif
                 for ( int step = 0; step < noSteps; step++)       // Loop over steps
                 {
                   if     (FLAGS & FLAG_SAS_TEX)
@@ -281,9 +266,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 
     FOLD // Write results  .
     {
-#if TEMPLATE_SEARCH == 1
-#pragma unroll
-#endif
+//#pragma unroll
       for ( int step = 0; step < noSteps; step++)             // Loop over steps
       {
         // Write to DRAM
@@ -296,7 +279,6 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 template<uint FLAGS, uint noStages>
 __host__ void add_and_maxCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, float* d_cands, uint* d_sem, int base,  float* rLows, int noSteps)
 {
-#if TEMPLATE_SEARCH == 1
   switch (noSteps)
   {
     case 1:
@@ -375,14 +357,6 @@ __host__ void add_and_maxCU31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
       fprintf(stderr, "ERROR: add_and_maxCU31 has not been templated for %i steps\n", noSteps);
       exit(EXIT_FAILURE);
   }
-#else
-  //cudaFuncSetCacheConfig(add_and_maxCU31<FLAGS,sType,noStages,fMax>, cudaFuncCachePreferL1);
-  fMax caseArr;
-  for (int i = 0; i < noSteps; i++)
-    caseArr.arry[i] = rLows[i];
-
-  add_and_maxCU31<FLAGS,/*sType,*/noStages,fMax> <<<dimGrid, dimBlock, i1, multStream>>>(searchList, d_cands, d_sem, base, caseArr,noSteps);
-#endif
 }
 
 template<uint FLAGS >

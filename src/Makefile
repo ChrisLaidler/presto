@@ -35,7 +35,7 @@ COMPILE_CURRENT_TIME = `date  +\(%j\*24\*60\*60+%H\*60\*60+%M\*60+%S\)`
 # args: Tcurrent = $(1), Tstart = $(2)
 define print_timer
 @CT=$(1) && \
-printf "Done builiding $(3) in %.2d:%.2d (min:sec)\n" \
+printf "\nDone builiding $(3) in %.2d:%.2d (min:sec)\n\n" \
 `echo "($$CT - $(2))/60" | bc` \
 `echo "($$CT - $(2))%60" | bc`
 endef
@@ -324,9 +324,7 @@ libpresto		= $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
 libcuaccel	= $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 	
 all: libpresto slalib binaries $(GPUOUTP)
-	@echo ""
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),All)
-	@echo ""
 
 debug:
 	$(MAKE) mode=debug all
@@ -378,18 +376,16 @@ $(LIBPATH)/libsla$(LIBSUFFIX): $(SLA_OBS)
 
 $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
 	@echo ""
-	@echo "Building libpresto$(POSTFIX)"	
+	@echo "Linking libpresto$(POSTFIX)"	
 	$(LINKCOMMAND1) $@ $(PRESTOOBJS) $(FFTLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),libpresto$(POSTFIX))
-	@echo ""
 
 
 $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
 	@echo ""
-	@echo "Building libcuaccel$(POSTFIX)"
+	@echo "Linking libcuaccel$(POSTFIX)"
 	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(FFTLINK) $(NVCLFLAGS)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),libcuaccel$(POSTFIX))
-	@echo ""
 	
 ###############   Tests   ################
 
@@ -428,17 +424,15 @@ mpiprepsubband: mpiprepsubband_cmd.c $(OBJDIR)mpiprepsubband_cmd.o $(OBJDIR)mpip
 
 ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o 
 	@echo ""
-	@echo "Building accelsearch$(POSTFIX)"	
+	@echo "Linking accelsearch$(POSTFIX)"	
 	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(NVCC_OBS) $(PRESTOLINK) $(GLIBLINK) -lm $(FFTLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),accelsearch$(POSTFIX))
-	@echo ""
 	
 $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o
 	@echo ""
-	@echo "Building test_GPUaccel"${POSTFIX}
+	@echo "Linking test_GPUaccel"${POSTFIX}
 	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),test_GPUaccel${POSTFIX})
-	@echo ""
 
 check_parkes_raw: $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(PRESTOLINK) -lm

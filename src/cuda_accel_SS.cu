@@ -395,12 +395,14 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     }
     int *indsY    = (int*) malloc(batch->hInfos[0].height * noHarms * sizeof(int));
     int bace      = 0;
+
     batch->hInfos[0].yInds = 0;
-    for (int ii = 0; ii< batch->noHarms; ii++)
+
+    for (int ii = 0; ii < batch->noHarms; ii++)
     {
       if ( ii == 0 )
       {
-        for (int j = 0; j< batch->hInfos[0].height; j++)
+        for (int j = 0; j < batch->hInfos[0].height; j++)
         {
           indsY[bace + j] = j;
         }
@@ -409,7 +411,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
       {
         int idx = batch->stageIdx[ii];
 
-        for (int j = 0; j< batch->hInfos[0].height; j++)
+        for (int j = 0; j < batch->hInfos[0].height; j++)
         {
           int zz    = -batch->hInfos[0].zmax + j* ACCEL_DZ;
           int subz  = calc_required_z(batch->hInfos[idx].harmFrac, zz);
@@ -427,6 +429,38 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
     cudaGetSymbolAddress((void **)&dcoeffs, YINDS);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice),                      "Copying Y indices to device");
+
+//    FOLD // TMP
+//    {
+//      for (int j = 0; j < batch->hInfos[0].height; j++)
+//      {
+//        int zz    = -batch->hInfos[0].zmax + j* ACCEL_DZ;
+//        int idx   = 0;
+//
+//        printf("%04i\t", zz);
+//
+//        for ( int stg = 0; stg < batch->noHarmStages; stg++)
+//        {
+//          int noSub;
+//
+//          noSub = (1<<stg-1) ;
+//
+//          if ( stg == 0 )
+//            noSub = 1;
+//
+//          for (int ss = 0; ss < noSub; ss++)
+//          {
+//            printf("\t%4i", indsY[idx*batch->hInfos[0].height + j] );
+//            idx++;
+//          }
+//
+//          printf("\t");
+//        }
+//
+//        printf("\n");
+//      }
+//    }
+
   }
 
   if ( powcut )
@@ -663,23 +697,8 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
               double loR = rVal->drlo/(double)numharm;
               double hiR = (rVal->drlo+batch->accelLen*ACCEL_DR)/(double)numharm;
 
-
-              if ( numharm == 4 && loR < 61441.8 && hiR > 61441.8 ) // TMP
-              {
-                int tmp = 0;
-              }
-
               for ( int x = 0; x < batch->accelLen; x++ )
               {
-                FOLD // TMP
-                {
-                  double trr = ( rVal->drlo + x *  ACCEL_DR ) / (double)numharm;
-                  if ( trr == 543.0 )
-                  {
-                    int tmp = 0;
-                  }
-                }
-
                 int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
                 poww      = 0;
                 sig       = 0;
@@ -787,8 +806,6 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                   }
                 }
               }
-
-              int tmp; // TMP
             }
           }
         }
@@ -1062,22 +1079,22 @@ void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
     {
       FOLD // Call the main sum & search kernel
       {
-        dimBlock.x  = SS3_X;
-        dimBlock.y  = SS3_Y;
-
-        float bw    = SS3_X * SS3_Y;
-        //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
-        float ww    = batch->accelLen / ( bw );
-
-        dimGrid.x   = ceil(ww);
-        dimGrid.y   = 1;
-
-        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
-
-        // Run message
-        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
-
-        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+//        dimBlock.x  = SS3_X;
+//        dimBlock.y  = SS3_Y;
+//
+//        float bw    = SS3_X * SS3_Y;
+//        //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
+//        float ww    = batch->accelLen / ( bw );
+//
+//        dimGrid.x   = ceil(ww);
+//        dimGrid.y   = 1;
+//
+//        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
+//
+//        // Run message
+//        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
+//
+//        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
       }
     }
 

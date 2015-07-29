@@ -1,10 +1,16 @@
 #include "cuda_accel_SS.h"
 
+#define SS3T_X           16                    // X Thread Block
+#define SS3T_Y           8                     // Y Thread Block
+#define SS3TBS           (SS3T_X*SS3T_Y)
+
+#define CHUNKSZ         6
+
 template<uint FLAGS, int noStages, const int noHarms, int noSteps, typename stpType>
 __global__ void add_and_searchCU3_PT(const uint width, accelcandBasic* d_cands, stpType rBin, tHarmList texs)
 {
-  const int bidx  = threadIdx.y * SS3_X         +  threadIdx.x;   /// Block index
-  const int tid   = blockIdx.x  * (SS3_Y*SS3_X) +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
+  const int bidx  = threadIdx.y * SS3T_X  +  threadIdx.x;   /// Block index
+  const int tid   = blockIdx.x  * SS3TBS  +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
@@ -314,10 +320,10 @@ __host__ void add_and_searchCU3_PT_f(cudaStream_t stream, cuFFdotBatch* batch )
   const uint FLAGS = batch->flag;
   dim3 dimBlock, dimGrid;
 
-  dimBlock.x  = SS3_X;
-  dimBlock.y  = SS3_Y;
+  dimBlock.x  = SS3T_X;
+  dimBlock.y  = SS3T_Y;
 
-  float bw    = SS3_X * SS3_Y;
+  float bw    = SS3TBS ;
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);

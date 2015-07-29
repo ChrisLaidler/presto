@@ -1698,7 +1698,7 @@ int main(int argc, char *argv[])
 
           FILE * pFile;
           int n;
-          char name [100];
+          char name [1024];
           pFile = fopen ("CU_CAND_ARR.csv","w");
           fprintf (pFile, "idx;rr;zz;sig;harm\n");
 
