@@ -35,7 +35,7 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
     {
       // Calculate the x indices or create a pointer offset by the correct amount
       //#pragma unroll
-      for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
+      for ( int harm = 0; harm < noHarms; harm++ )                	// loop over harmonic  .
       {
         if ( FLAGS & FLAG_ITLV_ROW )
         {

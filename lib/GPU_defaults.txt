@@ -35,7 +35,7 @@ FLAG_MUL_CB_OUT 		# Almost always want this if possible
 # SIG_GPU or SIG_CPU (default)
 
 # SS_00  SS_10  SS_20  SS_30
-SS_30 # Last Edited by run time script
+SS_20 # Last Edited by run time script
 
 ###### output ########
 
