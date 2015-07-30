@@ -169,6 +169,7 @@ uint calcAccellen(float width, float zmax)
 int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo* fftinf, int device, int noBatches, int noSteps, int width, float*  powcut, long long*  numindep, int flags = 0, int outType = CU_CANDFULL, void* outData = NULL)
 {
   nvtxRangePush("initKernel");
+  std::cout.flush();
 
   size_t free, total;             /// GPU memory
   int noInStack[MAX_HARM_NO];
@@ -369,7 +370,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         // Calculate the stage order of the harmonics
         int harmtosum;
         int i = 0;
-        //printf("\n"); // TMP
 
         for (int stage = 0; stage < numharmstages; stage++)
         {
@@ -383,11 +383,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
             kernel->hInfos[idx].stageOrder  = i;
             kernel->stageIdx[i]             = idx;
-
-            //printf("%.4ff, ", kernel->hInfos[idx].harmFrac ); // TMP
           }
         }
-        //printf("\n"); // TMP
 
         // Multi-step data layout method  .
         if ( !(kernel->flag & FLAG_ITLV_ALL ) )
@@ -525,7 +522,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
         printf("    Stack %i has %02i f-∂f plain(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
 
-        // call the CUDA kernels
+        // Call the CUDA kernels
         // Only need one kernel per stack
         createStackKernel(cStack);
 
@@ -546,10 +543,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       FOLD // FFT the kernels  .
       {
-        printf("   FFT'ing the kernels ");
         cufftHandle plnPlan;
 
-        //printf("noStacks %i\n", kernel->noStacks);
+        printf("   FFT'ing the kernels ");
 
         for (int i = 0; i < kernel->noStacks; i++)
         {
@@ -566,43 +562,33 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
             int ostride         = 1;
             int odist           = cStack->strideCmplx;
-            int height;
+            int height          = cStack->kerHeigth;
 
-            height = cStack->kerHeigth;
-
-            //printf("cufftCreate %i\n", i);
-            cufftCreate(&plnPlan);
-            //printf("cufftCreate Done %i\n", i);
-
-            CUFFT_SAFE_CALL(cufftMakePlanMany(plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height,    &fftSize), "Creating plan for complex data of stack.");
-            fffTotSize += fftSize;
-
+            CUFFT_SAFE_CALL(cufftCreate(&plnPlan),"Creating plan for complex data of stack. [cufftCreate]");
+            CUFFT_SAFE_CALL(cufftMakePlanMany(plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height,    &fftSize), "Creating plan for complex data of stack. [cufftMakePlanMany]");
             CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+
+            fffTotSize          += fftSize;
           }
 
           FOLD // Call the plan  .
           {
-            //printf("cufftExecC2C %i\n", i);
-            CUFFT_SAFE_CALL(cufftExecC2C(plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD),"FFT'ing the kernel data");
-            //printf("cufftExecC2C Done %i\n", i);
-
-            printf(".");
-            std::cout.flush();
-
+            CUFFT_SAFE_CALL(cufftExecC2C(plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
             CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
           }
 
           FOLD // Destroy the plan  .
           {
-            //printf("cufftDestroy %i\n", i);
-            CUFFT_SAFE_CALL(cufftDestroy(plnPlan), "Destroying plan for complex data of stack.");
-            //printf("cufftDestroy Done %i\n", i);
-
+            CUFFT_SAFE_CALL(cufftDestroy(plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
             CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
           }
+
+          printf(".");
+          std::cout.flush();
         }
 
         CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
         printf("\n");
       }
 
@@ -703,7 +689,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         {
           kernel->retType = CU_POWERZ;
         }
-
       }
       else
       {
@@ -1060,6 +1045,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
   }
 
   printf("Done initialising GPU %i.\n",device);
+  std::cout.flush();
   nvtxRangePop();
 
   return noBatches;

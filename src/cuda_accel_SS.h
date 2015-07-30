@@ -32,6 +32,8 @@ __host__ void add_and_searchCU32  ( cudaStream_t stream, cuFFdotBatch* batch );
 
 __host__ void add_and_searchCU33  ( cudaStream_t stream, cuFFdotBatch* batch );
 
+__host__ void add_and_searchCU34  ( cudaStream_t stream, cuFFdotBatch* batch );
+
 __host__ void add_and_searchCU3_PT_f ( cudaStream_t stream, cuFFdotBatch* batch );
 
 __host__ void add_and_maxCU31_f   ( dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, float* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS );

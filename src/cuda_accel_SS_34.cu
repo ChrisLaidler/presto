@@ -126,21 +126,7 @@ __global__ void add_and_searchCU34_k(const uint width, __restrict__ candPZ* d_ca
                       iy2 = iy1*stride[harm];
                     }
 
-                    if        ( FLAGS & FLAG_SAS_TEX )
-                    {
-                      if      ( FLAGS & FLAG_MUL_CB_OUT )
-                      {
-                        const float cmpf      = tex2D < float > (texs.val[harm], ix2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
-                        powers[step][yPlus]   += cmpf;
-                      }
-                      else
-                      {
-                        const float r         = tex2D < float > (texs.val[harm], ix2*2+0.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
-                        const float i         = tex2D < float > (texs.val[harm], ix2*2+1.5f, iy2+0.5f ); // + 0.5 YES + 0.5 I REALLY wish someone had documented that one, 2 days of debugging to find that!!!!!!
-                        powers[step][yPlus]   += r*r+i*i;
-                      }
-                    }
-                    else
+                    FOLD // Accumulate powers  .
                     {
                       if      ( FLAGS & FLAG_MUL_CB_OUT )
                       {

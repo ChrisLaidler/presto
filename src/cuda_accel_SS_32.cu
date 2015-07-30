@@ -141,7 +141,7 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
                       iy2 = iy1*stride[harm];
                     }
 
-                    FOLD
+                    FOLD // Accumulate powers  .
                     {
                       if      ( FLAGS & FLAG_MUL_CB_OUT )
                       {

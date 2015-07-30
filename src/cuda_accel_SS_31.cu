@@ -104,7 +104,6 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
 
                 float* t    = powersArr[harm];
 
-
                 //#pragma unroll
                 for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
                 {

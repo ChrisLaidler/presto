@@ -373,10 +373,11 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
     else if ( FLAGS & FLAG_SS_30 )
     {
       add_and_searchCU33(stream, batch );
+      //add_and_searchCU34(stream, batch );
     }
     else
     {
-      fprintf(stderr,"ERROR: Invalid sum and search kernel.");
+      fprintf(stderr,"ERROR: Invalid sum and search kernel.\n");
       exit(EXIT_FAILURE);
     }
   }
@@ -694,8 +695,8 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
             {
               numharm = (1<<stage);
 
-              double loR = rVal->drlo/(double)numharm;
-              double hiR = (rVal->drlo+batch->accelLen*ACCEL_DR)/(double)numharm;
+              //double loR = rVal->drlo/(double)numharm;
+              //double hiR = (rVal->drlo+batch->accelLen*ACCEL_DR)/(double)numharm;
 
               for ( int x = 0; x < batch->accelLen; x++ )
               {
