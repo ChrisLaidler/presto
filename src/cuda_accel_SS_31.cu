@@ -29,8 +29,6 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
     //float           powers2   [noSteps*cunkSize];               /// registers to hold values to increase mem cache hits
     int             stride    [noHarms];
 
-
-
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
       // Calculate the x indices or create a pointer offset by the correct amount
