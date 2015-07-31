@@ -107,7 +107,7 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
                 //const int ySrt      = YINDS[ zeroHeight*harm + y ];
                 //int end       = MIN(y+cunkSize, zeroHeight );
                 //const int yEnd      = YINDS[ zeroHeight*harm + y+cunkSize-1 ];
-                int yPlus     = 0;
+                //int yPlus     = 0;
 
                 float pow[noSteps];
                 int iyP = -1;
@@ -123,12 +123,10 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
 
                   int iy2;
 
-
                   //int it      = yPlus*noSteps;
 
-                  if ( iyP != iy1 )
+                  if ( iyP != iy1 ) // Only read power if it is not the same as the previous
                   {
-
                     //#pragma unroll
                     for ( int step = 0; step < noSteps; step++)       // Loop over steps  .
                     {
@@ -146,7 +144,7 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
                         }
                       }
 
-                      FOLD // Accumulate powers  .
+                      FOLD // Read powers  .
                       {
                         if      ( FLAGS & FLAG_MUL_CB_OUT )
                         {
@@ -169,9 +167,12 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
                     iyP = iy1;
                   }
 
-                  for ( int step = 0; step < noSteps; step++)       // Loop over steps  .
+                  FOLD // // Accumulate powers  .
                   {
-                    powers[step][yPlus] += pow[step];
+                    for ( int step = 0; step < noSteps; step++)       // Loop over steps  .
+                    {
+                      powers[step][yPlus] += pow[step];
+                    }
                   }
                 }
               }
@@ -347,21 +348,21 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU31_q<FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    //    case 7:
-    //    {
-    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 7:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 8:
     {
       add_and_searchCU31_q<FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    //    case 9:
-    //    {
-    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 9:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 10:
     {
       add_and_searchCU31_q<FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);

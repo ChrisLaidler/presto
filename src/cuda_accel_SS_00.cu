@@ -460,7 +460,7 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   dimGrid.x   = ceil(ww);
   dimGrid.y   = 1;
 
-  if ( 1 )  // Stage order  .
+  if ( 0 )  // Stage order  .
   {
     if        ( FLAGS & FLAG_MUL_CB_OUT )
     {
