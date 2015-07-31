@@ -243,8 +243,28 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
           if ( width < 100 ) // Check  .
           {
-            float fftLen      = round(calc_fftlen3(1, zmax, kernel->accelLen)/1000.0);
-            if ( fftLen != width )
+            float fWidth    = floor(calc_fftlen3(1, zmax, kernel->accelLen)/1000.0);
+
+            float ss        = calc_fftlen3(1, zmax, kernel->accelLen) ;
+            float l2        = log2( ss );
+
+            if      ( l2 == 10 )
+              fWidth = 1 ;
+            else if ( l2 == 11 )
+              fWidth = 2 ;
+            else if ( l2 == 12 )
+              fWidth = 4 ;
+            else if ( l2 == 13 )
+              fWidth = 8 ;
+            else if ( l2 == 14 )
+              fWidth = 16 ;
+            else if ( l2 == 15 )
+              fWidth = 32 ;
+            else if ( l2 == 16 )
+              fWidth = 64 ;
+
+
+            if ( fWidth != width )
             {
               fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
               exit(EXIT_FAILURE);
@@ -257,7 +277,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         }
 
         // Now make sure that accelLen is divisible by (noHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
-        if ( kernel->flag & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
+        if ( kernel->flag & (FLAG_SS_00 | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
         {
           kernel->accelLen = floor( kernel->accelLen/(float)(noHarms*ACCEL_RDR) ) * (noHarms*ACCEL_RDR);
 
@@ -265,7 +285,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           {
             if ( width != kernel->accelLen )
             {
-              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by noHarms*ACCEL_RDR, %i\n", noHarms*ACCEL_RDR );
+              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by noHarms*ACCEL_RDR, %i.\n", noHarms*ACCEL_RDR );
               exit(EXIT_FAILURE);
             }
           }
@@ -1756,6 +1776,7 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
     int           stride[MAX_HARM_NO];
     int            width[MAX_HARM_NO];
     fcomplexcu*   kerPnt[MAX_HARM_NO];
+
     for (int i = 0; i < batch->noHarms; i++)
     {
       height[i] = batch->hInfos[i].height;
@@ -1885,7 +1906,6 @@ void freeBatch(cuFFdotBatch* batch)
 
   //free(batch);
 }
-
 
 /** Free batch data structure  .
  *
@@ -2198,7 +2218,7 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
 
   if ( cmd->gpuP ) // Determine the index and number of devices
   {
-    if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd every time clig is run!!!!
+    if ( cmd->gpuC == 0 )  // NB: Note using gpuC == 0 requires a change in accelsearch_cmd.c every time clig is run!!!! [ usually line 32 should be "  /* gpuC = */ 0," ]
     {
       // Make a list of all devices
       gpul.noDevices   = getGPUCount();

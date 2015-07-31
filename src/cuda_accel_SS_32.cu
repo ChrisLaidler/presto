@@ -1,7 +1,7 @@
 #include "cuda_accel_SS.h"
 
 #define SS32_X           16                    // X Thread Block
-#define SS32_Y           4                     // Y Thread Block
+#define SS32_Y           8                     // Y Thread Block
 #define SS32BS           (SS32_X*SS32_Y)
 
 

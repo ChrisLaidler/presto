@@ -26,7 +26,7 @@ static int nbatchDefault[] = {2};
 
 static Cmdline cmd = {
   /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
-  /* gpuP = */ 0,
+  /* gpuP = */ 1,
   /* gpu = */ gpuDefault,
   /* gpuC = */ 0,
   /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
@@ -1087,7 +1087,7 @@ usage(void)
   fprintf(stderr,"%s","                   0...32 int values between 1 and 5\n");
   fprintf(stderr,"%s","                   default: `2'\n");
   fprintf(stderr,"%s","           -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
-  fprintf(stderr,"%s","                   1 int value between 1 and 32\n");
+  fprintf(stderr,"%s","                   1 int value between 1 and 64\n");
   fprintf(stderr,"%s","                   default: `4'\n");
   fprintf(stderr,"%s","           -lsgpu: List all available CUDA GPU's and exit\n");
   fprintf(stderr,"%s","             -cpu: Do a CPU search\n");
@@ -1130,7 +1130,7 @@ usage(void)
   fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 03Jun15\n");
+  fprintf(stderr,"%s","  version: 31Jul15\n");
   fprintf(stderr,"%s","  ");
   exit(EXIT_FAILURE);
 }
@@ -1183,7 +1183,7 @@ parseCmdline(int argc, char **argv)
       cmd.widthP = 1;
       i = getIntOpt(argc, argv, i, &cmd.width, 1);
       cmd.widthC = i-keep;
-      checkIntLower("-width", &cmd.width, cmd.widthC, 32);
+      checkIntLower("-width", &cmd.width, cmd.widthC, 64);
       checkIntHigher("-width", &cmd.width, cmd.widthC, 1);
       continue;
     }

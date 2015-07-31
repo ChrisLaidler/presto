@@ -520,6 +520,32 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
       hwidth[i] = 0;
     }
 
+    FOLD // TMP
+    {
+      printf("__device__ const int stride_c[] = {");
+      for (int i = 0; i < MAX_HARM_NO; i++) // TMP
+      {
+        printf("%i, ",stride[i]);
+      }
+      printf("};\n");
+
+      printf("__device__ const int height_c[] = {");
+      for (int i = 0; i < MAX_HARM_NO; i++) // TMP
+      {
+        printf("%i, ",height[i]);
+      }
+      printf("};\n");
+
+      printf("__device__ const int hwidth_c[] = {");
+      for (int i = 0; i < MAX_HARM_NO; i++) // TMP
+      {
+        printf("%i, ",hwidth[i]);
+      }
+      printf("};\n");
+
+      printf("\n");
+    }
+
     cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 

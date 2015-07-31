@@ -37,13 +37,13 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
       //#pragma unroll
       for ( int harm = 0; harm < noHarms; harm++ )                	// loop over harmonic  .
       {
-        if ( FLAGS & FLAG_ITLV_ROW )
+        if ( FLAGS & FLAG_ITLV_PLN )
         {
-          stride[harm]  = noSteps*STRIDE_STAGE[harm] ;
+          stride[harm]  = STRIDE_STAGE[harm] ;
         }
         else
         {
-          stride[harm]  = STRIDE_STAGE[harm] ;
+          stride[harm]  = noSteps*STRIDE_STAGE[harm] ;
         }
 
         //// NOTE: the indexing below assume each plain starts on a multiple of noHarms
@@ -104,52 +104,74 @@ __global__ void add_and_searchCU31(const uint width, candPZ* d_cands, tHarmList 
 
                 float* t    = powersArr[harm];
 
+                //const int ySrt      = YINDS[ zeroHeight*harm + y ];
+                //int end       = MIN(y+cunkSize, zeroHeight );
+                //const int yEnd      = YINDS[ zeroHeight*harm + y+cunkSize-1 ];
+                int yPlus     = 0;
+
+                float pow[noSteps];
+                int iyP = -1;
+
                 //#pragma unroll
                 for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
+                  //for( int iy1 = ySrt; iy1 <= yEnd; iy1++, yPlus++ )     // Loop over the chunk  .
                 {
                   int trm     = y + yPlus ;                         ///< True Y index in plain
-
                   int iy1     = YINDS[ zeroHeight*harm + trm ];
                   //  OR
                   //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
                   int iy2;
 
+
                   //int it      = yPlus*noSteps;
 
-                  //#pragma unroll
+                  if ( iyP != iy1 )
+                  {
+
+                    //#pragma unroll
+                    for ( int step = 0; step < noSteps; step++)       // Loop over steps  .
+                    {
+                      FOLD // Calculate index  .
+                      {
+                        if        ( FLAGS & FLAG_ITLV_PLN )
+                        {
+                          iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
+                        }
+                        else
+                        {
+                          ix2 = ix1 + step * STRIDE_STAGE[harm] ;
+                          //iy2 = iy1 * stride[harm];
+                          iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
+                        }
+                      }
+
+                      FOLD // Accumulate powers  .
+                      {
+                        if      ( FLAGS & FLAG_MUL_CB_OUT )
+                        {
+                          //powers[step][yPlus]  += powersArr[harm][ iy2 + ix2 ];
+                          //powers[step][yPlus]  += t[ iy2 + ix2 ];
+                          pow[step]             = t[ iy2 + ix2 ];
+
+                          //powers2[it+step]     += t[ iy2 + ix2 ];
+                        }
+                        else
+                        {
+                          fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
+                          //powers[step][yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                          pow[step]             = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+
+                          //powers2[it+step]     += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                        }
+                      }
+                    }
+                    iyP = iy1;
+                  }
+
                   for ( int step = 0; step < noSteps; step++)       // Loop over steps  .
                   {
-                    FOLD // Calculate index  .
-                    {
-                      if        ( FLAGS & FLAG_ITLV_PLN )
-                      {
-                        iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * stride[harm];
-                      }
-                      else
-                      {
-                        ix2 = ix1 + step * STRIDE_STAGE[harm] ;
-                        iy2 = iy1 * stride[harm];
-                      }
-                    }
-
-                    FOLD // Accumulate powers  .
-                    {
-                      if      ( FLAGS & FLAG_MUL_CB_OUT )
-                      {
-                        //powers[step][yPlus]  += powersArr[harm][ iy2 + ix2 ];
-                        powers[step][yPlus]  += t[ iy2 + ix2 ];
-
-                        //powers2[it+step]     += t[ iy2 + ix2 ];
-                      }
-                      else
-                      {
-                        //fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                        //powers[step][yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-
-                        //powers2[it+step]     += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                      }
-                    }
+                    powers[step][yPlus] += pow[step];
                   }
                 }
               }
@@ -290,6 +312,98 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
 }
 
+template<uint FLAGS, int noStages, const int noHarms>
+__host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+{
+  switch (globalInt01)
+  {
+    case 1:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 2:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    //    case 3:
+    //    {
+    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    case 4:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    //    case 5:
+    //    {
+    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    case 6:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    //    case 7:
+    //    {
+    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    case 8:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    //    case 9:
+    //    {
+    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    case 10:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 12:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 14:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 16:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 18:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 20:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    case 24:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+    default:
+      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+      exit(EXIT_FAILURE);
+  }
+
+}
+
 template<uint FLAGS >
 __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
@@ -299,27 +413,27 @@ __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   {
     //    case 1:
     //    {
-    //      add_and_searchCU31_q<FLAGS,1,1,4>(dimGrid, dimBlock, stream, batch);
+    //      add_and_searchCU31_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
     //      break;
     //    }
     //    case 2:
     //    {
-    //      add_and_searchCU31_q<FLAGS,2,2,8>(dimGrid, dimBlock, stream, batch);
+    //      add_and_searchCU31_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
     //      break;
     //    }
     //    case 3:
     //    {
-    //      add_and_searchCU31_q<FLAGS,3,4,8>(dimGrid, dimBlock, stream, batch);
+    //      add_and_searchCU31_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
     //      break;
     //    }
     //    case 4:
     //    {
-    //      add_and_searchCU31_q<FLAGS,4,8,8>(dimGrid, dimBlock, stream, batch);
+    //      add_and_searchCU31_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
     //      break;
     //    }
     case 5:
     {
-      add_and_searchCU31_q<FLAGS,5,16,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
       break;
     }
     default:
