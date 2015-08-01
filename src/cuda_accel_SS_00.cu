@@ -1,10 +1,10 @@
 #include "cuda_accel_SS.h"
 
 #define SS00_X           16                    // X Thread Block
-#define SS00_Y           8                     // Y Thread Block
+#define SS00_Y           16                    // Y Thread Block
 #define SS00BS           (SS00_X*SS00_Y)
 
-/** Sum and Search - loop down - column max - multi-step - step outer .
+/** Sum and Search memory access only family order - loop down column  .
  *
  * @param searchList
  * @param d_cands
@@ -20,10 +20,10 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
 
   if ( tid < width )
   {
-    int oStride    = STRIDE_HARM[0];
-
     FOLD  // Set the local and return candidate powers to zero  .
     {
+      int oStride    = STRIDE_HARM[0];
+
       for ( int stage = 0; stage < noStages; stage++ )
       {
         for ( int step = 0; step < noSteps; step++)               // Loop over steps
@@ -33,7 +33,7 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
       }
     }
 
-    float batch[noBatch];
+    //float batch[noBatch];
     for ( int harm = 0; harm < noHarms ; harm++)                // Loop over plains  .
     {
       int maxW      = ceilf(width * FRAC_HARM[harm]);
@@ -42,47 +42,40 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
       if ( tid < maxW )
       {
         uint nHeight = HEIGHT_HARM[harm] * noSteps;
+        float tSum = 0;
 
         FOLD // Read data from plains  .
         {
-          for ( int yBase = 0; yBase < nHeight; yBase += noBatch )
+          for ( int y = 0; y < nHeight; y++ )
           {
-            for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
-            {
-              int idx  = (yBase+yPlus) * stride;
+            int idx  = (y) * stride;
 
-              FOLD // Read  .
-              {
-                if      ( FLAGS & FLAG_MUL_CB_OUT )
-                {
-                  float cmpf            = powersArr[harm][ tid + idx ];
-                  batch[yPlus]          = cmpf;
-                }
-                else
-                {
-                  fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-                  batch[yPlus]          = cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
-                }
-              }
-            }
-            for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
+            FOLD // Read  .
             {
-              if (yPlus + yBase < nHeight )
+              if      ( FLAGS & FLAG_MUL_CB_OUT )
               {
-                if ( batch[yPlus] < 0 ) // Make sure we don't optimise out the reads
-                {
-                  printf("SS\n");
-                }
+                float cmpf            = powersArr[harm][ tid + idx ];
+                tSum                  += cmpf;
+              }
+              else
+              {
+                fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
+                tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
               }
             }
           }
+        }
+
+        if (tSum < 0 )
+        {
+          printf("add_and_searchCU00_k");
         }
       }
     }
   }
 }
 
-/** Sum and Search - loop down - column max - multi-step - step outer .
+/** Sum and Search memory access only stage order - loop down column  -  Read only needed memory  .
  *
  * @param searchList
  * @param d_cands
@@ -98,9 +91,10 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
 
   if ( tid < width )
   {
-    int oStride    = STRIDE_STAGE[0];
     FOLD  // Set the local and return candidate powers to zero
     {
+      int oStride    = STRIDE_STAGE[0];
+
       for ( int stage = 0; stage < noStages; stage++ )
       {
         for ( int step = 0; step < noSteps; step++)               // Loop over steps
@@ -110,7 +104,6 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
       }
     }
 
-    float batch[noBatch];
     for ( int harm = 0; harm < noHarms ; harm++)  // Loop over plains
     {
       int maxW      = ceilf(width * FRAC_STAGE[harm]);
@@ -118,49 +111,39 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
 
       if ( tid < maxW )
       {
-        uint nHeight = HEIGHT_STAGE[harm] * noSteps;
+        uint nHeight  = HEIGHT_STAGE[harm] * noSteps;
+        float tSum    = 0;
 
-        FOLD // Read data from plains  .
+        for ( int y = 0; y < nHeight; y++ )
         {
-          for ( int yBase = 0; yBase < nHeight; yBase+=noBatch )
+          int idx  = (y) * stride;
+
+          FOLD // Read  .
           {
-            for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
+            if      ( FLAGS & FLAG_MUL_CB_OUT )
             {
-              int idx  = (yBase+yPlus) * stride;
-
-              FOLD // Read  .
-              {
-                if      ( FLAGS & FLAG_MUL_CB_OUT )
-                {
-                  float cmpf            = powersArr[harm][ tid + idx ];
-                  batch[yPlus]          = cmpf;
-                }
-                else
-                {
-                  fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-                  batch[yPlus]          = cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
-                }
-              }
+              float cmpf            = powersArr[harm][ tid + idx ];
+              tSum                  += cmpf;
             }
-
-            for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
+            else
             {
-              if (yPlus + yBase < nHeight )
-              {
-                if ( batch[yPlus] < 0 )
-                {
-                  printf("SS\n");
-                }
-              }
+              fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
+              tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
             }
           }
+        }
+
+        if ( tSum < 0 )
+        {
+          printf("add_and_searchCU01_k");
         }
       }
     }
   }
 }
 
-/** Sum and Search - loop down - column max - multi-step - step outer .
+
+/** Sum and Search memory access only stage order - loop down column  -  Read extra memory  .
  *
  * @param searchList
  * @param d_cands
@@ -176,21 +159,20 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
 
   if ( tid < width )
   {
-    int oStride    = STRIDE_STAGE[0];
-
     FOLD  // Set the local and return candidate powers to zero  .
     {
+      int oStride    = STRIDE_STAGE[0];
+
       for ( int stage = 0; stage < noStages; stage++ )
       {
-        for ( int step = 0; step < noSteps; step++)               // Loop over steps
+        for ( int step = 0; step < noSteps; step++)             // Loop over steps
         {
           d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
         }
       }
     }
 
-    float batch[noBatch];
-    for ( int harm = 0; harm < noHarms ; harm++)  // Loop over plains  .
+    for ( int harm = 0; harm < noHarms ; harm++)                // Loop over plains  .
     {
       int maxW      = ceilf(width * FRAC_STAGE[0]);
       int stride    = STRIDE_STAGE[0];
@@ -198,45 +180,159 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
       if ( tid < maxW )
       {
         uint nHeight = HEIGHT_STAGE[0] * noSteps;
+        float tSum = 0;
 
         FOLD // Read data from plains  .
         {
-          for ( int yBase = 0; yBase < nHeight; yBase += noBatch )
+          for ( int y = 0; y < nHeight; y++ )
           {
-            for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
-            {
-              int idx  = (yBase+yPlus) * stride ;
+            int idx  = (y) * stride ;
 
-              FOLD // Read  .
+            FOLD // Read  .
+            {
+              if      ( FLAGS & FLAG_MUL_CB_OUT )
               {
-                if      ( FLAGS & FLAG_MUL_CB_OUT )
-                {
-                  float cmpf            = powersArr[0][ tid + idx ];
-                  batch[yPlus]          = cmpf;
-                }
-                else
-                {
-                  fcomplexcu cmpc       = cmplxArr[0][ tid + idx ];
-                  batch[yPlus]          = cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
-                }
+                float cmpf            = powersArr[0][ tid + idx ];
+                tSum                  += cmpf;
               }
-            }
-
-            for ( int yPlus = 0; yPlus < noBatch; yPlus++ )
-            {
-              if (yPlus + yBase < nHeight )
+              else
               {
-                if ( batch[yPlus] < 0 )
-                {
-                  printf("SS\n");
-                }
+                fcomplexcu cmpc       = cmplxArr[0][ tid + idx ];
+                tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
               }
             }
           }
         }
+
+        if ( tSum < 0 )
+        {
+          printf("add_and_searchCU02_k");
+        }
       }
     }
   }
+}
+
+
+template<uint FLAGS>
+__host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+{
+  const int   noStages  = log2((double)batch->noHarms) + 1 ;
+  fsHarmList  powers;
+  cHarmList   cmplx;
+
+  for (int i = 0; i < batch->noHarms; i++)
+  {
+    int idx = i;
+    powers.val[i]   = batch->plains[idx].d_plainPowers;
+    cmplx.val[i]    = batch->plains[idx].d_plainData;
+  }
+
+  //  switch (globalInt01)
+  //  {
+  //    case 1:
+  //    {
+  //      add_and_searchCU00_k<FLAGS, 1> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 2:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,2> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  ////    case 3:
+  ////    {
+  ////      add_and_searchCU00_k<FLAGS,3> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  ////      break;
+  ////    }
+  //    case 4:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,4> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 5:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,5> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  ////    case 6:
+  ////    {
+  ////      add_and_searchCU00_k<FLAGS,6> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  ////      break;
+  ////    }
+  //    case 7:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,7> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 8:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,8> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  ////    case 9:
+  ////    {
+  ////      add_and_searchCU00_k<FLAGS,9> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  ////      break;
+  ////    }
+  //    case 10:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,10> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 12:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 14:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,14> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 16:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,16> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 18:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,18> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 20:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,20> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    case 24:
+  //    {
+  //      add_and_searchCU00_k<FLAGS,24> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  //      break;
+  //    }
+  //    default:
+  //      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+  //      exit(EXIT_FAILURE);
+  //  }
+
+  add_and_searchCU00_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+}
+
+template<uint FLAGS>
+__host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+{
+  const int   noStages  = log2((double)batch->noHarms) + 1 ;
+  fsHarmList  powers;
+  cHarmList   cmplx;
+
+  for (int i = 0; i < batch->noHarms; i++)
+  {
+    int idx         = batch->stageIdx[i]; // Stage order
+    powers.val[i]   = batch->plains[idx].d_plainPowers;
+    cmplx.val[i]    = batch->plains[idx].d_plainData;
+  }
+
+  add_and_searchCU01_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
 template<uint FLAGS>
@@ -253,196 +349,93 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     cmplx.val[i]    = batch->plains[idx].d_plainData;
   }
 
-  switch (globalInt01)
-  {
-    case 1:
-    {
-      add_and_searchCU01_k<FLAGS, 1> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 2:
-    {
-      add_and_searchCU01_k<FLAGS,2> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-//    case 3:
+//  switch (globalInt01)
+//  {
+//    case 1:
 //    {
-//      add_and_searchCU01_k<FLAGS,3> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      add_and_searchCU01_k<FLAGS, 1> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 //      break;
 //    }
-    case 4:
-    {
-      add_and_searchCU01_k<FLAGS,4> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-//    case 5:
+//    case 2:
 //    {
-//      add_and_searchCU01_k<FLAGS,5> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      add_and_searchCU01_k<FLAGS,2> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 //      break;
 //    }
-    case 6:
-    {
-      add_and_searchCU01_k<FLAGS,6> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-//    case 7:
+//    //    case 3:
+//    //    {
+//    //      add_and_searchCU01_k<FLAGS,3> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//    //      break;
+//    //    }
+//    case 4:
 //    {
-//      add_and_searchCU01_k<FLAGS,7> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      add_and_searchCU01_k<FLAGS,4> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 //      break;
 //    }
-    case 8:
-    {
-      add_and_searchCU01_k<FLAGS,8> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-//    case 9:
-//    {
-//      add_and_searchCU01_k<FLAGS,9> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-//      break;
-//    }
-    case 10:
-    {
-      add_and_searchCU01_k<FLAGS,10> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 12:
-    {
-      add_and_searchCU01_k<FLAGS,12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 14:
-    {
-      add_and_searchCU01_k<FLAGS,14> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 16:
-    {
-      add_and_searchCU01_k<FLAGS,16> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 18:
-    {
-      add_and_searchCU01_k<FLAGS,18> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 20:
-    {
-      add_and_searchCU01_k<FLAGS,20> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 24:
-    {
-      add_and_searchCU01_k<FLAGS,24> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
-      exit(EXIT_FAILURE);
-  }
-
-}
-
-template<uint FLAGS>
-__host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
-{
-  const int   noStages  = log2((double)batch->noHarms) + 1 ;
-  fsHarmList  powers;
-  cHarmList   cmplx;
-
-  for (int i = 0; i < batch->noHarms; i++)
-  {
-    int idx = i;
-    powers.val[i]   = batch->plains[idx].d_plainPowers;
-    cmplx.val[i]    = batch->plains[idx].d_plainData;
-  }
-
-  switch (globalInt01)
-  {
-    case 1:
-    {
-      add_and_searchCU00_k<FLAGS, 1> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 2:
-    {
-      add_and_searchCU00_k<FLAGS,2> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-//    case 3:
-//    {
-//      add_and_searchCU00_k<FLAGS,3> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-//      break;
-//    }
-    case 4:
-    {
-      add_and_searchCU00_k<FLAGS,4> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 5:
-    {
-      add_and_searchCU00_k<FLAGS,5> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
+//    //    case 5:
+//    //    {
+//    //      add_and_searchCU01_k<FLAGS,5> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//    //      break;
+//    //    }
 //    case 6:
 //    {
-//      add_and_searchCU00_k<FLAGS,6> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      add_and_searchCU01_k<FLAGS,6> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 //      break;
 //    }
-    case 7:
-    {
-      add_and_searchCU00_k<FLAGS,7> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 8:
-    {
-      add_and_searchCU00_k<FLAGS,8> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-//    case 9:
+//    //    case 7:
+//    //    {
+//    //      add_and_searchCU01_k<FLAGS,7> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//    //      break;
+//    //    }
+//    case 8:
 //    {
-//      add_and_searchCU00_k<FLAGS,9> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      add_and_searchCU01_k<FLAGS,8> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 //      break;
 //    }
-    case 10:
-    {
-      add_and_searchCU00_k<FLAGS,10> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 12:
-    {
-      add_and_searchCU00_k<FLAGS,12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 14:
-    {
-      add_and_searchCU00_k<FLAGS,14> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 16:
-    {
-      add_and_searchCU00_k<FLAGS,16> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 18:
-    {
-      add_and_searchCU00_k<FLAGS,18> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 20:
-    {
-      add_and_searchCU00_k<FLAGS,20> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    case 24:
-    {
-      add_and_searchCU00_k<FLAGS,24> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-      break;
-    }
-    default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
-      exit(EXIT_FAILURE);
-  }
-
+//    //    case 9:
+//    //    {
+//    //      add_and_searchCU01_k<FLAGS,9> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//    //      break;
+//    //    }
+//    case 10:
+//    {
+//      add_and_searchCU01_k<FLAGS,10> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    case 12:
+//    {
+//      add_and_searchCU01_k<FLAGS,12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    case 14:
+//    {
+//      add_and_searchCU01_k<FLAGS,14> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    case 16:
+//    {
+//      add_and_searchCU01_k<FLAGS,16> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    case 18:
+//    {
+//      add_and_searchCU01_k<FLAGS,18> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    case 20:
+//    {
+//      add_and_searchCU01_k<FLAGS,20> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    case 24:
+//    {
+//      add_and_searchCU01_k<FLAGS,24> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+//      break;
+//    }
+//    default:
+//      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+//      exit(EXIT_FAILURE);
+//  }
+  add_and_searchCU02_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
 __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
@@ -460,16 +453,14 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   dimGrid.x   = ceil(ww);
   dimGrid.y   = 1;
 
-  if ( 0 )  // Stage order  .
+  if ( 1 )  // Stage order  .
   {
     if        ( FLAGS & FLAG_MUL_CB_OUT )
     {
-      //add_and_searchCU02_k<FLAG_MUL_CB_OUT, 12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
       add_and_searchCU02_c<FLAG_MUL_CB_OUT>(dimGrid,dimBlock,stream, batch );
     }
     else
     {
-      //add_and_searchCU02_k< 0, 12 > <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
       add_and_searchCU02_c<0>(dimGrid,dimBlock,stream, batch );
     }
   }
@@ -477,12 +468,10 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   {
     if        ( FLAGS & FLAG_MUL_CB_OUT )
     {
-      //add_and_searchCU00_k<FLAG_MUL_CB_OUT, 12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
       add_and_searchCU00_c<FLAG_MUL_CB_OUT>(dimGrid,dimBlock,stream, batch );
     }
     else
     {
-      //add_and_searchCU00_k< 0, 12 > <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
       add_and_searchCU00_c<0>(dimGrid,dimBlock,stream, batch );
     }
   }

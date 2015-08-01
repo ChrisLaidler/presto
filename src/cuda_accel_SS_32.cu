@@ -20,7 +20,7 @@ __device__ __forceinline__ int idxSS(int tid, int stage, int step)
  * @param noSteps
  */
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+__global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZs* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
   const int tid   = threadIdx.y * SS32_X  +  threadIdx.x;   /// Block index
   const int gid   = blockIdx.x  * SS32BS  +  tid;           /// Global thread id (ie column) 0 is the first 'good' column
@@ -34,7 +34,6 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
     float               candPow   [noStages];
     int                 candZ     [noStages];
     float               powers    [cunkSize];                           /// registers to hold values to increase mem cache hits
-    int                 stride    [noHarms];
 
     FOLD // Prep - Initialise the x indices & set candidates to 0 .
     {
@@ -46,15 +45,6 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
           // NOTE: the indexing below assume each plain starts on a multiple of noHarms
           int   ix    = roundf( gid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
           inds[harm]  = ix;
-
-          if ( FLAGS & FLAG_ITLV_ROW )
-          {
-            stride[harm] = noSteps*STRIDE_STAGE[harm] ;
-          }
-          else
-          {
-            stride[harm] = STRIDE_STAGE[harm] ;
-          }
         }
       }
 
@@ -74,12 +64,10 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 
     FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
     {
-      //#pragma unroll
       for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
       {
         FOLD // Initialise candidate to zero
         {
-          //#pragma unroll
           for ( int stage = 0; stage < noStages; stage++ )
           {
             candPow [stage]        = 0 ;
@@ -90,14 +78,9 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
         {
           FOLD // Initialise powers for each section column to 0  .
           {
-            //#pragma unroll
-            for ( int step = 0; step < noSteps; step++)                 // Loop over steps .
+            for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
             {
-              //#pragma unroll
-              for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
-              {
-                powers[yPlus] = 0;
-              }
+              powers[yPlus] = 0;
             }
           }
 
@@ -111,14 +94,13 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 
               FOLD // Create a section of summed powers one for 1 step and all plains in stage  .
               {
-                //#pragma unroll
                 for ( int harm = start; harm <= end; harm++ )           // Loop over harmonics (batch) in this stage  .
                 {
-                  int ix1       = inds[harm] ;
-                  int ix2       = ix1;
-                  //int h1      = HEIGHT_STAGE[harm]-1;
+                  int     ix1     = inds[harm] ;
+                  int     ix2     = ix1;
+                  int     iyP     = -1;
+                  float   pow     = 0;
 
-                  //#pragma unroll
                   for( int yPlus = 0; yPlus < cunkSize; yPlus++ )       // Loop over the chunk  .
                   {
                     int trm     = y + yPlus ;                           ///< True Y index in plain
@@ -131,31 +113,41 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 
                     int iy2;
 
-                    FOLD // Calculate index  .
+                    if ( iyP != iy1 ) // Only read power if it is not the same as the previous
                     {
-                      if        ( FLAGS & FLAG_ITLV_PLN )
+                      FOLD // Calculate index  .
                       {
-                        iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * stride[harm];
+                        if        ( FLAGS & FLAG_ITLV_PLN )
+                        {
+                          iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
+                        }
+                        else
+                        {
+                          ix2 = ix1 + step * STRIDE_STAGE[harm] ;
+                          iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
+                        }
                       }
-                      else
+
+                      FOLD // Read powers  .
                       {
-                        ix2 = ix1 + step * STRIDE_STAGE[harm] ;
-                        iy2 = iy1*stride[harm];
+                        if      ( FLAGS & FLAG_MUL_CB_OUT )
+                        {
+                          float cmpf            = powersArr[harm][ iy2 + ix2 ];
+                          pow                   = cmpf;
+                        }
+                        else
+                        {
+                          fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
+                          pow                   = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                        }
                       }
+
+                      iyP = iy1;
                     }
 
-                    FOLD // Accumulate powers  .
+                    FOLD // // Accumulate powers  .
                     {
-                      if      ( FLAGS & FLAG_MUL_CB_OUT )
-                      {
-                        float cmpf            = powersArr[harm][ iy2 + ix2 ];
-                        powers[yPlus]         += cmpf;
-                      }
-                      else
-                      {
-                        fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                        powers[yPlus]  += cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                      }
+                      powers[yPlus] += pow;
                     }
                   }
                 }
@@ -163,7 +155,6 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
 
               FOLD // Search set of powers  .
               {
-                //#pragma unroll
                 for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )     // Loop over section  .
                 {
                   if  (  powers[yPlus] > POWERCUT_STAGE[stage] )
@@ -190,7 +181,7 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZ* d_ca
           {
             if  ( candPow [stage] >  POWERCUT_STAGE[stage] )
             {
-              candPZ tt;
+              candPZs tt;
               tt.value = candPow [stage];
               tt.z     = candZ   [stage];
 
@@ -244,43 +235,43 @@ __host__ void add_and_searchCU32_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   {
     case 1:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 2:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 3:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 4:
     {
       //cudaFuncSetCacheConfig(add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 5:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 6:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 7:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 8:
     {
-      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU32_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     default:

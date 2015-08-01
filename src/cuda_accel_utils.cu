@@ -682,9 +682,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         candSZ = sizeof(float);
       }
-      else if (kernel->cndType == CU_POWERZ   )
+      else if (kernel->cndType == CU_POWERZ_S   )
       {
-        candSZ = sizeof(candPZ);
+        candSZ = sizeof(candPZs);
+      }
+      else if (kernel->cndType == CU_POWERZ_I   )
+      {
+        candSZ = sizeof(candPZi);
       }
       else if (kernel->cndType == CU_CANDMIN )
       {
@@ -707,7 +711,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         }
         else
         {
-          kernel->retType = CU_POWERZ;
+          kernel->retType = CU_POWERZ_S;
         }
       }
       else
@@ -733,9 +737,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         retSZ = sizeof(float);
       }
-      else if (kernel->retType == CU_POWERZ   )
+      else if (kernel->retType == CU_POWERZ_S )
       {
-        retSZ = sizeof(candPZ);
+        retSZ = sizeof(candPZs);
+      }
+      else if (kernel->retType == CU_POWERZ_I )
+      {
+        retSZ = sizeof(candPZi);
       }
       else if (kernel->retType == CU_CANDMIN )
       {

@@ -100,12 +100,13 @@ extern "C"
 #define     CU_CMPLXF           (1<<1)    ///< Complex float
 #define     CU_INT              (1<<2)    ///< INT
 #define     CU_FLOAT            (1<<3)    ///< Float
-#define     CU_POWERZ           (1<<4)    ///< A value and a z bin         candPZ
-#define     CU_CANDMIN          (1<<5)    ///< A compressed candidate      candMin
-#define     CU_CANDSMAL         (1<<6)    ///< A compressed candidate      candSml
-#define     CU_CANDBASC         (1<<7)    ///< A compressed candidate      accelcandBasic
-#define     CU_CANDFULL         (1<<8)    ///< Full detailed candidate     cand
-#define     CU_GSList           (1<<9)    ///<
+#define     CU_POWERZ_S         (1<<4)    ///< A value and a z bin         candPZ
+#define     CU_POWERZ_I         (1<<5)    ///< A value and a z bin         candPZ
+#define     CU_CANDMIN          (1<<6)    ///< A compressed candidate      candMin
+#define     CU_CANDSMAL         (1<<7)    ///< A compressed candidate      candSml
+#define     CU_CANDBASC         (1<<8)    ///< A compressed candidate      accelcandBasic
+#define     CU_CANDFULL         (1<<9)    ///< Full detailed candidate     cand
+#define     CU_GSList           (1<<10)   ///<
 
 
 //========================================== Macros ======================================================
@@ -132,11 +133,19 @@ typedef struct fcomplexcu
 
 ///< Basic accel search candidate to be used in CUDA kernels
 ///< Note this may not be the best choice on a GPU as it has a bad size
-typedef struct candPZ
+typedef struct candPZs
 {
     float value;        // This cab be Sigma or summed power
     short z;            // Fourier f-dot of first harmonic
-} candPZ;
+} candPZs;
+
+///< Basic accel search candidate to be used in CUDA kernels
+///< Note this may not be the best choice on a GPU as it has a bad size
+typedef struct candPZi
+{
+    float value;        // This cab be Sigma or summed power
+    int z;              // Fourier f-dot of first harmonic
+} candPZi;
 
 ///< The most basic accel search candidate to be used in CUDA kernels (numharm can be got from stage)
 typedef struct candMin

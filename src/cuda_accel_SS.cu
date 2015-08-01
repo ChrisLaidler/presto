@@ -368,8 +368,8 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
     }
     else if ( FLAGS & FLAG_SS_20 )
     {
-      //add_and_searchCU32(stream, batch );
-      add_and_searchCU34(stream, batch );
+      add_and_searchCU32(stream, batch );
+      //add_and_searchCU34(stream, batch );
     }
     else if ( FLAGS & FLAG_SS_30 )
     {
@@ -581,7 +581,7 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
 
     FOLD // Call the SS kernel  .
     {
-      if ( batch->retType & CU_POWERZ )
+      if ( batch->retType & CU_POWERZ_S )
       {
         //add_and_searchCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (accelcandBasic*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
         //add_and_searchCU311_f(dimGrid, dimBlock, batch->strmSearch, batch );
@@ -739,9 +739,9 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                   poww                  = candM.power;
                   zz                    = candM.z;
                 }
-                else if ( batch->retType & CU_POWERZ   )
+                else if ( batch->retType & CU_POWERZ_S   )
                 {
-                  candPZ candM          = ((candPZ*)batch->h_retData)[idx];
+                  candPZs candM          = ((candPZs*)batch->h_retData)[idx];
                   sig                   = candM.value;
                   poww                  = candM.value;
                   zz                    = candM.z;

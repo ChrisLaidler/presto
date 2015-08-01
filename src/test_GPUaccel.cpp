@@ -1255,9 +1255,9 @@ int main(int argc, char *argv[])
                           poww                  = candM.power;
                           iz                    = candM.z;
                         }
-                        else if ( trdBatch->retType & CU_POWERZ   )
+                        else if ( trdBatch->retType & CU_POWERZ_S   )
                         {
-                          candPZ candM          = ((candPZ*)trdBatch->h_retData)[idx];
+                          candPZs candM          = ((candPZs*)trdBatch->h_retData)[idx];
                           sig                   = candM.value;
                           poww                  = candM.value;
                           iz                    = candM.z;

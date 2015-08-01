@@ -19,7 +19,7 @@ __device__ const int hwidth_c[] = {360, 164, 264, 88, 314, 212, 124, 58, 338, 29
  * @param noSteps
  */
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU34_k(const uint width, __restrict__ candPZ* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+__global__ void add_and_searchCU34_k(const uint width, __restrict__ candPZs* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
   const int tid   = threadIdx.y * SS34_X  +  threadIdx.x;   /// Block index
   const int gid   = blockIdx.x  * SS34BS  +  tid;           /// Global thread id (ie column) 0 is the first 'good' column
@@ -266,43 +266,43 @@ __host__ void add_and_searchCU34_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   {
     case 1:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 2:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 3:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 4:
     {
       //cudaFuncSetCacheConfig(add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,4>, cudaFuncCachePreferL1);
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 5:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 6:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 7:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     case 8:
     {
-      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZ*)batch->d_retData, texs, powers, cmplx );
+      add_and_searchCU34_k<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
       break;
     }
     default:
