@@ -338,8 +338,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         if ( prevWidth != kernel->hInfos[idx].width )
         {
           noStacks++;
-          noInStack[noStacks - 1]      = 0;
-          prevWidth                    = kernel->hInfos[idx].width;
+          noInStack[noStacks - 1]       = 0;
+          prevWidth                     = kernel->hInfos[idx].width;
         }
 
         noInStack[noStacks - 1]++;
@@ -464,10 +464,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
               CUDA_SAFE_CALL(cudaFree(cStack->d_plainPowers), "Failed to free CUDA memory.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
 
-              kernel->pwrDataSize    += cStack->stridePwrs * cStack->height;           // At this point stride is still in bytes
-              cStack->stridePwrs     /= sizeof(float);
+              kernel->pwrDataSize   += cStack->stridePwrs * cStack->height;           // At this point stride is still in bytes
+              cStack->stridePwrs    /= sizeof(float);
             }
-            cStack->strideCmplx       /= sizeof(cufftComplex);                         // Set stride to number of complex numbers rather that bytes
+
+            cStack->strideCmplx     /= sizeof(cufftComplex);                         // Set stride to number of complex numbers rather that bytes
 
           }
           prev                      += cStack->noInStack;
@@ -807,19 +808,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       }
       else
       {
-        // TODO: check if we can do more than one step or set number of batches??
-        float noKers3 = ( free ) / (double) ( fffTotSize + totSize ) ;
-        noSteps = MIN(MAX_STEPS, floor(noKers3));
-
         printf("      There is not enough memory to crate %i batches with one plain each.\n", noBatches);
-        printf("        Throttling to %.0f steps in 1 batch.\n", noKers3);
-        kernel->noSteps = noSteps;
-        noBatches = 1;
+
+        float noSteps1    = ( free ) / (double) ( fffTotSize + totSize ) ;
+        noSteps           = MIN(MAX_STEPS, floor(noSteps1));
+        kernel->noSteps   = noSteps;
+        noBatches         = 1;
+
+        printf("        Throttling to %i steps in 1 batch.\n", noSteps);
       }
 
       if ( noBatches <= 0 || noSteps <= 0 )
       {
-        fprintf(stderr, "ERROR: Insufficient memory to make make any plains on this device.\n");
+        fprintf(stderr, "ERROR: Insufficient memory to make make any plains on this device. One step would require %.2fGiB of device memory.\n", ( fffTotSize + totSize )/1073741824.0 );
         CUDA_SAFE_CALL(cudaFree(kernel->d_kerData), "Failed to free device memory for kernel stack.");
         return 0;
       }
@@ -1170,9 +1171,9 @@ void setStkPointers(cuFFdotBatch* batch)
 
     // Increment the various values used for offset
     harm                 += cStack->noInStack;
-    idSiz                += batch->noSteps * cStack->strideCmplx * cStack->noInStack;
+    idSiz                += batch->noSteps  * cStack->strideCmplx * cStack->noInStack;
     cmplStart            += cStack->height  * cStack->strideCmplx * batch->noSteps ;
-    pwrStart             += cStack->height  * cStack->stridePwrs * batch->noSteps ;
+    pwrStart             += cStack->height  * cStack->stridePwrs  * batch->noSteps ;
   }
 }
 
@@ -1206,14 +1207,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // See if we can use the cuda device  .
   {
-    int currentDevvice;
-    CUDA_SAFE_CALL(cudaSetDevice(kernel->device), "ERROR: cudaSetDevice");
-    CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
-    if (currentDevvice != kernel->device)
-    {
-      fprintf(stderr, "ERROR: CUDA Device not set.\n");
-      return 0;
-    }
+    setDevice(kernel) ;
   }
 
   FOLD // Set up basic slack list parameters from the harmonics  .
@@ -1222,7 +1216,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     memcpy(batch, kernel, sizeof(cuFFdotBatch));
 
     // Copy the actual stacks
-    batch->stacks = (cuFfdotStack*) malloc(batch->noStacks  * sizeof(cuFfdotStack));
+    batch->stacks = (cuFfdotStack*) malloc(batch->noStacks   * sizeof(cuFfdotStack));
     memcpy(batch->stacks, kernel->stacks, batch->noStacks    * sizeof(cuFfdotStack));
   }
 
@@ -1230,7 +1224,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     FOLD // Allocate page-locked host memory for input data
     {
-      CUDA_SAFE_CALL(cudaMallocHost((void**) &batch->h_iData, batch->inpDataSize*batch->noSteps ), "Failed to create page-locked host memory plain input data." );
+      //CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize*batch->noSteps ), "Failed to create page-locked host memory plain input data." );
+      CUDA_SAFE_CALL(cudaHostAlloc(&batch->h_iData, batch->inpDataSize*batch->noSteps, cudaHostAllocPortable ), "Failed to create page-locked host memory plain input data." );
 
       if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation
         batch->h_powers = (float*) malloc(batch->hInfos[0].width * sizeof(float));
@@ -1320,7 +1315,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Allocate page-locked host memory to copy the candidates back to  .
       {
-        CUDA_SAFE_CALL(cudaMallocHost((void**) &batch->h_retData, batch->retDataSize*batch->noSteps),"");
+        CUDA_SAFE_CALL(cudaMallocHost(&batch->h_retData, batch->retDataSize*batch->noSteps), "Failed to create page-locked host memory plain for return data.");
         memset(batch->h_retData, 0, batch->retDataSize*batch->noSteps );
       }
     }
@@ -1754,8 +1749,8 @@ int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
 
   for (int i = 0; i < batch->noStacks; i++)
   {
-    cuFfdotStack* cStack  = &batch->stacks[offset+i];
-    stackInfo*    cInf    = &h_inf[offset+i];
+    cuFfdotStack* cStack  = &batch->stacks[i];
+    stackInfo*    cInf    = &h_inf[i];
 
     cInf->noSteps         = batch->noSteps;
     cInf->noPlains        = cStack->noInStack;
@@ -1850,7 +1845,7 @@ void freeBatch(cuFFdotBatch* batch)
 {
   FOLD // Allocate all device and host memory for the stacks  .
   {
-    FOLD // Allocate page-locked host memory for input data
+    FOLD // Allocate page-locked host memory for input data  .
     {
       CUDA_SAFE_CALL(cudaFreeHost(batch->h_iData ), "Failed to create page-locked host memory plain input data." );
 
@@ -1872,8 +1867,8 @@ void freeBatch(cuFFdotBatch* batch)
 
     FOLD // Allocate device & page-locked host memory for candidate  data  .
     {
-      CUDA_SAFE_CALL(cudaFree(batch->d_retData     ), "Failed to allocate device memory for return values.");
-      CUDA_SAFE_CALL(cudaFreeHost(batch->h_retData ),"");
+      CUDA_SAFE_CALL(cudaFree(batch->d_retData     ), "Failed to free device memory for return values.");
+      CUDA_SAFE_CALL(cudaFreeHost(batch->h_retData ), "");
     }
 
     // Create the plains structures
@@ -1921,13 +1916,17 @@ void freeBatch(cuFFdotBatch* batch)
  */
 void freeBatchGPUmem(cuFFdotBatch* batch)
 {
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering freeBatchGPUmem.");
+
+  setDevice(batch) ;
+
   FOLD // Allocate all device and host memory for the stacks  .
   {
-    FOLD // Allocate page-locked host memory for input data
+    FOLD // Allocate page-locked host memory for input data  .
     {
       cudaFreeHostNull(batch->h_iData);
 
-      if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation
+      if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation  .
       {
         freeNull(batch->h_powers);
       }
@@ -1964,7 +1963,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
         {
           cuFFdot* cPlain = &cStack->plains[j];
 
-          if(cPlain->datTex)
+          if ( cPlain->datTex )
           {
             CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlain->datTex), "Creating texture from the plain data.");
             cPlain->datTex = NULL;
@@ -1974,6 +1973,8 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
       CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plain data.");
     }
   }
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Exiting freeBatchGPUmem.");
 }
 
 void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
@@ -2163,28 +2164,45 @@ void printContext()
 
 void setContext(cuFFdotBatch* batch)
 {
-  int dev;
-  //printf("Setting device to %i \n", batch->device);
-  CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
-  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
-  if ( dev != batch->device )
-  {
-    fprintf(stderr, "ERROR: CUDA Device not set.\n");
-    exit(EXIT_FAILURE);
-  }
+//  int dev;
+//  //printf("Setting device to %i \n", batch->device);
+//  CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
+//  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+//  if ( dev != batch->device )
+//  {
+//    fprintf(stderr, "ERROR: CUDA Device not set.\n");
+//    exit(EXIT_FAILURE);
+//  }
 
-  /*
   CUcontext pctx;
   cuCtxGetCurrent ( &pctx );
-  if(pctx !=  stkList->pctx )
+  if( pctx !=  batch->pctx )
   {
     CUresult res = cuCtxSetCurrent(batch->pctx);
   }
-   */
 
-  //CUcontext pctx;
-  //cuCtxGetCurrent ( &pctx );
-  //printf("Thread %02i  Context %p \n", omp_get_thread_num(), pctx);
+  cuCtxGetCurrent ( &pctx );
+  printf("Thread %02i  Context %p \n", omp_get_thread_num(), pctx);
+}
+
+int setDevice(cuFFdotBatch* batch)
+{
+  int dev;
+
+  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+
+  if ( dev != batch->device )
+  {
+    CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
+    CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+    if ( dev != batch->device )
+    {
+      fprintf(stderr, "ERROR: CUDA Device not set.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  return dev;
 }
 
 gpuSpecs gSpec(int devID = -1 )
@@ -2320,7 +2338,6 @@ void readAccelDefalts(uint *flags)
         (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
         (*flags) |= CU_INPT_CPU_FFT;
-        printf("\nCU_INPT_CPU_FFT\n"); // TMP
       }
       else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) || strCom(line, "FFT_GPU" ) )
       {
@@ -2717,12 +2734,11 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
 
     nvtxRangePop();
 
-    if ( aInf->noDevices <= 0 ) // Check if we got ant devices
+    if ( aInf->noDevices <= 0 ) // Check if we got any devices
     {
       fprintf(stderr, "ERROR: Failed to set up a kernel on any device. Try -lsgpu to see what devices there are.\n");
       exit (EXIT_FAILURE);
     }
-
 
   }
 
@@ -2781,7 +2797,7 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
 
           if ( idx != noStacks )
           {
-            fprintf (stderr,"ERROR: in %s line %i, The number of steps on device do not match\n.",__FILE__, __LINE__);
+            fprintf (stderr,"ERROR: in %s line %i, The number of steps on device do not match.\n.",__FILE__, __LINE__);
           }
           else
           {
@@ -2793,6 +2809,12 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
       }
     }
 
+    if ( bNo != aInf->noBatches )
+    {
+      fprintf(stderr, "WARNING: Number of batches created does not match the number anticipated.");
+      aInf->noBatches = bNo;
+    }
+
     nvtxRangePop();
   }
 
@@ -2801,12 +2823,6 @@ cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long
 
 void freeAccelMem(cuMemInfo* aInf)
 {
-  size_t freeMem, totalMem;
-  ulong freeRam;                      /// The amount if free host memory
-
-  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-  freeRam = getFreeRamCU();
-
   FOLD // Free plains  .
   {
     for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
@@ -2987,7 +3003,7 @@ void accelMax(cuSearch* srch)
     double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
     size_t rest = trdBatch->noSteps;
 
-    setContext(trdBatch) ;
+    setDevice(trdBatch) ;
 
     while ( ss < maxxx )
     {
@@ -3269,45 +3285,49 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
   cvsLog->csvWrite("Opt", "s", "%9.4f", optTime * 1e-6);
   cvsLog->csvWrite("CPU Opt", "s", "%9.4f", cpuOptTime * 1e-6);
   cvsLog->csvWrite("GPU Opt", "s", "%9.4f", gpuOptTime * 1e-6);
-  float copyH2DT = 0;
-  float InpNorm = 0;
-  float InpFFT = 0;
-  float multT = 0;
-  float InvFFT = 0;
-  float ss = 0;
-  float resultT = 0;
-  float copyD2HT = 0;
+
+  float copyH2DT  = 0;
+  float InpNorm   = 0;
+  float InpFFT    = 0;
+  float multT     = 0;
+  float InvFFT    = 0;
+  float ss        = 0;
+  float resultT   = 0;
+  float copyD2HT  = 0;
+#ifdef TIMING
   for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
   {
-    float l_copyH2DT = 0;
-    float l_InpNorm = 0;
-    float l_InpFFT = 0;
-    float l_multT = 0;
-    float l_InvFFT = 0;
-    float l_ss = 0;
-    float l_resultT = 0;
-    float l_copyD2HT = 0;
+    float l_copyH2DT  = 0;
+    float l_InpNorm   = 0;
+    float l_InpFFT    = 0;
+    float l_multT     = 0;
+    float l_InvFFT    = 0;
+    float l_ss        = 0;
+    float l_resultT   = 0;
+    float l_copyD2HT  = 0;
+
     for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
     {
       cuFFdotBatch* batches = &cuSrch->mInf->batches[batch];
-      l_copyH2DT += batches->copyH2DTime[stack];
-      l_InpNorm += batches->normTime[stack];
-      l_InpFFT += batches->InpFFTTime[stack];
-      l_multT += batches->multTime[stack];
-      l_InvFFT += batches->InvFFTTime[stack];
-      l_ss += batches->searchTime[stack];
-      l_resultT += batches->resultTime[stack];
-      l_copyD2HT += batches->copyD2HTime[stack];
+      l_copyH2DT  += batches->copyH2DTime[stack];
+      l_InpNorm   += batches->normTime[stack];
+      l_InpFFT    += batches->InpFFTTime[stack];
+      l_multT     += batches->multTime[stack];
+      l_InvFFT    += batches->InvFFTTime[stack];
+      l_ss        += batches->searchTime[stack];
+      l_resultT   += batches->resultTime[stack];
+      l_copyD2HT  += batches->copyD2HTime[stack];
     }
-    copyH2DT += l_copyH2DT;
-    InpNorm += l_InpNorm;
-    InpFFT += l_InpFFT;
-    multT += l_multT;
-    InvFFT += l_InvFFT;
-    ss += l_ss;
-    resultT += l_resultT;
-    copyD2HT += l_copyD2HT;
+    copyH2DT  += l_copyH2DT;
+    InpNorm   += l_InpNorm;
+    InpFFT    += l_InpFFT;
+    multT     += l_multT;
+    InvFFT    += l_InvFFT;
+    ss        += l_ss;
+    resultT   += l_resultT;
+    copyD2HT  += l_copyD2HT;
   }
+#endif
   cvsLog->csvWrite("copyH2D", "ms", "%12.6f", copyH2DT);
   cvsLog->csvWrite("InpNorm", "ms", "%12.6f", InpNorm);
   cvsLog->csvWrite("InpFFT", "ms", "%12.6f", InpFFT);

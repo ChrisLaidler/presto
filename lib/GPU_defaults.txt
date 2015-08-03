@@ -2,12 +2,12 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
-IL_ROW # Last Edited by run time script
+IL_PLN # Last Edited by run time script
 
 ######## Input #######
 
 # NORM_CPU NORM_GPU
-NORM_CPU
+NORM_GPU
 
 # FFT_CPU  FFT_GPU
 FFT_GPU # Last Edited by run time script
@@ -60,10 +60,11 @@ CU_CAND_ARR
 #cuMedianBuffSz 2048
 
 
-globalInt01 1            # Last Edited by run time script
+globalInt01 6
 
+globalInt02 2
 
-optpln01 50
+optpln01 40
 optpln02 30
 optpln03 10
 optpln04 10

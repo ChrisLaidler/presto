@@ -313,9 +313,8 @@ int main(int argc, char *argv[])
 
           printf("\n------------------------\nDoing GPU Search \n------------------------\n");
 
-          long noCands = 0;
-          cuSrch       = initCuSearch(&sSpec, &gSpec, NULL);
-
+          long noCands            = 0;
+          cuSrch                  = initCuSearch(&sSpec, &gSpec, NULL);
           cuFFdotBatch* master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
 
           FOLD // TMP
@@ -355,7 +354,7 @@ int main(int argc, char *argv[])
             double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
             int      rest    = trdBatch->noSteps;
 
-            setContext(trdBatch) ;
+            setDevice(trdBatch) ;
 
             int firstStep    = 0;
             int step;
@@ -448,7 +447,6 @@ int main(int argc, char *argv[])
             pFile = fopen (name,"w");
             fprintf (pFile, "idx;rr;f;zz;sig;harm\n");
 
-
             for (cdx = 0; cdx < (int)master->SrchSz->noOutpR; cdx++)  // Loop
             {
               poww        = candidate[cdx].power;
@@ -478,7 +476,7 @@ int main(int argc, char *argv[])
           cands = candsGPU;
           printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
-          // TODO: free GPU memory
+          // Free GPU memory
           freeAccelMem(cuSrch->mInf);
 
 #ifdef DEBUG
@@ -787,7 +785,7 @@ int main(int argc, char *argv[])
   {
     printf("\nTiming:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
 
-    writeLogEntry("/home/chris/accelsearch_log.csv",&obs, cuSrch, prepTime, cupTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
+    writeLogEntry("/home/chris/accelsearch_log.csv", &obs, cuSrch, prepTime, cupTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
 
 #ifdef TIMING  // Advanced timing massage  .
 

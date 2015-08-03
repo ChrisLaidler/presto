@@ -123,7 +123,7 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZs* d_c
                         }
                         else
                         {
-                          ix2 = ix1 + step * STRIDE_STAGE[harm] ;
+                          ix2 = ix1 + step    * STRIDE_STAGE[harm] ;
                           iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
                         }
                       }

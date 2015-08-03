@@ -34,7 +34,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
     candPZs         candLists [noStages][noSteps];
     float           powers    [noSteps][cunkSize];              /// registers to hold values to increase mem cache hits
 
-    FOLD // Prep - Initialise the x indices & set candidates to 0 .
+    FOLD // Prep - Initialise the x indices & set candidates to 0  .
     {
       // Calculate the x indices or create a pointer offset by the correct amount
       for ( int harm = 0; harm < noHarms; harm++ )                	// loop over harmonic  .
@@ -44,14 +44,18 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
         inds[harm]      = ix;
       }
 
-      FOLD  // Set the local and return candidate powers to zero
+      FOLD  // Set the local and return candidate powers to zero  .
       {
         for ( int stage = 0; stage < noStages; stage++ )
         {
-          for ( int step = 0; step < noSteps; step++)               // Loop over steps
+          for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
           {
             candLists[stage][step].value = 0 ;
-            d_cands[step*noStages*oStride + stage*oStride + tid ].value = 0;
+
+            if ( blockIdx.y == 0 )
+            {
+              d_cands[step*noStages*oStride + stage*oStride + tid ].value = 0;
+            }
           }
         }
       }
@@ -59,13 +63,17 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
 
     FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
     {
-      for( int y = 0; y < zeroHeight ; y += cunkSize )              // loop over chunks .
+      short   lDepth  = ceilf(zeroHeight/(float)gridDim.y);
+      short   y0      = lDepth*blockIdx.y;
+      short   y1      = MIN(y0+lDepth, zeroHeight);
+
+      for( short y = y0; y < y1 ; y += cunkSize )              // loop over chunks .
       {
         FOLD // Initialise powers for each section column to 0  .
         {
-          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
+          for( short yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers .
           {
-            for ( int step = 0; step < noSteps; step++)             // Loop over steps .
+            for ( short step = 0; step < noSteps; step++)             // Loop over steps .
             {
               powers[step][yPlus]       = 0 ;
             }
@@ -74,34 +82,33 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
 
         FOLD // Loop over stages, sum and search  .
         {
-          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages .
+          for ( short stage = 0 ; stage < noStages; stage++)          // Loop over stages .
           {
-            int start = STAGE[stage][0] ;
-            int end   = STAGE[stage][1] ;
+            short start = STAGE[stage][0] ;
+            short end   = STAGE[stage][1] ;
 
             FOLD // Create a section of summed powers one for each step  .
             {
-              for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
+              for ( short harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
               {
-                int ix1       = inds[harm] ;
-                int ix2       = ix1;
-                float* t      = powersArr[harm];
+                float*  t     = powersArr[harm];
+                int     ix1   = inds[harm] ;
+                int     ix2   = ix1;
+                short   iyP   = -1;
+                float pow[noSteps];
 
-                for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
+                for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
                 {
-                  int   iyP     = -1;
-                  float pow;
+                  short trm     = y + yPlus ;                         ///< True Y index in plain
+                  short iy1     = YINDS[ zeroHeight*harm + trm ];
+                  //  OR
+                  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
-                  for( int yPlus = 0; yPlus < cunkSize; yPlus++ )   // Loop over the chunk  .
+                  int iy2;
+
+                  if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
                   {
-                    int trm     = y + yPlus ;                       ///< True Y index in plain
-                    int iy1     = YINDS[ zeroHeight*harm + trm ];
-                    //  OR
-                    //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
-
-                    int iy2;
-
-                    if ( iyP != iy1 ) // Only read power if it is not the same as the previous
+                    for ( short step = 0; step < noSteps; step++)     // Loop over steps  .
                     {
                       FOLD // Calculate index  .
                       {
@@ -111,7 +118,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
                         }
                         else
                         {
-                          ix2 = ix1 + step * STRIDE_STAGE[harm] ;
+                          ix2 = ix1 + step    * STRIDE_STAGE[harm] ;
                           iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
                         }
                       }
@@ -120,22 +127,25 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
                       {
                         if      ( FLAGS & FLAG_MUL_CB_OUT )
                         {
-                          //pow                     = powersArr[harm][ iy2 + ix2 ];
-                          pow                     = t[ iy2 + ix2 ];
+                          //pow[step]             = powersArr[harm][ iy2 + ix2 ];
+                          pow[step]             = t[ iy2 + ix2 ];
                         }
                         else
                         {
                           fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                          pow                   = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                          pow[step]             = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
                         }
                       }
-
-                      iyP = iy1;
                     }
 
-                    FOLD // Accumulate powers  .
+                    iyP = iy1;
+                  }
+
+                  FOLD // // Accumulate powers  .
+                  {
+                    for ( short step = 0; step < noSteps; step++)     // Loop over steps  .
                     {
-                      powers[step][yPlus] += pow ;
+                      powers[step][yPlus] += pow[step];
                     }
                   }
                 }
@@ -144,21 +154,21 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
 
             FOLD // Search set of powers  .
             {
-              for ( int step = 0; step < noSteps; step++)         // Loop over steps
+              for ( short step = 0; step < noSteps; step++)           // Loop over steps
               {
                 float pow;
                 float maxP = POWERCUT_STAGE[stage];
-                int   maxI;
+                short maxI;
 
-                for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )      // Loop over section
+                for( short yPlus = 0; yPlus < cunkSize ; yPlus++ )    // Loop over section
                 {
                   pow = powers[step][yPlus];
 
                   if  ( pow > maxP )
                   {
-                    int idx = y + yPlus;
+                    short idx = y + yPlus;
 
-                    if ( idx < zeroHeight )
+                    if ( idx < y1 )
                     {
                       maxP = pow;
                       maxI = idx;
@@ -184,14 +194,17 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
 
     FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
-      for ( int step = 0; step < noSteps; step++)             // Loop over steps
+      if ( blockIdx.y == 0 )
       {
-        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
+        for ( short step = 0; step < noSteps; step++)             // Loop over steps  .
         {
-          if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
+          for ( short stage = 0 ; stage < noStages; stage++)      // Loop over stages  .
           {
-            // Write to DRAM
-            d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
+            if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
+            {
+              // Write to DRAM
+              d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
+            }
           }
         }
       }

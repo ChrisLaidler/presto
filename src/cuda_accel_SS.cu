@@ -48,8 +48,8 @@ const float h_FRAC_STAGE[16]              =  { 1.0000f, 0.5000f, 0.7500f, 0.2500
 //const float h_FRAC_STAGE[16]              =  { 1.0000f, 0.5000f, 0.2500f, 0.7500f, 0.1250f, 0.3750f, 0.6250f, 0.8750f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
 
 __device__ const float FRAC_HARM[16]      =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
-__device__ const int   STAGE[5][2]        =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
-__device__ const int   CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
+__device__ const short STAGE[5][2]        =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
+__device__ const short CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
 
 
 /** Return x such that 2**x = n
@@ -369,12 +369,10 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
     else if ( FLAGS & FLAG_SS_20 )
     {
       add_and_searchCU32(stream, batch );
-      //add_and_searchCU34(stream, batch );
     }
     else if ( FLAGS & FLAG_SS_30 )
     {
       add_and_searchCU33(stream, batch );
-      //add_and_searchCU34(stream, batch );
     }
     else
     {

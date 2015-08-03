@@ -650,7 +650,11 @@ ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
  */
 //ExternC void freeBatch(cuFFdotBatch* stkLst);
 
-ExternC void setContext(cuFFdotBatch* stkList) ;
+ExternC void setContext(cuFFdotBatch* batch) ;
+
+ExternC int setDevice(cuFFdotBatch* batch);
+
+ExternC void freeBatchGPUmem(cuFFdotBatch* batch);
 
 ExternC void printCands(const char* fileName, GSList *candsCPU, double T);
 

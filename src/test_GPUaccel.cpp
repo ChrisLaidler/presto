@@ -1039,7 +1039,7 @@ int main(int argc, char *argv[])
           double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
           size_t   rest    = trdBatch->noSteps;
 
-          setContext( trdBatch ) ;
+          setDevice( trdBatch ) ;
 
           int noCands = 0;
 
