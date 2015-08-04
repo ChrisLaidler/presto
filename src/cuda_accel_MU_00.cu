@@ -1,6 +1,6 @@
 #include "cuda_accel_MU.h"
 
-/** Kernel for testing best possible performance - Just write to ffdot plain - 1 thread per complex value
+/** Kernel for testing best possible performance - Just write to ffdot plain - 1 thread per complex value  .
  *
  * @param kernels
  * @param inpData
@@ -31,16 +31,20 @@ __global__ void mult00_k(const __restrict__ fcomplexcu* kernels, const __restric
   }
 }
 
+
+/** Kernel for testing best possible performance - Read input, read kernel, write to ffdot plain - 1 thread per column  .
+ *
+ */
 __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
 
-  fcomplexcu ker;                                 /// kernel data
+  fcomplexcu ker;                                                 /// kernel data
 
   if ( tid < width )  // Valid thread  .
   {
-    int idx;                                      /// flat index of output plain
+    int idx;                                                      /// flat index of output plain
 
     FOLD  // Stride, kernel, input data & output data  .
     {
@@ -53,11 +57,11 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
     {
       for (int step = 0; step < noSteps; step++)
       {
-        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
+        for (int pln = 0; pln < noPlns; pln++)                    // Loop through the plains  .
         {
           fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
 
-          if ( ipd.r < 0 && ipd.r > 0 )   // Required so as to not optimise out
+          if ( ipd.r < 0 && ipd.r > 0 ) 	                        // Required so as to not optimise out  .
           {
             printf("ipd \n");
           }
@@ -67,28 +71,35 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
 
     FOLD // Read kernel  .
     {
-      for (int k = 0; k < kerHeight; k++ )
+      int   lDepth  = ceilf(kerHeight/(float)gridDim.y);
+      int   y0      = lDepth*blockIdx.y;
+      int   y1      = MIN(y0+lDepth, kerHeight);
+
+      for (int kerY = y0;  kerY< y1; kerY++ )
       {
-        idx   = k * stride;
+        idx   = kerY * stride;
         ker   = kernels[idx];
 
-        if ( ker.r < 0 && ker.r > 0 )     // Required so as to not optimise out
+        if ( ker.r < 0 && ker.r > 0 )                             // Required so as to not optimise out  .
         {
           printf("ker \n");
         }
       }
     }
 
-    ker.i = 0;
-    ker.r = 0;
-
-    uint nHeight = height * noSteps;
-
     FOLD // Write data to plains  .
     {
-      for (int y = 0; y < nHeight; y++ )
+      int   nHeight = height * noSteps;
+      int   lDepth  = ceilf(nHeight/(float)gridDim.y);
+      int   y0      = lDepth*blockIdx.y;
+      int   y1      = MIN(y0+lDepth, nHeight);
+
+      ker.i         = 0;
+      ker.r         = 0;
+
+      for (int y = y0; y < y1; y++ )
       {
-        idx  = y * stride;
+        idx         = y * stride;
 
         FOLD // Write  .
         {
@@ -129,7 +140,7 @@ __host__  void mult00_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   else
   {
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-    dimGrid.y = 1;
+    dimGrid.y = cStack->noMulSlices;
 
     mult01_k<<<dimGrid, dimBlock, 0, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }

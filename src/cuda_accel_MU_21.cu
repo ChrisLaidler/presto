@@ -12,22 +12,25 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
 
   if ( tid < width )  // Valid thread  .
   {
+    const int   kerHeight = HEIGHT_HARM[firstPlain];              // The size of the kernel
+    fcomplexcu  inpDat[noPlns][noSteps];                          // Set of input data for this thread/column
 
-    FOLD  // Stride, kernel, input data & output data  .
+    int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
+    int     y0      = lDepth*blockIdx.y;
+    int     y1      = MIN(y0+lDepth, kerHeight);
+
+    FOLD // Stride, kernel, input data & output data  .
     {
       kernels += tid;
       ffdot   += tid;
       inpData += tid;
     }
 
-    const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
-
-    __restrict__ fcomplexcu inpDat[noPlns][noSteps];          // Set of input data for this thread/column
     FOLD // Read all input data  .
     {
-      for (int step = 0; step < noSteps; step++)
+      for ( int step = 0; step < noSteps; step++ )
       {
-        for (int pln = 0; pln < noPlns; pln++)                // Loop through the plains  .
+        for ( int pln = 0; pln < noPlns; pln++ )                  // Loop through the plains  .
         {
           fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
           ipd.r                 /= (float) width;
@@ -37,26 +40,27 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
       }
     }
 
-    for (int y = 0; y < kerHeight; y++)                       // Loop through the kernel .
+    for ( int kerY = y0; kerY < y1; kerY++ )                      // Loop through the kernel  .
     {
-      fcomplexcu ker;                                         // kernel data
+      fcomplexcu ker;                                             // kernel data
+      int pHeight = 0;                                            // Height of previous data in the stack
+
       FOLD // Read the kernel value  .
       {
-        ker   = kernels[y*stride];
+        ker   = kernels[kerY*stride];
       }
 
-      int pHeight = 0;                                        // Height of previous data in the stack
-
-      for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains  .
+      for (int pln = 0; pln < noPlns; pln++)                      // Loop through the plains  .
       {
         const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
-        const int plainY        = y - kerYOffset;
+        const int plainY        = kerY - kerYOffset;
         const int ns2           = plnHeight * stride;
 
         if( plainY >= 0 && plainY < plnHeight )
         {
           int off1;
+
           FOLD // Calculate partial offset  .
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
@@ -69,9 +73,10 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
             }
           }
 
-          for ( int step = 0; step < noSteps; ++step )        // Loop over steps .
+          for ( int step = 0; step < noSteps; ++step )            // Loop over steps .
           {
             int idx;
+
             FOLD // Calculate indices  .
             {
               if      ( FLAGS & FLAG_ITLV_ROW )
@@ -95,7 +100,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plain
+        pHeight += plnHeight * noSteps * stride;                  // Set striding value for next plain
       }
     }
   }
@@ -226,7 +231,7 @@ __host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimBlock.y = CNV_DIMY;
 
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = 1;
+  dimGrid.y = cStack->noMulSlices;
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult21_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);

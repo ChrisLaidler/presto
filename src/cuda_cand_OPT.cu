@@ -801,9 +801,6 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
 
   CUDA_SAFE_CALL(cudaMemcpy(powers, cuPowers, pStride*noZ, cudaMemcpyDeviceToHost), "Copying optimisation results back from the device.");
 
-  //cudaDeviceSynchronize();          // TMP
-  int TMPP = 0;
-
   FOLD // Write CVS
   {
     char tName[1024];
@@ -843,8 +840,6 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
       system(cmd);
       printf("Done\n");
     }
-
-    int tmp = 0;
   }
 
   CUDA_SAFE_CALL(cudaFree(cuPowers),    "Failed free device memory for optimisation powers.");

@@ -44,11 +44,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
           for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
           {
             candLists[stage][step].value = 0 ;
-
-            if ( blockIdx.y == 0 )
-            {
-              d_cands[step*noStages*oStride + stage*oStride + tid ].value = 0;
-            }
+            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].value = 0;
           }
         }
       }
@@ -187,17 +183,14 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
 
     FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
-      if ( blockIdx.y == 0 )
+      for ( int step = 0; step < noSteps; step++)             // Loop over steps  .
       {
-        for ( int step = 0; step < noSteps; step++)             // Loop over steps  .
+        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages  .
         {
-          for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages  .
+          if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
           {
-            if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
-            {
-              // Write to DRAM
-              d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
-            }
+            // Write to DRAM
+            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
           }
         }
       }
@@ -420,7 +413,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);
-  dimGrid.y   = globalInt02;
+  dimGrid.y   = batch->noSSSlices;
 
   FOLD // Call flag template  .
   {

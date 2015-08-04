@@ -170,7 +170,7 @@ static double power_call_rz_harmonics_noNorm(double rz[])
 void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int numdata, double r, double z, rderivs derivs[], double power[], int nn)
 {
   float *locpow;
-  int i, ii;
+  int i;
   double x[2];
 
   // initialisation
@@ -363,7 +363,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
     numeval = 0;
     amoeba(x, y, 1.0e-7, power_call_rz_harmonics, &numeval);
-    
+
     newPower = y[0];
     printf("New best is %.4f vs initial %.4f!\n", -newPower, -initPower );
 
@@ -484,8 +484,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       char scmd[1024];
       sprintf(scmd,"mv /home/chris/accel/*.csv %s/",dirname );
       system(scmd);
-
-      int tmp = 0;
     }
 
     if ( (file = fopen("/home/chris/accel/Nelder_Mead/swrm_000.png", "r")) )
@@ -496,8 +494,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       char scmd[1024];
       sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/",dirname );
       system(scmd);
-
-      int tmp = 0;
     }
 
     if( noTet > 1.0 )
@@ -739,8 +735,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
             for (btch = 0; btch < noBatches; btch++ )
             {
-              int tmp = 0;
-
               for ( ibtch = 0; ibtch < noInBatch; ibtch++)
               {
                 idx = btch*noInBatch + ibtch;

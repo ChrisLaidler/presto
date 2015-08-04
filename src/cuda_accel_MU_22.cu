@@ -43,7 +43,11 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
         }
       }
 
-      for (int plainY = 0; plainY < plnHeight; plainY++)      // Loop over the individual plain  .
+      short   lDepth  = ceilf(plnHeight/(float)gridDim.y);
+      short   y0      = lDepth*blockIdx.y;
+      short   y1      = MIN(y0+lDepth, plnHeight);
+
+      for (int plainY = y0; plainY < y1; plainY++)      // Loop over the individual plain  .
       {
         FOLD // Read the kernel value  .
         {
@@ -163,7 +167,7 @@ __host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimBlock.y = CNV_DIMY;
 
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = 1;
+  dimGrid.y = cStack->noMulSlices;
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult22_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);

@@ -1,7 +1,17 @@
 #include "cuda_accel_MU.h"
 
-__device__ cufftCallbackLoadC d_loadCallbackPtr     = CB_MultiplyInput;
+//====================================== Constant variables  ===============================================\\
+
+__device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storeCallbackPtr   = CB_PowerOut;
+
+
+//======================================= Global variables  ================================================\\
+
+int    noMU_Slices = 4;
+
+
+//========================================== Functions  ====================================================\\
 
 __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
@@ -223,7 +233,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
             FOLD // Synchronisation  .
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,0),    "Waiting for GPU to be ready to copy data to device.");  // Need input data
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,  0),  "Waiting for GPU to be ready to copy data to device.");  // Need input data
               CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
 #ifdef SYNCHRONOUS

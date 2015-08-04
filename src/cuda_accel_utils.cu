@@ -166,7 +166,7 @@ uint calcAccellen(float width, float zmax)
  * @param outData
  * @return
  */
-int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo* fftinf, int device, int noBatches, int noSteps, int width, float*  powcut, long long*  numindep, int flags = 0, int outType = CU_CANDFULL, void* outData = NULL)
+int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, int zmax, fftInfo* fftinf, int device, int noBatches, int noSteps, int width, float* powcut, long long*  numindep, int flags = 0, int outType = CU_CANDFULL, void* outData = NULL)
 {
   nvtxRangePush("initKernel");
   std::cout.flush();
@@ -566,7 +566,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         cufftHandle plnPlan;
 
+        fflush(stdout);
         printf("   FFT'ing the kernels ");
+        fflush(stdout);
 
         for (int i = 0; i < kernel->noStacks; i++)
         {
@@ -605,7 +607,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           }
 
           printf(".");
-          std::cout.flush();
+          fflush(stdout);
         }
 
         CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
@@ -664,7 +666,16 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
     FOLD // Calculate candidate type  .
     {
-      kernel->retType = kernel->cndType;
+      kernel->noSSSlices      = noSS_Slices;
+      kernel->noMulSlices     = noMU_Slices;
+      kernel->retType         = kernel->cndType;
+
+      // Set stack multiplication slices
+      for (int i = 0; i < kernel->noStacks; i++)
+      {
+        cuFfdotStack* cStack  = &kernel->stacks[i];
+        cStack->noMulSlices   = noMU_Slices;
+      }
 
       if      (kernel->cndType == CU_NONE     )
       {
@@ -683,15 +694,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         candSZ = sizeof(float);
       }
-      else if (kernel->cndType == CU_POWERZ_S   )
+      else if (kernel->cndType == CU_POWERZ_S )
       {
         candSZ = sizeof(candPZs);
       }
-      else if (kernel->cndType == CU_POWERZ_I   )
+      else if (kernel->cndType == CU_POWERZ_I )
       {
         candSZ = sizeof(candPZi);
       }
-      else if (kernel->cndType == CU_CANDMIN )
+      else if (kernel->cndType == CU_CANDMIN  )
       {
         candSZ = sizeof(candMin);
       }
@@ -746,7 +757,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       {
         retSZ = sizeof(candPZi);
       }
-      else if (kernel->retType == CU_CANDMIN )
+      else if (kernel->retType == CU_CANDMIN  )
       {
         retSZ = sizeof(candMin);
       }
@@ -772,7 +783,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       if ( kernel->flag & FLAG_RETURN_ALL )
         noRets *= numharmstages;
 
-      kernel->retDataSize   = noRets*retSZ;
+      kernel->retDataSize   = kernel->noSSSlices*noRets*retSZ;
     }
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
@@ -1675,7 +1686,6 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
 cuOptCand* initOptPln(searchSpecs* sSpec)
 {
   size_t freeMem, totalMem;
-  ulong freeRam;                      /// The amount if free host memory
 
   int       noHarms   = (1<<sSpec->noHarmStages);
 
@@ -1685,7 +1695,6 @@ cuOptCand* initOptPln(searchSpecs* sSpec)
   oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-  freeRam = getFreeRamCU();
 
   if ( (oPln->inpSz + oPln->outSz) > freeMem )
   {
@@ -1710,7 +1719,6 @@ cuOptCand* initOptPln(searchSpecs* sSpec)
 cuOptCand* initOptSwrm(searchSpecs* sSpec)
 {
   size_t freeMem, totalMem;
-  ulong freeRam;                      /// The amount if free host memory
 
   cuOptCand* oPln     = initOptCand(sSpec);
 
@@ -1718,7 +1726,6 @@ cuOptCand* initOptSwrm(searchSpecs* sSpec)
   oPln->inpSz         = sSpec->fftInf.nor * sizeof(fcomplex) ;
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-  freeRam = getFreeRamCU();
 
   if ( (oPln->inpSz + oPln->outSz) > freeMem )
   {
@@ -2292,8 +2299,9 @@ bool strCom(const char* str1, const char* str2)
     return 0;
 }
 
-void readAccelDefalts(uint *flags)
+void readAccelDefalts(searchSpecs *sSpec)
 {
+  uint* flags = &(sSpec->flags);
   FILE *file;
   char fName[1024];
   sprintf(fName, "%s/lib/GPU_defaults.txt", getenv("PRESTO"));
@@ -2496,6 +2504,16 @@ void readAccelDefalts(uint *flags)
         fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n",line, lineno, fName);
       }
 
+      else if ( strCom(line, "Mul_Slices" ) || strCom(line, "MUL_SLICES" ) )
+      {
+        rest = &line[ strlen("Mul_Slices")+1];
+        noMU_Slices = atoi(rest);
+      }
+      else if ( strCom(line, "SS_Slices" ) || strCom(line, "SS_SLICES" ) )
+      {
+        rest = &line[ strlen("SS_Slices")+1];
+        noSS_Slices = atoi(rest);
+      }
 
       else if ( strCom(line, "cuMedianBuffSz" ) )
       {
@@ -2641,7 +2659,7 @@ void readAccelDefalts(uint *flags)
   }
   else
   {
-    printf("Unable to read GPU accel settings from %s\n",fName);
+    printf("Unable to read GPU accel settings from %s\n", fName);
   }
 }
 
@@ -2656,11 +2674,6 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_RETURN_ALL ;
   sSpec.flags         |= CU_CAND_ARR ;
   sSpec.flags         |= FLAG_ITLV_ROW ;  //   FLAG_ITLV_ROW    FLAG_ITLV_PLN
-  //sSpec.flags         |= FLAG_SAS_TEX ;
-  //sSpec.flags         |= FLAG_TEX_INTERP ;
-  //sSpec.flags         |= FLAG_MUL_CB_OUT ;
-
-  readAccelDefalts(&sSpec.flags);
 
   sSpec.outType       = CU_CANDFULL ;
 
@@ -2669,11 +2682,11 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.fftInf.rlo    = obs->rlo;
   sSpec.fftInf.rhi    = obs->rhi;
 
+  readAccelDefalts(&sSpec);
+
   if ( sSpec.flags & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
   {
     // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
-
-    //sSpec.fftInf.rlo  = ceil(obs->rlo/(float)cmd->numharm)*cmd->numharm;
     sSpec.fftInf.rlo  = floor(obs->rlo/(float)cmd->numharm)*cmd->numharm;
   }
 

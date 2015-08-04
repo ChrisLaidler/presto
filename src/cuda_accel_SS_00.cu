@@ -22,16 +22,13 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
   {
     FOLD  // Set the local and return candidate powers to zero  .
     {
-      if ( blockIdx.y == 0 )
-      {
-        int oStride    = STRIDE_HARM[0];
+      int oStride    = STRIDE_HARM[0];
 
-        for ( int stage = 0; stage < noStages; stage++ )
+      for ( int stage = 0; stage < noStages; stage++ )
+      {
+        for ( int step = 0; step < noSteps; step++)               // Loop over steps
         {
-          for ( int step = 0; step < noSteps; step++)               // Loop over steps
-          {
-            d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
-          }
+          d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
         }
       }
     }
@@ -104,7 +101,7 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
       {
         for ( int step = 0; step < noSteps; step++)               // Loop over steps
         {
-          d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+          d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
         }
       }
     }
@@ -118,8 +115,11 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
       {
         uint nHeight  = HEIGHT_STAGE[harm] * noSteps;
         float tSum    = 0;
+        int   lDepth    = ceilf(nHeight/(float)gridDim.y);
+        int   y0        = lDepth*blockIdx.y;
+        int   y1        = MIN(y0+lDepth, nHeight);
 
-        for ( int y = 0; y < nHeight; y++ )
+        for ( int y = y0; y < y1; y++ )
         {
           int idx  = (y) * stride;
 
@@ -171,7 +171,7 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
       {
         for ( int step = 0; step < noSteps; step++)             // Loop over steps
         {
-          d_cands[step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+          d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
         }
       }
     }
@@ -185,10 +185,13 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
       {
         uint nHeight = HEIGHT_STAGE[0] * noSteps;
         float tSum = 0;
+        int   lDepth    = ceilf(nHeight/(float)gridDim.y);
+        int   y0        = lDepth*blockIdx.y;
+        int   y1        = MIN(y0+lDepth, nHeight);
 
         FOLD // Read data from plains  .
         {
-          for ( int y = 0; y < nHeight; y++ )
+          for ( int y = y0; y < y1; y++ )
           {
             int idx  = (y) * stride ;
 
@@ -455,7 +458,7 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);
-  dimGrid.y   = globalInt02;
+  dimGrid.y   = batch->noSSSlices;
 
   if ( 0 )  // Stage order  .
   {

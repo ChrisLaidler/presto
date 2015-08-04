@@ -259,6 +259,7 @@ typedef struct searchSpecs
 
     int     outType;                  ///< The type of output
     void*   outData;                  ///< A pointer to the location to store candidates
+
 } searchSpecs;
 
 /** User specified GPU search details
@@ -332,6 +333,8 @@ typedef struct cuFfdotStack
     size_t  stridePwrs;               ///< The stride of the powers
     uint    flag;                     ///< CUDA accel search flags
 
+    size_t  noMulSlices;              ///< The number of slices to do multiplication with
+
     // Sub data structures associated with this stack
     cuHarmInfo* harmInf;              ///< A pointer to all the harmonic info's for this stack
     cuKernel*   kernels;              ///< A pointer to all the kernels for this stack
@@ -392,12 +395,15 @@ typedef struct cuFFdotBatch
     size_t  noStacks;                 ///< The number of stacks in this batch
     size_t  noHarms;                  ///< The number of harmonics in the family
     size_t  noSteps;                  ///< The number of steps processed by the batch
+    size_t  noMulSlices;              ///< The number of slices to do multiplication with
+    size_t  noSSSlices;               ///< The number of slices to do sum and search
     int     noHarmStages;             ///< The number of stages of harmonic summing
+
     uint    flag;                     ///< CUDA accel search flags
     uint    accelLen;                 ///< The size to step through the input fft
     int     noResults;                ///< The number of results from the previous search
     int     device;                   ///< The CUDA device to run on
-    int     noSSstages;               ///< The number sum and search
+
     CUcontext pctx;                   ///< Context for the batch
 
     int stageIdx[MAX_HARM_NO];        ///< The index of the plains in the Presto harmonic summing order

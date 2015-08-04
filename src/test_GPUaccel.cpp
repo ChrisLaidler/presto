@@ -732,6 +732,14 @@ int main(int argc, char *argv[])
   /* Create the accelobs structure */
   create_accelobs(&obs, &idata, cmd, 1);
 
+  if ( obs.inmem ) // Force to standard search  .
+  {
+    printf("Reverting to standard accelsearch.\n");
+    obs.inmem = 0;
+    vect_free(obs.ffdotplane);
+    obs.ffdotplane = NULL;
+  }
+
   /* Zap birdies if requested and if in memory */
   if (cmd->zaplistP && !obs.mmap_file && obs.fft) {
     int numbirds;
@@ -878,7 +886,7 @@ int main(int argc, char *argv[])
             float frac  = (float)(harm)/(float)harmtosum;
             int idx     = noHarms - frac * noHarms;
 
-            cuHarmInfo *hinf    = &cuSrch->mInf->kernels[0].hInfos[idx];
+            cuHarmInfo  *hinf   = &cuSrch->mInf->kernels[0].hInfos[idx];
             subharminfo *sinf0  = subharminfs[0];
             subharminfo *sinf1  = subharminfs[1];
             subharminfo *sinf   = &subharminfs[stage][harm - 1];
@@ -935,7 +943,7 @@ int main(int argc, char *argv[])
         int firstStep       = 0;
         bool printDetails   = false;
         bool printBadLines  = false;
-        bool CSV            = true;
+        bool CSV            = false;
 
         printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
         printf("\nWill check all input and plains and report ");
@@ -1745,7 +1753,7 @@ int main(int argc, char *argv[])
 
     printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
   }
-  
+
   if(1) /* Candidate list trimming and optimization */
   {
     int numcands;

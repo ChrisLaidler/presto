@@ -2,7 +2,7 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
-IL_PLN # Last Edited by run time script
+IL_ROW                                 # Last Edited by run time script
 
 ######## Input #######
 
@@ -16,7 +16,7 @@ FFT_GPU # Last Edited by run time script
 ###### Convolve ######
 
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30
-MUL_- # Last Edited by run time script
+MUL_21 # Last Edited by run time script
 
 # Other Convolve options
 # FLAG_MUL_TEX
@@ -60,9 +60,11 @@ CU_CAND_ARR
 #cuMedianBuffSz 2048
 
 
-globalInt01 6
+globalInt01 2                   # Last Edited by run time script
 
-globalInt02 2
+MUL_SLICES	4		# Last Edited by run time script
+SS_SLICES	4		# Last Edited by run time script
+
 
 optpln01 40
 optpln02 30

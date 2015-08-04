@@ -54,7 +54,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
 
             if ( blockIdx.y == 0 )
             {
-              d_cands[step*noStages*oStride + stage*oStride + tid ].value = 0;
+              d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].value = 0;
             }
           }
         }
@@ -203,7 +203,7 @@ __global__ void add_and_searchCU33_k(const uint width, __restrict__ candPZs* d_c
             if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
             {
               // Write to DRAM
-              d_cands[step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
+              d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
             }
           }
         }
@@ -439,7 +439,7 @@ __host__ void add_and_searchCU33(cudaStream_t stream, cuFFdotBatch* batch )
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);
-  dimGrid.y   = 1;
+  dimGrid.y   = batch->noSSSlices;
 
   if        ( FLAGS & FLAG_MUL_CB_OUT )
   {

@@ -51,6 +51,12 @@ __device__ const float FRAC_HARM[16]      =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0
 __device__ const short STAGE[5][2]        =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
 __device__ const short CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
 
+//======================================= Global variables  ================================================\\
+
+int    noSS_Slices   = 4;
+
+
+//========================================== Functions  ====================================================\\
 
 /** Return x such that 2**x = n
  *
@@ -518,32 +524,6 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
       hwidth[i] = 0;
     }
 
-    FOLD // TMP
-    {
-      printf("__device__ const int stride_c[] = {");
-      for (int i = 0; i < MAX_HARM_NO; i++) // TMP
-      {
-        printf("%i, ",stride[i]);
-      }
-      printf("};\n");
-
-      printf("__device__ const int height_c[] = {");
-      for (int i = 0; i < MAX_HARM_NO; i++) // TMP
-      {
-        printf("%i, ",height[i]);
-      }
-      printf("};\n");
-
-      printf("__device__ const int hwidth_c[] = {");
-      for (int i = 0; i < MAX_HARM_NO; i++) // TMP
-      {
-        printf("%i, ",hwidth[i]);
-      }
-      printf("};\n");
-
-      printf("\n");
-    }
-
     cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
 
@@ -659,36 +639,39 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
             {
               for ( int x = 0; x < batch->accelLen; x++ )
               {
-                int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
-
-                if ( batch->retType & CU_CANDBASC )
+                for ( int slice = 0; slice < batch->noSSSlices; slice++ )
                 {
-                  accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
-                  poww                  = candB.sigma ;
+                  int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
 
-                  if ( poww > 0 )
+                  if ( batch->retType & CU_CANDBASC )
                   {
-                    //powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ] = poww ;
+                    accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
+                    poww                  = candB.sigma ;
 
-                    numharm     = (1<<stage);
-                    candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
+                    if ( poww > 0 )
+                    {
+                      //powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ] = poww ;
+
+                      numharm     = (1<<stage);
+                      candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
+                    }
                   }
-                }
-                else if ( batch->retType & CU_CANDFULL )
-                {
-                  cand candd  = ((cand*)batch->h_retData)[idx] ;
-                  poww        = candd.power;
-
-                  if ( poww > 0 )
+                  else if ( batch->retType & CU_CANDFULL )
                   {
-                    numharm   = (1<<stage);
-                    candd.sig = candidate_sigma(poww, numharm, numindep[stage]);
+                    cand candd  = ((cand*)batch->h_retData)[idx] ;
+                    poww        = candd.power;
+
+                    if ( poww > 0 )
+                    {
+                      numharm   = (1<<stage);
+                      candd.sig = candidate_sigma(poww, numharm, numindep[stage]);
+                    }
                   }
-                }
-                else
-                {
-                  fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
-                  exit(EXIT_FAILURE);
+                  else
+                  {
+                    fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
+                    exit(EXIT_FAILURE);
+                  }
                 }
               }
             }
@@ -707,7 +690,9 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
 
 #pragma omp critical
         {
-          for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
+          int noSteps = batch->noSteps;
+          int oStride = batch->hInfos->width;
+          for ( int step = 0; step < noSteps; step++) // Loop over steps  .
           {
             rVals* rVal;
 #ifdef SYNCHRONOUS
@@ -720,41 +705,51 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
             {
               numharm = (1<<stage);
 
-              //double loR = rVal->drlo/(double)numharm;
-              //double hiR = (rVal->drlo+batch->accelLen*ACCEL_DR)/(double)numharm;
-
               for ( int x = 0; x < batch->accelLen; x++ )
               {
-                int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
                 poww      = 0;
                 sig       = 0;
                 zz        = 0;
 
-                if      ( batch->retType & CU_CANDMIN  )
+                for ( int slice = 0; slice < batch->noSSSlices; slice++ )
                 {
-                  candMin candM         = ((candMin*)batch->h_retData)[idx];
-                  sig                   = candM.power;
-                  poww                  = candM.power;
-                  zz                    = candM.z;
-                }
-                else if ( batch->retType & CU_POWERZ_S   )
-                {
-                  candPZs candM          = ((candPZs*)batch->h_retData)[idx];
-                  sig                   = candM.value;
-                  poww                  = candM.value;
-                  zz                    = candM.z;
-                }
-                else if ( batch->retType & CU_CANDBASC )
-                {
-                  accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx];
-                  poww                  = candB.sigma;
-                  sig                   = candB.sigma;
-                  zz                    = candB.z;
-                }
-                else
-                {
-                  fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-                  exit(EXIT_FAILURE);
+                  int idx   = slice*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + x ;
+
+                  if      ( batch->retType & CU_CANDMIN  )
+                  {
+                    candMin candM         = ((candMin*)batch->h_retData)[idx];
+                    if ( candM.power > poww )
+                    {
+                      sig                 = candM.power;
+                      poww                = candM.power;
+                      zz                  = candM.z;
+                    }
+                  }
+                  else if ( batch->retType & CU_POWERZ_S   )
+                  {
+                    candPZs candM         = ((candPZs*)batch->h_retData)[idx];
+                    if ( candM.value > poww )
+                    {
+                      sig                 = candM.value;
+                      poww                = candM.value;
+                      zz                  = candM.z;
+                    }
+                  }
+                  else if ( batch->retType & CU_CANDBASC )
+                  {
+                    accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx];
+                    if ( candB.sigma > poww )
+                    {
+                      poww                  = candB.sigma;
+                      sig                   = candB.sigma;
+                      zz                    = candB.z;
+                    }
+                  }
+                  else
+                  {
+                    fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+                    exit(EXIT_FAILURE);
+                  }
                 }
 
                 if ( poww > 0 )

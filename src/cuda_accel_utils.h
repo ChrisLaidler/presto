@@ -379,6 +379,9 @@ extern long long time2;       /// Global variable used for timing
 extern long long time3;       /// Global variable used for timing
 extern long long time4;       /// Global variable used for timing
 
+extern int    noSS_Slices;
+extern int    noMU_Slices;
+
 extern int    globalInt01;
 extern int    globalInt02;
 extern int    globalInt03;
@@ -454,7 +457,6 @@ __global__ void print_YINDS(int no);
 
 double _GammaP (double n, double x);
 double _GammaQ (double n, double x);
-
 
 
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

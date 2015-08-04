@@ -142,10 +142,9 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
 
 float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double w)
 {
-  double powargr, powargi, sum = 0.0;
-  double lo1, lo2, hi1, hi2, freq;
+  double powargr, powargi;
+  double lo1, hi1;
   int binsperside, kern_half_width,ii;
-  fcomplex ans;
 
   binsperside = NUMLOCPOWAVG / 2;
   kern_half_width = w_resp_halfwidth(z, w, LOWACC);
@@ -177,7 +176,6 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   /* Step through the input FFT and create powers */
   for (ii = 0; ii < numamps; ii++)
   {
-    float powargr, powargi;
     powers[ii] = POWER(data[(int)lo1+ii].r, data[(int)lo1+ii].i);
   }
 
@@ -454,7 +452,7 @@ void calc_rzwerrs(fourierprops * props, double T, rzwerrs * result)
 double extended_equiv_gaussian_sigma(double logp)
 /*
   extended_equiv_gaussian_sigma(double logp):
-      Return the equivalent gaussian sigma corresponding to the 
+      Return the equivalent gaussian sigma corresponding to the
           natural log of the cumulative gaussian probability logp.
           In other words, return x, such that Q(x) = p, where Q(x)
           is the cumulative normal distribution.  This version uses
@@ -553,7 +551,7 @@ double chi2_logp(double chi2, int dof)
 /* of chi2 given dof degrees of freedom. */
 {
     double logp;
-    
+
     if (chi2 <= 0.0) {
         return -INFINITY;
     }

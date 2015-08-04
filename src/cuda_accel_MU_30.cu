@@ -35,7 +35,12 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
       // Stride input data
       datas        += stride*noSteps;
 
-      for (int iy = 0; iy < height; iy++)           // Loop over individual plain  .
+      short   lDepth  = ceilf(height/(float)gridDim.y);
+      short   y0      = lDepth*blockIdx.y;
+      short   y1      = MIN(y0+lDepth, height);
+
+      //for (int iy = 0; iy < height; iy++)           // Loop over individual plain  .
+      for (int iy = y0; iy < y1; iy++)              // Loop over individual plain  .
       {
         const int plnOffset = iy*stride;
         const int PlnStride = height*stride;
@@ -132,7 +137,7 @@ __host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch)
   dimBlock.y = CNV_DIMY;
 
   dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = 1;
+  dimGrid.y = batch->noMulSlices;
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult30_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);

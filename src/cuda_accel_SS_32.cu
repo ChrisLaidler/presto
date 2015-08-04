@@ -39,7 +39,6 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZs* d_c
     {
       FOLD // Calculate the x indices or create a pointer offset by the correct amount  .
       {
-        //#pragma unroll
         for ( int harm = 0; harm < noHarms; harm++ )                /// loop over harmonic  .
         {
           // NOTE: the indexing below assume each plain starts on a multiple of noHarms
@@ -50,13 +49,11 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZs* d_c
 
       FOLD  // Set the local and return candidate powers to zero  .
       {
-        //#pragma unroll
         for ( int stage = 0; stage < noStages; stage++ )
         {
-          //#pragma unroll
           for ( int step = 0; step < noSteps; step++)               // Loop over steps
           {
-            d_cands[step*noStages*oStride + stage*oStride + gid ].value = 0 ;
+            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + gid ].value = 0 ;
           }
         }
       }
@@ -176,7 +173,6 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZs* d_c
 
         FOLD // Write results back to DRAM and calculate sigma if needed  .
         {
-          //#pragma unroll
           for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages
           {
             if  ( candPow [stage] >  POWERCUT_STAGE[stage] )
@@ -186,7 +182,7 @@ __global__ void add_and_searchCU32_k(const uint width, __restrict__ candPZs* d_c
               tt.z     = candZ   [stage];
 
               // Write to DRAM
-              d_cands[step*noStages*oStride + stage*oStride + gid] = tt;
+              d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + gid] = tt;
             }
           }
         }
