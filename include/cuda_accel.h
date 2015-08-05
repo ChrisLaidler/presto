@@ -65,12 +65,12 @@ extern "C"
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_MUL_TEX        (1<<11)   ///< Use texture memory for multiplication  - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_MUL_CB_IN      (1<<12)   ///< Use an input  callback to do the multiplication      - I found this to be very slow
-#define     FLAG_MUL_CB_OUT     (1<<13)   ///< Use an output callback to create powers           - This is a similar speed
+#define     FLAG_MUL_TEX        (1<<11)   ///< Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_CUFFT_CB_IN    (1<<12)   ///< Use an input  callback to do the multiplication      - I found this to be very slow
+#define     FLAG_CUFFT_CB_OUT   (1<<13)   ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
 
 #define     FLAG_SAS_TEX        (1<<14)   ///< Use texture memory to access the d-∂d plains during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     (1<<15)   ///< Use liner interpolation in with texture memory - This requires - FLAG_MUL_CB_OUT and FLAG_SAS_TEX
+#define     FLAG_TEX_INTERP     (1<<15)   ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
 #define     FLAG_SIG_GPU        (1<<16)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
 #define     FLAG_SS_00          (1<<17)   ///<

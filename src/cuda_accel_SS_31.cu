@@ -114,7 +114,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
 
                       FOLD // Read powers  .
                       {
-                        if      ( FLAGS & FLAG_MUL_CB_OUT )
+                        if      ( FLAGS & FLAG_CUFFT_CB_OUT )
                         {
                           //pow[step]             = powersArr[harm][ iy2 + ix2 ];
                           pow[step]             = t[ iy2 + ix2 ];
@@ -417,12 +417,12 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 
   FOLD // Call flag template  .
   {
-    if        ( FLAGS & FLAG_MUL_CB_OUT )
+    if        ( FLAGS & FLAG_CUFFT_CB_OUT )
     {
       if      ( FLAGS & FLAG_ITLV_ROW )
-        add_and_searchCU31_p<FLAG_MUL_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
+        add_and_searchCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
       else if ( FLAGS & FLAG_ITLV_PLN )
-        add_and_searchCU31_p<FLAG_MUL_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
+        add_and_searchCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
       else
       {
         fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );

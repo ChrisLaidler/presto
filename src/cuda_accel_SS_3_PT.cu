@@ -329,7 +329,7 @@ __host__ void add_and_searchCU3_PT_f(cudaStream_t stream, cuFFdotBatch* batch )
   dimGrid.x   = ceil(ww);
   dimGrid.y   = 1;
 
-  if        ( (FLAGS & FLAG_MUL_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if        ( (FLAGS & FLAG_CUFFT_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
     if      ( FLAGS & FLAG_ITLV_ROW )
       add_and_searchCU3_PT_p<FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);

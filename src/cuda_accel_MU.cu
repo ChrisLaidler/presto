@@ -130,7 +130,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 
         FOLD // Set store FFT callback  .
         {
-          if ( batch->flag & FLAG_MUL_CB_OUT )
+          if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
             CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
           }
@@ -174,7 +174,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
     dim3 dimBlock, dimGrid;
 
-    if ( batch->flag & FLAG_MUL_CB_IN )  		// Do the multiplication using a CUFFT callback  .
+    if ( batch->flag & FLAG_CUFFT_CB_IN )  		// Do the multiplication using a CUFFT callback  .
     {
 #ifdef STPMSG
       printf("\t\tMultiply with CUFFT\n");
@@ -352,7 +352,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 #endif
               }
 
-              if ( batch->flag & FLAG_MUL_CB_OUT ) // Set the CUFFT callback to calculate and store powers  .
+              if ( batch->flag & FLAG_CUFFT_CB_OUT ) // Set the CUFFT callback to calculate and store powers  .
               {
                 CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
               }

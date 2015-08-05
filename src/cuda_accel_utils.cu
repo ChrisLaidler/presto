@@ -456,7 +456,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           {
             kernel->plnDataSize     += cStack->strideCmplx * cStack->height;              // At this point stride is still in bytes
 
-            if ( kernel->flag & FLAG_MUL_CB_OUT )
+            if ( kernel->flag & FLAG_CUFFT_CB_OUT )
             {
               CUDA_SAFE_CALL(cudaMallocPitch(&cStack->d_plainPowers, &cStack->stridePwrs, cStack->width * sizeof(float), cStack->kerHeigth), "Failed to allocate device memory for kernel stack.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Allocating GPU memory to asses plain stride.");
@@ -1298,7 +1298,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_iData,          batch->inpDataSize*batch->noSteps ), "Failed to allocate device memory for kernel stack.");
         CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_plainData,      batch->plnDataSize*batch->noSteps ), "Failed to allocate device memory for kernel stack.");
 
-        if ( batch->flag & FLAG_MUL_CB_OUT )
+        if ( batch->flag & FLAG_CUFFT_CB_OUT )
         {
           CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_plainPowers,  batch->pwrDataSize*batch->noSteps ), "Failed to allocate device memory for kernel stack.");
           //batch->d_plainPowers = (float*)batch->d_plainData; // We can just re-use the plain data <- UMMMMMMMMM? No we can't!!
@@ -1561,7 +1561,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Create textures for the f-∂f plains  .
   {
-    if ( (batch->flag&FLAG_TEX_INTERP) && !( (batch->flag&FLAG_MUL_CB_OUT) && (batch->flag&FLAG_SAS_TEX) ) )
+    if ( (batch->flag&FLAG_TEX_INTERP) && !( (batch->flag&FLAG_CUFFT_CB_OUT) && (batch->flag&FLAG_SAS_TEX) ) )
     {
       fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation\n");
       batch->flag &= ~FLAG_TEX_INTERP;
@@ -1600,7 +1600,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         {
           cuFFdot* cPlain = &cStack->plains[j];
 
-          if ( batch->flag & FLAG_MUL_CB_OUT ) // float input
+          if ( batch->flag & FLAG_CUFFT_CB_OUT ) // float input
           {
             if      ( batch->flag & FLAG_ITLV_ROW )
             {
@@ -1866,7 +1866,7 @@ void freeBatch(cuFFdotBatch* batch)
       CUDA_SAFE_CALL(cudaFree(batch->d_iData ), "Failed to allocate device memory for kernel stack.");
       CUDA_SAFE_CALL(cudaFree(batch->d_plainData ), "Failed to allocate device memory for kernel stack.");
 
-      if ( batch->flag & FLAG_MUL_CB_OUT )
+      if ( batch->flag & FLAG_CUFFT_CB_OUT )
       {
         CUDA_SAFE_CALL(cudaFree(batch->d_plainPowers), "Failed to allocate device memory for kernel stack.");
       }
@@ -1945,7 +1945,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
       cudaFreeNull(batch->d_iData);
       cudaFreeNull(batch->d_plainData );
 
-      if ( batch->flag & FLAG_MUL_CB_OUT )
+      if ( batch->flag & FLAG_CUFFT_CB_OUT )
       {
         cudaFreeNull(batch->d_plainPowers);
       }
@@ -2171,15 +2171,15 @@ void printContext()
 
 void setContext(cuFFdotBatch* batch)
 {
-//  int dev;
-//  //printf("Setting device to %i \n", batch->device);
-//  CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
-//  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
-//  if ( dev != batch->device )
-//  {
-//    fprintf(stderr, "ERROR: CUDA Device not set.\n");
-//    exit(EXIT_FAILURE);
-//  }
+  //  int dev;
+  //  //printf("Setting device to %i \n", batch->device);
+  //  CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
+  //  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+  //  if ( dev != batch->device )
+  //  {
+  //    fprintf(stderr, "ERROR: CUDA Device not set.\n");
+  //    exit(EXIT_FAILURE);
+  //  }
 
   CUcontext pctx;
   cuCtxGetCurrent ( &pctx );
@@ -2388,20 +2388,20 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_MUL_TEX;
       }
 
-      else if ( strCom(line, "FLAG_MUL_CB_IN" ) )
+      else if ( strCom(line, "FLAG_CUFFT_CB_IN" ) || strCom(line, "CB_IN" ) )
       {
-        (*flags) |= FLAG_MUL_CB_IN;
+        (*flags) |= FLAG_CUFFT_CB_IN;
       }
 
-      else if ( strCom(line, "FLAG_MUL_CB_OUT" ) || strCom(line, "CB_OUT" ) )
+      else if ( strCom(line, "FLAG_CUFFT_CB_OUT" ) || strCom(line, "CB_OUT" ) )
       {
-        (*flags) |= FLAG_MUL_CB_OUT;
+        (*flags) |= FLAG_CUFFT_CB_OUT;
       }
 
       else if ( strCom(line, "FLAG_NO_CB" ) || strCom(line, "NO_CB" ) )
       {
-        (*flags) &= ~FLAG_MUL_CB_IN;
-        (*flags) &= ~FLAG_MUL_CB_OUT;
+        (*flags) &= ~FLAG_CUFFT_CB_IN;
+        (*flags) &= ~FLAG_CUFFT_CB_OUT;
       }
 
       else if ( strCom(line, "FLAG_SAS_TEX" ) )
@@ -2452,7 +2452,6 @@ void readAccelDefalts(searchSpecs *sSpec)
       }
       else if ( strCom(line, "CU_CAND_LST"  ) || strCom(line, "CAND_LST"  ) )
       {
-        (*flags) &= ~CU_CAND_ALL;
         (*flags) |= CU_CAND_LST;
       }
       else if ( strCom(line, "CU_CAND_QUAD" ) || strCom(line, "CAND_QUAD" ) )
@@ -2504,14 +2503,14 @@ void readAccelDefalts(searchSpecs *sSpec)
         fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n",line, lineno, fName);
       }
 
-      else if ( strCom(line, "Mul_Slices" ) || strCom(line, "MUL_SLICES" ) )
+      else if ( strCom(line, "Slices_MU" ) || strCom(line, "SLICES_MU" ) )
       {
-        rest = &line[ strlen("Mul_Slices")+1];
+        rest = &line[ strlen("SLICES_MU")+1];
         noMU_Slices = atoi(rest);
       }
-      else if ( strCom(line, "SS_Slices" ) || strCom(line, "SS_SLICES" ) )
+      else if ( strCom(line, "Slices_SS" ) || strCom(line, "SLICES_SS" ) )
       {
-        rest = &line[ strlen("SS_Slices")+1];
+        rest = &line[ strlen("SLICES_SS")+1];
         noSS_Slices = atoi(rest);
       }
 
@@ -3147,7 +3146,7 @@ void plotPlains(cuFFdotBatch* batch)
           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlain->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          if ( batch->flag & FLAG_MUL_CB_OUT )
+          if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
             //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlain->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
             CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
@@ -3216,7 +3215,7 @@ void generatePlain(fftInfo fft, long long loBin, long long hiBin, int zMax, int 
     }
   }
 
-  flags = FLAG_MUL_CB_OUT ;
+  flags = FLAG_CUFFT_CB_OUT ;
 
   gpu[0] = 0;
   kernels = new cuFFdotBatch;
@@ -3270,88 +3269,176 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
   sSpec = cuSrch->sSpec;
   mInf = cuSrch->mInf;
   batch = cuSrch->mInf->batches;
+  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
+
   char hostname[1024];
   gethostname(hostname, 1024);
-  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
+
+  Logger* cvsLog = new Logger(fname, 1);
+  cvsLog->sedCsvDeliminator('\t');
+
   // get the current time
   time_t rawtime;
   tm* ptm;
   time(&rawtime);
   ptm = gmtime(&rawtime);
-  Logger* cvsLog = new Logger(fname, 1);
-  cvsLog->sedCsvDeliminator('\t');
-  cvsLog->csvWrite("Obs N", "#", "%7.3f", obs->N * 1e-6);
-  cvsLog->csvWrite("R bins", "#", "%7.3f", noRR * 1e-6);
-  cvsLog->csvWrite("Harms", "#", "%2li", cuSrch->noHarms);
-  cvsLog->csvWrite("Z max", "#", "%03i", sSpec->zMax);
-  cvsLog->csvWrite("sigma", "#", "%4.2f", sSpec->sigma);
 
-  cvsLog->csvWrite("Width", "#", "%4i", sSpec->pWidth);
-  cvsLog->csvWrite("Step Sz", "#", "%5i", batch->accelLen);
-  cvsLog->csvWrite("Stride", "#", "%5i", batch->stacks->strideCmplx);
-  cvsLog->csvWrite("Steps", "#", "%2i", batch->noSteps);
-  cvsLog->csvWrite("Batches", "#", "%2i", mInf->noBatches);
-  cvsLog->csvWrite("Devices", "#", "%2i", mInf->noDevices);
-  cvsLog->csvWrite("Prep", "s", "%9.4f", prepTime * 1e-6);
-  cvsLog->csvWrite("CPU Srch", "s", "%9.4f", cupTime * 1e-6);
-  cvsLog->csvWrite("GPU Srch", "s", "%9.4f", gpuTime * 1e-6);
-  cvsLog->csvWrite("Opt", "s", "%9.4f", optTime * 1e-6);
-  cvsLog->csvWrite("CPU Opt", "s", "%9.4f", cpuOptTime * 1e-6);
-  cvsLog->csvWrite("GPU Opt", "s", "%9.4f", gpuOptTime * 1e-6);
-
-  float copyH2DT  = 0;
-  float InpNorm   = 0;
-  float InpFFT    = 0;
-  float multT     = 0;
-  float InvFFT    = 0;
-  float ss        = 0;
-  float resultT   = 0;
-  float copyD2HT  = 0;
-#ifdef TIMING
-  for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
+  FOLD // Basics  .
   {
-    float l_copyH2DT  = 0;
-    float l_InpNorm   = 0;
-    float l_InpFFT    = 0;
-    float l_multT     = 0;
-    float l_InvFFT    = 0;
-    float l_ss        = 0;
-    float l_resultT   = 0;
-    float l_copyD2HT  = 0;
+    cvsLog->csvWrite("Width",     "#", "%4i",     sSpec->pWidth);
+    cvsLog->csvWrite("Stride",    "#", "%5i",     batch->stacks->strideCmplx);
+    cvsLog->csvWrite("A-Len",     "#", "%5i",     batch->accelLen);
 
-    for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
-    {
-      cuFFdotBatch* batches = &cuSrch->mInf->batches[batch];
-      l_copyH2DT  += batches->copyH2DTime[stack];
-      l_InpNorm   += batches->normTime[stack];
-      l_InpFFT    += batches->InpFFTTime[stack];
-      l_multT     += batches->multTime[stack];
-      l_InvFFT    += batches->InvFFTTime[stack];
-      l_ss        += batches->searchTime[stack];
-      l_resultT   += batches->resultTime[stack];
-      l_copyD2HT  += batches->copyD2HTime[stack];
-    }
-    copyH2DT  += l_copyH2DT;
-    InpNorm   += l_InpNorm;
-    InpFFT    += l_InpFFT;
-    multT     += l_multT;
-    InvFFT    += l_InvFFT;
-    ss        += l_ss;
-    resultT   += l_resultT;
-    copyD2HT  += l_copyD2HT;
+    cvsLog->csvWrite("Z max",     "#", "%03i",    sSpec->zMax);
+
+    cvsLog->csvWrite("Devices",   "#", "%2i",     mInf->noDevices);
+    cvsLog->csvWrite("GPU",       "#", "%2i",     batch->device);
+
+    cvsLog->csvWrite("Har",       "#", "%2li",    cuSrch->noHarms);
+    cvsLog->csvWrite("Plns",      "#", "%2i",     batch->stacks->noInStack);
+
+    cvsLog->csvWrite("Obs N",     "#", "%7.3f",   obs->N * 1e-6);
+    cvsLog->csvWrite("R bins",    "#", "%7.3f",   noRR * 1e-6);
+
+    cvsLog->csvWrite("Batches",   "#", "%2i",     mInf->noBatches);
+
+    cvsLog->csvWrite("Steps",     "#", "%2i",     batch->noSteps);
+
+    cvsLog->csvWrite("C-Len",     "#", "%2i",     globalInt01);
+
+    cvsLog->csvWrite("MU Slices", "#", "%2i",     batch->noMulSlices);
+    cvsLog->csvWrite("SS Slices", "#", "%2i",     batch->noSSSlices);
+
+    cvsLog->csvWrite("Sigma",     "#", "%4.2f",   sSpec->sigma);
+    cvsLog->csvWrite("Time", "-", "%04i/%02i/%02i %02i:%02i:%02i", 1900 + ptm->tm_year, ptm->tm_mon, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+    cvsLog->csvWrite("hostname", "s", "%s", hostname);
   }
-#endif
-  cvsLog->csvWrite("copyH2D", "ms", "%12.6f", copyH2DT);
-  cvsLog->csvWrite("InpNorm", "ms", "%12.6f", InpNorm);
-  cvsLog->csvWrite("InpFFT", "ms", "%12.6f", InpFFT);
-  cvsLog->csvWrite("Mult", "ms", "%12.6f", multT);
-  cvsLog->csvWrite("InvFFT", "ms", "%12.6f", InvFFT);
-  cvsLog->csvWrite("Sum & Srch", "ms", "%12.6f", ss);
-  cvsLog->csvWrite("result", "ms", "%12.6f", resultT);
-  cvsLog->csvWrite("copyD2H", "ms", "%12.6f", copyD2HT);
 
-  cvsLog->csvWrite("Time", "-", "%04i/%02i/%02i %02i:%02i:%02i", 1900 + ptm->tm_year, ptm->tm_mon, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
-  cvsLog->csvWrite("hostname", "s", "%s", hostname);
+  FOLD // Flags  .
+  {
+    if ( batch->flag & FLAG_ITLV_ROW )
+      cvsLog->csvWrite("IL",    "flg", "ROW");
+    else
+      cvsLog->csvWrite("IL",    "flg", "PLN");
+
+    if ( batch->flag & CU_NORM_CPU )
+      cvsLog->csvWrite("NORM",    "flg", "CPU");
+    else
+      cvsLog->csvWrite("NORM",    "flg", "GPU");
+
+    if ( batch->flag & CU_INPT_CPU_FFT )
+      cvsLog->csvWrite("Inp FFT",    "flg", "CPU");
+    else
+      cvsLog->csvWrite("Inp FFT",    "flg", "GPU");
+
+    if      ( batch->flag & FLAG_MUL_00 )
+      cvsLog->csvWrite("MUL",    "flg", "00");
+    else if ( batch->flag & FLAG_MUL_10 )
+      cvsLog->csvWrite("MUL",    "flg", "10");
+    else if ( batch->flag & FLAG_MUL_21 )
+      cvsLog->csvWrite("MUL",    "flg", "21");
+    else if ( batch->flag & FLAG_MUL_22 )
+      cvsLog->csvWrite("MUL",    "flg", "22");
+    else if ( batch->flag & FLAG_MUL_23 )
+      cvsLog->csvWrite("MUL",    "flg", "23");
+    else if ( batch->flag & FLAG_MUL_30 )
+      cvsLog->csvWrite("MUL",    "flg", "30");
+
+    if      ( batch->flag & FLAG_SS_00 )
+      cvsLog->csvWrite("SS",    "flg", "00");
+    else if ( batch->flag & FLAG_SS_10 )
+      cvsLog->csvWrite("SS",    "flg", "10");
+    else if ( batch->flag & FLAG_SS_20 )
+      cvsLog->csvWrite("SS",    "flg", "20");
+    else if ( batch->flag & FLAG_SS_30 )
+      cvsLog->csvWrite("SS",    "flg", "30");
+
+    cvsLog->csvWrite("CB IN",     "flg", "%i", (bool)(batch->flag & FLAG_CUFFT_CB_IN));
+    cvsLog->csvWrite("CB OUT",    "flg", "%i", (bool)(batch->flag & FLAG_CUFFT_CB_OUT));
+
+    cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_MUL_TEX));
+    cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_SAS_TEX));
+    cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flag & FLAG_TEX_INTERP));
+    if ( batch->flag & FLAG_SIG_GPU )
+      cvsLog->csvWrite("SIG",    "flg", "GPU");
+    else
+      cvsLog->csvWrite("SIG",    "flg", "CPU");
+
+    if      ( batch->flag & CU_CAND_ARR )
+      cvsLog->csvWrite("CAND",  "flg", "ARR");
+    else if ( batch->flag & CU_CAND_LST )
+      cvsLog->csvWrite("CAND",  "flg", "LST");
+    else if ( batch->flag & CU_CAND_QUAD )
+      cvsLog->csvWrite("CAND",  "flg", "QUAD");
+
+    cvsLog->csvWrite("RET_ALL",     "flg", "%i", (bool)(batch->flag & FLAG_RETURN_ALL));
+    cvsLog->csvWrite("STR_ALL",     "flg", "%i", (bool)(batch->flag & FLAG_STORE_ALL));
+    cvsLog->csvWrite("STR_EXP",     "flg", "%i", (bool)(batch->flag & FLAG_STORE_EXP));
+  }
+
+  FOLD // Timing  .
+  {
+    cvsLog->csvWrite("Prep",      "s", "%9.4f",   prepTime * 1e-6);
+    cvsLog->csvWrite("CPU Srch",  "s", "%9.4f",   cupTime * 1e-6);
+    cvsLog->csvWrite("GPU Srch",  "s", "%9.4f",   gpuTime * 1e-6);
+    cvsLog->csvWrite("Opt",       "s", "%9.4f",   optTime * 1e-6);
+    cvsLog->csvWrite("CPU Opt",   "s", "%9.4f",   cpuOptTime * 1e-6);
+    cvsLog->csvWrite("GPU Opt",   "s", "%9.4f",   gpuOptTime * 1e-6);
+  }
+
+  FOLD // Advanced Timing  .
+  {
+    float copyH2DT  = 0;
+    float InpNorm   = 0;
+    float InpFFT    = 0;
+    float multT     = 0;
+    float InvFFT    = 0;
+    float ss        = 0;
+    float resultT   = 0;
+    float copyD2HT  = 0;
+#ifdef TIMING
+    for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
+    {
+      float l_copyH2DT  = 0;
+      float l_InpNorm   = 0;
+      float l_InpFFT    = 0;
+      float l_multT     = 0;
+      float l_InvFFT    = 0;
+      float l_ss        = 0;
+      float l_resultT   = 0;
+      float l_copyD2HT  = 0;
+
+      for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
+      {
+        cuFFdotBatch* batches = &cuSrch->mInf->batches[batch];
+        l_copyH2DT  += batches->copyH2DTime[stack];
+        l_InpNorm   += batches->normTime[stack];
+        l_InpFFT    += batches->InpFFTTime[stack];
+        l_multT     += batches->multTime[stack];
+        l_InvFFT    += batches->InvFFTTime[stack];
+        l_ss        += batches->searchTime[stack];
+        l_resultT   += batches->resultTime[stack];
+        l_copyD2HT  += batches->copyD2HTime[stack];
+      }
+      copyH2DT  += l_copyH2DT;
+      InpNorm   += l_InpNorm;
+      InpFFT    += l_InpFFT;
+      multT     += l_multT;
+      InvFFT    += l_InvFFT;
+      ss        += l_ss;
+      resultT   += l_resultT;
+      copyD2HT  += l_copyD2HT;
+    }
+#endif
+    cvsLog->csvWrite("copyH2D",   "ms", "%12.6f", copyH2DT);
+    cvsLog->csvWrite("InpNorm",   "ms", "%12.6f", InpNorm);
+    cvsLog->csvWrite("InpFFT",    "ms", "%12.6f", InpFFT);
+    cvsLog->csvWrite("Mult",      "ms", "%12.6f", multT);
+    cvsLog->csvWrite("InvFFT",    "ms", "%12.6f", InvFFT);
+    cvsLog->csvWrite("Sum & Srch", "ms", "%12.6f", ss);
+    cvsLog->csvWrite("result",    "ms", "%12.6f", resultT);
+    cvsLog->csvWrite("copyD2H",   "ms", "%12.6f", copyD2HT);
+  }
 
   cvsLog->csvEndLine();
   //#endif

@@ -64,7 +64,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
 
             if        ( FLAGS & FLAG_ITLV_ROW )
             {
-              if      ( FLAGS & FLAG_MUL_CB_OUT )
+              if      ( FLAGS & FLAG_CUFFT_CB_OUT )
               {
                 //pPowr[step][harm]   = &searchList.powers.val[harm][ ix + searchList.strides.val[harm]*step ] ;
               }
@@ -75,7 +75,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
             }
             else if   ( FLAGS & FLAG_ITLV_PLN )
             {
-              if      ( FLAGS & FLAG_MUL_CB_OUT )
+              if      ( FLAGS & FLAG_CUFFT_CB_OUT )
               {
                 //pPowr[step][harm]   = &searchList.powers.val[harm][ ix + searchList.strides.val[harm]*step*searchList.heights.val[harm] ] ;
               }
@@ -95,7 +95,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
         {
           if        ( FLAGS & FLAG_ITLV_ROW )
           {
-            if ( FLAGS & FLAG_MUL_CB_OUT )
+            if ( FLAGS & FLAG_CUFFT_CB_OUT )
             {
               //searchList.strides.val[harm] *= noSteps;
             }
@@ -199,7 +199,7 @@ __global__ void add_and_maxCU31(cuSearchList searchList, float* d_cands, uint* d
                   }
                   else
                   {
-                    if ( FLAGS & FLAG_MUL_CB_OUT )
+                    if ( FLAGS & FLAG_CUFFT_CB_OUT )
                     {
                       float power;
                       if        ( FLAGS & FLAG_ITLV_ROW )
@@ -397,12 +397,12 @@ __host__ void add_and_maxCU31_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_
 
 __host__ void add_and_maxCU31_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream,cuSearchList searchList, float* d_cands, uint* d_sem, int base, float* rLows, int noSteps, const uint noStages, uint FLAGS )
 {
-  if        ( FLAGS & FLAG_MUL_CB_OUT )
+  if        ( FLAGS & FLAG_CUFFT_CB_OUT )
   {
     if      ( FLAGS & FLAG_ITLV_ROW )
-      add_and_maxCU31_p<FLAG_MUL_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_maxCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else if ( FLAGS & FLAG_ITLV_PLN )
-      add_and_maxCU31_p<FLAG_MUL_CB_OUT | FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
+      add_and_maxCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_PLN> (dimGrid, dimBlock, i1, multStream, searchList, d_cands, d_sem, base, rLows, noSteps, noStages );
     else
     {
       fprintf(stderr, "ERROR: add_and_maxCU31 has not been templated for flag combination. \n" );

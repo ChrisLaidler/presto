@@ -1135,7 +1135,7 @@ int main(int argc, char *argv[])
                           powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->stridePwrs + cHInfo->halfWidth * 2 ];
                         }
 
-                        if      ( trdBatch->flag & FLAG_MUL_CB_OUT )
+                        if      ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
                         {
                           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                           CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
@@ -1440,7 +1440,7 @@ int main(int argc, char *argv[])
                 good = true;
                 bad  = false;
 
-                if ( trdBatch->flag & FLAG_MUL_CB_OUT )
+                if ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
                 {
                   if ( printDetails )
                     printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
@@ -2007,17 +2007,15 @@ int main(int argc, char *argv[])
   /* Finish up */
 
   printf("Searched the following approx numbers of independent points:\n");
-  printf("  %d harmonic:   %9lld\n", 1, obs.numindep[0]);
-  for (ii = 1; ii < obs.numharmstages; ii++)
-    printf("  %d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
+  for (ii = 0; ii < obs.numharmstages; ii++)
+    printf("  %2d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
 
   printf("\nTiming summary:\n");
-  tott = times(&runtimes) / (double) CLK_TCK - tott;
+  tott = times(&runtimes)   / (double) CLK_TCK - tott;
   utim = runtimes.tms_utime / (double) CLK_TCK;
   stim = runtimes.tms_stime / (double) CLK_TCK;
   ttim = utim + stim;
-  printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n",
-      ttim, utim, stim);
+  printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n", ttim, utim, stim);
   printf("  Total time: %.3f sec\n\n", tott);
 
   printf("Final candidates in binary format are in '%s'.\n", obs.candnm);

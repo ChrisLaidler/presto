@@ -604,6 +604,16 @@ $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
 
 ###############  Cleans   ################
 
+cleanALEN:
+	# Debug
+	rm -f build/debug/accel_utils.o
+	rm -f build/debug/accelsearch.o
+	rm -f build/debug/test_GPUaccel.o
+	# Release
+	rm -f build/release/accel_utils.o
+	rm -f build/release/accelsearch.o
+	rm -f build/release/test_GPUaccel.o
+
 cleanTIMING:
 	rm -rf build/debug/accelsearch*.o   build/debug/cuda_accel_MU.cu.o   build/debug/cuda_accel_IN.cu.o   build/debug/cuda_accel_SS.cu.o   build/debug/cuda_accel_utils.cu.o
 	rm -rf build/release/accelsearch*.o build/release/cuda_accel_MU.cu.o build/release/cuda_accel_IN.cu.o build/release/cuda_accel_SS.cu.o build/release/cuda_accel_utils.cu.o

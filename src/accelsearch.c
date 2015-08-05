@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
   if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		  // Read candidates from previous search  . // TMP
   {
     int numcands;
-    fread( &numcands, sizeof(numcands), 1, file );
+    int wst = fread( &numcands, sizeof(numcands), 1, file );
     int nc = 0;
 
     printf("\nReading %i raw candies from \"%s\" previous search.\n", numcands, candsFile);
@@ -187,13 +187,13 @@ int main(int argc, char *argv[])
     for (nc = 0; nc < numcands; nc++)
     {
       accelcand* newCnd = (accelcand*)malloc(sizeof(accelcand));
-      fread( newCnd, sizeof(accelcand), 1, file );
+      wst = fread( newCnd, sizeof(accelcand), 1, file );
 
       cands=insert_accelcand(cands,newCnd);
     }
     fclose(file);
   }
-  else                                              // Run Search  .
+  else                                                    // Run Search  .
   {
 
     /* Start the main search loop */
@@ -208,6 +208,8 @@ int main(int argc, char *argv[])
 #ifdef CUDA // Profiling  .
         nvtxRangePush("CPU");
         gettimeofday(&start, NULL); // Note could start the timer after kernel init
+
+        printf("\n*************************************************************************************************\n                         Doing CPU Search\n*************************************************************************************************\n");
 #endif
 
         subharminfo **subharminfs;
@@ -223,8 +225,6 @@ int main(int argc, char *argv[])
           printf("  Working candidates in a test format are in '%s'.\n\n",
               obs.workfilenm);
         }
-
-        printf("\n------------------------\nDoing CPU Search\n------------------------\n");
 
         print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
@@ -277,6 +277,9 @@ int main(int argc, char *argv[])
         }
         print_percent_complete(obs.highestbin - obs.rlo,
             obs.highestbin - obs.rlo, "search", 0);
+        printf("\n");
+
+        free_subharminfos(&obs, subharminfs);
 
 #ifdef CUDA  // Profiling  .
 
@@ -285,21 +288,22 @@ int main(int argc, char *argv[])
         cupTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
         cands = candsCPU;
-        printf("GPU found %i are unique. In %.4f ms\n", g_slist_length(candsCPU), cupTime/1000.0 );
+        printf("\nGPU found %i are unique. In %.4f ms\n", g_slist_length(candsCPU), cupTime/1000.0 );
 
         nvtxRangePop();
 
-        char name [100];
+        char name [1024];
         sprintf(name,"%s_CPU_01_Cands.csv",fname);
         printCands(name, candsCPU, obs.T);
-
-        free_subharminfos(&obs, subharminfs);
 #endif
+
       }
 
 #ifdef CUDA   // --=== The GPU Search == --  .
       if ( cmd->gpuP > 0 )
       {
+        printf("\n*************************************************************************************************\n                         Doing GPU Search \n*************************************************************************************************\n");
+
         candsGPU = NULL;
 
         cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
@@ -310,8 +314,6 @@ int main(int argc, char *argv[])
           //cudaDeviceSynchronize();          // This is only necessary for timing
           gettimeofday(&start, NULL);       // Profiling
           //cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
-
-          printf("\n------------------------\nDoing GPU Search \n------------------------\n");
 
           long noCands            = 0;
           cuSrch                  = initCuSearch(&sSpec, &gSpec, NULL);
@@ -474,7 +476,7 @@ int main(int argc, char *argv[])
           gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
           cands = candsGPU;
-          printf("GPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
+          printf("\nGPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
           // Free GPU memory
           freeAccelMem(cuSrch->mInf);
@@ -486,6 +488,7 @@ int main(int argc, char *argv[])
 #endif
         }
       }
+
 #else
       fprintf(stderr,"ERROR: Not compiled with CUDA.\n");
 #endif
@@ -496,7 +499,7 @@ int main(int argc, char *argv[])
       if ( (file = fopen(candsFile, "wb")) )
       {
         int numcands = g_slist_length(cands);
-        printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
+        //printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
         fwrite( &numcands, sizeof(numcands), 1, file );
 
         GSList *candLst = cands;
@@ -517,12 +520,15 @@ int main(int argc, char *argv[])
         fprintf(stderr,"ERROR: unable to open \"%s\" to write candidates.\n",candsFile);
       }
     }
-
-    printf("\nDone searching.  Now optimizing each candidate.\n\n");
   }
 
-  if (1)   	// optimization  .
+  FOLD  // optimization  .
   {                            /* Candidate list trimming and optimization */
+
+    //printf("Done searching.  Now optimizing each candidate.\n\n");
+    printf("\n*************************************************************************************************\n                          Optimizing candidates\n*************************************************************************************************\n");
+    printf("\n");
+
     int numcands;
     GSList *listptr;
     accelcand *cand;
@@ -746,11 +752,8 @@ int main(int argc, char *argv[])
       fclose(obs.workfile);
 
       free(props);
-      printf("\n\nDone optimizing.\n\n");
+      printf("\nDone optimizing.\n\n");
 
-      time_t t;
-      FILE *file;
-      time(&t);
     }
     else
     {
@@ -780,118 +783,121 @@ int main(int argc, char *argv[])
 #endif
   }
 
-#ifdef CUDA 	// Timing message  .
-  if (cuSrch)
+  FOLD // Timing message  .
   {
-    printf("\nTiming:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
+#ifdef CUDA
+    if (cuSrch)
+    {
+      printf("\n*************************************************************************************************\n                            Timing\n*************************************************************************************************\n");
 
-    writeLogEntry("/home/chris/accelsearch_log.csv", &obs, cuSrch, prepTime, cupTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
+      printf("\nTiming:  Prep:\t%9.06f\tCPU:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\n\n", prepTime * 1e-6, cupTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6 );
+
+      writeLogEntry("/home/chris/accelsearch_log.csv", &obs, cuSrch, prepTime, cupTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
 
 #ifdef TIMING  // Advanced timing massage  .
 
-    int batch, stack;
-    float copyH2DT  = 0;
-    float InpNorm   = 0;
-    float InpFFT    = 0;
-    float multT     = 0;
-    float InvFFT    = 0;
-    float ss        = 0;
-    float resultT   = 0;
-    float copyD2HT  = 0;
+      int batch, stack;
+      float copyH2DT  = 0;
+      float InpNorm   = 0;
+      float InpFFT    = 0;
+      float multT     = 0;
+      float InvFFT    = 0;
+      float ss        = 0;
+      float resultT   = 0;
+      float copyD2HT  = 0;
 
-    printf("\n===========================================================================================================================================\n");
-    printf("\nAdvanced timing, all times are in ms\n");
+      printf("\n===========================================================================================================================================\n");
+      printf("\nAdvanced timing, all times are in ms\n");
 
-    for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
-    {
-      if ( cuSrch->mInf->noBatches > 1 )
-        printf("Batch %02i\n",batch);
-
-      cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
-
-      float l_copyH2DT  = 0;
-      float l_InpNorm   = 0;
-      float l_InpFFT    = 0;
-      float l_multT     = 0;
-      float l_InvFFT    = 0;
-      float l_ss        = 0;
-      float l_resultT   = 0;
-      float l_copyD2HT  = 0;
-
-      FOLD // Heading  .
+      for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
       {
-        printf("\t\t");
-        printf("%s\t","Copy H2D");
+        if ( cuSrch->mInf->noBatches > 1 )
+          printf("Batch %02i\n",batch);
 
-        if ( batches->flag & CU_NORM_GPU )
-          printf("%s\t","Norm GPU");
-        else
-          printf("%s\t","Norm CPU");
+        cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
 
-        if ( batches->flag & CU_INPT_CPU_FFT )
-          printf("%s\t","Inp FFT CPU");
-        else
-          printf("%s\t","Inp FFT GPU");
+        float l_copyH2DT  = 0;
+        float l_InpNorm   = 0;
+        float l_InpFFT    = 0;
+        float l_multT     = 0;
+        float l_InvFFT    = 0;
+        float l_ss        = 0;
+        float l_resultT   = 0;
+        float l_copyD2HT  = 0;
 
-        printf("%s\t","Multiplication");
+        FOLD // Heading  .
+        {
+          printf("\t\t");
+          printf("%s\t","Copy H2D");
 
-        printf("%s\t","Inverse FFT");
+          if ( batches->flag & CU_NORM_GPU )
+            printf("%s\t","Norm GPU");
+          else
+            printf("%s\t","Norm CPU");
 
-        printf("%s\t","Sum & Search");
+          if ( batches->flag & CU_INPT_CPU_FFT )
+            printf("%s\t","Inp FFT CPU");
+          else
+            printf("%s\t","Inp FFT GPU");
 
-        if ( batches->flag & FLAG_SIG_GPU )
-          printf("%s\t","Sigma GPU");
-        else
-          printf("%s\t","Sigma CPU");
+          printf("%s\t","Multiplication");
 
-        printf("%s\t","Copy D2H");
+          printf("%s\t","Inverse FFT");
 
-        printf("\n");
+          printf("%s\t","Sum & Search");
+
+          if ( batches->flag & FLAG_SIG_GPU )
+            printf("%s\t","Sigma GPU");
+          else
+            printf("%s\t","Sigma CPU");
+
+          printf("%s\t","Copy D2H");
+
+          printf("\n");
+        }
+
+        for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
+        {
+          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+
+          l_copyH2DT  += batches->copyH2DTime[stack];
+          l_InpNorm   += batches->normTime[stack];
+          l_InpFFT    += batches->InpFFTTime[stack];
+          l_multT     += batches->multTime[stack];
+          l_InvFFT    += batches->InvFFTTime[stack];
+          l_ss        += batches->searchTime[stack];
+          l_resultT   += batches->resultTime[stack];
+          l_copyD2HT  += batches->copyD2HTime[stack];
+        }
+
+        if ( cuSrch->mInf->noBatches > 1 )
+        {
+          printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
+          printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", l_copyH2DT, l_InpNorm, l_InpFFT, l_multT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
+        }
+
+        copyH2DT  += l_copyH2DT;
+        InpNorm   += l_InpNorm;
+        InpFFT    += l_InpFFT;
+        multT     += l_multT;
+        InvFFT    += l_InvFFT;
+        ss        += l_ss;
+        resultT   += l_resultT;
+        copyD2HT  += l_copyD2HT;
       }
+      printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
+      printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
 
-      for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
-      {
-        printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+      printf("\n===========================================================================================================================================\n\n");
 
-        l_copyH2DT  += batches->copyH2DTime[stack];
-        l_InpNorm   += batches->normTime[stack];
-        l_InpFFT    += batches->InpFFTTime[stack];
-        l_multT     += batches->multTime[stack];
-        l_InvFFT    += batches->InvFFTTime[stack];
-        l_ss        += batches->searchTime[stack];
-        l_resultT   += batches->resultTime[stack];
-        l_copyD2HT  += batches->copyD2HTime[stack];
-      }
-
-      if ( cuSrch->mInf->noBatches > 1 )
-      {
-        printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
-        printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", l_copyH2DT, l_InpNorm, l_InpFFT, l_multT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
-      }
-
-      copyH2DT  += l_copyH2DT;
-      InpNorm   += l_InpNorm;
-      InpFFT    += l_InpFFT;
-      multT     += l_multT;
-      InvFFT    += l_InvFFT;
-      ss        += l_ss;
-      resultT   += l_resultT;
-      copyD2HT  += l_copyD2HT;
+#endif
     }
-    printf("\t\t--------------------------------------------------------------------------------------------------------------------------\n");
-    printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
-
-    printf("\n===========================================================================================================================================\n");
-
-
 #endif
   }
-#endif
 
   /* Finish up */
 
   printf("Searched the following approx numbers of independent points:\n");
-  //printf("  %d harmonic:   %9lld\n", 1, obs.numindep[0]);
   for (ii = 0; ii < obs.numharmstages; ii++)
     printf("  %2d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
 
@@ -900,12 +906,11 @@ int main(int argc, char *argv[])
   utim = runtimes.tms_utime / (double) CLK_TCK;
   stim = runtimes.tms_stime / (double) CLK_TCK;
   ttim = utim + stim;
-  printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n",
-      ttim, utim, stim);
+  printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n", ttim, utim, stim);
   printf("  Total time: %.3f sec\n\n", tott);
 
-  printf("Final candidates in binary format are in '%s'.\n", obs.candnm);
-  printf("Final Candidates in a text format are in '%s'.\n\n", obs.accelnm);
+  printf("Final candidates in binary format are in '%s'.\n",    obs.candnm);
+  printf("Final Candidates in a text format are in '%s'.\n\n",  obs.accelnm);
 
 #ifdef CUDA
   cuProfilerStop(); // TMP

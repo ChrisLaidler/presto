@@ -19,7 +19,7 @@
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
 #undef  ACCEL_USELEN
-#define ACCEL_USELEN 3360
+#define ACCEL_USELEN	3962			// Added by run time script for 4K FFT's at a ZMAZ of 50
 
 
 #undef FOLD
@@ -131,20 +131,20 @@ typedef struct ffdotpows{
 subharminfo **create_subharminfos(accelobs *obs);
 void free_subharminfos(accelobs *obs, subharminfo **shis);
 void create_accelobs(accelobs *obs, infodata *idata, 
-		     Cmdline *cmd, int usemmap);
+                     Cmdline *cmd, int usemmap);
 GSList *sort_accelcands(GSList *list);
 GSList *eliminate_harmonics(GSList *cands, int *numcands);
 void deredden(fcomplex *fft, int numamps);
 void optimize_accelcand(accelcand *cand, accelobs *obs,int nn);
 void output_fundamentals(fourierprops *props, GSList *list, 
-			 accelobs *obs, infodata *idata);
+                         accelobs *obs, infodata *idata);
 void output_harmonics(GSList *list, accelobs *obs, infodata *idata);
 void free_accelcand(gpointer data, gpointer user_data);
 void print_accelcand(gpointer data, gpointer user_data);
 fcomplex *get_fourier_amplitudes(int lobin, int numbins, accelobs *obs);
 ffdotpows *subharm_ffdot_plane(int numharm, int harmnum, 
-			       double fullrlo, double fullrhi, 
-			       subharminfo *shi, accelobs *obs);
+                               double fullrlo, double fullrhi, 
+                               subharminfo *shi, accelobs *obs);
 ffdotpows *copy_ffdotpows(ffdotpows *orig);
 void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs);
 void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs,

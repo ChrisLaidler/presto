@@ -55,7 +55,7 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
 
             FOLD // Read  .
             {
-              if      ( FLAGS & FLAG_MUL_CB_OUT )
+              if      ( FLAGS & FLAG_CUFFT_CB_OUT )
               {
                 tSum                  += t[ tid + idx ];
               }
@@ -125,7 +125,7 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
 
           FOLD // Read  .
           {
-            if      ( FLAGS & FLAG_MUL_CB_OUT )
+            if      ( FLAGS & FLAG_CUFFT_CB_OUT )
             {
               float cmpf            = powersArr[harm][ tid + idx ];
               tSum                  += cmpf;
@@ -197,7 +197,7 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
 
             FOLD // Read  .
             {
-              if      ( FLAGS & FLAG_MUL_CB_OUT )
+              if      ( FLAGS & FLAG_CUFFT_CB_OUT )
               {
                 float cmpf            = powersArr[0][ tid + idx ];
                 tSum                  += cmpf;
@@ -462,9 +462,9 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
 
   if ( 0 )  // Stage order  .
   {
-    if        ( FLAGS & FLAG_MUL_CB_OUT )
+    if        ( FLAGS & FLAG_CUFFT_CB_OUT )
     {
-      add_and_searchCU01_c<FLAG_MUL_CB_OUT>(dimGrid,dimBlock,stream, batch );
+      add_and_searchCU01_c<FLAG_CUFFT_CB_OUT>(dimGrid,dimBlock,stream, batch );
     }
     else
     {
@@ -473,9 +473,9 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   }
   else
   {
-    if        ( FLAGS & FLAG_MUL_CB_OUT )
+    if        ( FLAGS & FLAG_CUFFT_CB_OUT )
     {
-      add_and_searchCU00_c<FLAG_MUL_CB_OUT>(dimGrid,dimBlock,stream, batch );
+      add_and_searchCU00_c<FLAG_CUFFT_CB_OUT>(dimGrid,dimBlock,stream, batch );
     }
     else
     {
