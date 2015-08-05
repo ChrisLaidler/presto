@@ -149,14 +149,9 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ARCH =
 #ARCH 		+= -gencode arch=compute_20,code=sm_21
-#ARCH 		+= -gencode arch=compute_30,code=sm_30
+ARCH 		+= -gencode arch=compute_30,code=sm_30
 #ARCH 		+= -gencode arch=compute_35,code=sm_35
 ARCH 		+= -gencode arch=compute_50,code=sm_50
-
-# #ARCH 		+= -gencode arch=compute_20,code=sm_21
-# ARCH 		+= -gencode arch=compute_30,code=compute_30
-# #ARCH 		+= -gencode arch=compute_35,code=sm_35
-# ARCH 		+= -gencode arch=compute_50,code=compute_50
 
 CUDA_PATH  = /usr/local/cuda
 

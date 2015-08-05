@@ -275,6 +275,11 @@ void multiplyBatch(cuFFdotBatch* batch)
               {
                 mult23_f(cStack->multStream, batch, ss);
               }
+              else if ( batch->flag & FLAG_RAND_1 )
+              {
+                mult24(cStack->multStream, batch, ss);
+              }
+
               else
               {
                 fprintf(stderr,"ERROR: No valid multiply specified. Line %i in %s.\n", __LINE__, __FILE__);

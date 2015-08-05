@@ -2377,6 +2377,10 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_MUL_ALL;
         (*flags) |= FLAG_MUL_23;
       }
+      else if ( strCom(line, "FLAG_MUL_24" ) || strCom(line, "MUL_24" ) )
+      {
+        (*flags) |= FLAG_RAND_1;
+      }
       else if ( strCom(line, "FLAG_MUL_30" ) || strCom(line, "MUL_30" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;

@@ -19,7 +19,7 @@ FFT_GPU # Last Edited by run time script
 FLAG_MUL_21 # Last Edited by run time script
 
 # Other Convolve options
-FLAG_MUL_21			# Last Edited by run time script
+FLAG_MUL_30			# Last Edited by run time script
 
 ####### FFT ##########
 
@@ -62,8 +62,8 @@ CU_CAND_ARR
 
 globalInt01	4			# Last Edited by run time script
 
-SLICES_MU	6			# Last Edited by run time script
-SLICES_SS	6			# Last Edited by run time script
+SLICES_MU	1			# Last Edited by run time script
+SLICES_SS	1			# Last Edited by run time script
 
 
 optpln01 40
