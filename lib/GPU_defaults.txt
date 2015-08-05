@@ -60,7 +60,7 @@ CU_CAND_ARR
 #cuMedianBuffSz 2048
 
 
-globalInt01 2                   # Last Edited by run time script
+globalInt01 10                   # Last Edited by run time script
 
 MUL_SLICES	4		# Last Edited by run time script
 SS_SLICES	4		# Last Edited by run time script
