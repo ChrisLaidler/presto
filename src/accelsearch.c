@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
   gettimeofday(&end, NULL);
   prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
-  cuSearch*     cuSrch;
+  cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
   searchSpecs   sSpec;
 
@@ -479,7 +479,7 @@ int main(int argc, char *argv[])
           printf("\nGPU found %li candidates of which %i are unique. In %.4f ms\n",noCands, g_slist_length(cands), gpuTime/1000.0 );
 
           // Free GPU memory
-          freeAccelMem(cuSrch->mInf);
+          freeAccelGPUMem(cuSrch->mInf);
 
 #ifdef DEBUG
           char name [1024];
@@ -913,6 +913,7 @@ int main(int argc, char *argv[])
   printf("Final Candidates in a text format are in '%s'.\n\n",  obs.accelnm);
 
 #ifdef CUDA
+  freeCuSearch(cuSrch);
   cuProfilerStop(); // TMP
 #endif
 

@@ -14,7 +14,7 @@ __global__ void mult24_k(const __restrict__ fcomplexcu* kernels, const __restric
   {
     const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
 
-    fcomplexcu  kers[chunkSZ];
+    register fcomplexcu  kers[chunkSZ];
 
     FOLD  // Stride, kernel, input data & output data  .
     {
@@ -210,11 +210,11 @@ __host__  void mult21_c(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream
       mult24_p<FLAGS, noSteps,2>(dimGrid, dimBlock, i1, stream, batch, stack);
       break;
     }
-    //    case 3:
-    //    {
-    //      mult24_p<FLAGS, noSteps,3>(dimGrid, dimBlock, i1, stream, batch, stack);
-    //      break;
-    //    }
+//    case 3:
+//    {
+//      mult24_p<FLAGS, noSteps,3>(dimGrid, dimBlock, i1, stream, batch, stack);
+//      break;
+//    }
     case 4:
     {
       mult24_p<FLAGS, noSteps,4>(dimGrid, dimBlock, i1, stream, batch, stack);

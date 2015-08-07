@@ -45,18 +45,18 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                 {
                   if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->SrchSz->searchRHigh ) // Zero Pad
                   {
-                    batch->h_powers[ii] = 0;
+                    batch->normPowers[ii] = 0;
                   }
                   else
                   {
-                    batch->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
+                    batch->normPowers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
                   }
                 }
                 //nvtxRangePop();
               }
 
               //nvtxRangePush("Median");
-              norm = 1.0 / sqrt(median(batch->h_powers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
+              norm = 1.0 / sqrt(median(batch->normPowers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
               //norm = 1.0 / sqrt(median(&plains->h_powers[start], (rVal->numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion)
               //nvtxRangePop();
 
@@ -104,9 +104,9 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               //powers = gen_fvect(nice_numdata);
               for (int ii = 0; ii< nice_numdata; ii++)
               {
-                batch->h_powers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
+                batch->normPowers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
               }
-              loc_powers = corr_loc_pow(batch->h_powers, nice_numdata);
+              loc_powers = corr_loc_pow(batch->normPowers, nice_numdata);
 
               //memcpy(&batch->h_iData[sz], &fft[lobin], nice_numdata * sizeof(fcomplexcu) );
 

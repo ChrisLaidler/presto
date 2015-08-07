@@ -533,6 +533,12 @@ void setBatchPointers(cuFFdotBatch* batch);
  */
 void printBitString(uint val);
 
+/**
+ *
+ * @param kernel
+ */
+void freeKernel(cuFFdotBatch* kernel);
+
 /////////////////////////////////////// Kernel prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 /** Create one GPU kernel. One kernel the size of the largest plain  .

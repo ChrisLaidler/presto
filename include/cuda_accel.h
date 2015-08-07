@@ -61,7 +61,7 @@ extern "C"
 #define     FLAG_MUL_23         (1<<9)    ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
 #define     FLAG_MUL_30         (1<<10)   ///< Multiply kernel - Do an entire batch in one kernel
 #define     FLAG_MUL_PLN        ( FLAG_MUL_10 )
-#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 )
+#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_RAND_1 )
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
@@ -403,14 +403,18 @@ typedef struct cuFFdotBatch
     uint    accelLen;                 ///< The size to step through the input fft
     int     noResults;                ///< The number of results from the previous search
     int     device;                   ///< The CUDA device to run on
-
+    float   capability;               ///< The cuda capability of the device
     CUcontext pctx;                   ///< Context for the batch
+
+    int     srchMaster;               ///< Weather this is the master batch
+    int     isKernel;                 ///< Weather this is the master batch
+
 
     int stageIdx[MAX_HARM_NO];        ///< The index of the plains in the Presto harmonic summing order
 
     // Pointers of structures
     cuFfdotStack* stacks;             ///< A list of the stacks
-    cuHarmInfo*   hInfos;             ///< A list of the harmonic informations
+    cuHarmInfo*   hInfos;             ///< A list of the harmonic information
     cuKernel*     kernels;            ///< A list of the kernels
     cuFFdot*      plains;             ///< A list of the plains
 
@@ -421,7 +425,7 @@ typedef struct cuFFdotBatch
     int pwrDataSize;                  ///< The size of the powers  plain data memory in bytes for one step
     int kerDataSize;                  ///< The size of the plain data memory in bytes for one step
 
-    fcomplexcu* d_kerData;            ///< Kernel data for all the stacks
+    fcomplexcu* d_kerData;            ///< Kernel data for all the stacks, generally this is only allocated once per device
     fcomplexcu* d_plainData;          ///< Plain data for all the stacks
     float*      d_plainPowers;        ///< Powers for all the stack
 
@@ -444,7 +448,7 @@ typedef struct cuFFdotBatch
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;
 
-    float* h_powers;                  ///< Powers used for running double-tophat local-power normalisation
+    float* normPowers;                ///< Powers used for running double-tophat local-power normalisation
 
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
@@ -590,24 +594,9 @@ ExternC searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs);
 
 ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
 
-/**
- *
- * @param aInf            A pointer to the accelInfo structure to write details to
- * @param fftinf          Details on the fft to 'search'
- * @param numharmstages   The number of harmonic stages [number of harmonics = 2^(numharmstages-1) = (1<<(numharmstages-1)) ]
- * @param zMax            The maximum and minimum drift to cover in a plain
- * @param width           The width of the plains
- * @param powcut
- * @param numindep
- * @param flags           The a combination of the bit flags to determine how to generate the plains
- * @param candType        The data type of the candidates
- * @param retType         The data type returned from the GPU
- * @param out             An address of to store candidates in if it has already been allocated (can be NULL)
- * @return                Returns the number of steps covered. Main details are written to aInf
- */
-//ExternC int initCuAccel(cuMemInfo* aInf, fftInfo* fftinf, int numharmstages, int zMax, int width, float*  powcut, long long*  numindep, int flags, int candType, int retType, void* out);
+ExternC void freeCuSearch(cuSearch* srch);
 
-ExternC void freeAccelMem(cuMemInfo* mInf);
+ExternC void freeAccelGPUMem(cuMemInfo* mInf);
 
 ExternC cuOptCand* initOptPln(searchSpecs* sSpec);
 ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);

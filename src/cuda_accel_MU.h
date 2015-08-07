@@ -45,7 +45,7 @@ __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, 
 
 /** Multiplication kernel - Just write 0 to all locations
  */
-__host__  void mult00_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
+__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 
 //__host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
 

@@ -8,7 +8,7 @@ __device__ cufftCallbackStoreC d_storeCallbackPtr   = CB_PowerOut;
 
 //======================================= Global variables  ================================================\\
 
-int    noMU_Slices = 4;
+int    noMU_Slices = -1;
 
 
 //========================================== Functions  ====================================================\\
@@ -261,7 +261,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             {
               if      ( batch->flag & FLAG_MUL_00 )
               {
-                mult00_f(cStack->multStream, batch, ss);
+                mult00(cStack->multStream, batch, ss);
               }
               else if ( batch->flag & FLAG_MUL_21 )
               {
@@ -279,7 +279,6 @@ void multiplyBatch(cuFFdotBatch* batch)
               {
                 mult24(cStack->multStream, batch, ss);
               }
-
               else
               {
                 fprintf(stderr,"ERROR: No valid multiply specified. Line %i in %s.\n", __LINE__, __FILE__);

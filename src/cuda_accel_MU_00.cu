@@ -75,7 +75,7 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
       int   y0      = lDepth*blockIdx.y;
       int   y1      = MIN(y0+lDepth, kerHeight);
 
-      for (int kerY = y0;  kerY< y1; kerY++ )
+      for (int kerY = y0; kerY < y1; kerY++ )
       {
         idx   = kerY * stride;
         ker   = kernels[idx];
@@ -121,7 +121,7 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
  * @param noSteps
  * @param kerHeight
  */
-__host__  void mult00_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
 {
   dim3 dimGrid, dimBlock;
 

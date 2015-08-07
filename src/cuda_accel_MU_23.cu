@@ -16,6 +16,10 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
   {
     const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
 
+    short   lDepth      = ceilf(kerHeight/(float)gridDim.y);
+    short   y0          = lDepth*blockIdx.y;
+    short   y1          = MIN(y0+lDepth, kerHeight);
+
     FOLD  // Stride, kernel, input data & output data  .
     {
       kernels += tid;
@@ -23,12 +27,16 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
       inpData += tid;
     }
 
-    int noChunks = ceilf(kerHeight / (float)cv_chunkSZ);
+    //int noChunks = ceilf(kerHeight / (float)cv_chunkSZ);
+    //for ( int chunk = 0; chunk < noChunks; chunk++ )
 
-    for ( int chunk = 0; chunk < noChunks; chunk++ )
+    for ( int y = y0; y < y1; y+=cv_chunkSZ )
     {
-      const int c0  = chunk*cv_chunkSZ;
-      const int c1  = MIN(cv_chunkSZ,kerHeight-c0);
+      //const int c0  = chunk*cv_chunkSZ;
+      //const int c1  = MIN(cv_chunkSZ,kerHeight-c0);
+
+      const int c0  = y;
+      const int c1  = MIN(cv_chunkSZ,kerHeight-y);
       int pHeight   = 0;
 
       register fcomplexcu k0   = kernels[(c0+0 )*stride];
@@ -156,7 +164,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             }
           }
 
-          for ( int step = 0; step < noSteps; step++ )        // Loop over steps .
+          for ( int step = 0; step < noSteps; step++ )        // Loop over steps  .
           {
             int idx;
 
@@ -321,8 +329,8 @@ __host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = 1;
+  dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY )) ;
+  dimGrid.y = cStack->noMulSlices ;
 
 
   if      ( batch->flag & FLAG_ITLV_ROW )
