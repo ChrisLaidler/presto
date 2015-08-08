@@ -328,7 +328,7 @@ typedef struct cuFfdotStack
     int     startIdx;                 ///< The family index the first plain of the stack
     size_t  width;                    ///< The width of  the entire stack, for one step [ in complex numbers! ]
     size_t  height;                   ///< The height of the entire stack, for one step
-    size_t  kerHeigth;                ///< The width of  the entire stack, for one step [ in complex numbers! ]
+    size_t  kerHeigth;                ///< The height of the multiplication kernel for this stack (this is equivalent to the height of the largest plain in the stack)
     size_t  strideCmplx;              ///< The stride of the block of memory  [ in complex numbers! ]
     size_t  stridePwrs;               ///< The stride of the powers
     uint    flag;                     ///< CUDA accel search flags

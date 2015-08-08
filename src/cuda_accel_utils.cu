@@ -1291,6 +1291,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
         if ( cStack->noMulSlices <= 0 )
         {
+          // Multiplication slices not specified so use logical values
+
           if      ( cStack->width <= 256  )
           {
             cStack->noMulSlices = 10;
@@ -1313,8 +1315,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           }
           else
           {
+            // In these cases at least two will sometimes help
+            // TODO: check with a card with many SM's
             cStack->noMulSlices = 2;
           }
+
+          // Clamp to size of kernel (ie height of the largest plain)
+          cStack->noMulSlices = MAX(cStack->noMulSlices,cStack->kerHeigth/2.0);
 
         }
       }
