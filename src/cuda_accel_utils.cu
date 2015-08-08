@@ -1280,9 +1280,15 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             else
             {
               if ( kernel->noSteps <= 4 )
+              {
+                // This only really holds for 16 harmonics summed with 3 or 4 steps
+                // In my testing it is generally true for zmax greater than 100
                 cStack->flag |= FLAG_MUL_23;
+              }
               else
+              {
                 cStack->flag |= FLAG_MUL_22;
+              }
             }
           }
 
@@ -1307,17 +1313,16 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           }
           else if ( cStack->width <= 2048 )
           {
-            cStack->noMulSlices = 6;
+            cStack->noMulSlices = 4;
           }
           else if ( cStack->width <= 4096 )
           {
-            cStack->noMulSlices = 4;
+            cStack->noMulSlices = 2;
           }
           else
           {
-            // In these cases at least two will sometimes help
             // TODO: check with a card with many SM's
-            cStack->noMulSlices = 2;
+            cStack->noMulSlices = 1;
           }
         }
 
