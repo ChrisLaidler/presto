@@ -62,8 +62,8 @@ CU_CAND_ARR
 
 globalInt01	4			# Last Edited by run time script
 
-SLICES_MU	10			# Last Edited by run time script
-SLICES_SS	10			# Last Edited by run time script
+SLICES_MU	3			# Last Edited by run time script
+SLICES_SS	3			# Last Edited by run time script
 
 
 optpln01 40

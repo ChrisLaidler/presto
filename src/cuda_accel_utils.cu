@@ -1319,11 +1319,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             // TODO: check with a card with many SM's
             cStack->noMulSlices = 2;
           }
-
-          // Clamp to size of kernel (ie height of the largest plain)
-          cStack->noMulSlices = MAX(cStack->noMulSlices,cStack->kerHeigth/2.0);
-
         }
+
+        // Clamp to size of kernel (ie height of the largest plain)
+        cStack->noMulSlices = MIN(cStack->noMulSlices,cStack->kerHeigth/2.0);
       }
     }
   }
