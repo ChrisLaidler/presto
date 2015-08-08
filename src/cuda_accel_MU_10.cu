@@ -69,7 +69,7 @@ __host__  void mult10(cuFFdotBatch* batch)
           else
             d_plainData   = cPlain->d_plainData;  // If nothing is specified just use plain data
 
-          if ( batch->flag & FLAG_MUL_TEX )
+          if ( batch->flag & FLAG_TEX_MUL )
             mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_plainData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);
           else
             mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_plainData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlain->kernel->d_kerData);

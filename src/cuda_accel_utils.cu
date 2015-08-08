@@ -828,7 +828,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         if ( kernel->noSteps > MAX_STEPS )
         {
           kernel->noSteps = MAX_STEPS;
-          printf("      Trying to use more steps that the maximum number (%li) this code is compiled with.\n", kernel->noSteps );
+          printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", kernel->noSteps );
         }
       }
       else
@@ -924,11 +924,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       FOLD // Set the stack flags  .
       {
-        for (int i = 0; i < batch->noStacks; i++)
+        for (int i = 0; i < kernel->noStacks; i++)
         {
-          cuFfdotStack* cStack  = &batch->stacks[i];
+          cuFfdotStack* cStack  = &kernel->stacks[i];
 
-          cStack->flag          = kernel->flag
+          cStack->flag          = kernel->flag;
         }
       }
 
@@ -1016,7 +1016,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
   FOLD // Create texture memory from kernels  .
   {
-    if ( kernel->flag & FLAG_MUL_TEX )
+    if ( kernel->flag & FLAG_TEX_MUL )
     {
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
 
@@ -1265,7 +1265,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         {
           int noInp =  cStack->noInStack * kernel->noSteps ;
 
-          if ( ver > 3.0 )
+          if ( batch->capability > 3.0 )
           {
             // Lots of registers per thread so 4.2 is good
             cStack->flag |= FLAG_MUL_21;
@@ -1285,6 +1285,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
                 cStack->flag |= FLAG_MUL_22;
             }
           }
+
+          batch->flag |= FLAG_MUL_STK;
         }
 
         if ( cStack->noMulSlices <= 0 )
@@ -2410,9 +2412,9 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_MUL_30;
       }
 
-      else if ( strCom(line, "FLAG_MUL_TEX" ) )
+      else if ( strCom(line, "FLAG_TEX_MUL" ) )
       {
-        (*flags) |= FLAG_MUL_TEX;
+        (*flags) |= FLAG_TEX_MUL;
       }
 
       else if ( strCom(line, "FLAG_CUFFT_CB_IN" ) || strCom(line, "CB_IN" ) )
@@ -3401,7 +3403,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
     cvsLog->csvWrite("CB IN",     "flg", "%i", (bool)(batch->flag & FLAG_CUFFT_CB_IN));
     cvsLog->csvWrite("CB OUT",    "flg", "%i", (bool)(batch->flag & FLAG_CUFFT_CB_OUT));
 
-    cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_MUL_TEX));
+    cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_TEX_MUL));
     cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_SAS_TEX));
     cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flag & FLAG_TEX_INTERP));
     if ( batch->flag & FLAG_SIG_GPU )

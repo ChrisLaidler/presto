@@ -246,7 +246,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
   /*       contain.                                                    */
 {
    int ii, signz, numkernby2;
-   double absz, zd, tmp, q_r, xx, Yr, Zr, startr, startroffset;
+   double absz, zd, q_r, xx, Yr, Zr, startr, startroffset;
    double fressy, frescy, fressz, frescz, tmprl, tmpim;
    double s, c, pibyz, cons, delta;
    fcomplex *response;
@@ -310,7 +310,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
       response[ii].i  = -(tmprl  * s + tmpim * c) * cons;
 
       //printf("%03i  q_r %10.5f \n", ii, q_r );
-      
+
       // NB TODO: When I checked the math I think real and ima are inverted ??????
 
       double Ster = fressz - fressy;

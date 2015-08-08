@@ -314,7 +314,7 @@ __host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     }
     default	:
     {
-      fprintf(stderr, "ERROR: convolveffdot42 has not been templated for %lu steps\n", batch->noSteps);
+      fprintf(stderr, "ERROR: convolveffdot42 has not been templated for %i steps\n", batch->noSteps);
       exit(EXIT_FAILURE);
     }
   }

@@ -259,29 +259,29 @@ void multiplyBatch(cuFFdotBatch* batch)
 
             FOLD // Call kernel(s)  .
             {
-              if      ( batch->flag & FLAG_MUL_00 )
+              if      ( cStack->flag & FLAG_MUL_00 )
               {
                 mult00(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_MUL_21 )
+              else if ( cStack->flag & FLAG_MUL_21 )
               {
                 mult21_f(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_MUL_22 )
+              else if ( cStack->flag & FLAG_MUL_22 )
               {
                 mult22_f(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_MUL_23 )
+              else if ( cStack->flag & FLAG_MUL_23 )
               {
                 mult23_f(cStack->multStream, batch, ss);
               }
-              else if ( batch->flag & FLAG_RAND_1 )
+              else if ( cStack->flag & FLAG_RAND_1 )
               {
                 mult24(cStack->multStream, batch, ss);
               }
               else
               {
-                fprintf(stderr,"ERROR: No valid multiply specified. Line %i in %s.\n", __LINE__, __FILE__);
+                fprintf(stderr,"ERROR: No valid stack multiplication specified. Line %i in %s.\n", __LINE__, __FILE__);
                 exit(EXIT_FAILURE);
               }
 

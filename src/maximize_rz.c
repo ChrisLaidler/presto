@@ -938,8 +938,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
     if( noTet > 1.0 )
       fclose(stFile);
-
-    int tmp = 0;
   }
 
   if ( skp  )  		// Large points  .
@@ -1101,8 +1099,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
         gpuPows = 0;
       }
     }
-
-    int tmp = 0;
   }
 
   if ( skp  )     // Small points  .
@@ -1264,8 +1260,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       sprintf(dirname,"%s_Wor",dirname );
     }
 
-    int tmp0 = 0;
-
     if (1)
     {
       mkdir(dirname, 0755);
@@ -1284,9 +1278,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       sprintf(scmd,"cp *Cands*.csv %s/", dirname );
       system(scmd);
     }
-
-    int tmp2 = 0;
-
     //printf("exit\n");
     //char d=(char)(7);
     //printf("%c\n",d);

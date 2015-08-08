@@ -65,7 +65,7 @@ extern "C"
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_MUL_TEX        (1<<11)   ///< Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_MUL        (1<<11)   ///< Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
 #define     FLAG_CUFFT_CB_IN    (1<<12)   ///< Use an input  callback to do the multiplication      - I found this to be very slow
 #define     FLAG_CUFFT_CB_OUT   (1<<13)   ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
 
@@ -333,7 +333,7 @@ typedef struct cuFfdotStack
     size_t  stridePwrs;               ///< The stride of the powers
     uint    flag;                     ///< CUDA accel search flags
 
-    size_t  noMulSlices;              ///< The number of slices to do multiplication with
+    int     noMulSlices;              ///< The number of slices to do multiplication with
 
     // Sub data structures associated with this stack
     cuHarmInfo* harmInf;              ///< A pointer to all the harmonic info's for this stack
@@ -392,11 +392,11 @@ typedef struct cuFFdotBatch
 {
     searchSpecs* sInf;                ///< A pointer to the search info
 
-    size_t  noStacks;                 ///< The number of stacks in this batch
-    size_t  noHarms;                  ///< The number of harmonics in the family
-    size_t  noSteps;                  ///< The number of steps processed by the batch
-    size_t  noMulSlices;              ///< The number of slices to do multiplication with
-    size_t  noSSSlices;               ///< The number of slices to do sum and search
+    int     noStacks;                 ///< The number of stacks in this batch
+    int     noHarms;                  ///< The number of harmonics in the family
+    int     noSteps;                  ///< The number of steps processed by the batch
+    int     noMulSlices;              ///< The number of slices to do multiplication with
+    int     noSSSlices;               ///< The number of slices to do sum and search
     int     noHarmStages;             ///< The number of stages of harmonic summing
 
     uint    flag;                     ///< CUDA accel search flags
