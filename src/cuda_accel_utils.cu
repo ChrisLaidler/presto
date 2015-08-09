@@ -2422,6 +2422,10 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_MUL_ALL;
         (*flags) |= FLAG_MUL_30;
       }
+      else if ( strCom(line, "FLAG_MUL_A" ) || strCom(line, "MUL_A" ) )
+      {
+        (*flags) &= ~FLAG_MUL_ALL;
+      }
 
       else if ( strCom(line, "FLAG_TEX_MUL" ) )
       {
@@ -2540,18 +2544,41 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
         int ll = strlen(line);
         line[ll-1] = 0;
-        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n",line, lineno, fName);
+        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n", line, lineno, fName);
       }
 
       else if ( strCom(line, "Slices_MU" ) || strCom(line, "SLICES_MU" ) )
       {
         rest = &line[ strlen("SLICES_MU")+1];
-        noMU_Slices = atoi(rest);
+        int val = atoi(rest);
+        if ( val > 0 )
+        {
+          noMU_Slices = val;
+        }
+        else
+        {
+          if ( !strCom(rest, "A" ) )
+          {
+            fprintf(stderr, "WARNING: Invalid or non numeric value found in %s on line %i [%s]\n", fName, lineno, line);
+          }
+        }
+
       }
       else if ( strCom(line, "Slices_SS" ) || strCom(line, "SLICES_SS" ) )
       {
         rest = &line[ strlen("SLICES_SS")+1];
-        noSS_Slices = atoi(rest);
+        int val = atoi(rest);
+        if ( val > 0 )
+        {
+          noSS_Slices = val;
+        }
+        else
+        {
+          if ( !strCom(rest, "A" ) )
+          {
+            fprintf(stderr, "WARNING: Invalid or non numeric value found in %s on line %i [%s]\n", fName, lineno, line);
+          }
+        }
       }
 
       else if ( strCom(line, "cuMedianBuffSz" ) )

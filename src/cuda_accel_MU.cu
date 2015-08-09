@@ -10,7 +10,6 @@ __device__ cufftCallbackStoreC d_storeCallbackPtr   = CB_PowerOut;
 
 int    noMU_Slices = -1;
 
-
 //========================================== Functions  ====================================================\\
 
 __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
