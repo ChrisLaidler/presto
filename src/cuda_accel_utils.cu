@@ -1272,21 +1272,32 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           }
           else
           {
-            // We have less registers per thread
+            // We require fewer registers per thread, so use Multiplication kernel 2.1
             if ( noInp <= 20 )
             {
+              // TODO: Check small, looks like some times 22 may be faster.
               cStack->flag |= FLAG_MUL_21;
             }
             else
             {
               if ( kernel->noSteps <= 4 )
               {
-                // This only really holds for 16 harmonics summed with 3 or 4 steps
-                // In my testing it is generally true for zmax greater than 100
-                cStack->flag |= FLAG_MUL_23;
+                // very few steps so 2.2 not always the best option
+                if ( kernel->hInfos->zmax > 100 )
+                {
+                  // This only really holds for 16 harmonics summed with 3 or 4 steps
+                  // In my testing it is generally true for zmax greater than 100
+                  cStack->flag |= FLAG_MUL_23;
+                }
+                else
+                {
+                  // Here 22 is usually better
+                  cStack->flag |= FLAG_MUL_22;
+                }
               }
               else
               {
+                // Enough steps to justify Multiplication kernel 2.1
                 cStack->flag |= FLAG_MUL_22;
               }
             }
