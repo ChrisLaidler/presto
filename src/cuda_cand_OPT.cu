@@ -856,17 +856,12 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   double maxR       = (pln->centR + pln->rSize/2.0);
   double minR       = (pln->centR - pln->rSize/2.0);
 
-  //if ( pln->halfWidth <= 0 )
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdotPln.");
+
   pln->halfWidth    = z_resp_halfwidth(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4, HIGHACC);
   double rSpread    = ceil(maxR*pln->noHarms  + pln->halfWidth) - floor(minR*pln->noHarms - pln->halfWidth);
   int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->alignment);
   pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
-
-  if ( pln->inpStride*pln->noHarms*sizeof(cufftComplex) > pln->inpSz )
-  {
-    fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
-    exit(EXIT_FAILURE);
-  }
 
   int datStart,  datEnd, noDat;
   int16   rOff;
@@ -900,7 +895,15 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   if ( newInp )
   {
     pln->inpStride = inpStride;
+
+    if ( pln->inpStride*pln->noHarms*sizeof(cufftComplex) > pln->inpSz )
+    {
+      fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
   }
+
+
 
   for( int h = 0; h < pln->noHarms; h++)
   {

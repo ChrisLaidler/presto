@@ -92,7 +92,7 @@ extern "C"
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
 #define     FLAG_RAND_3         (1<<29)   ///< Random Flag 2
-#define     FLAG_RAND_4         (1<<30)   ///< Random Flag 2
+#define     FLAG_KER_ACC        (1<<30)   ///< Random Flag 2
 
 // ----------- This is a list of the data types that can be passed or returned
 

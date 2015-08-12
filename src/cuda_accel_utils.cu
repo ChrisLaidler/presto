@@ -174,13 +174,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
   size_t free, total;             /// GPU memory
   int noInStack[MAX_HARM_NO];
   int noHarms         = (1 << (numharmstages - 1) );
-  int prevWidth       = 0;
-  int noStacks        = 0;
+
   int major           = 0;
   int minor           = 0;
   noInStack[0]        = 0;
   size_t totSize      = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
   size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
+
+  int alignment       = 0;
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initKernel.");
 
@@ -208,6 +209,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       major = deviceProp.major;
       minor = deviceProp.minor;
     }
+
+    alignment     = getMemAlignment();
 
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
   }
@@ -245,10 +248,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
   {
     if ( master == NULL ) 	// Calculate details for the batch  .
     {
+      kernel->flag = flags;
+
       FOLD // Determine accellen and step size  .
       {
-        kernel->flag = flags;
-
         if ( noHarms > 1 )
         {
           // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
@@ -341,13 +344,16 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       FOLD // Set some harmonic related values  .
       {
+        int prevWidth       = 0;
+        int noStacks        = 0;
+        int halfWidth       = 0;
+
         for (int i = noHarms; i > 0; i--)
         {
           int idx = noHarms-i;
           kernel->hInfos[idx].harmFrac    = (i) / (float)noHarms;
           kernel->hInfos[idx].zmax        = calc_required_z(kernel->hInfos[idx].harmFrac, zmax);
           kernel->hInfos[idx].height      = (kernel->hInfos[idx].zmax / ACCEL_DZ) * 2 + 1;
-          kernel->hInfos[idx].halfWidth   = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
           kernel->hInfos[idx].width       = calc_fftlen3(kernel->hInfos[idx].harmFrac, kernel->hInfos[0].zmax, kernel->accelLen);
           kernel->hInfos[idx].stackNo     = noStacks;
 
@@ -356,6 +362,27 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
             noStacks++;
             noInStack[noStacks - 1]       = 0;
             prevWidth                     = kernel->hInfos[idx].width;
+            halfWidth                     = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
+
+            // Maximise and align halfwidth
+            int sWidth                    = (int) ( ceil(kernel->accelLen * kernel->hInfos[idx].harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;
+            float hw                      = (kernel->hInfos[idx].width  - sWidth)/2.0/(float)ACCEL_NUMBETWEEN;
+            float noAlg                   = alignment / float(sizeof(fcomplex)) / (float)ACCEL_NUMBETWEEN ;     // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
+            float hw4                     = floor(hw/noAlg) * noAlg ;
+
+            if ( halfWidth > hw4)
+              halfWidth                   = floor(hw);
+            else
+              halfWidth                   = hw4;
+          }
+
+          if ( kernel->flag & FLAG_KER_ACC )
+          {
+            kernel->hInfos[idx].halfWidth = halfWidth; // Use maximum halfwidth for all plains in a stack this gives higher accuracy at small Z at no extra cost!
+          }
+          else
+          {
+            kernel->hInfos[idx].halfWidth = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
           }
 
           noInStack[noStacks - 1]++;
@@ -388,7 +415,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       kernel->stacks = (cuFfdotStack*) malloc(kernel->noStacks* sizeof(cuFfdotStack));
 
       if ( master == NULL )
+      {
         memset(kernel->stacks, 0, kernel->noStacks * sizeof(cuFfdotStack));
+      }
       else
         memcpy(kernel->stacks, master->stacks, kernel->noStacks * sizeof(cuFfdotStack));
     }
@@ -446,6 +475,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           cStack->kernels       = &kernel->kernels[cStack->startIdx];
           cStack->width         = cStack->harmInf->width;
           cStack->kerHeigth     = cStack->harmInf->height;
+          cStack->flag          = kernel->flag; // Used to create the kernel, will be over written later
 
           for (int j = 0; j < cStack->noInStack; j++)
           {
@@ -477,11 +507,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
               cudaFreeNull(cStack->d_plainPowers);
               CUDA_SAFE_CALL(cudaGetLastError(), "Freeing GPU memory.");
 
-              kernel->pwrDataSize   += cStack->stridePwrs * cStack->height;           // At this point stride is still in bytes
+              kernel->pwrDataSize   += cStack->stridePwrs * cStack->height;               // At this point stride is still in bytes
               cStack->stridePwrs    /= sizeof(float);
             }
 
-            cStack->strideCmplx     /= sizeof(cufftComplex);                         // Set stride to number of complex numbers rather that bytes
+            cStack->strideCmplx     /= sizeof(cufftComplex);                              // Set stride to number of complex numbers rather that bytes
 
           }
           prev                      += cStack->noInStack;
@@ -491,7 +521,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     else
     {
       // Set up the pointers of each stack
-      for (int i = 0; i< kernel->noStacks; i++)
+      for (int i = 0; i < kernel->noStacks; i++)
       {
         cuFfdotStack* cStack              = &kernel->stacks[i];
         cStack->kernels                   = &kernel->kernels[cStack->startIdx];
@@ -548,30 +578,32 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
       // Run message
       CUDA_SAFE_CALL(cudaGetLastError(), "Error before creating GPU kernels");
 
+      float contamination = (kernel->hInfos->halfWidth*2*ACCEL_NUMBETWEEN)/(float)kernel->hInfos->width*100 ;
+
+      if ( contamination > 25 )
+      {
+        fprintf(stderr, "WARNING: Contamination is high, consider increasing width with the -width flag.\n");
+      }
+
+
       printf("• Generating GPU multiplication kernels\n");
 
-      int hh = 1;
+      int hh      = 1;
       for (int i = 0; i < kernel->noStacks; i++)
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
 
-        printf("    Stack %i has %02i f-∂f plain(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
+        printf("    Stack %i has %02i f-∂f plain(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i+1, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
 
         // Call the CUDA kernels
         // Only need one kernel per stack
+
         createStackKernel(cStack);
+        printf("     Created kernel %i  Size: %7.1f MB  Height %4i   Contamination: %5.2f %% \n", i+1, cStack->harmInf->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0, cStack->harmInf->zmax, (cStack->harmInf->halfWidth*2*ACCEL_NUMBETWEEN)/(float)cStack->width*100);
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
-          printf("     Harmonic %02i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  ", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
-          if ( j == 0 )
-          {
-            printf("multiplication kernel created: %7.1f MB \n", cStack->harmInf[j].height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
-          }
-          else
-          {
-            printf("\n");
-          }
+          printf("       Harmonic %02i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i \n", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
           hh++;
         }
       }
@@ -995,7 +1027,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       if ( !(kernel->flag & CU_INPT_CPU_FFT) )
       {
-        for (int i = 0; i< kernel->noStacks; i++)
+        for (int i = 0; i < kernel->noStacks; i++)
         {
           cuFfdotStack* cStack = &kernel->stacks[i];
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
@@ -1004,7 +1036,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
         }
       }
 
-      for (int i = 0; i< kernel->noStacks; i++)
+      for (int i = 0; i < kernel->noStacks; i++)
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
@@ -1022,7 +1054,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
 
       CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
 
-      for (int i = 0; i< kernel->noStacks; i++)           // Loop through Stacks
+      for (int i = 0; i < kernel->noStacks; i++)           // Loop through Stacks
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
 
@@ -1847,24 +1879,25 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
   oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
   memset(oPln, 0, sizeof(cuOptCand));
 
+  int       noHarms   = (1<<(sSpec->noHarmStages-1));
+
   oPln->maxNoR        = 512;
   oPln->maxNoZ        = 512;
   oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;   // This needs to be multiplied by the size of the output element
   oPln->alignment     = getMemAlignment();
-  oPln->maxHalfWidth  = z_resp_halfwidth(sSpec->zMax*2, HIGHACC);
-
+  oPln->maxHalfWidth  = z_resp_halfwidth( MAX( (sSpec->zMax/(float)noHarms+50)*noHarms, sSpec->zMax*1.5), HIGHACC );
 
   // Create streams
   CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
   nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
 
   // Events
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit.");
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
   CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp.");
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit.");
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp.");
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
+  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
 
   return oPln;
 }
@@ -1873,7 +1906,7 @@ cuOptCand* initOptPln(searchSpecs* sSpec)
 {
   size_t freeMem, totalMem;
 
-  int       noHarms   = (1<<sSpec->noHarmStages);
+  int       noHarms   = (1<<(sSpec->noHarmStages-1));
 
   cuOptCand* oPln     = initOptCand(sSpec);
 
@@ -2546,9 +2579,14 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
         (*flags) |= FLAG_RAND_3;
       }
-      else if ( strCom(line, "FLAG_RAND_4" ) || strCom(line, "RAND_4" ) )
+//      else if ( strCom(line, "FLAG_RAND_4" ) || strCom(line, "RAND_4" ) )
+//      {
+//        (*flags) |= FLAG_RAND_4;
+//      }
+
+      else if ( strCom(line, "FLAG_KER_ACC" ) )
       {
-        (*flags) |= FLAG_RAND_4;
+        (*flags) |= FLAG_KER_ACC;
       }
 
       else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )

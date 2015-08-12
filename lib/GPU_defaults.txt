@@ -4,6 +4,11 @@
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
 ILROW			# Last Edited by run time script
 
+######## Kernel #######
+
+FLAG_KER_ACC
+
+
 ######## Input #######
 
 # NORM_CPU NORM_GPU
@@ -16,10 +21,12 @@ FFT_GPU # Last Edited by run time script
 ###### Convolve ######
 
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30
-FLAG_MUL_00			# Last Edited by run time script
+FLAG_MUL_AA			# Last Edited by run time script
 
 # Other Convolve options
 # FLAG_TEX_MUL
+
+SLICES_MU	AA			# Last Edited by run time script
 
 ####### FFT ##########
 
@@ -27,6 +34,7 @@ FLAG_MUL_00			# Last Edited by run time script
 FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
 
 # FLAG_NO_CB
+
 
 ###### Search ########
 
@@ -37,34 +45,21 @@ FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
 # SS_00  SS_10  SS_20  SS_30
 FLAG_SS_10			# Last Edited by run time script
 
-###### output ########
+SLICES_SS	AA			# Last Edited by run time script
+
+
+###### Output ########
 
 # CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
 CU_CAND_ARR
 
 # FLAG_RETURN_ALL or FLAG_RETURN_FINAL
 
-
 #FLAG_STORE_ALL
 #FLAG_STORE_EXP
 
 
-#FLAG_RAND_1
-#FLAG_RAND_2
-#FLAG_RAND_3
-#FLAG_RAND_4
-
-
-# 128 256 512 1024 2048 4096 8192
-
-#cuMedianBuffSz 2048
-
-
-globalInt01	4			# Last Edited by run time script
-
-SLICES_MU	1			# Last Edited by run time script
-SLICES_SS	1			# Last Edited by run time script
-
+###### Optimisation ########
 
 optpln01 40
 optpln02 30
@@ -78,6 +73,16 @@ optpln06 0
 #optSz04 10
 #optSz08 10
 #optSz16 10
+
+
+###### Other ########
+
+#FLAG_RAND_1
+#FLAG_RAND_2
+#FLAG_RAND_3
+#FLAG_RAND_4
+
+globalInt01	4			# Last Edited by run time script
 
 #PLT_OPT
 #UNOPT

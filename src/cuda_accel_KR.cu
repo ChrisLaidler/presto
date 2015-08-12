@@ -261,7 +261,7 @@ __device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int nu
  * @param maxZ
  * @param fftlen
  */
-__global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float zSteps, float rSteps)
+__global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, int half_width,  float zSteps, float rSteps)
 {
   int cx, cy;                                   /// The x and y index of this thread in the array
   int rx = -1;                                  /// The x index of the value in the kernel
@@ -279,9 +279,13 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, float z
   }
 
   // Calculate the response x position from the plain x position
-  int kern_half_width = z_resp_halfwidth((double) z);
-  int hw = rSteps * kern_half_width;
-  int numkern = 2 * hw;                         /// The number of complex points that the kernel row will contain
+  if ( half_width <= 0 )
+  {
+    half_width    = z_resp_halfwidth((double) z);
+  }
+
+  int hw          = rSteps * half_width;
+  int numkern     = 2 * hw;                     /// The number of complex points that the kernel row will contain
 
   // Calculate the kernel index for this thread (centred on zero and wrapped)
   if (cx < hw)
@@ -403,10 +407,20 @@ int createStackKernel(cuFfdotStack* cStack)
   dimGrid.x = ceil(  cStack->width     / ( float ) dimBlock.x );
   dimGrid.y = ceil ( cStack->kerHeigth / ( float ) dimBlock.y );
 
+  int halfWidth;
+
+  if ( cStack->flag & FLAG_KER_ACC )
+  {
+    halfWidth = cStack->harmInf->halfWidth;
+  }
+  else
+    halfWidth = 0;
+
+
   FOLD // call the CUDA kernels  .
   {
     // Call kernel
-    init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width, ACCEL_RDZ, ACCEL_RDR);
+    init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_RDR);
 
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");

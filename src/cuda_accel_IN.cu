@@ -198,6 +198,17 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
         rVal->numrs         = numrs;
         rVal->numdata       = numdata;
         rVal->expBin        = (lobin+binoffset)*ACCEL_RDR;
+
+        int noEls = numrs + 2*binoffset*ACCEL_RDR;
+
+        if  ( noEls > cHInfo->width )
+        {
+          fprintf(stderr, "ERROR: Number of elements in step greater than width of the plain! harm: %i\n", harm);
+
+          int tmp = 0;
+
+          exit(EXIT_FAILURE);
+        }
       }
     }
   }

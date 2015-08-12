@@ -618,68 +618,68 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
 
       // TODO: We could loop over values and remove non local maxima to reuse sigma calculations
 
-      Fout // Calculate sigma vales from power  .
-      {
-        // We don't want to do the expensive sigma calculations in the critical block ...
-        if ( !(batch->flag & FLAG_SIG_GPU) )
-        {
-          nvtxRangePush("CPU sigma calculations");
-#ifdef STPMSG
-          printf("\t\t\tCalculate sigma\n");
-#endif
-
-          if ( batch->retType & CU_CANDBASC )
-          {
-            //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
-          }
-
-          for ( int step = 0; step < batch->noSteps; step++)         // Loop over steps  .
-          {
-            for ( int stage = 0; stage < noStages; stage++ )
-            {
-              for ( int x = 0; x < batch->accelLen; x++ )
-              {
-                for ( int slice = 0; slice < batch->noSSSlices; slice++ )
-                {
-                  int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
-
-                  if ( batch->retType & CU_CANDBASC )
-                  {
-                    accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
-                    poww                  = candB.sigma ;
-
-                    if ( poww > 0 )
-                    {
-                      //powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ] = poww ;
-
-                      numharm     = (1<<stage);
-                      candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
-                    }
-                  }
-                  else if ( batch->retType & CU_CANDFULL )
-                  {
-                    cand candd  = ((cand*)batch->h_retData)[idx] ;
-                    poww        = candd.power;
-
-                    if ( poww > 0 )
-                    {
-                      numharm   = (1<<stage);
-                      candd.sig = candidate_sigma(poww, numharm, numindep[stage]);
-                    }
-                  }
-                  else
-                  {
-                    fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
-                    exit(EXIT_FAILURE);
-                  }
-                }
-              }
-            }
-          }
-
-          nvtxRangePop();
-        }
-      }
+//      Fout // Calculate sigma vales from power  .
+//      {
+//        // We don't want to do the expensive sigma calculations in the critical block ...
+//        if ( !(batch->flag & FLAG_SIG_GPU) )
+//        {
+//          nvtxRangePush("CPU sigma calculations");
+//#ifdef STPMSG
+//          printf("\t\t\tCalculate sigma\n");
+//#endif
+//
+//          if ( batch->retType & CU_CANDBASC )
+//          {
+//            //powers = (float*)malloc(batch->noSteps*noStages*batch->accelLen);
+//          }
+//
+//          for ( int step = 0; step < batch->noSteps; step++)         // Loop over steps  .
+//          {
+//            for ( int stage = 0; stage < noStages; stage++ )
+//            {
+//              for ( int x = 0; x < batch->accelLen; x++ )
+//              {
+//                for ( int slice = 0; slice < batch->noSSSlices; slice++ )
+//                {
+//                  int idx   = step*noStages*batch->hInfos->width + stage*batch->hInfos->width + x ;
+//
+//                  if ( batch->retType & CU_CANDBASC )
+//                  {
+//                    accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx] ;
+//                    poww                  = candB.sigma ;
+//
+//                    if ( poww > 0 )
+//                    {
+//                      //powers[step*noStages*batch->accelLen + stage*batch->accelLen + x ] = poww ;
+//
+//                      numharm     = (1<<stage);
+//                      candB.sigma = candidate_sigma(poww, numharm, numindep[stage]);
+//                    }
+//                  }
+//                  else if ( batch->retType & CU_CANDFULL )
+//                  {
+//                    cand candd  = ((cand*)batch->h_retData)[idx] ;
+//                    poww        = candd.power;
+//
+//                    if ( poww > 0 )
+//                    {
+//                      numharm   = (1<<stage);
+//                      candd.sig = candidate_sigma(poww, numharm, numindep[stage]);
+//                    }
+//                  }
+//                  else
+//                  {
+//                    fprintf(stderr,"ERROR: function %s requires accelcandBasic or cand\n",__FUNCTION__);
+//                    exit(EXIT_FAILURE);
+//                  }
+//                }
+//              }
+//            }
+//          }
+//
+//          nvtxRangePop();
+//        }
+//      }
 
       FOLD // ADD candidates to global list  .
       {

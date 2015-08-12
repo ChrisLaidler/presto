@@ -124,7 +124,11 @@ ExternC int getGPUCount();
  */
 ExternC void listDevices();
 
+/** Get GPU memory alignment in bytes  .
+ *
+ */
 ExternC int getMemAlignment();
+
 ExternC int getStrie(int noEls, int elSz, int blockSz);
 
 #endif /* CUDA_UTILS_H_ */
