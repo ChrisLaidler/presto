@@ -602,6 +602,7 @@ void multiplyBatch(cuFFdotBatch* batch);
 int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long long *numindep );
 
 __host__ __device__ double incdf (double p, double q );
+__host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 
 void sumAndSearch(cuFFdotBatch* batch, long long *numindep);
 

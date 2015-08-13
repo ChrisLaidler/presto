@@ -114,6 +114,27 @@ __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t
 
 /** Calculate the CDF of a gamma distribution
  */
+__host__ __device__ void cdfgam_d(double x, int n, double *p, double* q)
+{
+  {
+    *q = 1.0 + x ;
+    double numerator    = x;
+    double denominator  = 1.0;
+
+#pragma unroll
+    for ( int i = 2 ; i < n ; i ++ )
+    {
+      denominator *= i;
+      numerator   *= x;
+      *q += numerator/denominator;
+    }
+  }
+
+  *p = 1-*q;
+}
+
+/** Calculate the CDF of a gamma distribution
+ */
 template<int n>
 __host__ __device__ void cdfgam_d(double x, double *p, double* q)
 {
@@ -276,6 +297,10 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
         2.445134137142996e+00, \
         3.754408661907416e+00 };
 */
+
+    double gpu_p, gpu_q, sigc ;
+    cdfgam_d(poww, n*2, &gpu_p, &gpu_q );
+
     double logQ;
     if      ( n == 1 )
     {
@@ -300,6 +325,48 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
           + 1.0/39916800.0 )+ 1.0/3628800.0 ) \
           + 1.0/362880.0 ) + 1.0/40320.0 ) \
           + 1.0/5040.0 ) + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 )  + 1.0 );
+    }
+    else
+    {
+      FOLD // TMP  .
+      {
+        double gpu_p, gpu_q, sigc ;
+
+        if(numharm==1)
+          cdfgam_d<1>(poww, &gpu_p, &gpu_q );
+        else if(numharm==2)
+          cdfgam_d<2>(poww, &gpu_p, &gpu_q );
+        else if(numharm==4)
+          cdfgam_d<4>(poww, &gpu_p, &gpu_q );
+        else if(numharm==8)
+          cdfgam_d<8>(poww, &gpu_p, &gpu_q );
+        else if(numharm==16)
+          cdfgam_d<16>(poww, &gpu_p, &gpu_q );
+        else
+        {
+          cdfgam_d(poww, numharm*2, &gpu_p, &gpu_q );
+        }
+
+        if (gpu_p == 1.0)
+          gpu_q *= numindep;
+        else
+        {
+          double lq = log(gpu_q * numindep);
+          double q2 = exp(lq);
+
+          double pp = pow((1.0-gpu_q),1.0/(double)numindep);
+          double qq = 1 - pp;
+          sigc = incdf(pp, qq);
+
+          gpu_q = 1.0 - pow(gpu_p, (double)numindep);
+        }
+        gpu_p = 1.0 - gpu_q;
+
+        sigc = incdf(gpu_p, gpu_q);
+
+        //return gpu_q;
+        return sigc;
+      }
     }
 
     //logP = log(1-exp(logQ));
@@ -328,13 +395,23 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
       cdfgam_d<8>(poww, &gpu_p, &gpu_q );
     else if(numharm==16)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
+    else
+    {
+      cdfgam_d(poww, numharm*2, &gpu_p, &gpu_q );
+    }
 
     if (gpu_p == 1.0)
       gpu_q *= numindep;
     else
     {
+      double lq = log(gpu_q * numindep);
+      double q2 = exp(lq);
+
+      double pp = pow((1.0-gpu_q),1.0/(double)numindep);
+      double qq = 1 - pp;
+      sigc = incdf(pp, qq);
+
       gpu_q = 1.0 - pow(gpu_p, (double)numindep);
-      //pp = pow((1.0-gpu_q),1.0/(double)numindep);
     }
     gpu_p = 1.0 - gpu_q;
 

@@ -178,13 +178,27 @@ void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int nu
 
   for (i=1; i<=num_harmonics; i++)
   {
-    //locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
-    locpow[i-1]      = get_scaleFactorZ(data[i-1], numdata, (r_offset[i-1]+r)*i-r_offset[i-1], (z)*i, 0.0);
-    x[0] = (r_offset[i-1]+z)*i-r_offset[i-1];
-    x[1] = z/ZSCALE * i;
-    //maxdata = data[i-1];
-    power[i-1] = -power_call_rz(x);
-    get_derivs3d(data[i-1], numdata, (r_offset[i-1]+r)*i-r_offset[i-1], (z)*i, 0.0, locpow[i-1], &(derivs[i-1]));
+    double rr             =  (r_offset[i-1]+r)*i-r_offset[i-1] ;
+    double zz             =  (z)*i ;
+
+    //locpow[i-1]           = get_localpower3d(data[i-1], numdata, rr, (*zout)*i, 0.0);
+    locpow[i-1]           = get_scaleFactorZ(data[i-1], numdata, rr, zz, 0.0);
+    x[0]                  = rr;
+    x[1]                  = zz/ZSCALE;
+
+    //maxdata               = data[i-1];
+    //maxdata               = data;
+    //nummaxdata            = numdata;
+    int kern_half_width   = z_resp_halfwidth(fabs(x[1]) + 4.0, HIGHACC);
+    //power[i-1] = -power_call_rz(x);
+
+    double powargr, powargi;
+    fcomplex ans;
+    rz_interp(data[i-1], numdata, x[0], x[1] * ZSCALE, kern_half_width, &ans);
+    power[i-1] = POWER(ans.r, ans.i);
+
+
+    get_derivs3d(data[i-1], numdata, rr, zz, 0.0, locpow[i-1], &(derivs[i-1]));
 
     //maxlocpow[i-1]   = locpow[i-1];
     //printf("cand->pows[%02i] %f\n", i-1, power[i-1]);

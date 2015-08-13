@@ -124,6 +124,24 @@ __device__ int z_resp_halfwidth(double z)
   return m;
 }
 
+__device__ int z_resp_halfwidth_high(double z)
+{
+  int m;
+
+  z = fabs(z);
+
+  m = (long) (z * (0.002057 * z + 0.0377) + NUMFINTBINS * 3);
+  m += ((NUMLOCPOWAVG >> 1) + DELTAAVGBINS);
+
+  /* Prevent the equation from blowing up in large z cases */
+
+  if (z > 100 && m > 1.2 * z)
+     m = 1.2 * z;
+
+  return m;
+}
+
+
 /** Generate a complex response function for Fourier interpolation  .
  *
  * This is a CUDA "copy" of gen_r_response in responce.c
@@ -281,6 +299,12 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, int hal
   // Calculate the response x position from the plain x position
   if ( half_width <= 0 )
   {
+    half_width    = z_resp_halfwidth((double) z);
+  }
+  else
+  {
+    int hw2       = MAX(0.6*z, 16*1);
+    half_width    = MIN( half_width, hw2 ) ;
     half_width    = z_resp_halfwidth((double) z);
   }
 

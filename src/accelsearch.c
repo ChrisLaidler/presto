@@ -685,7 +685,7 @@ int main(int argc, char *argv[])
             if ( candGPUP ) // Optimise  .
             {
               opt_candPlns(candGPUP, &obs, ti, oPlnPln);
-              print_percent_complete(ti, numcands, "optimization", 0);
+              //print_percent_complete(ti, numcands, "optimization", 0);
             }
           }
         }

@@ -542,8 +542,8 @@ typedef struct cuOptCand
 
     int           noHarms;
 
-    double        norm[16];
-    int           loR[16];
+    double        norm[32];
+    int           loR[32];
 
     int           maxHalfWidth;
     int           inpSz;                  /// The size in bytes of device input buffer
