@@ -893,8 +893,10 @@ void output_harmonics(GSList * list, accelobs * obs, infodata * idata)
       sprintf(tmpstr, "%-4d", jj + 1);
       center_string(ctrstr, tmpstr, widths[1]);
       fprintf(obs->workfile, "%s  ", ctrstr);
+
       sprintf(tmpstr, "%.2f", candidate_sigma(props.pow, 1, 1));
       center_string(ctrstr, tmpstr, widths[2]);
+
       fprintf(obs->workfile, "%s  ", ctrstr);
       write_val_with_err(obs->workfile, props.pow, props.powerr,
           errors[3], widths[3]);
@@ -1190,7 +1192,7 @@ void add_ffdotpows_ptrs(ffdotpows * fundamental,
 }
 
 
-void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs, 
+void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs,
     int numharm, int harmnum)
 {
   int ii, jj, zz, rrint, zind, subz;
@@ -1222,7 +1224,7 @@ void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs,
 }
 
 
-void inmem_add_ffdotpows_trans(ffdotpows *fundamental, accelobs *obs, 
+void inmem_add_ffdotpows_trans(ffdotpows *fundamental, accelobs *obs,
     int numharm, int harmnum)
 {
   int ii, jj, zz, rrint, zind, subz;
@@ -1669,7 +1671,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
   obs->numzap = 0;
   /*
       if (zapfile!=NULL)
-      obs->numzap = get_birdies(cmd->zapfile, obs->T, obs->baryv, 
+      obs->numzap = get_birdies(cmd->zapfile, obs->T, obs->baryv,
       &(obs->lobins), &(obs->hibins));
       else
       obs->numzap = 0;

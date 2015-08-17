@@ -1,12 +1,18 @@
 #include <curand.h>
 #include <math.h>             // log
 #include <curand_kernel.h>
+#include <math.h>
 
 #include "cuda_math_ext.h"
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
+#include <boost/math/special_functions/gamma.hpp>
+//#include <boost/math/special_functions/beta.hpp>
+//#include <boost/math/special_functions/factorials.hpp>
+#include <boost/math/special_functions/erf.hpp>
+#include <boost/math/special_functions/binomial.hpp>
 
 #define FTLIM 1e-6
 //#define DLIM  0.4
@@ -150,6 +156,9 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     *ss   = -*ss;
   }
 }
+
+const double EPS    = std::numeric_limits<double>::epsilon();
+const double FPMIN  = std::numeric_limits<double>::min()/EPS;
 
 
 /** Generate the complex response value for Fourier f-dot interpolation  .
@@ -1310,27 +1319,360 @@ void cdfgam_d(double x, double *p, double* q)
   *p = 1-*q;
 }
 
+double gammln(double xx)
+{
+  double x,tmp,ser;
+  static double cof[6]= { 76.18009173, -86.50532033, 24.01409822, -1.231739516, 0.120858003e-2, -0.536382e-5 };
+  int j;
+
+  x       =   xx - 1.0;
+  tmp     =   x + 5.5;
+  tmp     -=  (x+0.5)*log(tmp);
+  ser     =   1.0;
+
+  for ( j=0; j<=5;  j++ )
+  {
+    x     += 1.0;
+    ser   += cof[j]/x;
+  }
+
+  return -tmp + log(2.50662827465*ser);
+}
+
+static const int ngau = 18;
+
+const double y[18] = {0.0021695375159141994,0.011413521097787704,0.027972308950302116,0.051727015600492421,0.082502225484340941,0.12007019910960293, 0.16415283300752470, 0.21442376986779355, 0.27051082840644336, 0.33199876341447887, 0.39843234186401943, 0.46931971407375483, 0.54413605556657973, 0.62232745288031077, 0.70331500465597174, 0.78649910768313447, 0.87126389619061517, 0.95698180152629142  };
+const double w[18] = {0.0055657196642445571,0.012915947284065419,0.020181515297735382,0.027298621498568734,0.034213810770299537,0.040875750923643261,0.047235083490265582,0.053244713977759692,0.058860144245324798,0.064039797355015485,0.068745323835736408,0.072941885005653087,0.076598410645870640,0.079687828912071670,0.082187266704339706,0.084078218979661945,0.085346685739338721,0.085983275670394821 };
+
+//Incomplete gamma by quadrature. Returns P .a; x/ or Q.a; x/, when psig is 1 or 0,
+//respectively. User should not call directly.
+double gammpapprox(double a, double x, int psig)
+{
+  double  xu,t,sum,ans;
+  double  a1      = a-1.0;
+  double  lna1    = log(a1);
+  double  sqrta1  = sqrt(a1);
+  double  gln     = gammln(a);
+
+  //Set how far to integrate into the tail:
+  if (x > a1)
+    xu = MAX(a1 + 11.5*sqrta1, x + 6.0*sqrta1);
+  else
+    xu = MAX(0.,MIN(a1 - 7.5*sqrta1, x - 5.0*sqrta1));
+
+  sum = 0;
+
+  for ( int j=0; j < ngau; j++) // Gauss-Legendre
+  {
+    t = x + (xu-x)*y[j];
+    sum += w[j]*exp(-(t-a1)+a1*(log(t)-lna1));
+  }
+  ans = sum*(xu-x)*exp(a1*(lna1-1.)-gln);
+  return (psig?(ans>0.0? 1.0-ans:-ans):(ans>=0.0? ans:1.0+ans));
+}
+
+double gser(const double a, const double x)
+{
+  //Returns the incomplete gamma function P .a; x/ evaluated by its series representation.
+  //Also sets ln .a/ as gln. User should not call directly.
+  double sum,del,ap, gln;
+
+  gln=gammln(a);
+  ap=a;
+  del=sum=1.0/a;
+  for (;;)
+  {
+    ++ap;
+    del *= x/ap;
+    sum += del;
+    if (fabs(del) < fabs(sum)*EPS)
+    {
+      return sum*exp(-x+a*log(x)-gln);
+    }
+  }
+}
+
+double gcf(const double a, const double x)
+{
+  //Returns the incomplete gamma function Q.a; x/ evaluated by its continued fraction rep-
+  //resentation. Also sets ln .a/ as gln. User should not call directly.
+  int i;
+  double an,b,c,d,del,h;
+
+  double gln  = gammln(a);
+  b           = x+1.0-a;
+  //Set up for evaluating continued fraction
+  c           = 1.0/FPMIN;
+  //by modified Lentz’s method (5.2)
+  d           = 1.0/b;
+  //with b0 D 0.
+  h           = d;
+
+  for (i=1;;i++)
+  {
+    //Iterate to convergence.
+    an = -i*(i-a);
+    b += 2.0;
+    d=an*d+b;
+    if (fabs(d) < FPMIN)
+      d=FPMIN;
+    c=b+an/c;
+    if (fabs(c) < FPMIN)
+      c=FPMIN;
+    d=1.0/d;
+    del=d*c;
+    h *= del;
+    if (fabs(del-1.0) <= EPS)
+      break;
+  }
+
+  return exp(-x+a*log(x)-gln)*h;
+  //Put factors in front.
+}
+
+//Returns the incomplete gamma function P .a; x/.
+double gammp(const double a, const double x)
+{
+  if (x < 0.0 || a <= 0.0)
+  {
+    throw("bad args in gammp");
+  }
+  if (x == 0.0)
+  {
+    return 0.0;
+  }
+  else if ((int)a >= 100 )                      // Quadrature  .
+  {
+    return gammpapprox(a,x,1);
+  }
+  else if (x < a+1.0)                           // Use the series representation  .
+  {
+    return gser(a,x);
+  }
+  else                                          // Use the continued fraction representation  .
+  {
+    return 1.0-gcf(a,x);
+  }
+
+}
+
+double gammq(const double a, const double x)
+{
+  //Returns the incomplete gamma function Q.a; x/ Á 1 P .a; x/.
+  if (x < 0.0 || a <= 0.0)
+    throw("bad args in gammq");
+  if (x == 0.0)
+    return 1.0;
+  else if ((int)a >= 100)         // Quadrature.
+    return gammpapprox(a,x,0);
+  else if (x < a+1.0)             // Use the series representation.
+    return 1.0-gser(a,x);
+  else                            // Use the continued fraction representation.
+    return gcf(a,x);
+}
+
+double logIGamma_i(int s, double x )
+{
+  //double x = 1.592432984e8 ;
+  //int s = 10;
+
+  double num = pow(x,0) ;
+  double den = 1;
+
+  double sum = num/den;
+  double trm;
+
+  for( int k = 1; k <= s-1; k++ )
+  {
+    num   = pow(x,k) ;
+    den  *= k;
+
+    trm   = num/den;
+
+    sum  += trm;
+
+    printf("%03i  trm %6e   sum: %6e \n", k, trm, sum );
+  }
+
+  double t1 = lgamma((double)s) ;
+  double t2 = -x ;
+  double t3 = log(sum) ;
+  return t1 + t2 + t3 ;
+}
+
+double logQChi2_i(int s, double x )
+{
+  double sum = 0 ;
+  double num;
+  double den;
+  double trm;
+  double sum0;
+
+  for( int k = s-1; k >= 0 ; k-- )
+  {
+    sum0  = sum;
+    num   = pow(x,k) ;
+    den   = boost::math::factorial<double>(k);
+    trm   = num/den;
+    sum  += trm;
+
+    if ( sum-sum0 == 0 )
+      break;
+  }
+
+  double t2 = -x ;
+  double t3 = log(sum) ;
+  return t2 + t3 ;
+}
+
+void calcNQ(double x, long long n, double* p, double* q)
+{
+  double qq  = 0;
+  double pp  = 1;
+
+  double trueV = 1-pow((1-x),n);
+
+  if ( trueV > 0.95 )
+  {
+    *q = 1.0-pow((long double)(1.0-x),(long double)n);
+    *p =     (long double)pow((long double)(1.0-x),(long double)n);
+    return;
+  }
+
+//  if ( trueV > 0.9 )
+//  {
+//    int tmp = 0;
+//
+//    {
+//      double term = 1;
+//      long long k = 0;
+//      double sum0 = sum;
+//      double dff ;
+//      double coef = 1;
+//      double fact = 1;
+//
+//      int sz1 = sizeof(double);
+//      int sz2 = sizeof(coef);
+//
+//      do
+//      {
+//        sum0 = sum;
+//        coef *= ( n - (k) );
+//        k++;
+//        fact *= k;
+//        double bcoef1 = coef / fact ;
+//        double bcoef2 = boost::math::binomial_coefficient<double>(n,k);
+//
+//        double t1   = pow(-x,k);
+//        term = bcoef1*t1;
+//        sum -= term;
+//        dff = fabs(sum0-sum);
+//
+//        printf("calcNQ %03i sum: %9.4e  term: %9.6e   dff: %7.3e  bcoef1 %12.8e    bcoef2: %12.8e  \n", k-1, sum, term, dff, bcoef1, bcoef2 );
+//      }
+//      while ( dff > 0 && k < n && k <= 10 );
+//    }
+//  }
+
+//  if ( x > 1e-8 || trueV > 0.4 )
+//  {
+//    return trueV;
+//  }
+
+  FOLD // Else do a series expansion  .
+  {
+    double term = 1;
+    long long k = 0;
+    double  sum0 = qq;
+    double  dff ;
+    double  coef = 1;
+    double  fact = 1;
+
+    qq = 0;
+
+    do
+    {
+      sum0 = qq;
+      coef *= ( n - (k) );
+      k++;
+      fact *= k;
+      double bcoef = coef / fact ;
+
+      double t1   = pow(-x,k);
+
+      if( t1 == 0 )
+      {
+        if ( k > 1 )
+        {
+          *p = pp ;
+          *q = qq ;
+          return;
+        }
+        else
+        {
+          *p = 1 - n * x;
+          *q =     n * x;
+          return;
+        }
+      }
+
+
+      term = bcoef*t1;
+      qq -= term;
+      pp  += term;
+      dff = fabs(sum0-qq);
+
+//      if ( trueV > 0.5 )
+      //printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
+    }
+    while ( dff > 0 && k < n && k <= 20 );
+
+    *p = pp ;
+    *q = qq ;
+  }
+}
+
 double candidate_sigma_cl(double poww, int numharm, long long numindep)
 {
-  int n = numharm;
-  if ( poww > 100)
-  {
-/*
-    double c[] = { \
-        -7.784894002430293e-03, \
-        -3.223964580411365e-01, \
-        -2.400758277161838e+00, \
-        -2.549732539343734e+00, \
-        4.374664141464968e+00,  \
-        2.938163982698783e+00 };
+  int     k       = numharm * 2.0 ;     // Each harm is 2 powers
+  double  gamP    = poww * 2.0 ;        // A just for normalisation of powers
 
-    double d[] = { \
-        7.784695709041462e-03, \
-        3.224671290700398e-01, \
-        2.445134137142996e+00, \
-        3.754408661907416e+00 };
-*/
+//  double  pB = boost::math::gamma_p<double>(k / 2.0, gamP / 2.0 ) ;
+//  double  qB = boost::math::gamma_q<double>(k / 2.0, gamP / 2.0 ) ;
+//
+//  double  qq = pow(1-qB,numindep);
+//
+//  double  t1 = boost::math::tgamma<double>(numharm*2, gamP / 2.0 ) ;
+//  double  t2 = boost::math::tgamma_lower<double>(numharm*2, gamP / 2.0 ) ;
+//
+//  double  t3 = boost::math::tgamma<double>(numharm * 2.0 / 2.0 ) ;
+//  double  t4 = boost::math::lgamma<double>(k / 2.0 ) ;
+
+  //double  t5 = logIGamma_i(k / 2.0, gamP / 2.0 ) ;
+
+  //double  t6 = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
+
+//  if ( qB > 0 )
+//  {
+//    double nq = calcNQ(qB, numindep);
+//    double b1 = pow(1-qB,numindep);
+//    double b2 = 1 - pow(1-qB,numindep);
+//    double dff =  nq - b2 ;
+//
+//    int tmp = 0;
+//  }
+//
+//  double logq = chi2_logp(gamP, k);
+//
+//  double  pN = gammp(k/2, gamP / 2.0);
+//  double  qN = gammq(k/2, gamP / 2.0);
+
+  int n = numharm;
+
+  if ( poww > 100 )
+ {
     double logQ;
+
     if      ( n == 1 )
     {
       logQ = -poww;
@@ -1355,17 +1697,15 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
           + 1.0/362880.0 ) + 1.0/40320.0 ) \
           + 1.0/5040.0 ) + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 )  + 1.0 );
     }
-
-    //logP = log(1-exp(logQ));
+    else
+    {
+      logQ = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
+    }
 
     logQ += log( (double)numindep );
 
     double l = sqrt(-2.0*logQ);
-
-    //double x = -1.0 * (((((c[1]*l+c[2])*l+c[3])*l+c[4])*l+c[5])*l+c[6]) / ((((d[1]*l+d[2])*l+d[3])*l+d[4])*l+1.0);
     double x = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) ) ;
-
-    //return logQ;
     return x;
   }
   else
@@ -1382,19 +1722,32 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
       cdfgam_d<8>(poww, &gpu_p, &gpu_q );
     else if(numharm==16)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
-
-    if (gpu_p == 1.0)
-      gpu_q *= numindep;
     else
     {
-      gpu_q = 1.0 - pow(gpu_p, (double)numindep);
-      //pp = pow((1.0-gpu_q),1.0/(double)numindep);
+      gpu_p = boost::math::gamma_p<double>(k / 2.0, gamP / 2.0 ) ;
+      gpu_q = boost::math::gamma_q<double>(k / 2.0, gamP / 2.0 ) ;
     }
-    gpu_p = 1.0 - gpu_q;
+
+    // Correct q for number of trials
+    calcNQ(gpu_q, numindep, &gpu_p, &gpu_q);
+
+//    long long ni = numindep*1e6;
+//    for ( double v = 1e-200; v <= 1; v*=1.5 )
+//    {
+//      double q1;
+//      double pp;
+//      calcNQ(v, ni, &pp, &q1 );
+//      double q2       =  1.0 - pow((long double)(1.0-v),(long double)ni);
+//      double q3       =  ni*v;
+//      double diff     =  q1 - q3 ;
+//
+//      printf("%.25e\t%.10e\t%.10e\t%.10e\t%.10e \n",v,q1,q2,q3,diff);
+//    }
+//
+//    gpu_p = 1.0 - gpu_q;
 
     sigc = incdf(gpu_p, gpu_q);
 
-    //return gpu_q;
     return sigc;
   }
 }
@@ -1436,7 +1789,10 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
   printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-  for ( int i=1; i <= cand->numharm; i++ )
+  if ( nn == 52 )
+    int tmp = 0;
+
+  for ( int i=1; i <= maxHarms; i++ )
   {
     pln->norm[i-1]  = get_scaleFactorZ(fft.fft, fft.nor, (fft.idx+pln->centR)*i-fft.rlo, pln->centZ*i, 0.0);
   }
@@ -1471,6 +1827,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
         if ( cand->numharm == 16 )
           sz = optSz16;
 
+        int numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / pln->noHarms ;
+
         //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
 
         pln->halfWidth = 0;
@@ -1487,6 +1845,9 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+
+            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1510,6 +1871,9 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
+            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+
             if ( ++lrep > 10 )
             {
               break;
@@ -1532,6 +1896,9 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
+            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+
             if ( ++lrep > 10 )
             {
               break;
@@ -1548,20 +1915,15 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           cand->power   = 0;     // Set initial power to zero
           do
           {
-            //printf("cand->r: %.9f  cand->z: %.9f  sz   %.9f\n", cand->r, cand->z, sz );
-
             pln->centR    = cand->r ;
             pln->centZ    = cand->z ;
-
-//            noP       = 100;
-//            cand->r   = 52.567083 ;
-//            cand->r   = 52.5 ;
-//            cand->z   = 0 ;
-//            sz        = 0.5;
 
             opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+
+            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1579,18 +1941,15 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           cand->power   = 0;     // Set initial power to zero
           do
           {
-            //printf("cand->r: %.9f  cand->z: %.9f  sz   %.9f\n", cand->r, cand->z, sz );
             pln->centR    = cand->r ;
             pln->centZ    = cand->z ;
-
-//            noP       = 100;
-//            cand->r   = 184.06;
-//            cand->z   = 0.32;
-//            sz        = 0.01;
 
             opt_candByPln<float>(cand, &fft, pln, noP, sz,  rep++, nn );
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+
+            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1614,6 +1973,9 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             opt_candByPln<double>(cand, &fft, pln, noP, sz,  rep++, nn );
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+
+            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1641,12 +2003,12 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
         FOLD // Update fundamental values to the optimised ones  .
         {
-          float maxSig      = 0;
-          int   bestH       = 0;
-          float bestP       = 0;
-          float sig         = 0;
-          int   numindep;
-          double sig2;
+          float   maxSig      = 0;
+          int     bestH       = 0;
+          float   bestP       = 0;
+          double  sig         = 0; // can be a float
+          int     numindep;
+          double  sig2;
 
           cand->power       = 0;
           for( ii=0; ii < maxHarms; ii++ )
@@ -1654,8 +2016,14 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             cand->power     += cand->derivs[ii].pow/cand->derivs[ii].locpow;
             numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
 
-            sig             = candidate_sigma(cand->power, (ii+1), numindep );
-            sig2            = candidate_sigma_cu(cand->power, (ii+1), numindep );
+            //sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
+            sig            = candidate_sigma(cand->power, (ii+1), numindep );
+//
+//            double Sdiff    = fabs(1 - sig2/sig );
+//            if ( Sdiff > 0.001 )
+//            {
+//              int tmp       = 0;
+//            }
 
             if ( sig > maxSig )
             {
@@ -1665,45 +2033,14 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             }
           }
 
-          if ( maxSig < 0.009 )
-          {
-            optemiseDerivs(data, maxHarms, r_offset, numdata, cand->r, cand->z, cand->derivs, cand->pows, nn);
-
-            float maxSig      = 0;
-            int   bestH       = 0;
-            float bestP       = 0;
-            float sig         = 0;
-            int   numindep;
-
-            double sig2;
-
-            cand->power = 0;
-            for( ii=0; ii < maxHarms; ii++ )
-            {
-              cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;
-
-              numindep      = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
-              sig           = candidate_sigma(cand->power, (ii+1), numindep );
-              sig2          = candidate_sigma_cl(cand->power, (ii+1), numindep );
-
-              if ( sig > maxSig )
-              {
-                maxSig  = sig;
-                bestP   = cand->power;
-                bestH   = (ii+1);
-              }
-            }
-
-          }
-
-//          cand->numharm = bestH;
-//          cand->sigma   = maxSig;
-//          cand->power   = bestP;
+          cand->numharm = bestH;
+          cand->sigma   = maxSig;
+          cand->power   = bestP;
 
         }
 
-        noStages      = log2((double)cand->numharm);
-        cand->sigma   = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
+//        noStages      = log2((double)cand->numharm);
+//        cand->sigma   = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
 
         nvtxRangePop();
       }
@@ -1797,7 +2134,7 @@ void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
         }
 
         int noStages = log2((double)cand->numharm);
-        cand->sigma = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
+        cand->sigma = candidate_sigma_cl(cand->power, cand->numharm, obs->numindep[noStages]);
       }
 
       //printf("Opt point          r: %10.5f z: %10.5f  power: %20.6f   sigma: %6.3f \n", cand->r, cand->z, cand->power, cand->sigma);

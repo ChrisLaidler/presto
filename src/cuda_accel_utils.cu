@@ -1885,7 +1885,9 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
   oPln->maxNoZ        = 512;
   oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;   // This needs to be multiplied by the size of the output element
   oPln->alignment     = getMemAlignment();
-  oPln->maxHalfWidth  = z_resp_halfwidth( MAX( (sSpec->zMax/(float)noHarms+50)*noHarms, sSpec->zMax*1.5), HIGHACC );
+  float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
+  zMax                = MAX(zMax, 60 * noHarms );
+  oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
 
   // Create streams
   CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
@@ -1910,7 +1912,7 @@ cuOptCand* initOptPln(searchSpecs* sSpec)
 
   cuOptCand* oPln     = initOptCand(sSpec);
 
-  oPln->outSz         *= sizeof(float);
+  oPln->outSz        *= sizeof(float);
   oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
@@ -3062,14 +3064,16 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
   {
     if (sSpec->zMax % ACCEL_DZ)
       sSpec->zMax = (sSpec->zMax / ACCEL_DZ + 1) * ACCEL_DZ;
+
     int numz = (sSpec->zMax / ACCEL_DZ) * 2 + 1;
+
     for (int ii = 0; ii < srch->noHarmStages; ii++)
     {
       if (sSpec->zMax == 1)
         srch->numindep[ii] = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) / srch->noHarms;
       else
       {
-        srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * (ACCEL_DZ / 6.95) / (double)(1<<ii);
+        srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * ( ACCEL_DZ / 6.95) / (double)(1<<ii);
       }
       srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
     }

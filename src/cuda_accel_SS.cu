@@ -112,16 +112,65 @@ __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t
   }
 }
 
+
+
+//double gammp(const Doub a, const Doub x)
+//{
+//  //Returns the incomplete gamma function P .a; x/.
+//  if (x < 0.0 || a <= 0.0)
+//    throw("bad args in gammp");
+//  if (x == 0.0)
+//    return 0.0;
+//  else if ((Int)a >= ASWITCH)
+//    return gammpapprox(a,x,1);    //  Quadrature.
+//  else if (x < a+1.0)
+//    return gser(a,x);             //  Use the series representation.
+//  else
+//    return 1.0-gcf(a,x);          //  Use the continued fraction representation.
+//}
+
+
 /** Calculate the CDF of a gamma distribution
  */
 __host__ __device__ void cdfgam_d(double x, int n, double *p, double* q)
 {
+  if ( x <= 0 )
+  {
+    *p = 0;
+    *q = 1;
+    return;
+  }
+
+  if      ( n == 1  )
+  {
+    *q = exp(-x);
+  }
+  else if ( n == 2  )
+  {
+    *q = exp(-x)*( x + 1.0 );
+  }
+  else if ( n == 4  )
+  {
+    *q = exp(-x)*( x*(x*(x/6.0 + 0.5) + 1.0 ) + 1.0 );
+  }
+  else if ( n == 8  )
+  {
+    *q = exp(-x)*( x*(x*(x*(x*(x*(x*(x/5040.0 + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 ) + 1.0 );
+  }
+  else if ( n == 16 )
+  {
+    *q = exp(-x)*( x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x/1.307674368e12 +  1.0/8.71782912e10 ) \
+        + 1.0/6227020800.0 )+ 1.0/479001600.0 ) \
+        + 1.0/39916800.0 )+ 1.0/3628800.0 )     \
+        + 1.0/362880.0 ) + 1.0/40320.0 )        \
+        + 1.0/5040.0 ) + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 )  + 1.0 );
+  }
+  else
   {
     *q = 1.0 + x ;
     double numerator    = x;
     double denominator  = 1.0;
 
-#pragma unroll
     for ( int i = 2 ; i < n ; i ++ )
     {
       denominator *= i;
@@ -138,6 +187,13 @@ __host__ __device__ void cdfgam_d(double x, int n, double *p, double* q)
 template<int n>
 __host__ __device__ void cdfgam_d(double x, double *p, double* q)
 {
+  if ( x <= 0 )
+  {
+    *p = 0;
+    *q = 1;
+    return;
+  }
+
   if      ( n == 1  )
   {
     *q = exp(-x);
@@ -238,6 +294,9 @@ __host__ __device__ double incdf (double p, double q )
   }
   else
   {
+    if ( p == 0 )
+      return 0;
+
     if ( 0.02425 > p )
     {
       l = sqrt(-2.0*log(p));
@@ -258,7 +317,7 @@ __host__ __device__ double incdf (double p, double q )
   // Using erfc and exp to calculate  f(x) = Φ(x)-p  and  f'(x) = Φ'(x)
   double f = 0.5 * erfc(-x/1.414213562373095048801688724209) - p ;
   double xOld = x;
-  for ( int i = 0; i < 5 ; i++ ) // Note: only doing 5 recursions this could be pushed up
+  for ( int i = 0; i < 10 ; i++ ) // Note: only doing 10 recursions this could be pushed up
   {
     u = 0.398942*exp(-x*x/2.0);
     x = x - f / u ;

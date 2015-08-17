@@ -585,7 +585,7 @@ int main(int argc, char *argv[])
 
       printf("Optimising %i candidates.\n\n", numcands);
 
-      if ( cmd->cpuP ) // CPU optimisation  .
+      if ( cmd->cpuP ) 	  // --=== The CPU Optimisation == --  .
       {
 #ifdef CUDA // Profiling  .
 
@@ -617,7 +617,7 @@ int main(int argc, char *argv[])
 
       }
 
-#ifdef CUDA   // --=== The GPU Optimisation == --  .
+#ifdef CUDA   	          // --=== The GPU Optimisation == --  .
       if ( cmd->gpuP > 0  )
       {
         if (cmd->cpuP)
@@ -724,7 +724,7 @@ int main(int argc, char *argv[])
         /* send the originally determined r and z from the       */
         /* harmonic sum in the search.  Note that the derivs are */
         /* not used for the computations with the fundamental.   */
-        //if ( ii == 16 )
+
         {
           calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
           /* Override the error estimates based on power */

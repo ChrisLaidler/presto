@@ -195,7 +195,7 @@ void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int nu
     double powargr, powargi;
     fcomplex ans;
     rz_interp(data[i-1], numdata, x[0], x[1] * ZSCALE, kern_half_width, &ans);
-    power[i-1] = POWER(ans.r, ans.i);
+    power[i-1]            = POWER(ans.r, ans.i);
 
 
     get_derivs3d(data[i-1], numdata, rr, zz, 0.0, locpow[i-1], &(derivs[i-1]));
