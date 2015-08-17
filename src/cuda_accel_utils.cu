@@ -28,6 +28,7 @@ extern "C"
 #ifdef CBL
 #include <unistd.h>
 #include "log.h"
+#include "quadTree.h"
 #endif
 
 
@@ -969,7 +970,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
     FOLD // Allocate global (device independent) host memory  .
     {
       // One set of global set of "candidates" for all devices
-      if( kernel->flag | CU_CAND_ARR )
+      if( kernel->flag & CU_CAND_ARR )
       {
         if ( master == NULL )
         {
@@ -1004,6 +1005,23 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, int numharmstages, in
           }
         }
       }
+      else if( kernel->flag & CU_CAND_QUAD ) // One set of global set of "candidates" for all devices
+      {
+        if ( master == NULL )
+        {
+          if ( outData == NULL )
+          {
+            gridQuadTree<double, float>* qt;
+            vector2<double> center( 0, 0 );
+            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
+
+            qt = new gridQuadTree<double, float>(center, width);
+
+            kernel->h_candidates = qt;
+          }
+        }
+      }
+
     }
 
     if ( hostC )
@@ -1887,6 +1905,7 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
   oPln->alignment     = getMemAlignment();
   float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
   zMax                = MAX(zMax, 60 * noHarms );
+  zMax                = MAX(zMax, sSpec->zMax * 34 + 50 ); // TMP
   oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
 
   // Create streams
@@ -3581,3 +3600,19 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
   cvsLog->csvEndLine();
   //#endif
 }
+
+GSList* getCanidates(cuFFdotBatch* batch, GSList *cands )
+{
+  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
+  quadNode<double, float>* head = qt->getHead();
+
+  qt->update();
+
+
+  printf("GPU search found %i unique values in tree.\n", head->noEls );
+
+  int tmp = 0;
+
+  return cands;
+}
+

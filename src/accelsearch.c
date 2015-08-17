@@ -2,8 +2,10 @@
 
 /*#undef USEMMAP*/
 
-#undef CUDA  // TMP
-#define CUDA // TMP
+#undef CUDA   // TMP
+#define CUDA  // TMP
+
+
 
 #ifdef USEMMAP
 #include <unistd.h>
@@ -203,7 +205,7 @@ int main(int argc, char *argv[])
       double startr = obs.rlo, lastr = 0, nextr = 0;
       ffdotpows *fundamental;
 
-      if ( cmd->cpuP ) // CPU search  .
+      if ( cmd->cpuP ) 	          // --=== The GPU Search == --  .
       {
 #ifdef CUDA // Profiling  .
         nvtxRangePush("CPU");
@@ -299,7 +301,7 @@ int main(int argc, char *argv[])
 
       }
 
-#ifdef CUDA   // --=== The GPU Search == --  .
+#ifdef CUDA                       // --=== The GPU Search == --  .
       if ( cmd->gpuP > 0 )
       {
         printf("\n*************************************************************************************************\n                         Doing GPU Search \n*************************************************************************************************\n");
@@ -429,7 +431,7 @@ int main(int argc, char *argv[])
           print_percent_complete(sSpec.fftInf.rhi - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 0);
           printf("\n");
 
-          if ( (master->flag & CU_CAND_ARR) ) // Copying candidates from array to list for optimisation  .
+          if      ( master->flag & CU_CAND_ARR   ) // Copying candidates from array to list for optimisation  .
           {
             printf("\nCopying candidates from array to list for optimisation.\n");
 
@@ -470,6 +472,11 @@ int main(int argc, char *argv[])
             }
             fclose (pFile);
           }
+          else if ( master->flag & CU_CAND_QUAD  )
+          {
+            candsGPU = getCanidates(master, candsGPU );
+          }
+
 
           // Basic timing
           gettimeofday(&end, NULL);

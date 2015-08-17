@@ -24,6 +24,9 @@ extern "C"
 }
 #endif
 
+#undef CBL                // TMP
+#define CBL               // TMP
+
 #undef TIMING
 #define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
 
@@ -666,5 +669,7 @@ ExternC void printFlags(uint flags);
 ExternC void printCommandLine(int argc, char *argv[]);
 
 ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
+
+ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList *cands );
 
 #endif // CUDA_ACCEL_INCLUDED

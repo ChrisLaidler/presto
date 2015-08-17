@@ -904,11 +904,11 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                     rr    /=  (double)numharm ;
                     zz    =   ( zz * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)numharm ;
 
-                    if      ( batch->flag & CU_CAND_LST )
+                    if      ( batch->flag & CU_CAND_LST 	)
                     {
                       //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
                     }
-                    else if ( batch->flag & CU_CAND_ARR )
+                    else if ( batch->flag & CU_CAND_ARR 	)
                     {
                       double  rDiff = rr - batch->SrchSz->searchRLow ;
                       long    grIdx;   /// The index of the candidate in the global list
@@ -922,11 +922,11 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                         grIdx = floor(rDiff);
                       }
 
-                      if ( grIdx >= 0 && grIdx < batch->SrchSz->noOutpR )  // Valid index
+                      if ( grIdx >= 0 && grIdx < batch->SrchSz->noOutpR )  // Valid index  .
                       {
                         batch->noResults++;
 
-                        if ( batch->flag & FLAG_STORE_ALL )               // Store all stages
+                        if ( batch->flag & FLAG_STORE_ALL )               // Store all stages  .
                         {
                           grIdx += stage * (batch->SrchSz->noOutpR);      // Stride by size
                         }
@@ -954,6 +954,21 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
                           exit(EXIT_FAILURE);
                         }
                       }
+                    }
+                    else if ( batch->flag & CU_CAND_QUAD  )
+                    {
+                      gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
+                      vector2<double> point( zz, rr );
+                      quadPoint<double, float> voxel;
+                      voxel.position.x  = rr;
+                      voxel.position.y  = zz;
+                      voxel.value       = poww;
+
+                      qt->insertDynamic(voxel);
+
+                      quadNode<double, float>* head = qt->getHead();
+                      printf("Ells %06i \n", head->noEls );
+
                     }
                     else
                     {

@@ -418,7 +418,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
 }
 
 template<typename T>
-__global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int16 loR, float16 norm, int16 hw)
+__global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -706,13 +706,13 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
   int noInp = iStride/sizeof(cufftComplex);
   int noPow = pStride/sizeof(float);
 
-  int16   rOff;
-  int16   hw;
-  float16 norm;
+  int32   rOff;
+  int32   hw;
+  float32 norm;
 
   cpuInp = (fcomplexcu*) malloc(iStride*noHarms);
 
-  for( int h = 0; h < 16; h++)
+  for( int h = 0; h < 32; h++)
   {
     rOff.val[h] = 0;
     hw.val[h]   = 0;
@@ -873,9 +873,9 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
 
   int datStart,  datEnd, noDat;
-  int16   rOff;
-  int16   hw;
-  float16 norm;
+  int32   rOff;
+  int32   hw;
+  float32 norm;
   int     off;
   int     newInp = 0;
 
@@ -895,7 +895,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
     }
   }
 
-  for( int h = 0; h < 16; h++)
+  for( int h = 0; h < 32; h++)
   {
     rOff.val[h] = 0;
     hw.val[h]   = 0;
@@ -911,8 +911,6 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
       exit(EXIT_FAILURE);
     }
   }
-
-
 
   for( int h = 0; h < pln->noHarms; h++)
   {
@@ -1637,55 +1635,25 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
   int     k       = numharm * 2.0 ;     // Each harm is 2 powers
   double  gamP    = poww * 2.0 ;        // A just for normalisation of powers
 
-//  double  pB = boost::math::gamma_p<double>(k / 2.0, gamP / 2.0 ) ;
-//  double  qB = boost::math::gamma_q<double>(k / 2.0, gamP / 2.0 ) ;
-//
-//  double  qq = pow(1-qB,numindep);
-//
-//  double  t1 = boost::math::tgamma<double>(numharm*2, gamP / 2.0 ) ;
-//  double  t2 = boost::math::tgamma_lower<double>(numharm*2, gamP / 2.0 ) ;
-//
-//  double  t3 = boost::math::tgamma<double>(numharm * 2.0 / 2.0 ) ;
-//  double  t4 = boost::math::lgamma<double>(k / 2.0 ) ;
+  double logQ, gpu_p, gpu_q, sigc ;
 
-  //double  t5 = logIGamma_i(k / 2.0, gamP / 2.0 ) ;
-
-  //double  t6 = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
-
-//  if ( qB > 0 )
-//  {
-//    double nq = calcNQ(qB, numindep);
-//    double b1 = pow(1-qB,numindep);
-//    double b2 = 1 - pow(1-qB,numindep);
-//    double dff =  nq - b2 ;
-//
-//    int tmp = 0;
-//  }
-//
-//  double logq = chi2_logp(gamP, k);
-//
-//  double  pN = gammp(k/2, gamP / 2.0);
-//  double  qN = gammq(k/2, gamP / 2.0);
-
-  int n = numharm;
+  int     n       = numharm;
 
   if ( poww > 100 )
  {
-    double logQ;
-
-    if      ( n == 1 )
+    if      ( n == 1  )
     {
       logQ = -poww;
     }
-    else if ( n == 2 )
+    else if ( n == 2  )
     {
       logQ = -poww+log( poww + 1.0 );
     }
-    else if ( n == 4 )
+    else if ( n == 4  )
     {
       logQ = -poww + log( poww*(poww*(poww/6.0 + 0.5) + 1.0 ) + 1.0 );
     }
-    else if ( n == 8 )
+    else if ( n == 8  )
     {
       logQ = -poww + log( poww*(poww*(poww*(poww*(poww*(poww*(poww/5040.0 + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 ) + 1.0 );
     }
@@ -1702,23 +1670,22 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
       logQ = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
     }
 
-    logQ += log( (double)numindep );
+    logQ    += log( (double)numindep );
 
     double l = sqrt(-2.0*logQ);
-    double x = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) ) ;
-    return x;
+    sigc     = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) ) ;
+
+    return sigc;
   }
   else
   {
-    double gpu_p, gpu_q, sigc ;
-
-    if(numharm==1)
+    if     (numharm==1 )
       cdfgam_d<1>(poww, &gpu_p, &gpu_q );
-    else if(numharm==2)
+    else if(numharm==2 )
       cdfgam_d<2>(poww, &gpu_p, &gpu_q );
-    else if(numharm==4)
+    else if(numharm==4 )
       cdfgam_d<4>(poww, &gpu_p, &gpu_q );
-    else if(numharm==8)
+    else if(numharm==8 )
       cdfgam_d<8>(poww, &gpu_p, &gpu_q );
     else if(numharm==16)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
@@ -1730,21 +1697,6 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
 
     // Correct q for number of trials
     calcNQ(gpu_q, numindep, &gpu_p, &gpu_q);
-
-//    long long ni = numindep*1e6;
-//    for ( double v = 1e-200; v <= 1; v*=1.5 )
-//    {
-//      double q1;
-//      double pp;
-//      calcNQ(v, ni, &pp, &q1 );
-//      double q2       =  1.0 - pow((long double)(1.0-v),(long double)ni);
-//      double q3       =  ni*v;
-//      double diff     =  q1 - q3 ;
-//
-//      printf("%.25e\t%.10e\t%.10e\t%.10e\t%.10e \n",v,q1,q2,q3,diff);
-//    }
-//
-//    gpu_p = 1.0 - gpu_q;
 
     sigc = incdf(gpu_p, gpu_q);
 
@@ -1764,8 +1716,10 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
   struct timeval start, end, start1, end1;
   double timev1, timev2, timev3;
 
+  printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
+
   int maxHarms  = 32;
-  maxHarms      = cand->numharm ;
+  //maxHarms      = cand->numharm ;
 
   int numdata   = obs->numbins;
 
@@ -1778,7 +1732,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
   pln->centR    = cand->r ;
   pln->centZ    = cand->z ;
-  pln->noHarms  = cand->numharm ;
+  //pln->noHarms  = cand->numharm ;
+  pln->noHarms  = maxHarms ;
 
   fftInfo fft;
   fft.fft       = obs->fft;
@@ -1786,8 +1741,6 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
   fft.nor       = obs->numbins;
   fft.idx       = obs->lobin;
   fft.rhi       = obs->lobin + obs->numbins;
-
-  printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
   if ( nn == 52 )
     int tmp = 0;
@@ -1846,8 +1799,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1871,8 +1824,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1896,8 +1849,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1922,8 +1875,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1948,8 +1901,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1974,8 +1927,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > 10 )
             {
@@ -1993,8 +1946,6 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
         optemiseDerivs(data, maxHarms, r_offset, numdata, cand->r, cand->z, cand->derivs, cand->pows, nn);
 
-        int   noStages;
-
         for( ii=0; ii < maxHarms; ii++ )
         {
           cand->hirs[ii]  = (cand->r+obs->lobin)*(ii+1);
@@ -2008,30 +1959,40 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           float   bestP       = 0;
           double  sig         = 0; // can be a float
           int     numindep;
-          double  sig2;
 
-          cand->power       = 0;
+//          double sSig;
+//          int     numindepS   = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) ;
+//          float   sPower      = 0;
+//          int     noS         = 0;
+
+          cand->power         = 0;
           for( ii=0; ii < maxHarms; ii++ )
           {
-            cand->power     += cand->derivs[ii].pow/cand->derivs[ii].locpow;
-            numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
-
-            //sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
-            sig            = candidate_sigma(cand->power, (ii+1), numindep );
-//
-//            double Sdiff    = fabs(1 - sig2/sig );
-//            if ( Sdiff > 0.001 )
-//            {
-//              int tmp       = 0;
-//            }
-
-            if ( sig > maxSig )
+            if ( cand->derivs[ii].locpow > 0 )
             {
-              maxSig  = sig;
-              bestP   = cand->power;
-              bestH   = (ii+1);
+              float lPower    =  cand->derivs[ii].pow/cand->derivs[ii].locpow;
+              cand->power     += lPower;
+              numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
+              sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
+
+//              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
+//              if ( sSig > 1.5 )
+//              {
+//                sPower      += lPower;
+//                noS++;
+//              }
+
+              if ( sig > maxSig )
+              {
+                maxSig        = sig;
+                bestP         = cand->power;
+                bestH         = (ii+1);
+              }
             }
           }
+
+          //numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (noS) ;
+          //sSig            = candidate_sigma(sPower, noS, numindep );
 
           cand->numharm = bestH;
           cand->sigma   = maxSig;

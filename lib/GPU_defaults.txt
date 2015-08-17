@@ -45,13 +45,13 @@ FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
 # SS_00  SS_10  SS_20  SS_30
 FLAG_SS_10			# Last Edited by run time script
 
-SLICES_SS	AA			# Last Edited by run time script
+SLICES_SS	5
 
 
 ###### Output ########
 
 # CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
-CU_CAND_ARR
+CU_CAND_QUAD
 
 # FLAG_RETURN_ALL or FLAG_RETURN_FINAL
 
@@ -85,5 +85,5 @@ optpln06 0
 globalInt01	4			# Last Edited by run time script
 
 #PLT_OPT
-UNOPT
+#UNOPT
 
