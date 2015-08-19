@@ -796,7 +796,8 @@ int main(int argc, char *argv[])
   if ( (file = fopen(candsFile, "rb")) && useUnopt )       // Read candidates from previous search  . // TMP
   {
     int numcands;
-    fread( &numcands, sizeof(numcands), 1, file );
+    size_t read;
+    read = fread( &numcands, sizeof(numcands), 1, file );
     int nc = 0;
 
     printf("\nReading %i raw candies from \"%s\" previous search.\n", numcands, candsFile);
@@ -804,7 +805,7 @@ int main(int argc, char *argv[])
     for (nc = 0; nc < numcands; nc++)
     {
       accelcand* newCnd = (accelcand*)malloc(sizeof(accelcand));
-      fread( newCnd, sizeof(accelcand), 1, file );
+      read = fread( newCnd, sizeof(accelcand), 1, file );
 
       cands=insert_accelcand(cands,newCnd);
     }
@@ -1127,12 +1128,12 @@ int main(int argc, char *argv[])
                         if      ( trdBatch->flag & FLAG_ITLV_ROW )
                         {
                           cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->stridePwrs + cHInfo->halfWidth * 2 ];
+                          powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
                         }
                         else if ( trdBatch->flag & FLAG_ITLV_PLN )
                         {
                           cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->stridePwrs + cHInfo->halfWidth * 2 ];
+                          powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
                         }
 
                         if      ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
@@ -1686,7 +1687,7 @@ int main(int argc, char *argv[])
 
         printf("\nDone\n");
 
-        if ( master->flag & CU_CAND_ARR    )  // Write back from the candidate array to list  .
+        if ( master->cndType & CU_STR_ARR        )  // Write back from the candidate array to list  .
         {
           printf("\nCopying candidates from array to list.\n");
 

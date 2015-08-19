@@ -8,7 +8,6 @@ __device__ cufftCallbackStoreC d_storeCallbackPtr   = CB_PowerOut;
 
 //======================================= Global variables  ================================================\\
 
-int    noMU_Slices = -1;
 
 //========================================== Functions  ====================================================\\
 
@@ -103,7 +102,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 
 #ifdef SYNCHRONOUS
       // Wait for all the input FFT's to complete
-      for (int ss = 0; ss< batch->noStacks; ss++)
+      for (int ss = 0; ss < batch->noStacks; ss++)
       {
         cuFfdotStack* cStack2 = &batch->stacks[ss];
         cudaStreamWaitEvent(cStack->fftPStream, cStack2->prepComp, 0);
@@ -173,7 +172,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
     dim3 dimBlock, dimGrid;
 
-    if ( batch->flag & FLAG_CUFFT_CB_IN )  		// Do the multiplication using a CUFFT callback  .
+    if ( batch->flag & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback  .
     {
 #ifdef STPMSG
       printf("\t\tMultiply with CUFFT\n");
@@ -200,6 +199,15 @@ void multiplyBatch(cuFFdotBatch* batch)
             }
 
             CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),      "Waiting for GPU to be ready to copy data to device.");   // This will overwrite the f-fdot plain so search must be compete
+
+            if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+            {
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+            }
+            else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
+            {
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+            }
           }
 
           FOLD // Call kernel  .
@@ -234,6 +242,16 @@ void multiplyBatch(cuFFdotBatch* batch)
             {
               CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,  0),  "Waiting for GPU to be ready to copy data to device.");  // Need input data
               CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
+              if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+              {
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              }
+              else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
+              {
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              }
+
 
 #ifdef SYNCHRONOUS
               // Wait for all the input FFT's to complete
@@ -273,10 +291,6 @@ void multiplyBatch(cuFFdotBatch* batch)
               else if ( cStack->flag & FLAG_MUL_23 )
               {
                 mult23_f(cStack->multStream, batch, ss);
-              }
-              else if ( cStack->flag & FLAG_RAND_1 )
-              {
-                mult24(cStack->multStream, batch, ss);
               }
               else
               {

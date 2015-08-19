@@ -82,34 +82,35 @@ extern "C"
 #define     FLAG_SS_30          (1<<20)   ///<
 #define     FLAG_SS_ALL         ( FLAG_SS_00 | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
 
-#define     CU_CAND_ARR         (1<<21)   ///< Candidates are stored in an array (requires more memory)
-#define     CU_CAND_LST         (1<<22)   ///< Candidates are stored in a list  (usually a dynamic linked list)
-#define     CU_CAND_QUAD        (1<<23)   ///< Candidates are stored in a dynamic quadtree
-#define     CU_CAND_ALL         (CU_CAND_ARR | CU_CAND_LST | CU_CAND_QUAD)
-
-#define     FLAG_RETURN_ALL     (1<<24)   ///< Return results for all stages of summing, default is only the final result
-
-#define     FLAG_STORE_ALL      (1<<25)   ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<26)   ///< Store expanded candidates
+#define     FLAG_RET_STAGES     (1<<21)   ///< Return results for all stages of summing, default is only the final result
+#define     FLAG_STORE_ALL      (1<<22)   ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<23)   ///< Store expanded candidates
 
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
-#define     FLAG_RAND_3         (1<<29)   ///< Random Flag 2
-#define     FLAG_KER_ACC        (1<<30)   ///< Random Flag 2
+#define     FLAG_KER_ACC        (1<<30)   ///< Random Flag 4
 
-// ----------- This is a list of the data types that can be passed or returned
+// ----------- This is a list of the data types that and storage structures
 
-#define     CU_NONE             (0)       ///< Nothing specified
 #define     CU_CMPLXF           (1<<1)    ///< Complex float
 #define     CU_INT              (1<<2)    ///< INT
 #define     CU_FLOAT            (1<<3)    ///< Float
-#define     CU_POWERZ_S         (1<<4)    ///< A value and a z bin         candPZ
-#define     CU_POWERZ_I         (1<<5)    ///< A value and a z bin         candPZ
+#define     CU_POWERZ_S         (1<<4)    ///< A value and a z bin         candPZs
+#define     CU_POWERZ_I         (1<<5)    ///< A value and a z bin         candPZi
 #define     CU_CANDMIN          (1<<6)    ///< A compressed candidate      candMin
 #define     CU_CANDSMAL         (1<<7)    ///< A compressed candidate      candSml
 #define     CU_CANDBASC         (1<<8)    ///< A compressed candidate      accelcandBasic
 #define     CU_CANDFULL         (1<<9)    ///< Full detailed candidate     cand
-#define     CU_GSList           (1<<10)   ///<
+#define     CU_TYPE_ALLL        (CU_CMPLXF | CU_INT | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
+
+#define     CU_STR_ARR          (1<<20)   ///< Candidates are stored in an array (requires more memory)
+#define     CU_STR_PLN          (1<<21)
+#define     CU_STR_LST          (1<<22)   ///< Candidates are stored in a list  (usually a dynamic linked list)
+#define     CU_STR_QUAD         (1<<23)   ///< Candidates are stored in a dynamic quadtree
+#define     CU_SRT_ALL          (CU_STR_ARR    | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
+
+//#define     CU_RET_PLN          (1<<20)   ///< Random Flag 3
+
 
 
 //========================================== Macros ======================================================
@@ -122,8 +123,13 @@ extern "C"
 
 extern int    useUnopt;
 
-//======================================== Type defines ==================================================
 
+//===================================== Struct prototypes ================================================
+
+typedef struct cuSearch cuSearch;
+
+
+//======================================== Type defines ==================================================
 
 ///< A complex float in device texture memory
 typedef cudaTextureObject_t fCplxTex;
@@ -238,11 +244,13 @@ typedef struct searchScale
  */
 typedef struct rVals
 {
-    double      drlo;           ///< The value of the first usable bin of the plain (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
-    long long   lobin;          ///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
-    long        numdata;        ///< The number of input FFT points to read
-    long        numrs;          ///< The number of good bins in the plain ( expanded units )
-    long long   expBin;         ///< The index of the expanded bin of the first good value
+    long long   step;                 ///< The step these r values cover
+    double      drlo;                 ///< The value of the first usable bin of the plain (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    double      drhi;                 ///< The value of the first usable bin of the plain (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    long long   lobin;                ///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
+    long        numdata;              ///< The number of input FFT points to read
+    long        numrs;                ///< The number of good bins in the plain ( expanded units )
+    long long   expBin;               ///< The index of the expanded bin of the first good value
 } rVals;
 
 /** User specified search details
@@ -260,7 +268,11 @@ typedef struct searchSpecs
     uint    flags;                    ///< The search flags
     int     normType;                 ///< The type of normalisation to do
 
-    int     outType;                  ///< The type of output
+    int     noMU_Slices;              ///< The number of multiplication slices
+    int     noSS_Slices;              ///< The number of Sum and search slices
+
+    int     retType;                  ///< The type of output
+    int     cndType;                  ///< The type of output
     void*   outData;                  ///< A pointer to the location to store candidates
 
 } searchSpecs;
@@ -333,7 +345,7 @@ typedef struct cuFfdotStack
     size_t  height;                   ///< The height of the entire stack, for one step
     size_t  kerHeigth;                ///< The height of the multiplication kernel for this stack (this is equivalent to the height of the largest plain in the stack)
     size_t  strideCmplx;              ///< The stride of the block of memory  [ in complex numbers! ]
-    size_t  stridePwrs;               ///< The stride of the powers
+    size_t  strideFloat;               ///< The stride of the powers
     uint    flag;                     ///< CUDA accel search flags
 
     int     noMulSlices;              ///< The number of slices to do multiplication with
@@ -393,7 +405,7 @@ typedef struct cuFfdotStack
  */
 typedef struct cuFFdotBatch
 {
-    searchSpecs* sInf;                ///< A pointer to the search info
+    cuSearch*   sInf;                 ///< A pointer to the search info
 
     int     noStacks;                 ///< The number of stacks in this batch
     int     noHarms;                  ///< The number of harmonics in the family
@@ -411,7 +423,6 @@ typedef struct cuFFdotBatch
 
     int     srchMaster;               ///< Weather this is the master batch
     int     isKernel;                 ///< Weather this is the master batch
-
 
     int stageIdx[MAX_HARM_NO];        ///< The index of the plains in the Presto harmonic summing order
 
@@ -434,10 +445,11 @@ typedef struct cuFFdotBatch
 
     int     retType;                  ///< The type of output
     int     cndType;                  ///< The type of output
+
     void*   h_retData;                ///< The output
     void*   d_retData;                ///< The output
     void*   h_candidates;             ///< Host memory for candidates
-    void*   d_candidates;             ///< Host memory for candidates
+    void*   d_candidates;             ///< Device memory for candidates (but they aren't really stored on the device)
 
     fcomplexcu* h_iData;              ///< Pointer to page locked host memory of Input data for t
     fcomplexcu* d_iData;              ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
@@ -451,7 +463,7 @@ typedef struct cuFFdotBatch
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;
 
-    float* normPowers;                ///< Powers used for running double-tophat local-power normalisation
+    float* normPowers;                ///< A array to store powers for running double-tophat local-power normalisation
 
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
@@ -503,6 +515,11 @@ typedef struct cuMemInfo
 
     int             noSteps;            ///< The total steps there are across all devices
 
+    // Details of the GPU's in use
+    int             alignment[MAX_GPUS];
+    float           capability[MAX_GPUS];
+    char*           name[MAX_GPUS];
+
     int*            devNoStacks;        ///< An array of the number of stacks on each device
     stackInfo**     h_stackInfo;        ///< An array of pointers to host memory for the stack info
 } cuMemInfo;
@@ -519,10 +536,12 @@ typedef struct cuSearch
     // Some extra search details
     int           noHarms;            ///< The number of harmonics in the family
     int           noHarmStages;       ///< The number of stages of harmonic summing
+
     int           numZ;               ///< The number of Z values
     int           noSteps;            ///< The number of steps to cover the entire input data
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
     int*          pIdx;               ///< The index of the plains in the Presto harmonic summing order
+
     float*        powerCut;           ///< The power cutoff
     long long*    numindep;           ///< The number of independent trials
 } cuSearch;

@@ -48,7 +48,7 @@ static void print_percent_complete(int current, int number, char *what, int rese
     if (newper > 100)
       newper = 100;
     if (newper > oldper) {
-      printf("\rAmount of %s complete = %3d%%", what, newper);
+      printf("\rAmount of %s complete = %3d%%  ", what, newper);
       fflush(stdout);
       oldper = newper;
     }
@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
       double startr = obs.rlo, lastr = 0, nextr = 0;
       ffdotpows *fundamental;
 
-      if ( cmd->cpuP ) 	          // --=== The GPU Search == --  .
+      if ( cmd->cpuP ) 	          // --=== The CPU Search == --  .
       {
 #ifdef CUDA // Profiling  .
         nvtxRangePush("CPU");
@@ -366,11 +366,11 @@ int main(int argc, char *argv[])
             while ( ss < maxxx )  // Main GPU loop  .
             {
 #pragma omp critical
+              FOLD
               {
                 firstStep = ss;
                 ss       += trdBatch->noSteps;
                 cuSrch->noSteps++;
-
 #ifdef STPMSG
                 printf("\nStep %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, trdBatch->noSteps);
 #endif
@@ -393,6 +393,17 @@ int main(int argc, char *argv[])
                 {
                   startrs[step] = sSpec.fftInf.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
                   lastrs[step]  = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+
+                  rVals* rVal             = &((*trdBatch->rInput)[step][0]);
+                  rVal->drlo              = sSpec.fftInf.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+                  rVal->drhi              = sSpec.fftInf.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+
+                  int harm;
+                  for (harm = 0; harm < trdBatch->noHarms; harm++)
+                  {
+                    rVal                    = &((*trdBatch->rInput)[step][harm]);
+                    rVal->step              = firstStep + step;
+                  }
                 }
                 else
                 {
@@ -408,6 +419,15 @@ int main(int argc, char *argv[])
 
 #ifndef STPMSG
               print_percent_complete(startrs[0] - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 0);
+
+//              if ( trdBatch->cndType & CU_STR_QUAD    ) // TMP
+//              {
+//                //gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
+//                //quadNode<double, float>* head = qt->getHead();
+//
+//                double per = trdBatch->noResults / (double)( cuSrch->noSteps * trdBatch->accelLen * trdBatch->hInfos->height );
+//                printf(" No Els %08i  %5.2f%% \r", trdBatch->noResults, per*100 );
+//              }
 #endif
             }
 
@@ -431,7 +451,7 @@ int main(int argc, char *argv[])
           print_percent_complete(sSpec.fftInf.rhi - sSpec.fftInf.rlo, sSpec.fftInf.rhi - sSpec.fftInf.rlo, "search", 0);
           printf("\n");
 
-          if      ( master->flag & CU_CAND_ARR   ) // Copying candidates from array to list for optimisation  .
+          if      ( master->cndType & CU_STR_ARR      ) // Copying candidates from array to list for optimisation  .
           {
             printf("\nCopying candidates from array to list for optimisation.\n");
 
@@ -472,7 +492,7 @@ int main(int argc, char *argv[])
             }
             fclose (pFile);
           }
-          else if ( master->flag & CU_CAND_QUAD  )
+          else if ( master->flag & CU_STR_QUAD   )
           {
             candsGPU = getCanidates(master, candsGPU );
           }
@@ -601,7 +621,6 @@ int main(int argc, char *argv[])
 
         nvtxRangePush("CPU");
         gettimeofday(&start01, NULL);       // Profiling
-
 #endif
 
         accelcand *candCPU;
@@ -640,7 +659,7 @@ int main(int argc, char *argv[])
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
         omp_set_num_threads(4);
 
-#pragma omp parallel
+//#pragma omp parallel
 #endif
         FOLD  // Main GPU loop  .
         {

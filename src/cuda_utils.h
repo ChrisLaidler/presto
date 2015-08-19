@@ -1,9 +1,9 @@
 /*
  * cuda_utils.h
  *
- *      Author: claidler Laidler 
+ *      Author: claidler Laidler
  *      e-mail: chris.laidler@gmail.com
- *      
+ *
  *      This contains a number of basic functions for use with CUDA applications
  */
 
@@ -94,10 +94,10 @@ typedef struct
 } SMVal;
 
 
-//====================================== Inline functions ================================================\\
+//====================================== Inline functions ================================================//
 
 
-//==================================== Function Prototypes ===============================================\\
+//==================================== Function Prototypes ===============================================//
 
 inline int getValFromSMVer(int major, int minor, SMVal* vals);
 
@@ -129,6 +129,8 @@ ExternC void listDevices();
  */
 ExternC int getMemAlignment();
 
+/** Get the stride (in number of elements) given a number of elements and the "block" size  .
+ */
 ExternC int getStrie(int noEls, int elSz, int blockSz);
 
 #endif /* CUDA_UTILS_H_ */

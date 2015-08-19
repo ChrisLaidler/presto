@@ -2,7 +2,7 @@
 ####### memory #######
 
 # INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
-ILROW			# Last Edited by run time script
+IL_ROW			# Last Edited by run time script
 
 ######## Kernel #######
 
@@ -45,18 +45,20 @@ FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
 # SS_00  SS_10  SS_20  SS_30
 FLAG_SS_10			# Last Edited by run time script
 
-SLICES_SS	5
-
+#SLICES_SS	5
 
 ###### Output ########
-
-# CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
-CU_CAND_QUAD
 
 # FLAG_RETURN_ALL or FLAG_RETURN_FINAL
 
 #FLAG_STORE_ALL
 #FLAG_STORE_EXP
+
+# FLAG_RET_ARR  FLAG_RET_PLN
+FLAG_RET_ARR
+
+# CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
+#CAND_QUAD
 
 
 ###### Optimisation ########
@@ -85,5 +87,5 @@ optpln06 0
 globalInt01	4			# Last Edited by run time script
 
 #PLT_OPT
-#UNOPT
+UNOPT
 

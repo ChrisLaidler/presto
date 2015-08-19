@@ -149,7 +149,7 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ARCH =
 #ARCH 		+= -gencode arch=compute_20,code=sm_21
-ARCH 		+= -gencode arch=compute_30,code=sm_30
+#ARCH 		+= -gencode arch=compute_30,code=sm_30
 #ARCH 		+= -gencode arch=compute_35,code=sm_35
 ARCH 		+= -gencode arch=compute_50,code=sm_50
 
@@ -158,8 +158,9 @@ CUDA_PATH  = /usr/local/cuda
 CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
 CUDAINC    = -I$(CUDA_PATH)/include
 
-NVCCFLAGS  = $(CUDAINC) $(ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
+NVCCFLAGS  = $(CUDAINC) $(ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS} 
 NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
+NVCCFLAGS  += -Xcompiler -Wno-comment
 
 NVCLFLAGS  = $(CUDAINC) $(ARCH) $(CUDALIBS)  
 NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
@@ -194,9 +195,7 @@ else
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
   
   NVCCFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo
-  #-lineinfo -g
   NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo
-  #-lineinfo -g
 
   # Global memory accesses cached in both L1 and L2 (default)
   #NVCCFLAGS += -Xptxas -dlcm=ca

@@ -1718,7 +1718,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
   printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
-  int maxHarms  = 32;
+  int maxHarms  = 16;
   //maxHarms      = cand->numharm ;
 
   int numdata   = obs->numbins;
@@ -1960,10 +1960,10 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           double  sig         = 0; // can be a float
           int     numindep;
 
-//          double sSig;
-//          int     numindepS   = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) ;
-//          float   sPower      = 0;
-//          int     noS         = 0;
+          double sSig;
+          int     numindepS   = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) ;
+          float   sPower      = 0;
+          int     noS         = 0;
 
           cand->power         = 0;
           for( ii=0; ii < maxHarms; ii++ )
@@ -1975,12 +1975,14 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
               numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
               sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
 
-//              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
-//              if ( sSig > 1.5 )
-//              {
-//                sPower      += lPower;
-//                noS++;
-//              }
+              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
+
+              if ( lPower > 3 )
+              {
+                sPower      += lPower;
+                noS++;
+              }
+              printf("          %02i  pow: %8.3f  sig: %8.4f   Sum: pow: %8.3f  sig: %8.4f\n", ii+1, lPower, sSig, cand->power, sig );
 
               if ( sig > maxSig )
               {
@@ -1991,8 +1993,12 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             }
           }
 
-          //numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (noS) ;
-          //sSig            = candidate_sigma(sPower, noS, numindep );
+
+          numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (maxHarms) ;
+          sSig            = candidate_sigma(sPower, maxHarms, numindep );
+          printf("\n" );
+          printf("              pow: %8.3f  sig: %8.4f\n", sPower, sSig );
+          printf("---------------------\n" );
 
           cand->numharm = bestH;
           cand->sigma   = maxSig;
