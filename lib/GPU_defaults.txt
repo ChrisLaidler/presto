@@ -28,7 +28,7 @@ FLAG_MUL_AA			# Last Edited by run time script
 
 MUL_SLICES	1			# Last Edited by run time script
 
-MUL_CHUNK	12			# Last Edited by run time script
+MUL_CHUNK	6			# Last Edited by run time script
 
 ######### FFT ############
 
@@ -56,7 +56,7 @@ FLAG_SS_10			# Last Edited by run time script
 
 SS_SLICES	1			# Last Edited by run time script
 
-SS_CHUNK	12			# Last Edited by run time script
+SS_CHUNK	6			# Last Edited by run time script
 
 ###### Candidates ########
 
