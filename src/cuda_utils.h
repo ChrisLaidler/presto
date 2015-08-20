@@ -120,6 +120,8 @@ ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int l
  */
 ExternC int getGPUCount();
 
+ExternC void initGPUs(gpuSpecs* gSpec);
+
 /** Print a nice list of CUDA capable device(s) with some details
  */
 ExternC void listDevices();

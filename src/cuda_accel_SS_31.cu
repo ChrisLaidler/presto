@@ -274,7 +274,7 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 template<uint FLAGS, int noStages, const int noHarms>
 __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  switch (globalInt01)
+  switch (batch->ssChunk)
   {
     case 1:
     {
@@ -286,11 +286,11 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU31_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    //    case 3:
-    //    {
-    //      add_and_searchCU31_q<FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+    case 3:
+    {
+      add_and_searchCU31_q<FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
     case 4:
     {
       add_and_searchCU31_q<FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
@@ -331,33 +331,33 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU31_q<FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    case 14:
-    {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 16:
-    {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 18:
-    {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 20:
-    {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 24:
-    {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+//    case 14:
+//    {
+//      add_and_searchCU31_q<FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 16:
+//    {
+//      add_and_searchCU31_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 18:
+//    {
+//      add_and_searchCU31_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 20:
+//    {
+//      add_and_searchCU31_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 24:
+//    {
+//      add_and_searchCU31_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
     default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
       exit(EXIT_FAILURE);
   }
 
@@ -413,7 +413,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);
-  dimGrid.y   = batch->noSSSlices;
+  dimGrid.y   = batch->ssSlices;
 
   FOLD // Call flag template  .
   {

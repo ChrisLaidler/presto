@@ -1490,19 +1490,26 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     if (usemmap)
     {
       unsigned long freeRam = getFreeRamCU();
-      freeRam = 0;
 
-      if ( freeRam * 0.6 > obs->numbins*sizeof(fcomplex) )
+      if ( freeRam * 0.6 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
       {
-        fseek ( obs->fftfile , 0 , SEEK_SET );
-        obs->fft = (fcomplex*)malloc( obs->numbins*sizeof(fcomplex) );
+        FILE *datfile;
+        long long filelen;
+        float *ftmp;
 
-        printf("Reading input FFT into memory.  This may take a while... ");
-        fflush(stdout);
-        size_t num = fread(obs->fft, sizeof(fcomplex), obs->numbins, obs->fftfile);
-        fclose(obs->fftfile);
-        obs->fftfile = NULL;
+        printf("Reading entire input FFT into memory.  This may take a while... ");
+        fflush(NULL);
+        datfile         = chkfopen(cmd->argv[0], "rb");
+        filelen         = chkfilelen(datfile, sizeof(float));
+        ftmp            = read_float_file(datfile, -ACCEL_PADDING, filelen+2*ACCEL_PADDING);
+        ftmp           += ACCEL_PADDING;
+        fclose(datfile);
         printf("done.\n");
+
+        obs->fftfile    = NULL;
+        obs->fft        = (fcomplex *) ftmp;
+        obs->numbins    = filelen / 2;
+        obs->dat_input  = 1;
 
         /* De-redden it */
         printf("Removing red-noise... ");

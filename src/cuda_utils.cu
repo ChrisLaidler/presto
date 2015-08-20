@@ -146,6 +146,42 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
   return -1;
 }
 
+void initGPUs(gpuSpecs* gSpec)
+{
+  int currentDevvice, deviceCount;
+  size_t free, total;
+  char txt[1024];
+
+  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
+
+  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
+  {
+    int device = gSpec->devId[dIdx];
+
+    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+
+    // Check if the the current device is 'device'
+    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+    if ( currentDevvice != device)
+    {
+      fprintf(stderr, "ERROR: Device not set.\n");
+      exit(EXIT_FAILURE);
+    }
+
+    FOLD // call something to initialise the device
+    {
+      sprintf(txt,"Init device %02i", device );
+      nvtxRangePush(txt);
+
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+
+      cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
+      nvtxRangePop();
+    }
+  }
+}
+
 void listDevices()
 {
   cudaDeviceProp deviceProp;

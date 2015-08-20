@@ -21,16 +21,22 @@ __host__  void mult10(cuFFdotBatch* batch)
 
     FOLD // Synchronisation  .
     {
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
-      if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+      if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
       {
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+        // CFF output callback has its own data so can start once FFT is complete
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
       }
-      else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
+      else
       {
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+        // Have to wait for search to finish reading data
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+      }
+
+      if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
+      {
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plain
       }
 
 #ifdef SYNCHRONOUS

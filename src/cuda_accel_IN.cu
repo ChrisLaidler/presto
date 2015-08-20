@@ -150,7 +150,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
 {
 #ifdef STPMSG
-    printf("\tSet Stack R-Vals\n");
+  printf("\tSet Stack R-Vals\n");
 #endif
 
   int       hibin, binoffset;
@@ -204,9 +204,6 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
         if  ( noEls > cHInfo->width )
         {
           fprintf(stderr, "ERROR: Number of elements in step greater than width of the plain! harm: %i\n", harm);
-
-          int tmp = 0;
-
           exit(EXIT_FAILURE);
         }
       }
@@ -256,7 +253,9 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         FOLD // Synchronisation  .
         {
           // Make sure the previous thread has complete reading from page locked memory
+          nvtxRangePush("EventSynch");
           CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: copying data to device");
+          nvtxRangePop();
         }
 
         FOLD // Zero host memory  .
@@ -345,27 +344,27 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
             FOLD // Synchronisation  .
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inpStream, batch->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inptStream, batch->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
 
 #ifdef SYNCHRONOUS
               // Wait for previous FFT to complete
               if ( pStack != NULL )
-                cudaStreamWaitEvent(cStack->inpStream, pStack->normComp, 0);
+                cudaStreamWaitEvent(cStack->inptStream, pStack->normComp, 0);
 #endif
 
 #ifdef TIMING
-              cudaEventRecord(cStack->normInit, cStack->inpStream);
+              cudaEventRecord(cStack->normInit, cStack->inptStream);
 #endif
             }
 
             FOLD // Call the kernel to normalise and spread the input data  .
             {
-              normAndSpread_f(cStack->inpStream, batch, stack );
+              normAndSpread_f(cStack->inptStream, batch, stack );
             }
 
             FOLD // Synchronisation  .
             {
-              cudaEventRecord(cStack->normComp, cStack->inpStream);
+              cudaEventRecord(cStack->normComp, cStack->inptStream);
 
 #ifdef SYNCHRONOUS
               pStack = cStack;
@@ -375,8 +374,8 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
 #ifdef SYNCHRONOUS // Wait for the last stack to complete normalisation  .
           cuFfdotStack* lStack = &batch->stacks[batch->noStacks -1];
-          cudaStreamWaitEvent(lStack->inpStream, lStack->normComp, 0);
-          cudaEventRecord(batch->normComp, lStack->inpStream);
+          cudaStreamWaitEvent(lStack->inptStream, lStack->normComp, 0);
+          cudaEventRecord(batch->normComp, lStack->inptStream);
 #endif
         }
       }
@@ -388,8 +387,12 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
         // Copy chunks of FFT data and normalise and spread using the CPU
 
-        // Make sure the previous thread has complete reading from page locked memory
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
+        FOLD // Make sure the previous thread has complete reading from page locked memory
+        {
+          nvtxRangePush("EventSynch");
+          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
+          nvtxRangePop();
+        }
 
         nvtxRangePush("Zero");
         memset(batch->h_iData, 0, batch->inpDataSize*batch->noSteps);
@@ -400,7 +403,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
         FOLD // CPU FFT  .
         {
-          if ( batch->flag & CU_INPT_CPU_FFT )
+          if ( batch->flag & CU_INPT_FFT_CPU )
           {
 #ifdef STPMSG
             printf("\t\tCPU FFT Input\n");
@@ -465,7 +468,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
           cudaEventRecord(batch->normComp, batch->inpStream);
           cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
 
-          if ( batch->flag & CU_INPT_CPU_FFT )
+          if ( batch->flag & CU_INPT_FFT_CPU )
           {
             for (int ss = 0; ss < batch->noStacks; ss++)
             {
@@ -483,7 +486,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
     FOLD // fft the input on the GPU data  .
     {
-      if ( !(batch->flag & CU_INPT_CPU_FFT) )
+      if ( !(batch->flag & CU_INPT_FFT_CPU) )
       {
 #ifdef STPMSG
         printf("\t\tGPU FFT\n");
@@ -563,8 +566,12 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
   if ( batch->haveSearchResults )
 #endif
   {
-    // Make sure the previous thread has complete reading from page locked memory
-    CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
+    FOLD // Make sure the previous thread has complete reading from page locked memory
+    {
+      nvtxRangePush("EventSynch");
+      CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
+      nvtxRangePop();
+    }
 
     float time;         // Time in ms of the thing
     cudaError_t ret;    // Return status of cudaEventElapsedTime
@@ -613,7 +620,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
     FOLD // Input FFT timing  .
     {
-      if ( !(batch->flag & CU_INPT_CPU_FFT) )
+      if ( !(batch->flag & CU_INPT_FFT_CPU) )
       {
         for (int ss = 0; ss < batch->noStacks; ss++)
         {

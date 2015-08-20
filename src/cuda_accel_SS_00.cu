@@ -234,93 +234,6 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     cmplx.val[i]    = batch->plains[idx].d_plainData;
   }
 
-  //  switch (globalInt01)
-  //  {
-  //    case 1:
-  //    {
-  //      add_and_searchCU00_k<FLAGS, 1> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 2:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,2> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  ////    case 3:
-  ////    {
-  ////      add_and_searchCU00_k<FLAGS,3> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  ////      break;
-  ////    }
-  //    case 4:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,4> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 5:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,5> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  ////    case 6:
-  ////    {
-  ////      add_and_searchCU00_k<FLAGS,6> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  ////      break;
-  ////    }
-  //    case 7:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,7> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 8:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,8> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  ////    case 9:
-  ////    {
-  ////      add_and_searchCU00_k<FLAGS,9> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  ////      break;
-  ////    }
-  //    case 10:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,10> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 12:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 14:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,14> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 16:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,16> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 18:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,18> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 20:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,20> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 24:
-  //    {
-  //      add_and_searchCU00_k<FLAGS,24> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    default:
-  //      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
-  //      exit(EXIT_FAILURE);
-  //  }
-
   add_and_searchCU00_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
@@ -355,7 +268,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     cmplx.val[i]    = batch->plains[idx].d_plainData;
   }
 
-  //  switch (globalInt01)
+  //  switch (batch->ssChunk)
   //  {
   //    case 1:
   //    {
@@ -438,7 +351,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   //      break;
   //    }
   //    default:
-  //      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+  //      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
   //      exit(EXIT_FAILURE);
   //  }
 
@@ -458,7 +371,7 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);
-  dimGrid.y   = batch->noSSSlices;
+  dimGrid.y   = batch->ssSlices;
 
   if ( 0 )  // Stage order  .
   {

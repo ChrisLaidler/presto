@@ -140,7 +140,7 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
   else
   {
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-    dimGrid.y = cStack->noMulSlices;
+    dimGrid.y = cStack->mulSlices;
 
     mult01_k<<<dimGrid, dimBlock, 0, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }

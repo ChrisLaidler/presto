@@ -281,7 +281,7 @@ __host__  void mult21_c(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream
       break;
     }
     default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
       exit(EXIT_FAILURE);
   }
 }
@@ -349,7 +349,7 @@ __host__  void mult24(cudaStream_t stream, cuFFdotBatch* batch, uint stack)
   dimBlock.y = CNV_DIMY;
 
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = cStack->noMulSlices;
+  dimGrid.y = cStack->mulSlices;
 
 
   if      ( batch->flag & FLAG_ITLV_ROW )

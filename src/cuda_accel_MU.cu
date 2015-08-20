@@ -100,6 +100,11 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
+      if ( batch->retType & CU_STR_PLN )
+      {
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plain
+      }
+
 #ifdef SYNCHRONOUS
       // Wait for all the input FFT's to complete
       for (int ss = 0; ss < batch->noStacks; ss++)
@@ -110,7 +115,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 
       // Wait for the previous multiplication to complete
       if ( pStack != NULL )
-        cudaStreamWaitEvent(cStack->fftPStream, pStack->plnComp, 0);
+        cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
 #endif
     }
 
@@ -122,7 +127,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
         FOLD // Timing  .
         {
 #ifdef TIMING
-          cudaEventRecord(cStack->invFFTinit, cStack->fftPStream);
+          cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 #endif
         }
 
@@ -146,7 +151,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 
     FOLD // Synchronisation  .
     {
-      cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+      cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
 
 #ifdef SYNCHRONOUS
       pStack = cStack;
@@ -195,18 +200,24 @@ void multiplyBatch(cuFFdotBatch* batch)
             for (int ss = 0; ss < batch->noStacks; ss++) // Synchronise input data preparation for all stacks
             {
               cuFfdotStack* cStack = &batch->stacks[ss];
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");    // Need input data
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),      "Waiting for GPU to be ready to copy data to device.");    // Need input data
+
+              if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
+              {
+                // CFF output callback has its own data so can start once FFT is complete
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              }
             }
 
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),      "Waiting for GPU to be ready to copy data to device.");   // This will overwrite the f-fdot plain so search must be compete
-
-            if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+            if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              // Have to wait for search to finish reading data
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
             }
-            else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
+
+            if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plain
             }
           }
 
@@ -227,7 +238,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             CUDA_SAFE_CALL(cudaEventRecord(batch->multComp, batch->multStream),"Recording event: multComp");
           }
         }
-        else if ( batch->flag & FLAG_MUL_STK ) 	  // Do the multiplications one stack  at a time  .
+        else if ( batch->flag & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
         {
 #ifdef SYNCHRONOUS
           cuFfdotStack* pStack = NULL;  // Previous stack
@@ -241,21 +252,26 @@ void multiplyBatch(cuFFdotBatch* batch)
             FOLD // Synchronisation  .
             {
               CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,  0),  "Waiting for GPU to be ready to copy data to device.");  // Need input data
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
 
-              if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+              if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
               {
-                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+                // CFF output callback has its own data so can start once FFT is complete
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
               }
-              else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
+              else
               {
-                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+                // Have to wait for search to finish reading data
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
               }
 
+              if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
+              {
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plain
+              }
 
 #ifdef SYNCHRONOUS
               // Wait for all the input FFT's to complete
-              for (int ss = 0; ss< batch->noStacks; ss++)
+              for (int ss = 0; ss < batch->noStacks; ss++)
               {
                 cuFfdotStack* cStack2 = &batch->stacks[ss];
                 cudaStreamWaitEvent(cStack->multStream, cStack2->prepComp, 0);
@@ -344,6 +360,11 @@ void multiplyBatch(cuFFdotBatch* batch)
             cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
             cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
 
+            if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+            {
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+            }
+
 #ifdef SYNCHRONOUS
             // Wait for all the multiplications to complete
             for (int ss = 0; ss< batch->noStacks; ss++)
@@ -354,7 +375,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
             // Wait for the previous fft to complete
             if ( pStack != NULL )
-              cudaStreamWaitEvent(cStack->fftPStream, pStack->plnComp, 0);
+              cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
 #endif
           }
 
@@ -365,7 +386,7 @@ void multiplyBatch(cuFFdotBatch* batch)
               FOLD // Timing  .
               {
 #ifdef TIMING
-                cudaEventRecord(cStack->invFFTinit, cStack->fftPStream);
+                cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 #endif
               }
 
@@ -379,7 +400,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
               FOLD // Synchronisation  .
               {
-                cudaEventRecord(cStack->plnComp, cStack->fftPStream);
+                cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
 
 #ifdef SYNCHRONOUS
                 pStack = cStack;

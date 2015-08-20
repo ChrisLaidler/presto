@@ -1,34 +1,36 @@
 
-####### memory #######
+######## memory #########
 
-# INTERLEAVE_ROW  INTERLEAVE_PLN  or    IL_ROW  IL_PLN
+#  IL_ROW   or   IL_PLN
 IL_ROW			# Last Edited by run time script
 
-######## Kernel #######
+######### Kernel #########
 
 FLAG_KER_ACC
 
 
-######## Input #######
+########## Input #########
 
 # NORM_CPU NORM_GPU
-NORM_GPU
+NORM_CPU
 
 # FFT_CPU  FFT_GPU
-FFT_GPU # Last Edited by run time script
+FFT_GPU
 
 
-###### Convolve ######
+######## Convolve ########
 
-# MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30
+# MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
 FLAG_MUL_AA			# Last Edited by run time script
 
 # Other Convolve options
 # FLAG_TEX_MUL
 
-SLICES_MU	AA			# Last Edited by run time script
+MUL_SLICES	1			# Last Edited by run time script
 
-####### FFT ##########
+MUL_CHUNK	12			# Last Edited by run time script
+
+######### FFT ############
 
 # FLAG_CUFFT_CB_IN 	# In my testing this is very slow, like 7 times slower (FFT only)!
 FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
@@ -36,26 +38,32 @@ FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
 # FLAG_NO_CB
 
 
-###### Search ########
+######## Return ##########
+
+# FLAG_RET_ARR  FLAG_RET_PLN
+FLAG_RET_ARR
+
+
+######## Search ##########
 
 #FLAG_SAS_TEX
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
-# SS_00  SS_10  SS_20  SS_30
+# SS_CPU SS_00  SS_10  SS_20  SS_30 SS_AA
 FLAG_SS_10			# Last Edited by run time script
 
-#SLICES_SS	5
 
-###### Output ########
+SS_SLICES	1			# Last Edited by run time script
+
+SS_CHUNK	12			# Last Edited by run time script
+
+###### Candidates ########
 
 # FLAG_RETURN_ALL or FLAG_RETURN_FINAL
 
 #FLAG_STORE_ALL
 #FLAG_STORE_EXP
-
-# FLAG_RET_ARR  FLAG_RET_PLN
-FLAG_RET_ARR
 
 # CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
 #CAND_QUAD
@@ -87,5 +95,5 @@ optpln06 0
 globalInt01	4			# Last Edited by run time script
 
 #PLT_OPT
-UNOPT
+#UNOPT
 

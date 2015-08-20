@@ -1,6 +1,8 @@
 #ifndef CUDA_ACCEL_INCLUDED
 #define CUDA_ACCEL_INCLUDED
 
+#include <pthread.h>
+
 #include <cuda.h>
 #include <cufft.h>
 #include <cufftXt.h>
@@ -55,7 +57,7 @@ extern "C"
 #define     CU_NORM_GPU         (1<<3)    ///< Prepare input data one step at a time, using GPU - normalisation on GPU
 #define     CU_NORM_ALL         (CU_NORM_GPU | CU_NORM_CPU)
 
-#define     CU_INPT_CPU_FFT     (1<<4)    ///< Do the FFT on the CPU
+#define     CU_INPT_FFT_CPU     (1<<4)    ///< Do the FFT on the CPU
 
 #define     FLAG_MUL_00         (1<<5)    ///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
 #define     FLAG_MUL_10         (1<<6)    ///< Multiply kernel - Do the multiplication one plain ant a time
@@ -76,15 +78,17 @@ extern "C"
 #define     FLAG_TEX_INTERP     (1<<15)   ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
 #define     FLAG_SIG_GPU        (1<<16)   ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     FLAG_SS_00          (1<<17)   ///<
-#define     FLAG_SS_10          (1<<18)   ///<
-#define     FLAG_SS_20          (1<<19)   ///<
-#define     FLAG_SS_30          (1<<20)   ///<
-#define     FLAG_SS_ALL         ( FLAG_SS_00 | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
+#define     FLAG_SS_CPU         (1<<17)   ///< Do the sum and searching on the CPU
+#define     FLAG_SS_00          (1<<18)   ///<
+#define     FLAG_SS_10          (1<<19)   ///<
+#define     FLAG_SS_20          (1<<20)   ///<
+#define     FLAG_SS_30          (1<<21)   ///<
+#define     FLAG_SS_KERS        ( FLAG_SS_00  | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
+#define     FLAG_SS_ALL         ( FLAG_SS_CPU | ( FLAG_SS_KERS) )
 
-#define     FLAG_RET_STAGES     (1<<21)   ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      (1<<22)   ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<23)   ///< Store expanded candidates
+#define     FLAG_RET_STAGES     (1<<22)   ///< Return results for all stages of summing, default is only the final result
+#define     FLAG_STORE_ALL      (1<<23)   ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<24)   ///< Store expanded candidates
 
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
@@ -268,8 +272,11 @@ typedef struct searchSpecs
     uint    flags;                    ///< The search flags
     int     normType;                 ///< The type of normalisation to do
 
-    int     noMU_Slices;              ///< The number of multiplication slices
-    int     noSS_Slices;              ///< The number of Sum and search slices
+    int     mulSlices;                ///< The number of multiplication slices
+    int     ssSlices;                 ///< The number of Sum and search slices
+
+    int     ssChunk;                  ///< The multiplication chunk size
+    int     mulChunk;                 ///< The Sum and search chunk size
 
     int     retType;                  ///< The type of output
     int     cndType;                  ///< The type of output
@@ -345,10 +352,11 @@ typedef struct cuFfdotStack
     size_t  height;                   ///< The height of the entire stack, for one step
     size_t  kerHeigth;                ///< The height of the multiplication kernel for this stack (this is equivalent to the height of the largest plain in the stack)
     size_t  strideCmplx;              ///< The stride of the block of memory  [ in complex numbers! ]
-    size_t  strideFloat;               ///< The stride of the powers
+    size_t  strideFloat;              ///< The stride of the powers
     uint    flag;                     ///< CUDA accel search flags
 
-    int     noMulSlices;              ///< The number of slices to do multiplication with
+    int     mulSlices;                ///< The number of slices to do multiplication with
+    int     mulChunk;                 ///< The Sum and search chunk size
 
     // Sub data structures associated with this stack
     cuHarmInfo* harmInf;              ///< A pointer to all the harmonic info's for this stack
@@ -377,7 +385,7 @@ typedef struct cuFfdotStack
     fcomplexcu* h_iData;              ///< Paged locked input data for this stack
 
     // Streams
-    cudaStream_t inpStream;           ///< CUDA stream for work on input data for the stack
+    cudaStream_t inptStream;          ///< CUDA stream for work on input data for the stack
     cudaStream_t fftIStream;          ///< CUDA stream to CUFFT the input data
     cudaStream_t multStream;          ///< CUDA stream for work on the stack
     cudaStream_t fftPStream;          ///< CUDA stream for the inverse CUFFT the plain
@@ -389,13 +397,13 @@ typedef struct cuFfdotStack
     cudaEvent_t normComp;             ///< Normalisation of input data
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
     cudaEvent_t multComp;             ///< Multiplication complete
-    cudaEvent_t plnComp;              ///< Creation (multiplication and FFT) of the complex plain complete
+    cudaEvent_t ifftComp;              ///< Creation (multiplication and FFT) of the complex plain complete
 
     // CUDA TIMING events
     cudaEvent_t normInit;             ///< Multiplication starting
     cudaEvent_t inpFFTinit;           ///< Start of the input FFT
     cudaEvent_t multInit;             ///< Multiplication starting
-    cudaEvent_t invFFTinit;           ///< Start of the inverse FFT
+    cudaEvent_t ifftInit;             ///< Start of the inverse FFT
 
 } cuFfdotStack;
 
@@ -408,11 +416,17 @@ typedef struct cuFFdotBatch
     cuSearch*   sInf;                 ///< A pointer to the search info
 
     int     noStacks;                 ///< The number of stacks in this batch
-    int     noHarms;                  ///< The number of harmonics in the family
-    int     noSteps;                  ///< The number of steps processed by the batch
-    int     noMulSlices;              ///< The number of slices to do multiplication with
-    int     noSSSlices;               ///< The number of slices to do sum and search
+
     int     noHarmStages;             ///< The number of stages of harmonic summing
+    int     noHarms;                  ///< The number of harmonics in the family
+
+    int     noSteps;                  ///< The number of steps processed by the batch
+
+    int     mulSlices;                ///< The number of slices to do multiplication with
+    int     ssSlices;                 ///< The number of slices to do sum and search with
+
+    int     ssChunk;                  ///< The multiplication chunk size
+    int     mulChunk;                 ///< The Sum and search chunk size
 
     uint    flag;                     ///< CUDA accel search flags
     uint    accelLen;                 ///< The size to step through the input fft
@@ -544,8 +558,8 @@ typedef struct cuSearch
 
     float*        powerCut;           ///< The power cutoff
     long long*    numindep;           ///< The number of independent trials
+    int*          yInds;              ///< The Y indices
 } cuSearch;
-
 
 typedef struct cuOptCand
 {
@@ -597,6 +611,14 @@ typedef struct cuOptCand
     cudaEvent_t   outCmp;                 ///< Copying input data to device
 } cuOptCand;
 
+typedef struct candThreads
+{
+    int running_threads;
+    pthread_mutex_t running_mutex;
+
+    pthread_mutex_t candAdd_mutex;
+
+} candThreads ;
 
 //===================================== Function prototypes ===============================================
 
@@ -687,7 +709,7 @@ ExternC void printFlags(uint flags);
 
 ExternC void printCommandLine(int argc, char *argv[]);
 
-ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cupTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
+ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
 
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList *cands );
 

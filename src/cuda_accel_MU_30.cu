@@ -137,7 +137,7 @@ __host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch)
   dimBlock.y = CNV_DIMY;
 
   dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = batch->noMulSlices;
+  dimGrid.y = batch->mulSlices;
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult30_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);

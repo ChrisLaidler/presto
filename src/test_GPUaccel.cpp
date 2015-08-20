@@ -1164,7 +1164,7 @@ int main(int argc, char *argv[])
 
                 // New events for Synchronisation (this event will override the previous event)
                 cudaEventRecord(cStack->prepComp, cStack->fftIStream);
-                cudaEventRecord(cStack->plnComp,  cStack->fftPStream);
+                cudaEventRecord(cStack->ifftComp,  cStack->fftPStream);
               }
             }
 

@@ -1062,10 +1062,7 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
 {
   FOLD // TMP: CPU equivalent  .
   {
-    double total_power = 0.;
-    double powargr, powargi;
     fcomplex ans;
-
     rz_interp((fcomplex*)fft, noBins, centR, centZ, halfwidth, &ans);
   }
 
@@ -1159,8 +1156,12 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
     //          printf("%.5f\t",timev1);          // TMP
   }
 
-  // A blocking synchronisation to ensure results are ready to be proceeded by the host
-  CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+  FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
+  {
+    nvtxRangePush("EventSynch");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+    nvtxRangePop();
+  }
 
   if ( pltOpt > 0 ) // Write CVS & plot output  .
   {
@@ -1204,8 +1205,6 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
     }
 
     nvtxRangePop();
-
-    int tmp = 0;
   }
 
   FOLD // Get new max  .
@@ -1245,8 +1244,12 @@ void opt_candBySwrm(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doub
     ffdotSwrm<T>(pln, fft);
   }
 
-  // A blocking synchronisation to ensure results are ready to be proceeded by the host
-  CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+  FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
+  {
+    nvtxRangePush("EventSynch");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+    nvtxRangePop();
+  }
 
   FOLD // Get new max  .
   {
@@ -1719,7 +1722,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
   printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
   int maxHarms  = 16;
-  //maxHarms      = cand->numharm ;
+  maxHarms      = cand->numharm ;
 
   int numdata   = obs->numbins;
 
@@ -1752,7 +1755,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
   if ( obs->use_harmonic_polishing )
   {
-    if ( obs->mmap_file || obs->dat_input )
+    //if ( obs->mmap_file || obs->dat_input )
     {
       for( ii=0; ii < maxHarms; ii++ )
       {
@@ -1975,14 +1978,13 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
               numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
               sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
 
-              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
-
-              if ( lPower > 3 )
-              {
-                sPower      += lPower;
-                noS++;
-              }
-              printf("          %02i  pow: %8.3f  sig: %8.4f   Sum: pow: %8.3f  sig: %8.4f\n", ii+1, lPower, sSig, cand->power, sig );
+//              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
+//              if ( lPower > 3 )
+//              {
+//                sPower      += lPower;
+//                noS++;
+//              }
+//              printf("          %02i  pow: %8.3f  sig: %8.4f   Sum: pow: %8.3f  sig: %8.4f\n", ii+1, lPower, sSig, cand->power, sig );
 
               if ( sig > maxSig )
               {
@@ -1994,11 +1996,11 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           }
 
 
-          numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (maxHarms) ;
-          sSig            = candidate_sigma(sPower, maxHarms, numindep );
-          printf("\n" );
-          printf("              pow: %8.3f  sig: %8.4f\n", sPower, sSig );
-          printf("---------------------\n" );
+//          numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (maxHarms) ;
+//          sSig            = candidate_sigma(sPower, maxHarms, numindep );
+//          printf("\n" );
+//          printf("              pow: %8.3f  sig: %8.4f\n", sPower, sSig );
+//          printf("---------------------\n" );
 
           cand->numharm = bestH;
           cand->sigma   = maxSig;

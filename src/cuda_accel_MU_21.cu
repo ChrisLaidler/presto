@@ -231,7 +231,7 @@ __host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimBlock.y = CNV_DIMY;
 
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = cStack->noMulSlices;
+  dimGrid.y = cStack->mulSlices;
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult21_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);

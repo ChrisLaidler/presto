@@ -300,7 +300,7 @@ __host__ void add_and_searchCU33_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 template<uint FLAGS, int noStages, const int noHarms>
 __host__ void add_and_searchCU33_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  switch (globalInt01)
+  switch (batch->ssChunk)
   {
     case 1:
     {
@@ -383,7 +383,7 @@ __host__ void add_and_searchCU33_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       break;
     }
     default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, globalInt01);
+      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
       exit(EXIT_FAILURE);
   }
 
@@ -416,11 +416,11 @@ __host__ void add_and_searchCU33_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     //      add_and_searchCU33_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
     //      break;
     //    }
-    case 5:
-    {
-      add_and_searchCU33_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+    //    case 5:
+    //    {
+    //      add_and_searchCU33_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
     default:
       fprintf(stderr, "ERROR: %s has not been templated for %i stages\n", __FUNCTION__, noStages);
       exit(EXIT_FAILURE);
@@ -439,7 +439,7 @@ __host__ void add_and_searchCU33(cudaStream_t stream, cuFFdotBatch* batch )
   float ww    = batch->accelLen / ( bw );
 
   dimGrid.x   = ceil(ww);
-  dimGrid.y   = batch->noSSSlices;
+  dimGrid.y   = batch->ssSlices;
 
   if        ( FLAGS & FLAG_CUFFT_CB_OUT )
   {

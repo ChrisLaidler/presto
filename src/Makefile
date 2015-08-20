@@ -149,7 +149,7 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ARCH =
 #ARCH 		+= -gencode arch=compute_20,code=sm_21
-#ARCH 		+= -gencode arch=compute_30,code=sm_30
+ARCH 		+= -gencode arch=compute_30,code=sm_30
 #ARCH 		+= -gencode arch=compute_35,code=sm_35
 ARCH 		+= -gencode arch=compute_50,code=sm_50
 
@@ -600,17 +600,19 @@ $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
 
 cleanALEN:
 	# Debug
-	rm -f build/debug/accel_utils.o
-	rm -f build/debug/accelsearch.o
-	rm -f build/debug/test_GPUaccel.o
-	# Release
-	rm -f build/release/accel_utils.o
-	rm -f build/release/accelsearch.o
-	rm -f build/release/test_GPUaccel.o
+	rm -f build/*/accel_utils.o
+	rm -f build/*/accelsearch.o
+	rm -f build/*/test_GPUaccel.o
 
 cleanTIMING:
-	rm -rf build/debug/accelsearch*.o   build/debug/cuda_accel_MU.cu.o   build/debug/cuda_accel_IN.cu.o   build/debug/cuda_accel_SS.cu.o   build/debug/cuda_accel_utils.cu.o
-	rm -rf build/release/accelsearch*.o build/release/cuda_accel_MU.cu.o build/release/cuda_accel_IN.cu.o build/release/cuda_accel_SS.cu.o build/release/cuda_accel_utils.cu.o
+	rm -rf build/*/accelsearch*.o  
+	rm -rf build/*/cuda_accel_IN.cu.o  
+	rm -rf build/*/cuda_accel_MU_10.cu.o  
+	rm -rf build/*/cuda_accel_MU.cu.o  
+	rm -rf build/*/cuda_accel_SS_CPU.cu.o  
+	rm -rf build/*/cuda_accel_SS.cu.o  
+	rm -rf build/*/cuda_accel_utils.cu.o  
+	rm -rf build/*/test_GPUaccel*.o
 
 cleanGPU: cudaclean
 	rm -f ../lib/libpresto*
@@ -619,16 +621,11 @@ cleanGPU: cudaclean
 	rm -f ../bin/accelsearch*
 
 cudaclean:
-	rm -f build/debug/*cu.o
-	rm -f build/debug/cuda*.o
-	rm -f build/debug/accelsearch.o 
-	rm -f build/debug/accel_utils.o
-	rm -f build/debug/test_GPUaccel.o
-	rm -f build/release/*cu.o
-	rm -f build/release/cuda*.o
-	rm -f build/release/accelsearch.o 
-	rm -f build/release/accel_utils.o
-	rm -f build/release/test_GPUaccel.o
+	rm -f build/*/*cu.o
+	rm -f build/*/cuda*.o
+	rm -f build/*/accelsearch.o 
+	rm -f build/*/accel_utils.o
+	rm -f build/*/test_GPUaccel.o
 
 clean:
 	rm -rf build/
