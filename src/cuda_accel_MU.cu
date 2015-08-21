@@ -142,14 +142,15 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
   if ( batch->flag & FLAG_GPU_INMEM )
   {
-    if      ( batch->flag & FLAG_ITLV_ROW )
-      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemRow, sizeof(cufftCallbackStoreC)),  "");
-    else if ( batch->flag & FLAG_ITLV_PLN )
-      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemPln, sizeof(cufftCallbackStoreC)),  "");
-    else
-    {
-      fprintf(stderr,"ERROR: invalid memory lay out. Line %i in %s\n", __LINE__, __FILE__);
-    }
+//    if      ( batch->flag & FLAG_ITLV_ROW )
+//      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemRow, sizeof(cufftCallbackStoreC)),  "");
+//    else if ( batch->flag & FLAG_ITLV_PLN )
+//      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemPln, sizeof(cufftCallbackStoreC)),  "");
+//    else
+//    {
+//      fprintf(stderr,"ERROR: invalid memory lay out. Line %i in %s\n", __LINE__, __FILE__);
+//    }
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeCallbackPtr, sizeof(cufftCallbackStoreC)),  "");
   }
   else
   {
@@ -500,7 +501,8 @@ void multiplyBatch(cuFFdotBatch* batch)
                     void* bob;
                     bob = (void*)rVal->step;
 
-                    CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&bob ),"");
+                    //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&bob ),"");
+                    CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
                   }
                   else
                   {
