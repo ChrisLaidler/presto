@@ -12,7 +12,7 @@ FLAG_KER_ACC
 ########## Input #########
 
 # NORM_CPU NORM_GPU
-NORM_CPU
+NORM_GPU
 
 # FFT_CPU  FFT_GPU
 FFT_GPU
@@ -26,9 +26,9 @@ FLAG_MUL_AA			# Last Edited by run time script
 # Other Convolve options
 # FLAG_TEX_MUL
 
-MUL_SLICES	1			# Last Edited by run time script
+#MUL_SLICES	1			# Last Edited by run time script
 
-MUL_CHUNK	6			# Last Edited by run time script
+#MUL_CHUNK	6			# Last Edited by run time script
 
 ######### FFT ############
 
@@ -54,9 +54,11 @@ FLAG_RET_ARR
 FLAG_SS_10			# Last Edited by run time script
 
 
-SS_SLICES	1			# Last Edited by run time script
+#SS_SLICES	1			# Last Edited by run time script
 
-SS_CHUNK	6			# Last Edited by run time script
+#SS_CHUNK	6			# Last Edited by run time script
+
+#FLAG_INMEM
 
 ###### Candidates ########
 

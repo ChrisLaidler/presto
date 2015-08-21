@@ -30,10 +30,10 @@ extern "C"
 #define CBL               // TMP
 
 #undef TIMING
-#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
+//#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
 
 #undef SYNCHRONOUS
-#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
+//#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
 
 #undef STPMSG
 //#define STPMSG            // Uncomment to set to print out debug step
@@ -46,6 +46,7 @@ extern "C"
 #define     MAX_STEPS           8         ///< The maximum number of steps
 #define     MAX_STKSZ           9         ///< The maximum number of plains in a stack
 #define     MAX_GPUS            32        ///< The maximum number GPU's
+#define     INMEM_FFT_WIDTH     4096      ///< The size of FFT plains for inmem GPU search
 
 //====================================== Bit flag values =================================================
 
@@ -89,6 +90,7 @@ extern "C"
 #define     FLAG_RET_STAGES     (1<<22)   ///< Return results for all stages of summing, default is only the final result
 #define     FLAG_STORE_ALL      (1<<23)   ///< Store candidates for all stages of summing, default is only the final result
 #define     FLAG_STORE_EXP      (1<<24)   ///< Store expanded candidates
+#define     FLAG_GPU_INMEM      (1<<25)   ///< Do an in memory GPU search
 
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
@@ -112,9 +114,6 @@ extern "C"
 #define     CU_STR_LST          (1<<22)   ///< Candidates are stored in a list  (usually a dynamic linked list)
 #define     CU_STR_QUAD         (1<<23)   ///< Candidates are stored in a dynamic quadtree
 #define     CU_SRT_ALL          (CU_STR_ARR    | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
-
-//#define     CU_RET_PLN          (1<<20)   ///< Random Flag 3
-
 
 
 //========================================== Macros ======================================================
@@ -242,13 +241,15 @@ typedef struct searchScale
 
     unsigned long long noInpR;        ///< The maximum number of r input ( this is essentially  (rHigh - rLow) ) and me be longer than fft length because of halfwidth this requires the FFT to be padded!
     unsigned long long noOutpR;       ///< The maximum number of r bins the fundamental search will produce. This is ( searchRHigh - searchRLow ) / ( candidate resolution ) It may need to be scaled by numharmstages
+
+    long long noSteps;                ///< The number of steps the FFT is divided into
 } searchScale;
 
 /** Details of the section/step of the input FFT
  */
 typedef struct rVals
 {
-    long long   step;                 ///< The step these r values cover
+    int         step;                 ///< The step these r values cover
     double      drlo;                 ///< The value of the first usable bin of the plain (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
     double      drhi;                 ///< The value of the first usable bin of the plain (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
     long long   lobin;                ///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
@@ -527,12 +528,14 @@ typedef struct cuMemInfo
     int             noBatches;          ///< The total number of batches there across all devices
     cuFFdotBatch*   batches;            ///< A list noBatches long of multiplication kernels: These hold: basic info, the address of the multiplication kernels on the GPU, the CUFFT plan.
 
-    int             noSteps;            ///< The total steps there are across all devices
+    int             noSteps;            ///< The total steps in all batches - there are across all devices
 
     // Details of the GPU's in use
     int             alignment[MAX_GPUS];
     float           capability[MAX_GPUS];
     char*           name[MAX_GPUS];
+
+    int             inmemStride;        ///< The stride (in floats) of the in-memory plain data
 
     int*            devNoStacks;        ///< An array of the number of stacks on each device
     stackInfo**     h_stackInfo;        ///< An array of pointers to host memory for the stack info
@@ -550,6 +553,8 @@ typedef struct cuSearch
     // Some extra search details
     int           noHarms;            ///< The number of harmonics in the family
     int           noHarmStages;       ///< The number of stages of harmonic summing
+
+    int           srcType;            ///< Details on the search type
 
     int           numZ;               ///< The number of Z values
     int           noSteps;            ///< The number of steps to cover the entire input data
@@ -712,5 +717,7 @@ ExternC void printCommandLine(int argc, char *argv[]);
 ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
 
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList *cands );
+
+ExternC void inMem(cuFFdotBatch* batch);
 
 #endif // CUDA_ACCEL_INCLUDED

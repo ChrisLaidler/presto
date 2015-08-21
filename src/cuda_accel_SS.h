@@ -20,7 +20,7 @@
 //====================================== Constant variables  ===============================================\\
 
 extern  __device__ const float FRAC_STAGE[16]    ;
-extern                     const float h_FRAC_STAGE[16]  ;
+extern             const float h_FRAC_STAGE[16]  ;
 extern  __device__ const float FRAC_HARM[16]     ;
 extern  __device__ const short STAGE[5][2]       ;
 extern  __device__ const short CHUNKSZE[5]       ;

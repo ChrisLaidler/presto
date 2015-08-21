@@ -365,11 +365,16 @@ extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];          
 extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];              ///< Plain strides in stage order
 extern __device__ __constant__ int          HWIDTH_STAGE[MAX_HARM_NO];              ///< Plain half width in stage order
 
+//-------------------  In-mem constant values  -------------------------\\
+
+extern __device__ __constant__ float*       PLN_START;
+extern __device__ __constant__ int          PLN_STRIDE;
+extern __device__ __constant__ int          NO_STEPS;
+
 //-------------------  Other constant values  --------------------------\\
 
 extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
 extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
-//extern __device__ __constant__ float        YINDS_F[MAX_YINDS];               ///< Z Indices in float
 
 
 //========================================= Global vals ===================================================\\
@@ -432,7 +437,7 @@ __host__ __device__ inline float index_from_r(float r, float lor)
 /* 'z' at the fundamental harmonic is 'zfull'. */
 __host__ __device__ static inline int calc_required_z(float harm_fract, float zfull)
 {
-  return round(ACCEL_RDZ * zfull * harm_fract) * ACCEL_DZ;
+  return ( round(ACCEL_RDZ * zfull * harm_fract) * ACCEL_DZ );
 }
 
 /** Return the index for a given z value of a F-Fplain
@@ -607,8 +612,6 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep);
  *
  */
 void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers);
-
-
 
 
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

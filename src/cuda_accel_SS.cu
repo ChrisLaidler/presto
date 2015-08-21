@@ -31,13 +31,17 @@ extern "C"
 
 //======================================= Constant memory =================================================\\
 
-__device__ __constant__ int        YINDS[MAX_YINDS];
-__device__ __constant__ float      POWERCUT_STAGE[MAX_HARM_NO];
-__device__ __constant__ float      NUMINDEP_STAGE[MAX_HARM_NO];
+__device__ __constant__ int       YINDS[MAX_YINDS];
+__device__ __constant__ float     POWERCUT_STAGE[MAX_HARM_NO];
+__device__ __constant__ float     NUMINDEP_STAGE[MAX_HARM_NO];
 
-__device__ __constant__ int        HEIGHT_STAGE[MAX_HARM_NO];         ///< Plain heights in stage order
-__device__ __constant__ int        STRIDE_STAGE[MAX_HARM_NO];         ///< Plain strides in stage order
-__device__ __constant__ int        HWIDTH_STAGE[MAX_HARM_NO];         ///< Plain half width in stage order
+__device__ __constant__ int       HEIGHT_STAGE[MAX_HARM_NO];         ///< Plain heights in stage order
+__device__ __constant__ int       STRIDE_STAGE[MAX_HARM_NO];         ///< Plain strides in stage order
+__device__ __constant__ int       HWIDTH_STAGE[MAX_HARM_NO];         ///< Plain half width in stage order
+
+__device__ __constant__ float*    PLN_START;
+__device__ __constant__ int       PLN_STRIDE;
+__device__ __constant__ int       NO_STEPS;
 
 //====================================== Constant variables  ===============================================\\
 
@@ -428,7 +432,9 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
 
   if            ( (FLAGS & FLAG_CUFFT_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
-    add_and_searchCU3_PT_f(stream, batch );
+    fprintf(stderr,"ERROR: Invalid sum and search kernel. Line %i in %s\n", __LINE__, __FILE__ );
+    exit(EXIT_FAILURE);
+    //add_and_searchCU3_PT_f(stream, batch );
   }
   else
   {
@@ -440,14 +446,14 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
     {
       add_and_searchCU31(stream, batch );
     }
-    else if ( FLAGS & FLAG_SS_20 )
-    {
-      add_and_searchCU32(stream, batch );
-    }
-    else if ( FLAGS & FLAG_SS_30 )
-    {
-      add_and_searchCU33(stream, batch );
-    }
+//    else if ( FLAGS & FLAG_SS_20 )
+//    {
+//      add_and_searchCU32(stream, batch );
+//    }
+//    else if ( FLAGS & FLAG_SS_30 )
+//    {
+//      add_and_searchCU33(stream, batch );
+//    }
     else
     {
       fprintf(stderr,"ERROR: Invalid sum and search kernel.\n");
@@ -509,38 +515,6 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
     cudaGetSymbolAddress((void **)&dcoeffs, YINDS);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice),                      "Copying Y indices to device");
-
-    //    FOLD // TMP
-    //    {
-    //      for (int j = 0; j < batch->hInfos[0].height; j++)
-    //      {
-    //        int zz    = -batch->hInfos[0].zmax + j* ACCEL_DZ;
-    //        int idx   = 0;
-    //
-    //        printf("%04i\t", zz);
-    //
-    //        for ( int stg = 0; stg < batch->noHarmStages; stg++)
-    //        {
-    //          int noSub;
-    //
-    //          noSub = (1<<stg-1) ;
-    //
-    //          if ( stg == 0 )
-    //            noSub = 1;
-    //
-    //          for (int ss = 0; ss < noSub; ss++)
-    //          {
-    //            printf("\t%4i", indsY[idx*batch->hInfos[0].height + j] );
-    //            idx++;
-    //          }
-    //
-    //          printf("\t");
-    //        }
-    //
-    //        printf("\n");
-    //      }
-    //    }
-
   }
 
   if ( powcut )
@@ -576,7 +550,18 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
   }
 
-  FOLD // Set other constant values
+  FOLD // Some other values  .
+  {
+    cudaMemcpyToSymbol(NO_STEPS, &(batch->noSteps), sizeof(int));
+
+    if ( batch->flag & FLAG_GPU_INMEM )
+    {
+      cudaMemcpyToSymbol(PLN_START, &(batch->d_candidates), sizeof(float*));
+      cudaMemcpyToSymbol(PLN_STRIDE, &batch->sInf->mInf->inmemStride, sizeof(int));
+    }
+  }
+
+  FOLD // Set other stage specific values  .
   {
     int height[MAX_HARM_NO];
     int stride[MAX_HARM_NO];
@@ -624,7 +609,11 @@ void SSKer(cuFFdotBatch* batch, long long *numindep)
 #endif
     }
 
-    if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+    if        ( batch->flag & FLAG_GPU_INMEM )
+    {
+      // Nothing!
+    }
+    else  if  ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
     {
       // Nothing
     }
@@ -821,8 +810,8 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
     else // Process GPU results  .
     {
 #ifdef TIMING // Timing  .
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
+      struct timeval start, end;
+      gettimeofday(&start, NULL);
 #endif
 
       nvtxRangePush("CPU Process results");
@@ -831,161 +820,179 @@ void processSearchResults(cuFFdotBatch* batch, long long *numindep)
       printf("\t\tProcess previous results\n");
 #endif
 
-      double poww, sig;
-      double rr, zz;
-      int numharm;
-      int noStages = log(batch->noHarms)/log(2) + 1;
-
-      FOLD // ADD candidates to global list  .
+      if ( batch->cndType & CU_STR_PLN )
       {
+        rVals* rVal;
+#ifdef SYNCHRONOUS
+        rVal = &((*batch->rConvld)[0][0]);
+#else
+        rVal = &((*batch->rSearch)[0][0]);
+#endif
+
+        long long offset = rVal->step * batch->accelLen * batch->hInfos->height ;
+
+        //memcpy(&((float*)batch->h_candidates)[offset], batch->h_retData, batch->pwrDataSize*batch->noSteps );
+      }
+      else
+      {
+
+        double poww, sig;
+        double rr, zz;
+        int numharm;
+        int noStages = log(batch->noHarms)/log(2) + 1;
+
+        FOUT // ADD candidates to global list  .
+        {
 #ifdef STPMSG
-        printf("\t\t\tAdd To List\n");
+          printf("\t\t\tAdd To List\n");
 #endif
 
 #pragma omp critical
-        FOLD // Critical section to handle candidates  .
-        {
-          int noSteps = batch->noSteps;
-          int oStride = batch->hInfos->width;
-          int idx;
-          int x0, x1;
-          int y0, y1;
-
-          y0 = 0;
-          y1 = batch->ssSlices;
-
-          if ( batch->retType & CU_STR_PLN    )
+          FOLD // Critical section to handle candidates  .
           {
-            // For plains have to consider halfwidth
-            x0 = batch->hInfos->halfWidth*ACCEL_NUMBETWEEN;
-            x1 = x0 + batch->accelLen ;
-          }
-          else
-          {
-            // Other searches write results starting at the beginning
-            x0 = 0;
-            x1 = batch->accelLen ;
-          }
+            int noSteps = batch->noSteps;
+            int oStride = batch->hInfos->width;
+            int idx;
+            int x0, x1;
+            int y0, y1;
 
-          for ( int step = 0; step < noSteps; step++) // Loop over steps  .
-          {
-            rVals* rVal;
+            y0 = 0;
+            y1 = batch->ssSlices;
+
+            if ( batch->retType & CU_STR_PLN    )
+            {
+              // For plains have to consider halfwidth
+              x0 = batch->hInfos->halfWidth*ACCEL_NUMBETWEEN;
+              x1 = x0 + batch->accelLen ;
+            }
+            else
+            {
+              // Other searches write results starting at the beginning
+              x0 = 0;
+              x1 = batch->accelLen ;
+            }
+
+            for ( int step = 0; step < noSteps; step++) // Loop over steps  .
+            {
+              rVals* rVal;
 #ifdef SYNCHRONOUS
-            rVal = &((*batch->rConvld)[step][0]);
+              rVal = &((*batch->rConvld)[step][0]);
 #else
-            rVal = &((*batch->rSearch)[step][0]);
+              rVal = &((*batch->rSearch)[step][0]);
 #endif
 
-            for ( int stage = 0; stage < noStages; stage++ )
-            {
-              numharm = (1<<stage);
-
-              for ( int y = y0; y < y1; y++ )
+              for ( int stage = 0; stage < noStages; stage++ )
               {
-                for ( int x = x0; x < x1; x++ )
+                numharm = (1<<stage);
+
+                for ( int y = y0; y < y1; y++ )
                 {
-                  poww      = 0;
-                  sig       = 0;
-                  zz        = 0;
+                  for ( int x = x0; x < x1; x++ )
+                  {
+                    poww      = 0;
+                    sig       = 0;
+                    zz        = 0;
 
-                  if ( batch->retType & CU_STR_PLN    )
-                  {
-                    if      ( batch->flag & FLAG_ITLV_ROW )
+                    if ( batch->retType & CU_STR_PLN    )
                     {
-                      idx = oStride*noSteps*y + oStride*step + x ;
-                    }
-                    else if ( batch->flag & FLAG_ITLV_PLN )
-                    {
-                      idx = oStride*y + oStride * y1  + x ;
-                    }
-                  }
-                  else
-                  {
-                    idx = y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + x ;
-                  }
-
-                  if      ( batch->retType & CU_CANDMIN  	  )
-                  {
-                    candMin candM         = ((candMin*)batch->h_retData)[idx];
-                    if ( candM.power > poww )
-                    {
-                      sig                 = candM.power;
-                      poww                = candM.power;
-                      zz                  = candM.z;
-                    }
-                  }
-                  else if ( batch->retType & CU_POWERZ_S   	)
-                  {
-                    candPZs candM         = ((candPZs*)batch->h_retData)[idx];
-                    if ( candM.value > poww )
-                    {
-                      sig                 = candM.value;
-                      poww                = candM.value;
-                      zz                  = candM.z;
-                    }
-                  }
-                  else if ( batch->retType & CU_CANDBASC 		)
-                  {
-                    accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx];
-                    if ( candB.sigma > poww )
-                    {
-                      poww                  = candB.sigma;
-                      sig                   = candB.sigma;
-                      zz                    = candB.z;
-                    }
-                  }
-                  else if ( batch->retType & CU_FLOAT    	  )
-                  {
-                    float val  = ((float*)batch->h_retData)[idx];
-                    float cutoff = 0;
-
-                    if ( batch->cndType & CU_STR_QUAD   )
-                    {
-                      int idx_  = batch->sInf->sSpec->noHarmStages - 1 ;
-                      double no_   = 1<<(idx_) ;
-                      double PC    = batch->sInf->powerCut[idx_];
-                      cutoff = PC / no_ * 2.0 ;
+                      if      ( batch->flag & FLAG_ITLV_ROW )
+                      {
+                        idx = oStride*noSteps*y + oStride*step + x ;
+                      }
+                      else if ( batch->flag & FLAG_ITLV_PLN )
+                      {
+                        idx = oStride*y + oStride * y1  + x ;
+                      }
                     }
                     else
-                      cutoff = batch->sInf->powerCut[stage];
-
-                    if ( val > cutoff )
                     {
-                      poww                  = val;
-                      sig                   = val;
-                      zz                    = y ; // batch->hInfos->zmax - y * ACCEL_DZ ;
+                      idx = y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + x ;
                     }
-                  }
-                  else
-                  {
-                    fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-                    exit(EXIT_FAILURE);
-                  }
 
-                  if ( poww > 0 )
-                  {
-                    rr      = rVal->drlo + x *  ACCEL_DR ;
+                    if      ( batch->retType & CU_CANDMIN  	  )
+                    {
+                      candMin candM         = ((candMin*)batch->h_retData)[idx];
+                      if ( candM.power > poww )
+                      {
+                        sig                 = candM.power;
+                        poww                = candM.power;
+                        zz                  = candM.z;
+                      }
+                    }
+                    else if ( batch->retType & CU_POWERZ_S   	)
+                    {
+                      candPZs candM         = ((candPZs*)batch->h_retData)[idx];
+                      if ( candM.value > poww )
+                      {
+                        sig                 = candM.value;
+                        poww                = candM.value;
+                        zz                  = candM.z;
+                      }
+                    }
+                    else if ( batch->retType & CU_CANDBASC 		)
+                    {
+                      accelcandBasic candB  = ((accelcandBasic*)batch->h_retData)[idx];
+                      if ( candB.sigma > poww )
+                      {
+                        poww                  = candB.sigma;
+                        sig                   = candB.sigma;
+                        zz                    = candB.z;
+                      }
+                    }
+                    else if ( batch->retType & CU_FLOAT    	  )
+                    {
+                      float val  = ((float*)batch->h_retData)[idx];
+                      float cutoff = 0;
 
-                    procesCanidate(batch, rr, zz, poww, sig, stage, numharm ) ;
+                      if ( batch->cndType & CU_STR_QUAD   )
+                      {
+                        int idx_  = batch->sInf->sSpec->noHarmStages - 1 ;
+                        double no_   = 1<<(idx_) ;
+                        double PC    = batch->sInf->powerCut[idx_];
+                        cutoff = PC / no_ * 2.0 ;
+                      }
+                      else
+                        cutoff = batch->sInf->powerCut[stage];
+
+                      if ( val > cutoff )
+                      {
+                        poww                  = val;
+                        sig                   = val;
+                        zz                    = y ; // batch->hInfos->zmax - y * ACCEL_DZ ;
+                      }
+                    }
+                    else
+                    {
+                      fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+                      exit(EXIT_FAILURE);
+                    }
+
+                    if ( poww > 0 )
+                    {
+                      rr      = rVal->drlo + x *  ACCEL_DR ;
+
+                      procesCanidate(batch, rr, zz, poww, sig, stage, numharm ) ;
+                    }
                   }
                 }
               }
             }
           }
-        }
 
 #ifdef STPMSG
-        printf("\t\t\tDone\n");
+          printf("\t\t\tDone\n");
 #endif
+
+        }
 
       }
 
       nvtxRangePop();
 
 #ifdef TIMING // Timing  .
-    gettimeofday(&end, NULL);
-    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-    batch->resultTime[0] += v1;
+      gettimeofday(&end, NULL);
+      float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+      batch->resultTime[0] += v1;
 #endif
     }
 
@@ -1003,10 +1010,6 @@ void getResults(cuFFdotBatch* batch)
   if ( batch->haveConvData )
   {
 
-#ifdef STPMSG
-    printf("\t\tCopy results from device to host\n");
-#endif
-
     FOLD // Do synchronisations  .
     {
       cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
@@ -1019,17 +1022,24 @@ void getResults(cuFFdotBatch* batch)
 
     FOLD // Copy relevant data back  .
     {
-      if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+      if ( !(batch->flag & FLAG_GPU_INMEM) )
       {
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainPowers, batch->pwrDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
-      }
-      else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
-      {
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainData, batch->plnDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
-      }
-      else
-      {
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+#ifdef STPMSG
+    printf("\t\tCopy results from device to host\n");
+#endif
+
+        if      ( (batch->retType & CU_FLOAT) && (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+        {
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainPowers, batch->pwrDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+        }
+        else if ( (batch->retType & CU_CMPLXF) && (batch->retType & CU_STR_PLN) )
+        {
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainData, batch->plnDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+        }
+        else
+        {
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize*batch->noSteps, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+        }
       }
     }
 
@@ -1349,4 +1359,39 @@ void sumAndMax(cuFFdotBatch* batch, long long *numindep, float* powers)
   }
 
   nvtxRangePop();
+}
+
+void inMem(cuFFdotBatch* batch)
+{
+  long long noX = batch->accelLen * batch->SrchSz->noSteps ;
+  int       noY = batch->hInfos->height;
+  float*    pln = (float*)batch->h_candidates;
+
+  //for ( int stage = 0; stage < batch->noHarmStages; stage++ )
+  for ( int stage = 0; stage < 5 ; stage++ )
+  {
+    omp_set_num_threads(8);
+
+#pragma omp parallel
+    {
+      int tid = omp_get_thread_num();
+
+      printf("inMem tid %02i \n", tid);
+
+#pragma omp for
+      for ( int iy = 0; iy < noY; iy++ )
+      {
+        int y1 = iy       * noX   ;
+        int y2 = (iy*0.5) * noX   ;
+
+        for ( int ix = noX -1; ix >= 0; ix-- )
+        {
+          int idx1 = y1 +  ix ;
+          int idx2 = y2 +  (ix*0.5) ;
+
+          pln[idx1] += pln[idx2];
+        }
+      }
+    }
+  }
 }

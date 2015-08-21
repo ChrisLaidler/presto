@@ -4,6 +4,8 @@
 
 __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storeCallbackPtr   = CB_PowerOut;
+__device__ cufftCallbackStoreC d_storeInmemRow      = CB_PowerOutInmem_ROW;
+__device__ cufftCallbackStoreC d_storeInmemPln      = CB_PowerOutInmem_PLN;
 
 
 //======================================= Global variables  ================================================\\
@@ -75,10 +77,84 @@ __device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, 
   ((float*)callerInfo)[offset] = power;
 }
 
+__device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  int step0 = (int)callerInfo; // I know this isn't right but its faster than accessing the pointer =)
+  int row   = offset  / ( INMEM_FFT_WIDTH * NO_STEPS ) ;
+  int col   = offset  % INMEM_FFT_WIDTH;
+  int step  = ( offset % ( INMEM_FFT_WIDTH * NO_STEPS ) ) / INMEM_FFT_WIDTH;
+
+  // Calculate power
+  float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
+  int plnOff = row * PLN_STRIDE + step0 + step + col;
+  PLN_START[plnOff] = power;
+
+//  if ( offset == 162735 )
+//  {
+//    printf("\n");
+//
+//    printf("PLN_START:  %p \n", PLN_START);
+//    printf("PLN_STRIDE: %i \n", PLN_STRIDE);
+//    printf("NO_STEPS:   %i \n", NO_STEPS);
+//    printf("step0:      %i \n", step0);
+//
+//    printf("row:        %i \n", row);
+//    printf("col:        %i \n", col);
+//    printf("step:       %i \n", step);
+//  }
+}
+
+__device__ void CB_PowerOutInmem_PLN( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  int step0 = (int)callerInfo; // I know this isn't right but its faster than accessing the pointer =)
+  int row   = offset  / INMEM_FFT_WIDTH;
+  int step  = row /  HEIGHT_STAGE[0];
+  row       = row %  HEIGHT_STAGE[0];  // Assumes plain interleaved!
+  int col   = offset % INMEM_FFT_WIDTH;
+
+  // Calculate power
+  float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
+  int plnOff = row * PLN_STRIDE + step0 + step + col;
+  PLN_START[plnOff] = power;
+
+//  if ( offset == 162735 )
+//  {
+//    printf("\n");
+//
+//    printf("PLN_START:  %p \n", PLN_START);
+//    printf("PLN_STRIDE: %i \n", PLN_STRIDE);
+//    printf("NO_STEPS:   %i \n", NO_STEPS);
+//    printf("step0:      %i \n", step0);
+//
+//    printf("row:        %i \n", row);
+//    printf("col:        %i \n", col);
+//    printf("step:       %i \n", step);
+//  }
+}
+
 void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
   CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "");
-  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeCallbackPtr, sizeof(cufftCallbackStoreC)),  "");
+
+  if ( batch->flag & FLAG_GPU_INMEM )
+  {
+    if      ( batch->flag & FLAG_ITLV_ROW )
+      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemRow, sizeof(cufftCallbackStoreC)),  "");
+    else if ( batch->flag & FLAG_ITLV_PLN )
+      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemPln, sizeof(cufftCallbackStoreC)),  "");
+    else
+    {
+      fprintf(stderr,"ERROR: invalid memory lay out. Line %i in %s\n", __LINE__, __FILE__);
+    }
+  }
+  else
+  {
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeCallbackPtr, sizeof(cufftCallbackStoreC)),  "");
+  }
 }
 
 /** Multiply and inverse FFT the complex f-∂f plain using FFT callback
@@ -135,7 +211,19 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
         {
           if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
-            CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+            if ( batch->flag & FLAG_GPU_INMEM )
+            {
+              rVals* rVal;
+              rVal = &((*batch->rSearch)[0][0]);
+
+              printf("\nRval: %i  adressL %p  \n", rVal->step, &rVal->step );
+
+              CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)rVal->step ),"");
+            }
+            else
+            {
+              CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+            }
           }
         }
 
@@ -355,8 +443,15 @@ void multiplyBatch(cuFFdotBatch* batch)
         {
           cuFfdotStack* cStack = &batch->stacks[ss];
 
+#ifdef STPMSG
+          printf("\t\t\tStack %i\n",ss);
+#endif
+
           FOLD // Synchronisation  .
           {
+#ifdef STPMSG
+            printf("\t\t\t\tSynchronisation\n");
+#endif
             cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
             cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
 
@@ -381,8 +476,11 @@ void multiplyBatch(cuFFdotBatch* batch)
 
           FOLD // Call the inverse CUFFT  .
           {
-#pragma omp critical
+            //#pragma omp critical
             {
+#ifdef STPMSG
+              printf("\t\t\t\tCall the inverse CUFFT\n");
+#endif
               FOLD // Timing  .
               {
 #ifdef TIMING
@@ -390,9 +488,25 @@ void multiplyBatch(cuFFdotBatch* batch)
 #endif
               }
 
-              if ( batch->flag & FLAG_CUFFT_CB_OUT ) // Set the CUFFT callback to calculate and store powers  .
+              FOLD // Set store FFT callback  .
               {
-                CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+                if ( batch->flag & FLAG_CUFFT_CB_OUT )
+                {
+                  if ( batch->flag & FLAG_GPU_INMEM )
+                  {
+                    rVals* rVal;
+                    rVal = &((*batch->rInput)[0][0]); // TODO: check is this is correct!
+
+                    void* bob;
+                    bob = (void*)rVal->step;
+
+                    CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&bob ),"");
+                  }
+                  else
+                  {
+                    CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+                  }
+                }
               }
 
               CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
@@ -408,6 +522,10 @@ void multiplyBatch(cuFFdotBatch* batch)
               }
             }
           }
+
+#ifdef STPMSG
+          printf("\t\t\tDone\n",ss);
+#endif
         }
       }
     }

@@ -356,8 +356,11 @@ int main(int argc, char *argv[])
         {
           cuSrch    = initCuSearch(&sSpec, &gSpec, NULL);
           master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+
           startr    = sSpec.fftInf.rlo, lastr = 0, nextr = 0;
-          maxxx     = ( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of plains to make
+          maxxx     = cuSrch->SrchSz->noSteps;
+
+          //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of plains to make
 
           if ( maxxx < 0 )
             maxxx = 0;
@@ -532,6 +535,11 @@ int main(int argc, char *argv[])
             {
               candsGPU = getCanidates(master, candsGPU );
             }
+            else if ( master->cndType & CU_STR_PLN   )
+            {
+              inMem(master);
+            }
+
             cands = candsGPU;
           }
         }
