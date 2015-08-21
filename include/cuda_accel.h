@@ -67,7 +67,7 @@ extern "C"
 #define     FLAG_MUL_23         (1<<9)    ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
 #define     FLAG_MUL_30         (1<<10)   ///< Multiply kernel - Do an entire batch in one kernel
 #define     FLAG_MUL_PLN        ( FLAG_MUL_10 )
-#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_RAND_1 )
+#define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 )
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
@@ -703,6 +703,8 @@ ExternC void freeBatchGPUmem(cuFFdotBatch* batch);
 ExternC void printCands(const char* fileName, GSList *candsCPU, double T);
 
 ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep );
+
+ExternC void add_and_search_IMMEM(cuFFdotBatch* batch );
 
 ExternC void accelMax(fcomplex* fft, long long noBins, long long startBin, long long endBin, short zMax, short numharmstages, float* powers );
 

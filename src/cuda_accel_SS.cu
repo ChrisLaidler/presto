@@ -1055,7 +1055,7 @@ void sumAndSearch(cuFFdotBatch* batch, long long *numindep)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
-  if ( batch->haveSearchResults || batch->haveConvData ) // previous plain has data data so sum and search
+  if ( (batch->haveSearchResults || batch->haveConvData) && !( batch->flag & FLAG_GPU_INMEM ) ) // previous plain has data data so sum and search
   {
     nvtxRangePush("Add & Search");
 #ifdef STPMSG

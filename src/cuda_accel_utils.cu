@@ -242,12 +242,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           printf("Device %i could do a in-mem GPU search!\n", device);
           printf("  There is %.2fGB free memory.\n  The entire plain requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, totalSize*1e-9, appRoxWrk*1e-6 );
 
-          noHarms               = 1;
-          sInf->sSpec->pWidth   = INMEM_FFT_WIDTH / 1000.0 ;
+          if ( flags & FLAG_RAND_1 )
+          {
+            fprintf(stderr,"WARNING: Opting to NOT do a in-mem search!\n");
+          }
+          else
+          {
+            noHarms               = 1;
+            sInf->sSpec->pWidth   = INMEM_FFT_WIDTH / 1000.0 ;
 
-          flags |= FLAG_CUFFT_CB_OUT;
+            flags |= FLAG_CUFFT_CB_OUT;
 
-          flags |= FLAG_GPU_INMEM;
+            flags |= FLAG_GPU_INMEM;
+          }
         }
         else
         {
@@ -442,7 +449,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
 
         kernel->noHarms                   = noHarms;
-        kernel->noHarmStages              = log2((float)noHarms);
+        kernel->noHarmStages              = log2((float)noHarms)+1;
         kernel->noStacks                  = noStacks;
       }
     }
@@ -1650,7 +1657,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         //kernel->ssChunk         = 8 ;
         float val = 30.0 / (float) batch->noSteps ;
 
-        batch->ssChunk = MIN(floor(val), 9);
+        batch->ssChunk = MAX(MIN(floor(val), 9),1);
       }
     }
   }
@@ -2383,7 +2390,7 @@ void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
 void cycleRlists(cuFFdotBatch* batch)
 {
 #ifdef STPMSG
-        printf("\tcycleRlists\n");
+  printf("\tcycleRlists\n");
 #endif
   rVals*** rvals    = batch->rSearch;
 
@@ -2769,11 +2776,6 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
         (*flags) &= ~FLAG_MUL_ALL;
         (*flags) |= FLAG_MUL_23;
-      }
-      else if ( strCom(line, "FLAG_MUL_24" ) || strCom(line, "MUL_24" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_RAND_1;
       }
       else if ( strCom(line, "FLAG_MUL_30" ) || strCom(line, "MUL_30" ) )
       {

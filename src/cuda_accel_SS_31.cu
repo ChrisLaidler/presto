@@ -1,8 +1,8 @@
 #include "cuda_accel_SS.h"
 
-#define SSIM_X           16                    // X Thread Block
+#define SS31_X           16                    // X Thread Block
 #define SS31_Y           8                     // Y Thread Block
-#define SS31BS           (SSIM_X*SS31_Y)
+#define SS31BS           (SS31_X*SS31_Y)
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
@@ -15,7 +15,7 @@
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
 __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
-  const int bidx  = threadIdx.y * SSIM_X  +  threadIdx.x;     /// Block index
+  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;     /// Block index
   const int tid   = blockIdx.x  * SS31BS  +  bidx;            /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
@@ -406,7 +406,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   const uint FLAGS = batch->flag;
   dim3 dimBlock, dimGrid;
 
-  dimBlock.x  = SSIM_X;
+  dimBlock.x  = SS31_X;
   dimBlock.y  = SS31_Y;
 
   float bw    = SS31BS;

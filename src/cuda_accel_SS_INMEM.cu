@@ -1,465 +1,193 @@
 #include "cuda_accel_SS.h"
 
 #define SSIM_X           16                    // X Thread Block
-#define SSIM_Y           8                     // Y Thread Block
+#define SSIM_Y           16                    // Y Thread Block
 #define SSIMBS           (SSIM_X*SSIM_Y)
 
-/** Sum and Search - loop down - column max - multi-step - step outer .
- *
- * @param searchList
- * @param d_cands
- * @param d_sem
- * @param base          Used in CU_OUTP_DEVICE
- * @param noSteps
- */
-template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
+template<int chunkSz>
+__global__ void addSplit_k(uint firstBin, uint start, uint end, candPZs* d_cands, int stage )
 {
   const int bidx  = threadIdx.y * SSIM_X  +  threadIdx.x;     /// Block index
   const int tid   = blockIdx.x  * SSIMBS  +  bidx;            /// Global thread id (ie column) 0 is the first 'good' column
 
-  if ( tid < width )
+  int idx     = start + tid;
+  int halfX   = round(idx/2.0);
+
+  idx     -= firstBin;
+  halfX   -= firstBin;
+
+  if ( halfX > 0 )
   {
-    const int zeroHeight  = HEIGHT_STAGE[0];
-    const int oStride     = STRIDE_STAGE[0];                    /// The stride of the output data
+    int zeroHeight  = HEIGHT_STAGE[0];
+    short   lDepth  = ceilf(zeroHeight/(float)gridDim.y);
+    short   y0      = lDepth*blockIdx.y;
+    short   y1      = MIN(y0+lDepth, zeroHeight);
+    float maxPow    = POWERCUT_STAGE[stage];
+    int   max       = 0;
 
-    int             inds      [noHarms];
-    candPZs         candLists [noStages][noSteps];
-    float           powers    [noSteps][cunkSize];              /// registers to hold values to increase mem cache hits
-
-    FOLD // Prep - Initialise the x indices & set candidates to 0  .
+    for( short y = y0; y < y1 ; y++)
     {
-      // Calculate the x indices or create a pointer offset by the correct amount
-      for ( int harm = 0; harm < noHarms; harm++ )                	// loop over harmonic  .
-      {
-        //// NOTE: the indexing below assume each plain starts on a multiple of noHarms
-        int   ix        = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
-        inds[harm]      = ix;
-      }
+      short iy1 = YINDS[ zeroHeight + y ];
 
-      FOLD  // Set the local and return candidate powers to zero  .
+      float read    = PLN_START[ iy1*PLN_STRIDE + halfX ];
+      float base    = PLN_START[ y*PLN_STRIDE + idx ];
+      base    += read;
+      PLN_START[ y*PLN_STRIDE + idx ] = base;
+
+      if ( base > maxPow)
       {
-        for ( int stage = 0; stage < noStages; stage++ )
-        {
-          for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
-          {
-            candLists[stage][step].value = 0 ;
-            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].value = 0;
-          }
-        }
+        maxPow  = base;
+        max     = y;
       }
     }
 
-    FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
+    FOLD // Write results  .
     {
-      short   lDepth  = ceilf(zeroHeight/(float)gridDim.y);
-      short   y0      = lDepth*blockIdx.y;
-      short   y1      = MIN(y0+lDepth, zeroHeight);
-
-      for( short y = y0; y < y1 ; y += cunkSize )              // loop over chunks  .
+      candPZs cand;
+      if ( maxPow > POWERCUT_STAGE[stage] )
       {
-        FOLD // Initialise powers for each section column to 0  .
-        {
-          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers  .
-          {
-            for ( int step = 0; step < noSteps; step++)             // Loop over steps  .
-            {
-              powers[step][yPlus]       = 0 ;
-            }
-          }
-        }
-
-        FOLD // Loop over stages, sum and search  .
-        {
-          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages  .
-          {
-            short start = STAGE[stage][0] ;
-            short end   = STAGE[stage][1] ;
-
-            FOLD // Create a section of summed powers one for each step  .
-            {
-              for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
-              {
-                float*  t     = powersArr[harm];
-                int     ix1   = inds[harm] ;
-                int     ix2   = ix1;
-                short   iyP   = -1;
-                float pow[noSteps];
-
-                for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
-                {
-                  short trm     = y + yPlus ;                         ///< True Y index in plain
-                  short iy1     = YINDS[ zeroHeight*harm + trm ];
-                  //  OR
-                  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
-
-                  int iy2;
-
-                  if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
-                  {
-                    for ( int step = 0; step < noSteps; step++)     // Loop over steps  .
-                    {
-                      FOLD // Calculate index  .
-                      {
-                        if        ( FLAGS & FLAG_ITLV_PLN )
-                        {
-                          iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
-                        }
-                        else
-                        {
-                          ix2 = ix1 + step    * STRIDE_STAGE[harm] ;
-                          iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
-                        }
-                      }
-
-                      FOLD // Read powers  .
-                      {
-                        if      ( FLAGS & FLAG_CUFFT_CB_OUT )
-                        {
-                          //pow[step]             = powersArr[harm][ iy2 + ix2 ];
-                          pow[step]             = t[ iy2 + ix2 ];
-                        }
-                        else
-                        {
-                          fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                          pow[step]             = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
-                        }
-                      }
-                    }
-
-                    iyP = iy1;
-                  }
-
-                  FOLD // // Accumulate powers  .
-                  {
-                    for ( short step = 0; step < noSteps; step++)     // Loop over steps  .
-                    {
-                      powers[step][yPlus] += pow[step];
-                    }
-                  }
-                }
-              }
-            }
-
-            FOLD // Search set of powers  .
-            {
-              for ( int step = 0; step < noSteps; step++)           // Loop over steps  .
-              {
-                float pow;
-                float maxP = POWERCUT_STAGE[stage];
-                short maxI;
-
-                for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )    // Loop over section  .
-                {
-                  pow = powers[step][yPlus];
-
-                  if  ( pow > maxP )
-                  {
-                    short idx = y + yPlus;
-
-                    if ( idx < y1 )
-                    {
-                      maxP = pow;
-                      maxI = idx;
-                    }
-                  }
-                }
-
-                if  (  maxP > POWERCUT_STAGE[stage] )
-                {
-                  if ( maxP > candLists[stage][step].value )
-                  {
-                    // This is our new max!
-                    candLists[stage][step].value  = maxP;
-                    candLists[stage][step].z      = maxI;
-                  }
-                }
-              }
-            }
-          }
-        }
+        cand.value  = maxPow;
+        cand.z      = max;
       }
-    }
-
-    FOLD // Write results back to DRAM and calculate sigma if needed  .
-    {
-      for ( int step = 0; step < noSteps; step++)             // Loop over steps  .
+      else
       {
-        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages  .
-        {
-          if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
-          {
-            // Write to DRAM
-            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
-          }
-        }
+        cand.value  = 0;
       }
+
+      d_cands[ blockIdx.y*PLN_STRIDE + idx ] = cand;
     }
   }
 }
 
-template<uint FLAGS, int noStages, const int noHarms, const int cunkSize>
-__host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
-{
-  const int noSteps = batch->noSteps ;
-
-  tHarmList   texs;
-  fsHarmList powers;
-  cHarmList   cmplx;
-
-  for (int i = 0; i < noHarms; i++)
-  {
-    int idx         = batch->stageIdx[i];
-    texs.val[i]     = batch->plains[idx].datTex;
-    powers.val[i]   = batch->plains[idx].d_plainPowers;
-    cmplx.val[i]    = batch->plains[idx].d_plainData;
-  }
-
-  switch (noSteps)
-  {
-    case 1:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,1>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 2:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,2>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 3:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,3>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 4:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,4>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 5:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,5>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 6:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,6>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 7:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,7>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    case 8:
-    {
-      //add_and_searchCU31_s<FLAGS,noStages,noHarms,cunkSize,8>(dimGrid, dimBlock, stream, batch);
-      add_and_searchCU31<FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData, texs, powers, cmplx );
-      break;
-    }
-    default:
-      fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for %i steps\n", noSteps);
-      exit(EXIT_FAILURE);
-  }
-}
-
-template<uint FLAGS, int noStages, const int noHarms>
-__host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void addSplit(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch, uint firstBin, uint start, uint end, int stage)
 {
   switch ( batch->ssChunk )
   {
     case 1 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<1><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 2 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<2><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 3 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<3><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 4 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<4><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 5 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<5><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 6 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<6><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 7 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<7><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 8 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<8><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 9 :
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<9><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 10:
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<10><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     case 12:
     {
-      add_and_searchCU31_q<FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-//    case 14:
-//    {
-//      add_and_searchCU31_q<FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
-//      break;
-//    }
-//    case 16:
-//    {
-//      add_and_searchCU31_q<FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
-//      break;
-//    }
-//    case 18:
-//    {
-//      add_and_searchCU31_q<FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
-//      break;
-//    }
-//    case 20:
-//    {
-//      add_and_searchCU31_q<FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
-//      break;
-//    }
-//    case 24:
-//    {
-//      add_and_searchCU31_q<FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
-//      break;
-//    }
-    default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
-      exit(EXIT_FAILURE);
-  }
-
-}
-
-template<uint FLAGS >
-__host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
-{
-  const int noStages = batch->noHarmStages;
-
-  switch (noStages)
-  {
-    case 1 :
-    {
-      add_and_searchCU31_c<FLAGS,1,1>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 2 :
-    {
-      add_and_searchCU31_c<FLAGS,2,2>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 3 :
-    {
-      add_and_searchCU31_c<FLAGS,3,4>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 4 :
-    {
-      add_and_searchCU31_c<FLAGS,4,8>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 5 :
-    {
-      add_and_searchCU31_c<FLAGS,5,16>(dimGrid, dimBlock, stream, batch);
+      addSplit_k<12><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
       break;
     }
     default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i stages\n", __FUNCTION__, noStages);
-      exit(EXIT_FAILURE);
+    {
+      addSplit_k<2><<<dimGrid,  dimBlock, 0, stream >>>(firstBin, start, end, (candPZs*)batch->d_retData, stage);
+    }
   }
 }
 
-__host__ void add_and_search_IMMEM( cudaStream_t stream, cuFFdotBatch* batch )
+void add_and_search_IMMEM(cuFFdotBatch* batch )
 {
-  const uint FLAGS = batch->flag;
   dim3 dimBlock, dimGrid;
 
   dimBlock.x  = SSIM_X;
   dimBlock.y  = SSIM_Y;
 
+  dimGrid.y   = batch->ssSlices;
+
   float bw    = SSIMBS;
 
-  long long firstBin  = batch->sInf->sSpec->fftInf.rlo*ACCEL_RDR ;
-  long long width     = batch->SrchSz->noSteps * batch->accelLen;
-  long long lastBin   = firstBin + width;
-  long long start;
-  long long end
-  long long sWidth;
+  double lastBin_d  = batch->sInf->sSpec->fftInf.rlo*ACCEL_RDR + batch->SrchSz->noSteps * batch->accelLen ;
+  double maxUint    = std::numeric_limits<uint>::max();
+
+  if ( maxUint <= lastBin_d )
+  {
+    fprintf(stderr, "ERROR: There is not enough precision in uint in %s in %s.\n", __FUNCTION__, __FILE__ );
+    exit(EXIT_FAILURE);
+  }
+
+  uint firstBin  = batch->sInf->sSpec->fftInf.rlo*ACCEL_RDR ;
+  uint width     = batch->SrchSz->noSteps * batch->accelLen;
+  uint lastBin   = firstBin + width;
+  uint start;
+  uint end;
+  uint sWidth;
+
+  FOLD // TMP
+  {
+    cudaFreeNull(batch->d_retData);
+    CUDA_SAFE_CALL(cudaMalloc(&batch->d_retData,  batch->sInf->mInf->inmemStride*sizeof(candPZs)*batch->ssSlices ),   "Failed to allocate device memory for kernel stack.");
+
+    cudaFreeHostNull(batch->h_retData);
+    CUDA_SAFE_CALL(cudaMallocHost(&batch->h_retData,  batch->sInf->mInf->inmemStride*sizeof(candPZs)*batch->ssSlices ),   "Failed to allocate device memory for kernel stack.");
+  }
 
   for ( int stage = 0; stage < batch->sInf->noHarmStages; stage++ )
   {
-    end = lastBin;
+    end         = lastBin;
+    sWidth      = floor(end/2.0);
 
-    while ( end > firstBin )
+    while ( (end > firstBin) && (sWidth > bw * 10) )
     {
       sWidth      = floor(end/2.0);
       dimGrid.x   = floor(sWidth/bw);
-      sWidth      =  bw * dimGrid.x ;
+      sWidth      = bw * dimGrid.x ;
+      start       = MAX(firstBin, end - sWidth);
+      sWidth      = end - start;
+
+      addSplit(dimGrid, dimBlock, batch->strmSearch, batch, firstBin, start, end, stage );
+
+#ifdef TIMING // Timing event  .
+    CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->strmSearch),"Recording event: candCpyInit");
+#endif
+      CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, sWidth*batch->ssSlices*sizeof(candPZs), cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+      CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
+
+      end         = start;
     }
   }
 
-  float ww    = batch->accelLen / ( bw );
-
-  dimGrid.x   = ceil(ww);
-  dimGrid.y   = batch->ssSlices;
-
-  FOLD // Call flag template  .
-  {
-    if        ( FLAGS & FLAG_CUFFT_CB_OUT )
-    {
-      if      ( FLAGS & FLAG_ITLV_ROW )
-        add_and_searchCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
-      else if ( FLAGS & FLAG_ITLV_PLN )
-        add_and_searchCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
-      else
-      {
-        fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
-        exit(EXIT_FAILURE);
-      }
-    }
-    else
-    {
-      if      ( FLAGS & FLAG_ITLV_ROW )
-        add_and_searchCU31_p<FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
-      else if ( FLAGS & FLAG_ITLV_PLN )
-        add_and_searchCU31_p<FLAG_ITLV_PLN> (dimGrid, dimBlock, stream, batch);
-      else
-      {
-        fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
-        exit(EXIT_FAILURE);
-      }
-    }
-  }
+  nvtxRangePush("EventSynch");
+  CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+  nvtxRangePop();
 }

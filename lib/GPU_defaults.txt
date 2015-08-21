@@ -12,10 +12,10 @@ FLAG_KER_ACC
 ########## Input #########
 
 # NORM_CPU NORM_GPU
-NORM_GPU
+NORM_CPU
 
 # FFT_CPU  FFT_GPU
-FFT_GPU
+FFT_CPU
 
 
 ######## Convolve ########
@@ -54,11 +54,12 @@ FLAG_RET_ARR
 FLAG_SS_10			# Last Edited by run time script
 
 
-#SS_SLICES	1			# Last Edited by run time script
+SS_SLICES	1       		# Last Edited by run time script
 
 #SS_CHUNK	6			# Last Edited by run time script
 
 #FLAG_INMEM
+FLAG_RAND_1
 
 ###### Candidates ########
 

@@ -349,7 +349,7 @@ int main(int argc, char *argv[])
         FOLD // Basic timing  .
         {
           gettimeofday(&start, NULL);
-          //cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
+          cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
         }
 
         FOLD // init GPU kernels and plains  .
@@ -485,59 +485,68 @@ int main(int argc, char *argv[])
 
           FOLD // Process candidates  .
           {
-            if      ( master->cndType & CU_STR_ARR    ) // Copying candidates from array to list for optimisation  .
+
+            if      ( master->flag & FLAG_GPU_INMEM    )
             {
-              printf("\nCopying candidates from array to list for optimisation.\n");
-
-              nvtxRangePush("Add to list");
-
-              int     cdx;
-              double  poww, sig;
-              double  rr, zz;
-              int     added = 0;
-              int     numharm;
-              cand*   candidate = (cand*)master->h_candidates;
-              poww    = 0;
-
-#ifdef DEBUG
-              FILE * pFile;
-              sprintf(name,"%s_GPU_ARRAY.csv",fname);
-              pFile = fopen (name,"w");
-              fprintf (pFile, "idx;rr;f;zz;sig;harm\n");
-#endif
-              for (cdx = 0; cdx < (int)master->SrchSz->noOutpR; cdx++)  // Loop
+              cuFFdotBatch* batch = &cuSrch->mInf->batches[0];
+              add_and_search_IMMEM( batch );
+            }
+            else
+            {
+              if      ( master->cndType & CU_STR_ARR    ) // Copying candidates from array to list for optimisation  .
               {
-                poww        = candidate[cdx].power;
+                printf("\nCopying candidates from array to list for optimisation.\n");
 
-                if ( poww > 0 )
-                {
-                  numharm   = candidate[cdx].numharm;
-                  sig       = candidate[cdx].sig;
-                  rr        = candidate[cdx].r;
-                  zz        = candidate[cdx].z;
+                nvtxRangePush("Add to list");
 
-                  candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+                int     cdx;
+                double  poww, sig;
+                double  rr, zz;
+                int     added = 0;
+                int     numharm;
+                cand*   candidate = (cand*)master->h_candidates;
+                poww    = 0;
 
 #ifdef DEBUG
-                  fprintf (pFile, "%i;%.2f;%.3f;%.2f;%.2f;%i\n",cdx+1,rr, rr/obs.T, zz, sig, numharm);
+                FILE * pFile;
+                sprintf(name,"%s_GPU_ARRAY.csv",fname);
+                pFile = fopen (name,"w");
+                fprintf (pFile, "idx;rr;f;zz;sig;harm\n");
 #endif
-                  if (added)
+                for (cdx = 0; cdx < (int)master->SrchSz->noOutpR; cdx++)  // Loop
+                {
+                  poww        = candidate[cdx].power;
+
+                  if ( poww > 0 )
                   {
-                    noCands++;
+                    numharm   = candidate[cdx].numharm;
+                    sig       = candidate[cdx].sig;
+                    rr        = candidate[cdx].r;
+                    zz        = candidate[cdx].z;
+
+                    candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added);
+
+#ifdef DEBUG
+                    fprintf (pFile, "%i;%.2f;%.3f;%.2f;%.2f;%i\n",cdx+1,rr, rr/obs.T, zz, sig, numharm);
+#endif
+                    if (added)
+                    {
+                      noCands++;
+                    }
                   }
                 }
-              }
 #ifdef DEBUG
-              fclose (pFile);
+                fclose (pFile);
 #endif
-            }
-            else if ( master->flag    & CU_STR_QUAD   )
-            {
-              candsGPU = getCanidates(master, candsGPU );
-            }
-            else if ( master->cndType & CU_STR_PLN   )
-            {
-              inMem(master);
+              }
+              else if ( master->flag    & CU_STR_QUAD   )
+              {
+                candsGPU = getCanidates(master, candsGPU );
+              }
+              else if ( master->cndType & CU_STR_PLN    )
+              {
+                inMem(master);
+              }
             }
 
             cands = candsGPU;
@@ -973,6 +982,9 @@ int main(int argc, char *argv[])
     }
 #endif
   }
+
+  cuProfilerStop(); // TMP
+  return (0);       // TMP
 
   /* Finish up */
 
