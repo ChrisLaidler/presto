@@ -261,7 +261,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         FOLD // Zero host memory  .
         {
           nvtxRangePush("Zero");
-          memset(batch->h_iData, 0, batch->inpDataSize*batch->noSteps);
+          memset(batch->h_iData, 0, batch->inpDataSize);
           nvtxRangePop();
         }
 
@@ -320,7 +320,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 #ifdef STPMSG
             printf("\t\tCopy to device\n");
 #endif
-            CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize*batch->noSteps, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy data to device");
+            CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy data to device");
 
             // Synchronisation
             cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
@@ -395,7 +395,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
         }
 
         nvtxRangePush("Zero");
-        memset(batch->h_iData, 0, batch->inpDataSize*batch->noSteps);
+        memset(batch->h_iData, 0, batch->inpDataSize);
         nvtxRangePop();
 
         //CPU_Norm_Spread(batch, searchRLow, searchRHi, norm_type, fft);
@@ -459,7 +459,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 #ifdef STPMSG
           printf("\t\tCopy to device\n");
 #endif
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize*batch->noSteps, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
           CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
         }
 

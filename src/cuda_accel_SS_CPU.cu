@@ -118,7 +118,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 
               int     ix1       = inds[harm] ;
               int     ix2       = ix1;
-              short   iy1       = batch->sInf->yInds[ zeroHeight*harm + y ];
+              short   iy1       = batch->sInf->yInds[ (zeroHeight+INDS_BUFF)*harm + y ];
 
               if ( iyP[harm] != iy1 ) // Only read power if it is not the same as the previous  .
               {

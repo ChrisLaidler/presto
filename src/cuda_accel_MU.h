@@ -20,14 +20,14 @@ extern "C"
 
 //======================================= Constant memory =================================================\\
 
-extern __device__ __constant__ float*       PLN_START;
-extern __device__ __constant__ int          PLN_STRIDE;
+//extern __device__ __constant__ float*       PLN_START;
+//extern __device__ __constant__ uint         PLN_STRIDE;
 
 
 //======================================= CUFFT callbacks =================================================\\
 
 extern  __device__ cufftCallbackLoadC d_loadCallbackPtr;
-extern  __device__ cufftCallbackStoreC d_storeCallbackPtr;
+extern  __device__ cufftCallbackStoreC d_storePow_f;
 extern  __device__ cufftCallbackStoreC d_storeInmemRow;
 extern  __device__ cufftCallbackStoreC d_storeInmemPln;
 
@@ -50,7 +50,17 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
  * @param sharedPtr
  * @return
  */
-__device__ void CB_PowerOut( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+__device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
+/** CFFT Callback function to calculate power and save value after main IFFT
+ *
+ * @param dataIn
+ * @param offset
+ * @param callerInfo
+ * @param sharedPtr
+ * @return
+ */
+__device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
 
 /** CFFT Callback function to calculate power and save value to device in memory plain after main IFFT
  *

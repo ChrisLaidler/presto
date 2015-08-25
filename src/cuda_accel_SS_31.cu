@@ -89,13 +89,13 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
                 for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
                 {
                   short trm     = y + yPlus ;                         ///< True Y index in plain
-                  short iy1     = YINDS[ zeroHeight*harm + trm ];
+                  short iy1     = YINDS[ (zeroHeight+INDS_BUFF)*harm + trm ];
                   //  OR
                   //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
                   int iy2;
 
-                  if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
+                  if ( (iyP != iy1) /* && (trm < zeroHeight)*/ ) // Only read power if it is not the same as the previous  .
                   {
                     for ( int step = 0; step < noSteps; step++)     // Loop over steps  .
                     {

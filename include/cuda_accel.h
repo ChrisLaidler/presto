@@ -6,6 +6,7 @@
 #include <cuda.h>
 #include <cufft.h>
 #include <cufftXt.h>
+#include <cuda_fp16.h>
 
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
@@ -43,10 +44,11 @@ extern "C"
 #define     MAX_IN_STACK        10        ///< NOTE: this is 1 to big to handle the init problem
 #define     MAX_HARM_NO         16        ///< The maximum number of harmonics handled by a accel search
 #define     MAX_YINDS           8000      ///< The maximum number of y indices to store in constant memory
+#define     INDS_BUFF           20        ///< The maximum number of y indices to store in constant memory
 #define     MAX_STEPS           8         ///< The maximum number of steps
 #define     MAX_STKSZ           9         ///< The maximum number of plains in a stack
 #define     MAX_GPUS            32        ///< The maximum number GPU's
-#define     INMEM_FFT_WIDTH     4096      ///< The size of FFT plains for inmem GPU search
+#define     INMEM_FFT_WIDTH     4096      ///< The size of FFT plains for in-mem GPU search
 
 //====================================== Bit flag values =================================================
 
@@ -84,13 +86,15 @@ extern "C"
 #define     FLAG_SS_10          (1<<19)   ///<
 #define     FLAG_SS_20          (1<<20)   ///<
 #define     FLAG_SS_30          (1<<21)   ///<
-#define     FLAG_SS_KERS        ( FLAG_SS_00  | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
-#define     FLAG_SS_ALL         ( FLAG_SS_CPU | ( FLAG_SS_KERS) )
+#define     FLAG_SS_INMEM       (1<<22)   ///< Do an in memory GPU search
+#define     FLAG_SS_STG         ( FLAG_SS_00  | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
+#define     FLAG_SS_KERS        ( FLAG_SS_STG | FLAG_SS_INMEM  )
+#define     FLAG_SS_ALL         ( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define     FLAG_RET_STAGES     (1<<22)   ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      (1<<23)   ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<24)   ///< Store expanded candidates
-#define     FLAG_GPU_INMEM      (1<<25)   ///< Do an in memory GPU search
+#define     FLAG_HALF           (1<<23)   ///< Use half precision when doing a INMEM search
+#define     FLAG_RET_STAGES     (1<<24)   ///< Return results for all stages of summing, default is only the final result
+#define     FLAG_STORE_ALL      (1<<25)   ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<26)   ///< Store expanded candidates
 
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
@@ -100,14 +104,16 @@ extern "C"
 
 #define     CU_CMPLXF           (1<<1)    ///< Complex float
 #define     CU_INT              (1<<2)    ///< INT
-#define     CU_FLOAT            (1<<3)    ///< Float
-#define     CU_POWERZ_S         (1<<4)    ///< A value and a z bin         candPZs
-#define     CU_POWERZ_I         (1<<5)    ///< A value and a z bin         candPZi
-#define     CU_CANDMIN          (1<<6)    ///< A compressed candidate      candMin
-#define     CU_CANDSMAL         (1<<7)    ///< A compressed candidate      candSml
-#define     CU_CANDBASC         (1<<8)    ///< A compressed candidate      accelcandBasic
-#define     CU_CANDFULL         (1<<9)    ///< Full detailed candidate     cand
-#define     CU_TYPE_ALLL        (CU_CMPLXF | CU_INT | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
+#define     CU_HALF             (1<<3)    ///< 2 byte float
+#define     CU_FLOAT            (1<<4)    ///< Float
+#define     CU_DOUBLE           (1<<5)    ///< Float
+#define     CU_POWERZ_S         (1<<6)    ///< A value and a z bin         candPZs
+#define     CU_POWERZ_I         (1<<7)    ///< A value and a z bin         candPZi
+#define     CU_CANDMIN          (1<<8)    ///< A compressed candidate      candMin
+#define     CU_CANDSMAL         (1<<9)    ///< A compressed candidate      candSml
+#define     CU_CANDBASC         (1<<10)    ///< A compressed candidate      accelcandBasic
+#define     CU_CANDFULL         (1<<11)   ///< Full detailed candidate     cand
+#define     CU_TYPE_ALLL        (CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
 
 #define     CU_STR_ARR          (1<<20)   ///< Candidates are stored in an array (requires more memory)
 #define     CU_STR_PLN          (1<<21)
@@ -281,8 +287,8 @@ typedef struct searchSpecs
 
     int     retType;                  ///< The type of output
     int     cndType;                  ///< The type of output
-    void*   outData;                  ///< A pointer to the location to store candidates
 
+    void*   outData;                  ///< A pointer to the location to store candidates
 } searchSpecs;
 
 /** User specified GPU search details
@@ -312,7 +318,7 @@ typedef struct cuHarmInfo
     int     stackNo;                  ///< Which Stack is this plain in. (0 indexed at starting at the widest stack)
 
     int     yInds;                    ///< The offset of the y offset in constant memory
-    int     stageOrder;               ///< The index of this harmonic in the staged order
+    int     stageIndex;               ///< The index of this harmonic in the staged order
 } cuHarmInfo;
 
 /** The complex multiplication kernels of a f-∂f plain
@@ -398,7 +404,8 @@ typedef struct cuFfdotStack
     cudaEvent_t normComp;             ///< Normalisation of input data
     cudaEvent_t prepComp;             ///< Preparation of the input data complete
     cudaEvent_t multComp;             ///< Multiplication complete
-    cudaEvent_t ifftComp;              ///< Creation (multiplication and FFT) of the complex plain complete
+    cudaEvent_t ifftComp;             ///< Creation (multiplication and FFT) of the complex plain complete
+    cudaEvent_t ifftMemComp;          ///< IFFT memory copy
 
     // CUDA TIMING events
     cudaEvent_t normInit;             ///< Multiplication starting
@@ -420,7 +427,6 @@ typedef struct cuFFdotBatch
 
     int     noHarmStages;             ///< The number of stages of harmonic summing
     int     noHarms;                  ///< The number of harmonics in the family
-
     int     noSteps;                  ///< The number of steps processed by the batch
 
     int     mulSlices;                ///< The number of slices to do multiplication with
@@ -431,13 +437,19 @@ typedef struct cuFFdotBatch
 
     uint    flag;                     ///< CUDA accel search flags
     uint    accelLen;                 ///< The size to step through the input fft
+    uint    strideRes;                ///< The stride of the candidate data
+
     int     noResults;                ///< The number of results from the previous search
+
     int     device;                   ///< The CUDA device to run on
     float   capability;               ///< The cuda capability of the device
-    CUcontext pctx;                   ///< Context for the batch
 
     int     srchMaster;               ///< Weather this is the master batch
     int     isKernel;                 ///< Weather this is the master batch
+
+    float* normPowers;                ///< A array to store powers for running double-tophat local-power normalisation
+
+    searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
 
     int stageIdx[MAX_HARM_NO];        ///< The index of the plains in the Presto harmonic summing order
 
@@ -448,11 +460,11 @@ typedef struct cuFFdotBatch
     cuFFdot*      plains;             ///< A list of the plains
 
     // Data sizes
-    int inpDataSize;                  ///< The size of the input data memory in bytes for one step
-    int retDataSize;                  ///< The size of data to return in bytes for one step
-    int plnDataSize;                  ///< The size of the complex plain data memory in bytes for one step
-    int pwrDataSize;                  ///< The size of the powers  plain data memory in bytes for one step
-    int kerDataSize;                  ///< The size of the plain data memory in bytes for one step
+    int inpDataSize;                  ///< The size of the input data memory in bytes
+    int retDataSize;                  ///< The size of data to return in bytes
+    int plnDataSize;                  ///< The size of the complex plain data memory in bytes
+    int pwrDataSize;                  ///< The size of the powers  plain data memory in bytes
+    int kerDataSize;                  ///< The size of the plain data memory in bytes
 
     fcomplexcu* d_kerData;            ///< Kernel data for all the stacks, generally this is only allocated once per device
     fcomplexcu* d_plainData;          ///< Plain data for all the stacks
@@ -463,8 +475,9 @@ typedef struct cuFFdotBatch
 
     void*   h_retData;                ///< The output
     void*   d_retData;                ///< The output
+
     void*   h_candidates;             ///< Host memory for candidates
-    void*   d_candidates;             ///< Device memory for candidates (but they aren't really stored on the device)
+    void*   d_plainFull;              ///< Device memory for the in-mem f-∂f plain
 
     fcomplexcu* h_iData;              ///< Pointer to page locked host memory of Input data for t
     fcomplexcu* d_iData;              ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
@@ -473,14 +486,12 @@ typedef struct cuFFdotBatch
     int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
     int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
 
-    uint* d_candSem;                  ///< Semaphore for writing to device candidate list
-
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;
 
-    float* normPowers;                ///< A array to store powers for running double-tophat local-power normalisation
-
-    searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
+    rVals*** rInput;                  ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+    rVals*** rConvld;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+    rVals*** rSearch;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
 
     // Streams
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the batch
@@ -500,10 +511,6 @@ typedef struct cuFFdotBatch
     cudaEvent_t searchComp;           ///< Sum & Search complete (candidates ready for reading)
     cudaEvent_t candCpyComp;          ///< Finished reading candidates from the device
     cudaEvent_t processComp;          ///< Process candidates (usually done on CPU)
-
-    rVals*** rInput;                  ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
-    rVals*** rConvld;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
-    rVals*** rSearch;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
 
     // TIMING values
     float* kerGenTime;                ///< Array of floats from timing one for each stack
@@ -535,7 +542,7 @@ typedef struct cuMemInfo
     float           capability[MAX_GPUS];
     char*           name[MAX_GPUS];
 
-    int             inmemStride;        ///< The stride (in floats) of the in-memory plain data
+    uint            inmemStride;        ///< The stride (in floats) of the in-memory plain data
 
     int*            devNoStacks;        ///< An array of the number of stacks on each device
     stackInfo**     h_stackInfo;        ///< An array of pointers to host memory for the stack info
@@ -703,6 +710,10 @@ ExternC void freeBatchGPUmem(cuFFdotBatch* batch);
 ExternC void printCands(const char* fileName, GSList *candsCPU, double T);
 
 ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep );
+
+ExternC void inmemSumAndSearch(cuSearch* cuSrch);
+
+ExternC void finish_Search(cuFFdotBatch* batch);
 
 ExternC void add_and_search_IMMEM(cuFFdotBatch* batch );
 

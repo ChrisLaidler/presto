@@ -2,11 +2,11 @@
 ######## memory #########
 
 #  IL_ROW   or   IL_PLN
-IL_ROW			# Last Edited by run time script
+IL_PLN
 
 ######### Kernel #########
 
-FLAG_KER_ACC
+#FLAG_KER_ACC
 
 
 ########## Input #########
@@ -21,7 +21,7 @@ FFT_CPU
 ######## Convolve ########
 
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
-FLAG_MUL_AA			# Last Edited by run time script
+FLAG_MUL_AA
 
 # Other Convolve options
 # FLAG_TEX_MUL
@@ -46,20 +46,25 @@ FLAG_RET_ARR
 
 ######## Search ##########
 
+# If peforming a in-mem GPU search store powers in half presision (allowes doing twice as large in-meme searches)
+# FLAG_HALF or FLAG_SINGLE
+FLAG_HALF
+
+
 #FLAG_SAS_TEX
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
-# SS_CPU SS_00  SS_10  SS_20  SS_30 SS_AA
-FLAG_SS_10			# Last Edited by run time script
 
+#  SS_CPU  SS_00  SS_10  SS_20   SS_30  SS_INMEM  SS_AA
+SS_INMEM
 
-SS_SLICES	4       		# Last Edited by run time script
-
-#SS_CHUNK	6			# Last Edited by run time script
-
-#FLAG_INMEM
 #FLAG_RAND_1
+
+
+SS_SLICES	1
+
+SS_CHUNK	4
 
 ###### Candidates ########
 
@@ -95,7 +100,7 @@ optpln06 0
 #FLAG_RAND_3
 #FLAG_RAND_4
 
-globalInt01	4			# Last Edited by run time script
+#globalInt01	4			# Last Edited by run time script
 
 #PLT_OPT
 #UNOPT

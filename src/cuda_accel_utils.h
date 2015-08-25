@@ -368,14 +368,22 @@ extern __device__ __constant__ int          HWIDTH_STAGE[MAX_HARM_NO];          
 //-------------------  In-mem constant values  -------------------------\\
 
 extern __device__ __constant__ float*       PLN_START;
-extern __device__ __constant__ int          PLN_STRIDE;
+extern __device__ __constant__ uint         PLN_STRIDE;
 extern __device__ __constant__ int          NO_STEPS;
+extern __device__ __constant__ int          ALEN;
 
 //-------------------  Other constant values  --------------------------\\
 
 extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
 extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
 
+const int   stageOrder[16]        =  { 0,         8,      4     , 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+const float HARM_FRAC_FAM[16]     =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
+const short STAGE_CPU[5][2]       =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
+const short CHUNKSZE_CPU[5]       =  { 4, 8, 8, 8, 8 } ;
+
+const float HARM_FRAC_STAGE[16]   =  { 1.0000f, 0.5000f, 0.7500f, 0.2500f, 0.8750f, 0.6250f, 0.3750f, 0.1250f, 0.9375f, 0.8125f, 0.6875f, 0.5625f, 0.4375f, 0.3125f, 0.1875f, 0.0625f } ;
+//const float h_FRAC_STAGE[16]      =  { 1.0000f, 0.5000f, 0.2500f, 0.7500f, 0.1250f, 0.3750f, 0.6250f, 0.8750f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
 
 //========================================= Global vals ===================================================\\
 
@@ -484,7 +492,7 @@ __host__ __device__ long long next2_to_n_cu(long long x);
  */
 int selectDevice(int device, int print);
 
-
+int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen);
 
 void printContext();
 
@@ -606,7 +614,7 @@ int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long l
 __host__ __device__ double incdf (double p, double q );
 __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 
-void sumAndSearch(cuFFdotBatch* batch, long long *numindep);
+void sumAndSearch(cuFFdotBatch* batch);
 
 /** A function to call a kernel to harmonicall sum a plan and retunr the max of each column
  *

@@ -610,6 +610,7 @@ cleanTIMING:
 	rm -rf build/*/cuda_accel_MU_10.cu.o  
 	rm -rf build/*/cuda_accel_MU.cu.o  
 	rm -rf build/*/cuda_accel_SS_CPU.cu.o  
+	rm -rf build/*/cuda_accel_SS_INMEM.cu.o
 	rm -rf build/*/cuda_accel_SS.cu.o  
 	rm -rf build/*/cuda_accel_utils.cu.o  
 	rm -rf build/*/test_GPUaccel*.o

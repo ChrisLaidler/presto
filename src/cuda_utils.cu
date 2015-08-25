@@ -170,14 +170,14 @@ void initGPUs(gpuSpecs* gSpec)
 
     FOLD // call something to initialise the device
     {
-      sprintf(txt,"Init device %02i", device );
-      nvtxRangePush(txt);
+      //sprintf(txt,"Init device %02i", device );
+      //nvtxRangePush(txt);
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
 
       cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
-      nvtxRangePop();
+      //nvtxRangePop();
     }
   }
 }
