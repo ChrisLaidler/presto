@@ -728,7 +728,7 @@ int main(int argc, char *argv[])
         ii      = 0;
 
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
-        omp_set_num_threads(4);
+//omp_set_num_threads(4);
 //#pragma omp parallel
 #endif
         FOLD  	// Main GPU loop  .
@@ -762,7 +762,7 @@ int main(int argc, char *argv[])
 
           while (listptr)  // Main Loop  .
           {
-#pragma omp critical
+//#pragma omp critical
             FOLD // Calculate candidate  .
             {
               if ( listptr )

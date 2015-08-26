@@ -5,12 +5,12 @@
 #define SSIMBS           (SSIM_X*SSIM_Y)
 #define MAX_BLKS         256
 
-__device__ inline float get(float* adress, uint offset)
+__device__ inline float get(float* __restrict__ adress, int offset)
 {
   return adress[offset];
 }
 
-__device__ inline float get(half* adress, uint offset)
+__device__ inline float get(half* __restrict__ adress, int offset)
 {
   return __half2float(adress[offset]);
 }
@@ -26,137 +26,122 @@ __device__ inline void set(half* adress, uint offset, float value)
 }
 
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
-__global__ void searchINMEM_k(T* __restrict__ read, uint iStride, uint cStride, uint firstBin, uint start, uint end, candPZs* d_cands)
+__global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, int firstBin, int start, int end, candPZs* d_cands)
 {
   const int bidx        = threadIdx.y * SSIM_X  +  threadIdx.x;     /// Block index
   const int tid         = blockIdx.x  * SSIMBS  +  bidx;            /// Global thread id (ie column) 0 is the first 'good' column
   const int zeroHeight  = HEIGHT_STAGE[0];
 
   int             inds      [noHarms];
+  //T*              ads[noHarms];
   candPZs         candLists [noStages];
   float           powers    [cunkSize];                             /// registers to hold values to increase mem cache hits
 
-  uint            idx   = start + tid ;
-  uint            len   = end - start;
+  int            idx   = start + tid ;
+  int            len   = end - start;
 
   if ( tid < len )
   {
-    FOLD // Prep - Initialise the x indices & set candidates to 0  .
+//    int tmpRe[noHarms];
+//    for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
+//    {
+//      tmpRe[harm]=0;
+//    }
+
+
+    FOLD  // Set the local and return candidate powers to zero  .
+    {
+      for ( int stage = 0; stage < noStages; stage++ )
+      {
+        candLists[stage].value = 0 ;
+        d_cands[blockIdx.y*noStages*cStride + stage*cStride + tid ].value = 0;
+      }
+    }
+
+    FOLD // Prep - Initialise the x indices  .
     {
       FOLD 	// Calculate the x indices or create a pointer offset by the correct amount  .
       {
-        //        if ( tid == 0 )
-        //        {
-        //          printf("\n");
-        //        }
-
-        for ( int harm = 0; harm < noHarms; harm++ )                  // loop over harmonic  .
-        {
-          //// NOTE: the indexing below assume each plain starts on a multiple of noHarms
-          //int   ix        = roundf( idx*FRAC_STAGE[harm] ) - firstBin;
-          int   ix        = floorf( idx*FRAC_STAGE[harm] ) - firstBin;
-          inds[harm]      = ix;
-
-          //          if ( tid == 0 )
-          //          {
-          //            printf("harm %02i  idx %7i \n",harm, ix );
-          //          }
-        }
-
-        //        if ( tid == 0 )
-        //        {
-        //          printf("\n");
-        //        }
-      }
-
-      idx -= firstBin;
-
-      FOLD  // Set the local and return candidate powers to zero  .
-      {
-        for ( int stage = 0; stage < noStages; stage++ )
-        {
-          candLists[stage].value = 0 ;
-          d_cands[blockIdx.y*noStages*cStride + stage*cStride + tid ].value = 0;
-        }
+          for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
+          {
+            //int   ix        = roundf( idx*FRAC_STAGE[harm] ) - firstBin;
+            int   ix        = floorf( idx*FRAC_STAGE[harm] ) - firstBin;
+            inds[harm]      = ix;
+          }
       }
     }
 
     FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
     {
-      short   lDepth  = ceilf(zeroHeight/(float)gridDim.y);
-      short   y0      = lDepth*blockIdx.y;
-      short   y1      = MIN(y0+lDepth, zeroHeight);
+      int   lDepth        = ceilf(zeroHeight/(float)gridDim.y);
+      int   y0            = lDepth*blockIdx.y;
+      int   y1            = MIN(y0+lDepth, zeroHeight);
+      long  yIndsChnksz   = zeroHeight+INDS_BUFF;
 
-      //short   iyP[noHarms];
-      //float   pow[noHarms];
 
-      for ( int harm = 0 ; harm < noHarms; harm++)
+
+      //      int   iyP[noHarms];
+      //      float   pow[noHarms];
+      //      for ( int harm = 0 ; harm < noHarms; harm++)
+      //      {
+      //        iyP[harm] = -1;
+      //      }
+
+      for( int y = y0; y < y1 ; y += cunkSize )              // loop over chunks  .
       {
-        //iyP[harm] = -1;
-      }
-
-      for( short y = y0; y < y1 ; y += cunkSize )              // loop over chunks  .
-      {
-        FOLD // Initialise powers for each section column to 0  .
+        FOLD // Initialise chunk of powers to zero .
         {
           for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers  .
-          {
-            powers[yPlus]       = 0 ;
-          }
+            powers[yPlus] = 0;
         }
 
-        FOLD // Loop over stages, sum and search  .
+        FOLD // Loop over other stages, sum and search  .
         {
           for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages  .
           {
-            short start = STAGE[stage][0] ;
-            short end   = STAGE[stage][1] ;
+            int start = STAGE[stage][0] ;
+            int end   = STAGE[stage][1] ;
 
-            if ( inds[end] >= 0)
+            if ( inds[end] ) // Valid stage
             {
               FOLD // Create a section of summed powers one for each step  .
               {
                 for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
                 {
                   int     ix1   = inds[harm] ;
+                  //T* sub = read + inds[harm] ;
+
+                  long iyP       = -1;
+                  float pow     = 0 ;
+
+//                  int     sy0 = YINDS[ (zeroHeight+INDS_BUFF)*harm + y ];
+//                  int     sy1 = YINDS[ (zeroHeight+INDS_BUFF)*harm + y + cunkSize - 1 ];
+//                  float   vals[cunkSize];
+//
+//                  for( int yPlus = sy0; yPlus <= sy1; yPlus++ )     // Loop over the chunk  .
+//                  {
+//                    vals[yPlus-sy0] = get(read, yPlus*iStride + ix1 );
+//                  }
 
                   for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
                   {
-                    short trm     = y + yPlus ;                         ///< True Y index in plain
-                    short iyP     = -1;
-                    float pow     = 0 ;
+                    long trm     = y + yPlus ;                         ///< True Y index in plain
+
 
                     //if( trm < zeroHeight )
                     {
-                      short iy1     = YINDS[ (zeroHeight+INDS_BUFF)*harm + trm ];
-
-                      //                      if( tid == 0 )
-                      //                      {
-                      //                        printf("%i\tharm\t%i\t%i\n", trm, harm, iy1);
-                      //                      }
+                      long iy1     = YINDS[ yIndsChnksz*harm + trm ];
 
                       //if ( iyP[harm] != iy1 ) // Only read power if it is not the same as the previous  .
                       if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
                       {
-//                        if ( ( iy1 < 0 || iy1 >= zeroHeight || ix1 >= iStride ) && tid == 34 )
-//                        {
-//                          printf("Err tid %i  iy1: %i  ix1: %i\n", tid, iy1, ix1);
-//                        }
-
-//                        if ( iy1*iStride + ix1 <0 || iy1*iStride + ix1 >= (101*820480) )
-//                        {
-//                          printf("Err tid %i  iy1: %i  ix1: %i\n", tid, iy1, ix1);
-//                        }
-
                         //pow[harm] = get(read, iy1*iStride + ix1 );
                         //iyP[harm] = iy1;
                         pow = get(read, iy1*iStride + ix1 );
                         iyP = iy1;
                       }
-
                       FOLD // // Accumulate powers  .
                       {
-                        //powers[yPlus] += pow[harm];
                         powers[yPlus] += pow;
                       }
                     }
@@ -168,7 +153,7 @@ __global__ void searchINMEM_k(T* __restrict__ read, uint iStride, uint cStride, 
               {
                 float pow;
                 float maxP = POWERCUT_STAGE[stage];
-                short maxI;
+                int maxI;
 
                 for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )    // Loop over section  .
                 {
@@ -176,7 +161,7 @@ __global__ void searchINMEM_k(T* __restrict__ read, uint iStride, uint cStride, 
 
                   if  ( pow > maxP )
                   {
-                    short idx = y + yPlus;
+                    int idx = y + yPlus;
 
                     if ( idx < y1 )
                     {
@@ -258,61 +243,76 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch)
 
   switch ( batch->ssChunk )
   {
-    case 1 :
-    {
-      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 2 :
-    {
-      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 3 :
-    {
-      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 4 :
-    {
-      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 5 :
-    {
-      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 6 :
-    {
-      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 7 :
-    {
-      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 8 :
-    {
-      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
+//    case 1 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 2 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 3 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 4 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 5 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 6 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 7 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 8 :
+//    {
+//      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
     case 9 :
     {
       searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
       break;
     }
-    case 10:
-    {
-      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
-    case 12:
-    {
-      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-      break;
-    }
+//    case 10:
+//    {
+//      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 12:
+//    {
+//      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 14:
+//    {
+//      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 20:
+//    {
+//      searchINMEM_k<T,noStages,noHarms,20><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
+//    case 25:
+//    {
+//      searchINMEM_k<T,noStages,noHarms,25><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+//      break;
+//    }
     default:
       fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
       exit(EXIT_FAILURE);
@@ -326,26 +326,26 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
 
   switch (noStages)
   {
-    case 1 :
-    {
-      searchINMEM_c<T,1,1>(batch);
-      break;
-    }
-    case 2 :
-    {
-      searchINMEM_c<T,2,2>(batch);
-      break;
-    }
-    case 3 :
-    {
-      searchINMEM_c<T,3,4>(batch);
-      break;
-    }
-    case 4 :
-    {
-      searchINMEM_c<T,4,8>(batch);
-      break;
-    }
+//    case 1 :
+//    {
+//      searchINMEM_c<T,1,1>(batch);
+//      break;
+//    }
+//    case 2 :
+//    {
+//      searchINMEM_c<T,2,2>(batch);
+//      break;
+//    }
+//    case 3 :
+//    {
+//      searchINMEM_c<T,3,4>(batch);
+//      break;
+//    }
+//    case 4 :
+//    {
+//      searchINMEM_c<T,4,8>(batch);
+//      break;
+//    }
     case 5 :
     {
       searchINMEM_c<T,5,16>(batch);
@@ -377,7 +377,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
   }
   else
   {
-    searchINMEM_p<float>(batch);
+    //searchINMEM_p<float>(batch);
   }
 
   batch->haveConvData = 1;
@@ -387,7 +387,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
   }
 }
-
+/*
 template<typename T, int chunkSz>
 __global__ void search(T* read, uint iStride, uint firstBin, uint start, uint end, candPZs* d_cands, float maxPow )
 {
@@ -539,6 +539,7 @@ __global__ void addSplit_k(T* read, uint iStride, T* write, uint oStride, uint f
 
   d_cands[ blockIdx.y*cStride + tid ] = cand;
 }
+*/
 
 __host__ void addSplit(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch, uint firstBin, uint start, uint end, int stage)
 {
@@ -751,6 +752,7 @@ __host__ void processResults( cuFFdotBatch* batch, uint end, uint start, int sta
   }
 }
 
+/*
 __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
 {
   dim3 dimBlock, dimGrid;
@@ -1020,3 +1022,4 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
   CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
   nvtxRangePop();
 }
+*/

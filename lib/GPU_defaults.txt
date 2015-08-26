@@ -64,7 +64,9 @@ SS_INMEM
 
 SS_SLICES	1
 
-SS_CHUNK	4
+SS_CHUNK	9
+
+
 
 ###### Candidates ########
 

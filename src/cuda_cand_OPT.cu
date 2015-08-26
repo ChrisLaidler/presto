@@ -1148,9 +1148,11 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
     pln->zSize          = scale*4.0;
 
     //          gettimeofday(&start, NULL);       // TMP
-
+#ifdef DEBUG
+    fprintf(stderr, "SORRY: ffdotPln kills debug! Skipping it!\n");
+#else
     ffdotPln<T>(pln, fft);
-
+#endif
     //          gettimeofday(&end, NULL);         // TMP
     //          timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
     //          printf("%.5f\t",timev1);          // TMP
@@ -1772,6 +1774,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
         float sz;
         float v1, v2;
 
+        const int mxRep = 10;
+
         if ( cand->numharm == 1  )
           sz = optSz01;
         if ( cand->numharm == 2  )
@@ -1805,7 +1809,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
 //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-            if ( ++lrep > 10 )
+            if ( ++lrep > mxRep )
             {
               break;
             }
@@ -1830,7 +1834,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
 //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-            if ( ++lrep > 10 )
+            if ( ++lrep > mxRep )
             {
               break;
             }
@@ -1855,7 +1859,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
 //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-            if ( ++lrep > 10 )
+            if ( ++lrep > mxRep )
             {
               break;
             }
@@ -1881,7 +1885,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
 //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-            if ( ++lrep > 10 )
+            if ( ++lrep > mxRep )
             {
               break;
             }
@@ -1907,7 +1911,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
 //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-            if ( ++lrep > 10 )
+            if ( ++lrep > mxRep )
             {
               break;
             }
@@ -1933,7 +1937,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
 //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
-            if ( ++lrep > 10 )
+            if ( ++lrep > mxRep )
             {
               break;
             }
@@ -1941,6 +1945,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           while ( v1 > snoop || v2 > snoop );
           sz /= downScale*2;
         }
+
       }
 
       FOLD // Optimise derivatives  .
