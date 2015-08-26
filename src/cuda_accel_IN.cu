@@ -465,8 +465,8 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 
         FOLD // Synchronisation  .
         {
-          cudaEventRecord(batch->normComp, batch->inpStream);
-          cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
+          cudaEventRecord(batch->normComp,      batch->inpStream);
+          cudaEventRecord(batch->iDataCpyComp,  batch->inpStream);
 
           if ( batch->flag & CU_INPT_FFT_CPU )
           {
@@ -555,7 +555,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       }
     }
 
-    batch->haveInput = 1;
+    batch->state |= COMP_INPUT;
 
     nvtxRangePop();
   }
@@ -563,7 +563,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
 #ifdef TIMING // Timing  .
 
 #ifndef SYNCHRONOUS
-  if ( batch->haveSearchResults )
+  if ( batch->state & COMP_SS )
 #endif
   {
     FOLD // Make sure the previous thread has complete reading from page locked memory

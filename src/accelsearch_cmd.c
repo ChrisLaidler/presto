@@ -20,14 +20,13 @@
 char *Program;
 
 /*@-null*/
-static int gpuDefault[] = {0};
 static int nstepsDefault[] = {4};
 static int nbatchDefault[] = {2};
 
 static Cmdline cmd = {
   /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
-  /* gpuP = */ 1,
-  /* gpu = */ gpuDefault,
+  /* gpuP = */ 0,
+  /* gpu = */ (int*)0,
   /* gpuC = */ 0,
   /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
   /* nstepsP = */ 1,
@@ -1079,7 +1078,6 @@ usage(void)
   fprintf(stderr,"%s","      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
   fprintf(stderr,"%s","             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
   fprintf(stderr,"%s","                   0...32 int values between 0 and 32\n");
-  fprintf(stderr,"%s","                   default: `0'\n");
   fprintf(stderr,"%s","          -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
   fprintf(stderr,"%s","                   0...32 int values between 1 and 8\n");
   fprintf(stderr,"%s","                   default: `4'\n");
@@ -1130,7 +1128,7 @@ usage(void)
   fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 31Jul15\n");
+  fprintf(stderr,"%s","  version: 26Aug15\n");
   fprintf(stderr,"%s","  ");
   exit(EXIT_FAILURE);
 }

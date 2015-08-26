@@ -121,6 +121,17 @@ extern "C"
 #define     CU_STR_QUAD         (1<<23)   ///< Candidates are stored in a dynamic quadtree
 #define     CU_SRT_ALL          (CU_STR_ARR    | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
+// ----------- This is a list of the data types that and storage structures
+
+#define     COMP_INPUT          (1<<1)
+#define     COMP_MULT           (2<<1)
+#define     COMP_IFFT           (3<<1)
+#define     COMP_SS             (4<<1)
+
+//int haveInput;                    ///< Weather the the plain has input ready to convolve
+//int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
+//int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
+
 
 //========================================== Macros ======================================================
 
@@ -482,9 +493,11 @@ typedef struct cuFFdotBatch
     fcomplexcu* h_iData;              ///< Pointer to page locked host memory of Input data for t
     fcomplexcu* d_iData;              ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
-    int haveInput;                    ///< Weather the the plain has input ready to convolve
-    int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
-    int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
+    //int haveInput;                    ///< Weather the the plain has input ready to convolve
+    //int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
+    //int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
+    uint    state;                    ///< What state is the batch in
+
 
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;

@@ -3391,12 +3391,11 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   if ( obs->inmem )
   {
-    //sSpec.outData    = obs->ffdotplane;
+    sSpec.flags |= FLAG_SS_INMEM;
+    sSpec.flags |= FLAG_CUFFT_CB_OUT;
   }
 
   readAccelDefalts(&sSpec);
-
-
 
   if ( sSpec.flags & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
   {

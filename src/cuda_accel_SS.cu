@@ -668,7 +668,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
 void SSKer(cuFFdotBatch* batch)
 {
-  if ( batch->haveConvData )
+  if ( batch->state & COMP_MULT )
   {
     nvtxRangePush("Add & Search");
 
@@ -873,7 +873,7 @@ int procesCanidate(cuFFdotBatch* batch, double rr, double zz, double poww, doubl
 
 void processSearchResults(cuFFdotBatch* batch)
 {
-  if ( batch->haveSearchResults )
+  if ( (batch->state & COMP_SS) )
   {
 #ifdef STPMSG
     printf("\t\tProcess previous results\n");
@@ -1120,13 +1120,13 @@ void processSearchResults(cuFFdotBatch* batch)
       CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
     }
 
-    batch->haveSearchResults = 0;
+    batch->state &= ~COMP_SS;
   }
 }
 
 void getResults(cuFFdotBatch* batch)
 {
-  if ( batch->haveConvData )
+  if ( batch->state & COMP_MULT )
   {
     FOLD // Do synchronisations  .
     {
@@ -1156,8 +1156,8 @@ void getResults(cuFFdotBatch* batch)
         CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
       }
 
-      batch->haveConvData        = 0;
-      batch->haveSearchResults   = 1;
+      batch->state &= !COMP_MULT
+      batch->state |=  COMP_SS;
     }
 
     CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
@@ -1167,7 +1167,7 @@ void getResults(cuFFdotBatch* batch)
 
 void sumAndSearch(cuFFdotBatch* batch)
 {
-  if ( (batch->haveSearchResults || batch->haveConvData) ) // previous plain has data data so sum and search
+  if ( ( (batch->state & COMP_SS) || (batch->state & COMP_MULT) ) ) // previous plain has data data so sum and search
   {
 #ifdef STPMSG
     printf("\tSum & Search\n");
@@ -1251,7 +1251,7 @@ void sumAndSearch(cuFFdotBatch* batch)
 #ifdef TIMING // Timing  .
 
 #ifndef SYNCHRONOUS
-  if ( batch->haveSearchResults )
+  if ( (batch->state & COMP_SS) )
 #endif
   {
     float time;         // Time in ms of the thing
@@ -1438,7 +1438,7 @@ void sumAndMax(cuFFdotBatch* batch)
 
   nvtxRangePush("Add & Max");
 
-  if ( batch->haveSearchResults || batch->haveConvData ) // previous plain has data data so sum and search  .
+  if ( (batch->state & COMP_SS) || (batch->state & COMP_MULT) ) // previous plain has data data so sum and search  .
   {
     int noStages = log(batch->noHarms)/log(2) + 1;
 
@@ -1452,7 +1452,7 @@ void sumAndMax(cuFFdotBatch* batch)
       }
     }
 
-    if ( batch->haveConvData ) // We have a convolved plain so call Sum & search  kernel .
+    if ( batch->state & COMP_MULT ) // We have a convolved plain so call Sum & search  kernel .
     {
       FOLD // Call the main sum & search kernel
       {
@@ -1475,7 +1475,7 @@ void sumAndMax(cuFFdotBatch* batch)
       }
     }
 
-    if ( batch->haveSearchResults ) // Process previous results  .
+    if ( (batch->state & COMP_SS) ) // Process previous results  .
     {
       FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
       {
@@ -1507,12 +1507,12 @@ void sumAndMax(cuFFdotBatch* batch)
       // Do some Synchronisation
       CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
 
-      batch->haveSearchResults = 0;
+      batch->state &=  !COMP_SS;
     }
 
     FOLD // Copy results from device to host  .
     {
-      if ( batch->haveConvData )
+      if ( (batch->state & COMP_MULT) )
       {
         cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
         cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
@@ -1522,8 +1522,8 @@ void sumAndMax(cuFFdotBatch* batch)
         CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
         CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
 
-        batch->haveConvData        = 0;
-        batch->haveSearchResults   = 1;
+        batch->state &= ~COMP_MULT;
+        batch->state |=  COMP_SS;
       }
     }
   }

@@ -273,7 +273,8 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
   }
 }
 
-__global__ void cpyPowers_ker( float*  dst, size_t  dpitch, const float *  src, size_t  spitch, size_t  width, size_t  height)
+template<typename T>
+__global__ void cpyPowers_ker( T*  dst, size_t  dpitch, T*  src, size_t  spitch, size_t  width, size_t  height)
 {
   int ix = blockIdx.x * 16 + threadIdx.x ;
   //int iy = blockIdx.y * 16 + threadIdx.y ;
@@ -287,7 +288,8 @@ __global__ void cpyPowers_ker( float*  dst, size_t  dpitch, const float *  src, 
   }
 }
 
-void cpyPowers( float* __restrict__ dst, size_t  dpitch, const float* __restrict__ src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
+template<typename T>
+void cpyPowers( T* __restrict__ dst, size_t  dpitch, T* __restrict__ src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
 {
   dim3 dimBlock, dimGrid;
 
@@ -300,7 +302,7 @@ void cpyPowers( float* __restrict__ dst, size_t  dpitch, const float* __restrict
   dimGrid.x   = ceil(ww);
   dimGrid.y   = 1 ; // ceil(hh);
 
-  cpyPowers_ker<<<dimGrid,  dimBlock, 0, stream >>>(dst, dpitch, src, spitch, width, height);
+  cpyPowers_ker<T><<<dimGrid,  dimBlock, 0, stream >>>(dst, dpitch, src, spitch, width, height);
 }
 
 template<typename T>
@@ -315,7 +317,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   size_t  width;
   size_t  height;
 
-  int powSz;
+  int powSz = 1;
 
   powSz = sizeof(T);
 
@@ -352,6 +354,11 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
       CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0), "");
       CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->strmSearch ),"Error calling cudaMemcpy2DAsync after IFFT.");
 
+      //cpyPowers<T>(dst, dpitch, src, spitch,  width,  height, batch->strmSearch );
+
+      //CUDA_SAFE_CALL(cudaMemcpyAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->strmSearch ),"Error calling cudaMemcpy2DAsync after IFFT.");
+      //CUDA_SAFE_CALL(cudaMemcpyAsync(cStack->d_plainPowers, batch->d_iData, batch->accelLen*10, cudaMemcpyDeviceToDevice, batch->strmSearch), "Failed to copy input data to device");
+
       FOLD // Synchronisation  .
       {
         cudaEventRecord(cStack->ifftMemComp, batch->strmSearch);
@@ -372,14 +379,12 @@ void multiplyBatch(cuFFdotBatch* batch)
 {
   //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
-  if ( batch->haveInput )
+  if ( batch->state & COMP_INPUT )
   {
     nvtxRangePush("Multiply & FFT");
 #ifdef STPMSG
     printf("\tMultiply & FFT\n");
 #endif
-
-    dim3 dimBlock, dimGrid;
 
     if ( batch->flag & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback  .
     {
@@ -542,8 +547,32 @@ void multiplyBatch(cuFFdotBatch* batch)
         }
       }
 
+
       FOLD // Inverse FFT the f-∂f plain  .
       {
+        if ( batch->state & COMP_MULT ) // Copy data to device plain  .
+        {
+          if ( batch->flag & FLAG_SS_INMEM )
+          {
+            for (int ss = 0; ss < batch->noStacks; ss++)
+            {
+              cuFfdotStack* cStack = &batch->stacks[ss];
+              FOLD // Copy memory on the device  .
+              {
+                if ( batch->flag & FLAG_HALF )
+                {
+                  copyIFFTtoPln<half>( batch, cStack );
+                }
+                else
+                {
+                  copyIFFTtoPln<float>( batch, cStack );
+                }
+
+                CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - cudaMemcpy2DAsync");
+              }
+            }
+          }
+        }
 
 #ifdef STPMSG
         printf("\t\tInverse FFT\n");
@@ -553,8 +582,7 @@ void multiplyBatch(cuFFdotBatch* batch)
         cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
-        // Copy fft data to device
-        //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
+        // Copy fft kernel to device
         for (int ss = 0; ss < batch->noStacks; ss++)
         {
           cuFfdotStack* cStack = &batch->stacks[ss];
@@ -638,26 +666,25 @@ void multiplyBatch(cuFFdotBatch* batch)
                 cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
               }
 
-              FOLD // Copy data to device plain  .
-              {
-                if ( batch->flag & FLAG_SS_INMEM  )
-                {
-                  FOLD // Copy memory on the device  .
-                  {
-                    if ( batch->flag & FLAG_HALF )
-                    {
-                      copyIFFTtoPln<half>( batch, cStack );
-                    }
-                    else
-                    {
-                      copyIFFTtoPln<float>( batch, cStack );
-                    }
-
-                    CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - cudaMemcpy2DAsync");
-                  }
-                }
-
-              }
+              //              FOLD // Copy data to device plain  .
+              //              {
+              //                if ( batch->flag & FLAG_SS_INMEM  )
+              //                {
+              //                  FOLD // Copy memory on the device  .
+              //                  {
+              //                    if ( batch->flag & FLAG_HALF )
+              //                    {
+              //                      copyIFFTtoPln<half>( batch, cStack );
+              //                    }
+              //                    else
+              //                    {
+              //                      copyIFFTtoPln<float>( batch, cStack );
+              //                    }
+              //
+              //                    CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - cudaMemcpy2DAsync");
+              //                  }
+              //                }
+              //              }
 
 #ifdef SYNCHRONOUS
               pStack = cStack;
@@ -672,8 +699,8 @@ void multiplyBatch(cuFFdotBatch* batch)
       }
     }
 
-    batch->haveInput    = 0;
-    batch->haveConvData = 1;
+    batch->state &= !COMP_INPUT;
+    batch->state |=  COMP_MULT;
 
     nvtxRangePop();
   }

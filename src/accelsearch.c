@@ -120,7 +120,6 @@ int main(int argc, char *argv[])
   printf("               by Scott M. Ransom\n\n");
 
 #ifdef CUDA // CUDA Runtime initialisation  .
-  printf("      with GPU additions by Chris Laidler\n\n");
 
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
@@ -129,6 +128,8 @@ int main(int argc, char *argv[])
 
   if ( cmd->gpuP ) // Initialises CUDA context(s)  .
   {
+    printf("      with GPU additions by Chris Laidler\n\n");
+
     gSpec        = readGPUcmd(cmd);
 
     gettimeofday(&start, NULL);

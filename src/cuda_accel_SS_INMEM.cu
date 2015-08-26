@@ -380,7 +380,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     //searchINMEM_p<float>(batch);
   }
 
-  batch->haveConvData = 1;
+  batch->state |= COMP_MULT;
 
   FOLD // Synchronisation  .
   {
