@@ -20,6 +20,8 @@
 #ifdef CBL
 #include "array.h"
 #include "arrayDsp.h"
+#include "candTree.h"
+//#include "aTest.h"
 #endif
 
 extern "C"

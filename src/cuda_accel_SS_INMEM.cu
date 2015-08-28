@@ -54,7 +54,9 @@ __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, in
       for ( int stage = 0; stage < noStages; stage++ )
       {
         candLists[stage].value = 0 ;
-        d_cands[blockIdx.y*noStages*cStride + stage*cStride + tid ].value = 0;
+        //d_cands[blockIdx.y*noStages*cStride + stage*cStride + tid ].value = 0;
+        d_cands[stage*gridDim.y*cStride + blockIdx.y*cStride + tid].value = 0;
+
       }
     }
 
@@ -194,7 +196,8 @@ __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, in
         if  ( candLists[stage].value > POWERCUT_STAGE[stage] )
         {
           // Write to DRAM
-          d_cands[blockIdx.y*noStages*cStride + stage*cStride + tid ] = candLists[stage];
+          //d_cands[blockIdx.y*noStages*cStride + stage*cStride + tid ] = candLists[stage];
+          d_cands[stage*gridDim.y*cStride + blockIdx.y*cStride + tid] = candLists[stage];
         }
       }
     }
@@ -380,7 +383,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     //searchINMEM_p<float>(batch);
   }
 
-  batch->state |= COMP_MULT;
+  batch->state |= HAVE_SS;
 
   FOLD // Synchronisation  .
   {
@@ -620,137 +623,138 @@ __host__ void addSplit(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdot
 
 }
 
-__host__ void processResults( cuFFdotBatch* batch, uint end, uint start, int stage, uint cStride )
-{
-  if ( end - start  > 0 )
-  {
-    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-    {
-      nvtxRangePush("EventSynch");
-      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-      nvtxRangePop();
-    }
-
-#ifdef TIMING // Timing  .
-    float time;         // Time in ms of the thing
-    cudaError_t ret;    // Return status of cudaEventElapsedTime
-
-    FOLD // Search Timing  .
-    {
-      ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
-
-      if ( ret == cudaErrorNotReady )
-      {
-        //printf("Not ready\n");
-      }
-      else
-      {
-        //printf("    ready\n");
-#pragma omp atomic
-        batch->searchTime[0] += time;
-      }
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
-    }
-
-
-    FOLD // Copy D2H Timing  .
-    {
-      ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
-
-      if ( ret == cudaErrorNotReady )
-      {
-        //printf("Not ready\n");
-      }
-      else
-      {
-        //printf("    ready\n");
-#pragma omp atomic
-        batch->copyD2HTime[0] += time;
-      }
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
-    }
-
-    struct timeval startT, endT;
-    gettimeofday(&startT, NULL);
-#endif
-
-    nvtxRangePush("CPU Process results");
-
-    double poww, sig;
-    double rr, zz;
-    int numharm = (1<<stage);
-
-    FOLD // Critical section to handle candidates  .
-    {
-      uint idx;
-      uint x0, x1;
-      uint y0, y1;
-
-      y0 = 0;
-      y1 = batch->ssSlices;
-
-      x0 = 0;
-      x1 = end - start ;
-
-      float cutoff = batch->sInf->powerCut[stage];
-
-      for ( uint y = y0; y < y1; y++ )
-      {
-        for ( uint x = x0; x < x1; x++ )
-        {
-          poww      = 0;
-          sig       = 0;
-          zz        = 0;
-
-          idx       = y*cStride + x ;
-
-          FOLD
-          {
-            candPZs candM         = ((candPZs*)batch->h_retData)[idx];
-            if ( candM.value > cutoff )
-            {
-              sig                 = candM.value;
-              poww                = candM.value;
-              zz                  = candM.z;
-            }
-          }
-
-
-
-          if ( poww > 0 )
-          {
-            rr      = (start + x) *  ACCEL_DR ;
-
-            //            FOLD // TMP
-            //            {
-            //              uint bin   = start + x - batch->sInf->sSpec->fftInf.rlo*ACCEL_RDR;
-            //              uint stp   = bin / (float) batch->accelLen ;
-            //
-            //              if ( stp == 4 )
-            //              {
-            //                printf("%i\t%i\t%.4f\t%.5f\n", stage, x, rr, poww);
-            //              }
-            //            }
-
-            procesCanidate(batch, rr, zz, poww, sig, stage, numharm ) ;
-          }
-        }
-      }
-    }
-
-#ifdef TIMING // Timing  .
-    gettimeofday(&endT, NULL);
-    float v1 =  ((endT.tv_sec - startT.tv_sec) * 1e6 + (endT.tv_usec - startT.tv_usec))*1e-3  ;
-    batch->resultTime[0] += v1;
-#endif
-
-    nvtxRangePop();
-
-    printf("Stage %i got %4i cands \n",stage, batch->noResults );
-  }
-}
+//
+//__host__ void processResults( cuFFdotBatch* batch, uint end, uint start, int stage, uint cStride )
+//{
+//  if ( end - start  > 0 )
+//  {
+//    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
+//    {
+//      nvtxRangePush("EventSynch");
+//      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+//      nvtxRangePop();
+//    }
+//
+//#ifdef TIMING // Timing  .
+//    float time;         // Time in ms of the thing
+//    cudaError_t ret;    // Return status of cudaEventElapsedTime
+//
+//    FOLD // Search Timing  .
+//    {
+//      ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
+//
+//      if ( ret == cudaErrorNotReady )
+//      {
+//        //printf("Not ready\n");
+//      }
+//      else
+//      {
+//        //printf("    ready\n");
+//#pragma omp atomic
+//        batch->searchTime[0] += time;
+//      }
+//
+//      CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
+//    }
+//
+//
+//    FOLD // Copy D2H Timing  .
+//    {
+//      ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
+//
+//      if ( ret == cudaErrorNotReady )
+//      {
+//        //printf("Not ready\n");
+//      }
+//      else
+//      {
+//        //printf("    ready\n");
+//#pragma omp atomic
+//        batch->copyD2HTime[0] += time;
+//      }
+//
+//      CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
+//    }
+//
+//    struct timeval startT, endT;
+//    gettimeofday(&startT, NULL);
+//#endif
+//
+//    nvtxRangePush("CPU Process results");
+//
+//    double poww, sig;
+//    double rr, zz;
+//    int numharm = (1<<stage);
+//
+//    FOLD // Critical section to handle candidates  .
+//    {
+//      uint idx;
+//      uint x0, x1;
+//      uint y0, y1;
+//
+//      y0 = 0;
+//      y1 = batch->ssSlices;
+//
+//      x0 = 0;
+//      x1 = end - start ;
+//
+//      float cutoff = batch->sInf->powerCut[stage];
+//
+//      for ( uint y = y0; y < y1; y++ )
+//      {
+//        for ( uint x = x0; x < x1; x++ )
+//        {
+//          poww      = 0;
+//          sig       = 0;
+//          zz        = 0;
+//
+//          idx       = y*cStride + x ;
+//
+//          FOLD
+//          {
+//            candPZs candM         = ((candPZs*)batch->h_retData)[idx];
+//            if ( candM.value > cutoff )
+//            {
+//              sig                 = candM.value;
+//              poww                = candM.value;
+//              zz                  = candM.z;
+//            }
+//          }
+//
+//
+//
+//          if ( poww > 0 )
+//          {
+//            rr      = (start + x) *  ACCEL_DR ;
+//
+//            //            FOLD // TMP
+//            //            {
+//            //              uint bin   = start + x - batch->sInf->sSpec->fftInf.rlo*ACCEL_RDR;
+//            //              uint stp   = bin / (float) batch->accelLen ;
+//            //
+//            //              if ( stp == 4 )
+//            //              {
+//            //                printf("%i\t%i\t%.4f\t%.5f\n", stage, x, rr, poww);
+//            //              }
+//            //            }
+//
+//            procesCanidate(batch, rr, zz, poww, sig, stage, numharm ) ;
+//          }
+//        }
+//      }
+//    }
+//
+//#ifdef TIMING // Timing  .
+//    gettimeofday(&endT, NULL);
+//    float v1 =  ((endT.tv_sec - startT.tv_sec) * 1e6 + (endT.tv_usec - startT.tv_usec))*1e-3  ;
+//    batch->resultTime[0] += v1;
+//#endif
+//
+//    nvtxRangePop();
+//
+//    printf("Stage %i got %4i cands \n",stage, batch->noResults );
+//  }
+//}
 
 /*
 __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )

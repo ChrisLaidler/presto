@@ -44,7 +44,8 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
           for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
           {
             candLists[stage][step].value = 0 ;
-            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].value = 0;
+            //d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].value = 0;
+            d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
           }
         }
       }
@@ -190,7 +191,8 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
           if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
           {
             // Write to DRAM
-            d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
+            //d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
+            d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid] = candLists[stage][step];
           }
         }
       }

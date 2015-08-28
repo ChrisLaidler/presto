@@ -2,6 +2,7 @@
 #define CUDA_ACCEL_INCLUDED
 
 #include <pthread.h>
+#include <semaphore.h>
 
 #include <cuda.h>
 #include <cufft.h>
@@ -10,6 +11,7 @@
 
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
+
 
 #ifdef __cplusplus
 #define ExternC extern "C"
@@ -95,6 +97,7 @@ extern "C"
 #define     FLAG_RET_STAGES     (1<<24)   ///< Return results for all stages of summing, default is only the final result
 #define     FLAG_STORE_ALL      (1<<25)   ///< Store candidates for all stages of summing, default is only the final result
 #define     FLAG_STORE_EXP      (1<<26)   ///< Store expanded candidates
+#define     FLAG_THREAD         (1<<29)   ///< Use separate CPU threads to search for candidates in returned data
 
 #define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
@@ -123,10 +126,11 @@ extern "C"
 
 // ----------- This is a list of the data types that and storage structures
 
-#define     COMP_INPUT          (1<<1)
-#define     COMP_MULT           (2<<1)
-#define     COMP_IFFT           (3<<1)
-#define     COMP_SS             (4<<1)
+#define     HAVE_INPUT          (1<<1)
+#define     HAVE_MULT           (1<<2)
+#define     HAVE_PLN            (1<<3)    ///< The Plain data is ready to search
+#define     HAVE_SS             (1<<4)    ///< The S&S is complete and the data is read to read
+#define     HAVE_RES            (1<<5)    ///< The S&S is complete and the data is read to read
 
 //int haveInput;                    ///< Weather the the plain has input ready to convolve
 //int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
@@ -147,7 +151,7 @@ extern int    useUnopt;
 //===================================== Struct prototypes ================================================
 
 typedef struct cuSearch cuSearch;
-
+typedef struct resThrds resThrds;
 
 //======================================== Type defines ==================================================
 
@@ -202,10 +206,10 @@ typedef struct accelcandBasic
 ///< Accel search candidate (this holds more info and is thus larger than accelcandBasic
 typedef struct cand
 {
-    float   power;
     double  r;            /// TODO: Should this be a double?
-    double  sig;          /// TODO: Should this be a double?
     float   z;
+    float   power;
+    double  sig;          /// TODO: Should this be a double?
     int     numharm;
 } cand;
 
@@ -450,7 +454,7 @@ typedef struct cuFFdotBatch
     uint    accelLen;                 ///< The size to step through the input fft
     uint    strideRes;                ///< The stride of the candidate data
 
-    int     noResults;                ///< The number of results from the previous search
+    uint    noResults;                ///< The number of results from the previous search
 
     int     device;                   ///< The CUDA device to run on
     float   capability;               ///< The cuda capability of the device
@@ -559,6 +563,7 @@ typedef struct cuMemInfo
 
     int*            devNoStacks;        ///< An array of the number of stacks on each device
     stackInfo**     h_stackInfo;        ///< An array of pointers to host memory for the stack info
+
 } cuMemInfo;
 
 /** User independent details  .
@@ -580,6 +585,8 @@ typedef struct cuSearch
     int           noSteps;            ///< The number of steps to cover the entire input data
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
     int*          pIdx;               ///< The index of the plains in the Presto harmonic summing order
+
+    resThrds*       threasdInfo;      ///< Information on threads to handle returned candidates.
 
     float*        powerCut;           ///< The power cutoff
     long long*    numindep;           ///< The number of independent trials
@@ -636,14 +643,51 @@ typedef struct cuOptCand
     cudaEvent_t   outCmp;                 ///< Copying input data to device
 } cuOptCand;
 
-typedef struct candThreads
+typedef struct resThrds
 {
-    int running_threads;
-    pthread_mutex_t running_mutex;
+    sem_t running_threads;
 
+    pthread_mutex_t running_mutex;
     pthread_mutex_t candAdd_mutex;
 
-} candThreads ;
+} resThrds ;
+
+typedef struct resultData
+{
+    resThrds*   threasdInfo;
+    void*       retData;
+    void*       cndData;
+
+    uint        retType;
+    uint        cndType;
+    uint        flag;
+
+    uint        x0;
+    uint        x1;
+
+    uint        y0;
+    uint        y1;
+
+    uint        xStride;
+    uint        yStride;
+    uint        noStages;
+
+    uint        zMax;
+
+    double      rLow;
+
+    rVals       rVal;
+
+    float*        powerCut;
+    long long*    numindep;
+    searchScale*  SrchSz;
+
+    uint*         noResults;
+    float*        resultTime;
+
+} resultData;
+
+
 
 //===================================== Function prototypes ===============================================
 
@@ -744,6 +788,10 @@ ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long lo
 
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList *cands );
 
+ExternC double candidate_sigma_cl(double poww, int numharm, long long numindep);
+
 ExternC void inMem(cuFFdotBatch* batch);
+
+ExternC void testTest(cuFFdotBatch* batch);
 
 #endif // CUDA_ACCEL_INCLUDED

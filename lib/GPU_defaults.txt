@@ -15,7 +15,7 @@ IL_PLN
 NORM_CPU
 
 # FFT_CPU  FFT_GPU
-FFT_CPU
+FFT_GPU
 
 
 ######## Convolve ########
@@ -46,7 +46,7 @@ FLAG_RET_ARR
 
 ######## Search ##########
 
-# If peforming a in-mem GPU search store powers in half presision (allowes doing twice as large in-meme searches)
+# If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
 # FLAG_HALF or FLAG_SINGLE
 FLAG_HALF
 
@@ -55,9 +55,12 @@ FLAG_HALF
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
+# FLAG_THREAD 			FLAG_SEQ               # Threading is on by default
+FLAG_SEQ
+
 
 #  SS_CPU  SS_00  SS_10  SS_20   SS_30  SS_INMEM  SS_AA
-#SS_AA
+SS_10
 
 
 #FLAG_RAND_1
@@ -77,23 +80,23 @@ SS_CHUNK	9
 #FLAG_STORE_EXP
 
 # CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
-#CAND_QUAD
+CAND_QUAD
 
 
 ###### Optimisation ########
 
-optpln01 40
-optpln02 30
+optpln01 30
+optpln02 20
 optpln03 10
 optpln04 10
 optpln05 0
 optpln06 0
 
-#optSz01 10
-#optSz02 10
-#optSz04 10
-#optSz08 10
-#optSz16 10
+#optSz01 4
+#optSz02 4
+#optSz04 4
+#optSz08 4
+#optSz16 4
 
 
 ###### Other ########

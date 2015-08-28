@@ -1635,6 +1635,13 @@ void calcNQ(double x, long long n, double* p, double* q)
   }
 }
 
+/**
+ * This is thread safe!
+ * @param poww
+ * @param numharm
+ * @param numindep
+ * @return
+ */
 double candidate_sigma_cl(double poww, int numharm, long long numindep)
 {
   int     k       = numharm * 2.0 ;     // Each harm is 2 powers
@@ -1721,7 +1728,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
   struct timeval start, end, start1, end1;
   double timev1, timev2, timev3;
 
-  printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
+  //printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
   int maxHarms  = 16;
   maxHarms      = cand->numharm ;

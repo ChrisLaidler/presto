@@ -242,7 +242,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
     for ( int c = 0; c < noCands; c++ )
     {
       int stage = log2((float)cnd[c].numharm);
-      procesCanidate(batch, cnd[c].r, cnd[c].z, cnd[c].power, 0, stage, cnd[c].numharm );
+      //procesCanidate(batch, cnd[c].r, cnd[c].z, cnd[c].power, 0, stage, cnd[c].numharm );
     }
 
 #ifdef TIMING // Timing  .

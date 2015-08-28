@@ -28,9 +28,9 @@ extern "C"
 #ifdef CBL
 #include <unistd.h>
 #include "log.h"
-#include "quadTree.h"
+//#include "quadTree.h"
+//#include "candTree.h"
 #endif
-
 
 __device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  height  in stage order
 __device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plain  stride  in stage order
@@ -266,11 +266,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             sInf->gSpec->noDevices = 1;
           }
 
-//          if ( sInf->gSpec->noDevBatches[0] > 1 )
-//          {
-//            fprintf(stderr,"Warning: Reverting to a single batch search, perhaps use more steps?.\n");
-//            sInf->gSpec->noDevBatches[0] = 1;
-//          }
+          //          if ( sInf->gSpec->noDevBatches[0] > 1 )
+          //          {
+          //            fprintf(stderr,"Warning: Reverting to a single batch search, perhaps use more steps?.\n");
+          //            sInf->gSpec->noDevBatches[0] = 1;
+          //          }
 
           flags |= FLAG_CUFFT_CB_OUT;
           flags |= FLAG_SS_INMEM ;
@@ -290,7 +290,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         if ( flags |= FLAG_SS_INMEM  )
         {
-          fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible with only %.2f GB of free memory.\n", free*1e-9 );
+          fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible\n\tThere is %.2f GB of free memory.\n\tIn-mem GPU search would require ~%.2f GB\n\n", free*1e-9, (totalSize + appRoxWrk)*1e-9 );
         }
         flags &= ~FLAG_SS_INMEM ;
       }
@@ -1171,7 +1171,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       kernel->plnDataSize *= kernel->noSteps;
       kernel->pwrDataSize *= kernel->noSteps;
       if ( !(flags & FLAG_SS_INMEM)  )
-      kernel->retDataSize *= kernel->noSteps;
+        kernel->retDataSize *= kernel->noSteps;
     }
 
     float fullCSize     = kernel->SrchSz->noOutpR * candSZ;               /// The full size of all candidate data
@@ -1264,13 +1264,29 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           if ( sInf->sSpec->outData == NULL )
           {
-            gridQuadTree<double, float>* qt;
-            vector2<double> center( 0, 0 );
-            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
+//            gridQuadTree<double, float>* qt;
+//            vector2<double> center( 0, 0 );
+//            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
+//
+//            qt = new gridQuadTree<double, float>(center, width);
+//
+//            kernel->h_candidates = qt;
 
-            qt = new gridQuadTree<double, float>(center, width);
 
+//            candQuadNode* node;
+//
+//            location* loc;
+//
+//            cand* canidate;
+//
+//            if ( *loc < *node )
+//            {
+//              printf("BOB\n");
+//            }
+
+            candTree* qt = new candTree;
             kernel->h_candidates = qt;
+
           }
           else
           {
@@ -2163,20 +2179,44 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 
   setDevice(batch) ;
 
-  // Free pinned memory
-  cudaFreeHostNull(batch->h_iData);
-  cudaFreeHostNull(batch->h_retData);
+  FOLD // Free host memory
+  {
+#ifdef STPMSG
+    printf("\t\tfree host memory\n", batch);
+#endif
 
-  // Allocate device memory
-  cudaFreeNull(batch->d_iData);
-  cudaFreeNull(batch->d_plainData );
-  cudaFreeNull(batch->d_plainPowers);
-  cudaFreeNull(batch->d_retData);
+    freeNull(batch->normPowers);
+  }
 
-  FOLD // Create textures for the f-∂f plains  .
+  FOLD // Free pinned memory
+  {
+#ifdef STPMSG
+    printf("\t\tfree pinned memory\n", batch);
+#endif
+    cudaFreeHostNull(batch->h_iData);
+    cudaFreeHostNull(batch->h_retData);
+  }
+
+  FOLD // Free device memory
+  {
+#ifdef STPMSG
+    printf("\t\tfree device memory\n", batch);
+#endif
+
+    cudaFreeNull(batch->d_iData);
+    cudaFreeNull(batch->d_plainData );
+    cudaFreeNull(batch->d_plainPowers);
+    cudaFreeNull(batch->d_retData);
+  }
+
+  FOLD // Free textures for the f-∂f plains  .
   {
     if ( batch->flag & FLAG_SAS_TEX )
     {
+#ifdef STPMSG
+      printf("\t\tfree textures\n", batch);
+#endif
+
       for (int i = 0; i < batch->noStacks; i++)
       {
         cuFfdotStack* cStack = &batch->stacks[i];
@@ -2196,8 +2236,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
     }
   }
 
-  // Free host memory
-  freeNull(batch->normPowers);
+
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Exiting freeBatchGPUmem.");
 }
@@ -2264,6 +2303,7 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
 
 cuOptCand* initOptPln(searchSpecs* sSpec)
 {
+  nvtxRangePush("Init plain");
   size_t freeMem, totalMem;
 
   int       noHarms   = (1<<(sSpec->noHarmStages-1));
@@ -2291,6 +2331,8 @@ cuOptCand* initOptPln(searchSpecs* sSpec)
     CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
     CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
   }
+
+  nvtxRangePop();
 
   return(oPln);
 }
@@ -2536,7 +2578,7 @@ void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRH
 
   FOLD // Sum & Max
   {
-    sumAndMax(batch, numindep, powers);
+    //sumAndMax(batch, numindep, powers);
   }
 
 #else
@@ -3116,24 +3158,11 @@ void readAccelDefalts(searchSpecs *sSpec)
       }
       else if ( strCom(line, "CU_CAND_QUAD" ) || strCom(line, "CAND_QUAD" ) )
       {
-        if ( ! ( (*flags) & FLAG_CUFFT_CB_OUT) )
-        {
-          fprintf(stderr,"WARNING: At the moment quadtree requires CFFT output callback, so enabling it.\n");
-          (*flags) |= FLAG_CUFFT_CB_OUT;
-        }
-
-        // Return type
-        sSpec->retType &= ~CU_TYPE_ALLL ;
-        sSpec->retType &= ~CU_SRT_ALL   ;
-
-        sSpec->retType |= CU_FLOAT      ;
-        sSpec->retType |= CU_STR_PLN    ;
-
         // Candidate type
         sSpec->cndType &= ~CU_TYPE_ALLL ;
         sSpec->cndType &= ~CU_SRT_ALL   ;
 
-        sSpec->cndType |= CU_FLOAT      ;
+        sSpec->cndType |= CU_POWERZ_S   ;
         sSpec->cndType |= CU_STR_QUAD   ;
       }
 
@@ -3176,6 +3205,16 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_STORE_ALL;
       }
 
+      else if ( strCom(line, "FLAG_THREAD" ) )
+      {
+        (*flags) |= FLAG_THREAD;
+      }
+      else if ( strCom(line, "FLAG_SEQ" ) )
+      {
+        (*flags) &= ~FLAG_THREAD;
+      }
+
+
       else if ( strCom(line, "FLAG_STORE_EXP" ) )
       {
         (*flags) |= FLAG_STORE_EXP;
@@ -3189,10 +3228,6 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
         (*flags) |= FLAG_RAND_2;
       }
-      //      else if ( strCom(line, "FLAG_RAND_4" ) || strCom(line, "RAND_4" ) )
-      //      {
-      //        (*flags) |= FLAG_RAND_4;
-      //      }
 
       else if ( strCom(line, "FLAG_KER_ACC" ) )
       {
@@ -3373,6 +3408,10 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_RET_STAGES  ;
   sSpec.flags         |= FLAG_ITLV_ROW    ; //   FLAG_ITLV_ROW    FLAG_ITLV_PLN
 
+#ifndef DEBUG
+  sSpec.flags         |= FLAG_THREAD      ; // Multithreading really slows down debug so only turn it on by default for release mode, Note: This can be over ridden in the defaults file
+#endif
+
   sSpec.cndType       |= CU_CANDFULL    ;   // Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
   sSpec.cndType       |= CU_STR_ARR     ;   // Candidate storage structure - CU_STR_ARR    is generally the fastest
 
@@ -3545,10 +3584,17 @@ void initCuAccel(cuSearch* sSrch )
 
 void freeAccelGPUMem(cuMemInfo* aInf)
 {
+#ifdef STPMSG
+  printf("freeAccelGPUMem\n");
+#endif
+
   FOLD // Free plains  .
   {
     for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
     {
+#ifdef STPMSG
+      printf("\tfreeBatchGPUmem %i\n", batch);
+#endif
       freeBatchGPUmem(&aInf->batches[batch]);
     }
   }
@@ -3557,9 +3603,16 @@ void freeAccelGPUMem(cuMemInfo* aInf)
   {
     for ( int dev = 0 ; dev < aInf->noDevices; dev++)         // Loop over devices
     {
+#ifdef STPMSG
+      printf("\tfreeKernelGPUmem %i\n", dev);
+#endif
       freeKernelGPUmem(&aInf->kernels[dev]);
     }
   }
+
+#ifdef STPMSG
+  printf("Done\n");
+#endif
 }
 
 void freeCuAccel(cuMemInfo* mInf)
@@ -3651,6 +3704,8 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     srch->pIdx            = (int*)malloc(srch->noHarms * sizeof(int));
     srch->powerCut        = (float*)malloc(srch->noHarmStages * sizeof(float));
     srch->numindep        = (long long*)malloc(srch->noHarmStages * sizeof(long long));
+
+    srch->threasdInfo     = new resThrds;
   }
 
   srch->sSpec             = sSpec;
@@ -3679,6 +3734,36 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
         srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
       }
     }
+  }
+
+  FOLD // Set up the threading  .
+  {
+    if (pthread_mutex_init(&srch->threasdInfo->candAdd_mutex, NULL))
+    {
+      printf("Unable to initialise a mutex.\n");
+      exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&srch->threasdInfo->running_threads, 0, 0))
+    {
+      printf("Could not initialise a semaphore\n");
+      exit(EXIT_FAILURE);
+    }
+    else
+    {
+      //sem_post(&srch->threasdInfo->running_threads); // Set to 1
+      int noTrd;
+      sem_getvalue(&srch->threasdInfo->running_threads, &noTrd );
+
+      TMP
+    }
+
+
+    //    if (pthread_mutex_init(&srch->threasdInfo->running_mutex, NULL))
+    //    {
+    //      printf("Unable to initialise a mutex.\n");
+    //      exit(EXIT_FAILURE);
+    //    }
   }
 
   //  if ( sSpec->cndType & CU_STR_QUAD )
@@ -4243,13 +4328,24 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
 
 GSList* getCanidates(cuFFdotBatch* batch, GSList *cands )
 {
-  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
-  quadNode<double, float>* head = qt->getHead();
-
-  qt->update();
-
-  printf("GPU search found %li unique values in tree.\n", head->noEls );
+//  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
+//  quadNode<double, float>* head = qt->getHead();
+//
+//  qt->update();
+//
+//  printf("GPU search found %li unique values in tree.\n", head->noEls );
 
   return cands;
 }
 
+void testTest(cuFFdotBatch* batch)
+{
+  uint no;
+
+  candTree* qt =(candTree*)batch->h_candidates;
+
+  no = qt->count();
+
+
+  int tmp = 0;
+}
