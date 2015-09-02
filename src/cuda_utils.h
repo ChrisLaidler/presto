@@ -22,10 +22,17 @@
 #define   POWERCU(r,i)  ((r)*(r) + (i)*(i))   /// The sum of powers of two number
 #define   POWERC(c)     POWERCU(c.r, c.i)     /// The sum of powers of a complex number
 
+#define BLACK     "\033[22;30m"
+#define GREEN     "\033[22;31m"
+#define MAGENTA   "\033[22;35m"
+#define RESET     "\033[0m"
+
 // Free a pointer and set value to zero
 #define freeNull(pointer) { if (pointer) free ( pointer ); pointer = NULL; }
 #define cudaFreeNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFree(pointer), "Failed to free device memory."); pointer = NULL; }
 #define cudaFreeHostNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFreeHost(pointer), "Failed to free host memory."); pointer = NULL; }
+
+
 
 // cuFFT API errors
 #ifdef _CUFFT_H_
@@ -100,6 +107,22 @@ typedef struct
 //==================================== Function Prototypes ===============================================//
 
 inline int getValFromSMVer(int major, int minor, SMVal* vals);
+
+/**
+ * @brief printf a message iff compiled in debug mode
+ *
+ * @param format C string that contains a format string that follows the same specifications as format in <a href="http://www.cplusplus.com/printf">printf</a>
+ * @return void
+ **/
+void debugMessage ( const char* format, ... );
+
+void errMsg ( const char* format, ... );
+
+int detect_gdb_tree(void);
+
+
+
+
 
 /**
  * @brief get free ram in bytes

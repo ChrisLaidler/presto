@@ -313,10 +313,10 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
 
       // NB TODO: When I checked the math I think real and ima are inverted ??????
 
-      double Ster = fressz - fressy;
-      double Cter = frescy - frescz;
-      double tR   = cons * (c*Ster + signz*s*Cter);
-      double tI   = cons * (s*Ster - signz*c*Cter);
+      //double Ster = fressz - fressy;
+      //double Cter = frescy - frescz;
+      //double tR   = cons * (c*Ster + signz*s*Cter);
+      //double tI   = cons * (s*Ster - signz*c*Cter);
 
       //response[ii].r = tR;
       //response[ii].i = tI;

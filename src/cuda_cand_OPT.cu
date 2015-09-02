@@ -18,6 +18,7 @@
 //#define DLIM  0.4
 #define DLIM  0.0
 
+#define OPT_INP_BUF   10
 
 extern "C"
 {
@@ -117,10 +118,10 @@ __device__ void fresnl(T xxa, T* ss, T* cc)
     u     = 1.0 / (t * t);
     t     = 1.0 / t;
 
-//    T fn  = (T)3.76329711269987889006e-20+((T)1.34283276233062758925e-16+((T)1.72010743268161828879e-13+((T)1.02304514164907233465e-10+((T)3.05568983790257605827e-8 +((T)4.63613749287867322088e-6+((T)3.45017939782574027900e-4+((T)1.15220955073585758835e-2+((T)1.43407919780758885261e-1+ (T)4.21543555043677546506e-1*u)*u)*u)*u)*u)*u)*u)*u)*u;
-//    T fd  = (T)1.25443237090011264384e-20+((T)4.52001434074129701496e-17+((T)5.88754533621578410010e-14+((T)3.60140029589371370404e-11+((T)1.12699224763999035261e-8 +((T)1.84627567348930545870e-6+((T)1.55934409164153020873e-4+((T)6.44051526508858611005e-3+((T)1.16888925859191382142e-1+((T)7.51586398353378947175e-1+u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-//    T gn  = (T)1.86958710162783235106e-22+((T)8.36354435630677421531e-19+((T)1.37555460633261799868e-15+((T)1.08268041139020870318e-12+((T)4.45344415861750144738e-10+((T)9.82852443688422223854e-8+((T)1.15138826111884280931e-5+((T)6.84079380915393090172e-4+((T)1.87648584092575249293e-2+((T)1.97102833525523411709e-1+ (T)5.04442073643383265887e-1*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-//    T gd  = (T)1.86958710162783236342e-22+((T)8.39158816283118707363e-19+((T)1.38796531259578871258e-15+((T)1.10273215066240270757e-12+((T)4.60680728146520428211e-10+((T)1.04314589657571990585e-7+((T)1.27545075667729118702e-5+((T)8.14679107184306179049e-4+((T)2.53603741420338795122e-2+((T)3.37748989120019970451e-1+((T)1.47495759925128324529e0 +u)*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+    //    T fn  = (T)3.76329711269987889006e-20+((T)1.34283276233062758925e-16+((T)1.72010743268161828879e-13+((T)1.02304514164907233465e-10+((T)3.05568983790257605827e-8 +((T)4.63613749287867322088e-6+((T)3.45017939782574027900e-4+((T)1.15220955073585758835e-2+((T)1.43407919780758885261e-1+ (T)4.21543555043677546506e-1*u)*u)*u)*u)*u)*u)*u)*u)*u;
+    //    T fd  = (T)1.25443237090011264384e-20+((T)4.52001434074129701496e-17+((T)5.88754533621578410010e-14+((T)3.60140029589371370404e-11+((T)1.12699224763999035261e-8 +((T)1.84627567348930545870e-6+((T)1.55934409164153020873e-4+((T)6.44051526508858611005e-3+((T)1.16888925859191382142e-1+((T)7.51586398353378947175e-1+u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+    //    T gn  = (T)1.86958710162783235106e-22+((T)8.36354435630677421531e-19+((T)1.37555460633261799868e-15+((T)1.08268041139020870318e-12+((T)4.45344415861750144738e-10+((T)9.82852443688422223854e-8+((T)1.15138826111884280931e-5+((T)6.84079380915393090172e-4+((T)1.87648584092575249293e-2+((T)1.97102833525523411709e-1+ (T)5.04442073643383265887e-1*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
+    //    T gd  = (T)1.86958710162783236342e-22+((T)8.39158816283118707363e-19+((T)1.38796531259578871258e-15+((T)1.10273215066240270757e-12+((T)4.60680728146520428211e-10+((T)1.04314589657571990585e-7+((T)1.27545075667729118702e-5+((T)8.14679107184306179049e-4+((T)2.53603741420338795122e-2+((T)3.37748989120019970451e-1+((T)1.47495759925128324529e0 +u)*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
 
     T u01 = u;
     T u02 = u01*u;
@@ -291,13 +292,13 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
 
     if ( absz < FTLIM )
     {
-//      const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
-//      const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-//
-//      if ( ix == 0 )
-//      {
-//        printf("absz < FTLIM   iy: %03i\n", iy);
-//      }
+      //      const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
+      //      const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+      //
+      //      if ( ix == 0 )
+      //      {
+      //        printf("absz < FTLIM   iy: %03i\n", iy);
+      //      }
       //double v1   = r - lodata ;
       //startr      = v1;
       startr = (r - lodata);
@@ -350,29 +351,29 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
           tR              = c * sinc;
           tI              = s * sinc;
 
-//          const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
-//          const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-//
-//          double  dqr   = r - lodata + ii ;
-//          double  dxx   = PI*dqr ;
-//          double  sd, cd, sincd, tRd, tId;
-//          sincos_t(xx, &sd, &cd);
-//
-//          if ( dqr == 0.0 )
-//            sincd = 1.0;
-//          else
-//            sincd = sd / dxx;
-//
-//          tRd             = cd * sincd;
-//          tId             = sd * sincd;
-//
-//          if ( ix == 0 )
-//          {
-//            printf("-- %15.8f  %15.8f\n   %15.8f  %15.8f\n", tR, tI, tRd, tId);
-//          }
-//
-//          tR = tRd;
-//          tI = tId;
+          //          const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
+          //          const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+          //
+          //          double  dqr   = r - lodata + ii ;
+          //          double  dxx   = PI*dqr ;
+          //          double  sd, cd, sincd, tRd, tId;
+          //          sincos_t(xx, &sd, &cd);
+          //
+          //          if ( dqr == 0.0 )
+          //            sincd = 1.0;
+          //          else
+          //            sincd = sd / dxx;
+          //
+          //          tRd             = cd * sincd;
+          //          tId             = sd * sincd;
+          //
+          //          if ( ix == 0 )
+          //          {
+          //            printf("-- %15.8f  %15.8f\n   %15.8f  %15.8f\n", tR, tI, tRd, tId);
+          //          }
+          //
+          //          tR = tRd;
+          //          tI = tId;
 
           //printf("%04i response: %15.10f %15.10f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", ii, tR, tI, q_r, c, s, sinc );
         }
@@ -391,12 +392,12 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
           tR              = cons * (c*Ster + signz*s*Cter);
           tI              = cons * (s*Ster - signz*c*Cter);
 
-//          const int ix    = blockIdx.x * blockDim.x + threadIdx.x;
-//          const int iy    = blockIdx.y * blockDim.y + threadIdx.y;
-//          if ( ix == 0 && iy == 0 && ii == 0 )
-//          {
-//            printf("Yr: %20.10f  Zr: %20.10f  xx: %20.10f  tR: %20.10f  tI: %20.10f  xx: %20.10f  xx: %20.10f  \n", Yr, Zr, xx, tR, tI);
-//          }
+          //          const int ix    = blockIdx.x * blockDim.x + threadIdx.x;
+          //          const int iy    = blockIdx.y * blockDim.y + threadIdx.y;
+          //          if ( ix == 0 && iy == 0 && ii == 0 )
+          //          {
+          //            printf("Yr: %20.10f  Zr: %20.10f  xx: %20.10f  tR: %20.10f  tI: %20.10f  xx: %20.10f  xx: %20.10f  \n", Yr, Zr, xx, tR, tI);
+          //          }
         }
       }
 
@@ -425,10 +426,10 @@ __global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int ha
 
   if ( ix < noR && iy < noZ)
   {
-//    if ( ix ==0 && iy == 0 )
-//    {
-//      printf("\n");
-//    }
+    //    if ( ix ==0 && iy == 0 )
+    //    {
+    //      printf("\n");
+    //    }
     double r            = firstR + ix/(double)(noR-1) * rSZ ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
 
@@ -440,10 +441,10 @@ __global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int ha
     for( int i = 1; i <= noHarms; i++ )
     {
       double absz         = fabs(z*i);
-//      if(ix ==0 && iy == 0 )
-//      {
-//        printf("%02i absz: %.5f\n",i, absz);
-//      }
+      //      if(ix ==0 && iy == 0 )
+      //      {
+      //        printf("%02i absz: %.5f\n",i, absz);
+      //      }
       if( absz < DLIM && absz > FTLIM )
       {
         //ans  = rz_interp_cu<double>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfwidth);
@@ -868,7 +869,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdotPln.");
 
   pln->halfWidth    = z_resp_halfwidth(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4, HIGHACC);
-  double rSpread    = ceil(maxR*pln->noHarms  + pln->halfWidth) - floor(minR*pln->noHarms - pln->halfWidth);
+  double rSpread    = ceil((maxR+OPT_INP_BUF)*pln->noHarms  + pln->halfWidth) - floor((minR-OPT_INP_BUF)*pln->noHarms - pln->halfWidth);
   int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->alignment);
   pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
 
@@ -879,6 +880,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   int     off;
   int     newInp = 0;
 
+  // Determine if new input is needed
   for( int h = 0; (h < pln->noHarms) && !newInp; h++)
   {
     datStart        = floor( minR*(h+1) - pln->halfWidth );
@@ -895,6 +897,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
     }
   }
 
+  // Initialise values to 0
   for( int h = 0; h < 32; h++)
   {
     rOff.val[h] = 0;
@@ -903,6 +906,8 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   if ( newInp )
   {
+    printf("New input  old stride  %4i   new Stride %4i \n", pln->inpStride, inpStride );
+
     pln->inpStride = inpStride;
 
     if ( pln->inpStride*pln->noHarms*sizeof(cufftComplex) > pln->inpSz )
@@ -910,20 +915,34 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
       fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
       exit(EXIT_FAILURE);
     }
+
+    FOLD // Calculate normalisation factor  .
+    {
+      nvtxRangePush("Calc Norm factor");
+
+      for ( int i = 1; i <= pln->noHarms; i++ )
+      {
+        pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (fft->idx+pln->centR)*i-fft->rlo, pln->centZ*i, 0.0);
+      }
+
+      nvtxRangePop();
+    }
   }
 
   for( int h = 0; h < pln->noHarms; h++)
   {
-    datStart        = floor( minR*(h+1) - pln->halfWidth );
-    datEnd          = ceil(  maxR*(h+1) + pln->halfWidth );
-    noDat           = datEnd - datStart;
-    hw.val[h]       = z_resp_halfwidth(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))) + 4, HIGHACC);
-    rOff.val[h]     = pln->loR[h];
+    datStart          = floor( minR*(h+1) - pln->halfWidth );
+    datEnd            = ceil(  maxR*(h+1) + pln->halfWidth );
+    noDat             = datEnd - datStart;
+    hw.val[h]         = z_resp_halfwidth(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))) + 4, HIGHACC);
+    rOff.val[h]       = pln->loR[h];
 
     if ( newInp )
     {
-      rOff.val[h]     = datStart;
-      pln->loR[h]     = datStart;
+      int startV = MIN( ((datStart + datEnd - pln->inpStride ) / 2.0), datStart );
+
+      rOff.val[h]     = startV;
+      pln->loR[h]     = startV;
       double factor   = sqrt(pln->norm[h]);
       norm.val[h]     = factor;
 
@@ -1133,6 +1152,385 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
     //cudaDeviceSynchronize();          // TMP
     int TMPP = 0;
   }
+}
+
+template<typename T>
+void generatePln(cand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale , int plt = -1, int nn = 0 )
+{
+  nvtxRangePush("generatePln");
+
+  pln->centR          = cand->r;
+  pln->centZ          = cand->z;
+  pln->noZ            = noP*2 + 1;
+  pln->noR            = noP*2 + 1;
+  pln->rSize          = scale;
+  pln->zSize          = scale*4.0;
+  pln->noHarms        = cand->numharm;
+
+  ffdotPln<T>(pln, fft);
+
+  FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
+  {
+    nvtxRangePush("EventSynch");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+    nvtxRangePop();
+  }
+
+  if ( pltOpt > 0 ) // Write CVS & plot output  .
+  {
+    nvtxRangePush("Write CVS");
+
+    char tName[1024];
+    sprintf(tName,"/home/chris/accel/Cand_%05i_Rep_%02i_h%02i.csv", nn, plt, cand->numharm );
+    FILE *f2 = fopen(tName, "w");
+
+    fprintf(f2,"%i",pln->noHarms);
+
+    for (int indx = 0; indx < pln->noR ; indx++ )
+    {
+      double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+      fprintf(f2,"\t%.6f",r);
+    }
+    fprintf(f2,"\n");
+
+    for (int indy = 0; indy < pln->noZ; indy++ )
+    {
+      double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+
+      fprintf(f2,"%.6f",z);
+
+      for (int indx = 0; indx < pln->noR ; indx++ )
+      {
+        float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
+        fprintf(f2,"\t%.15f",yy2);
+      }
+      fprintf(f2,"\n");
+    }
+    fclose(f2);
+
+    FOLD // Make image  .
+    {
+      nvtxRangePush("Image");
+      char cmd[1024];
+      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+      system(cmd);
+      nvtxRangePop();
+    }
+
+    nvtxRangePop();
+  }
+
+  FOLD // Get new max  .
+  {
+    nvtxRangePush("Get Max");
+
+    for (int indy = 0; indy < pln->noZ; indy++ )
+    {
+      for (int indx = 0; indx < pln->noR ; indx++ )
+      {
+        float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
+        if ( yy2 > cand->power )
+        {
+          cand->power   = yy2;
+          cand->r       = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+          cand->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+        }
+      }
+    }
+
+    nvtxRangePop();
+  }
+
+  nvtxRangePop();
+}
+
+void optemiseTree(candTree* tree, cuOptCand* oPlnPln)
+{
+  container* cont = tree->getLargest();
+
+  while (cont)
+  {
+    cont = cont->smaller;
+  }
+}
+
+int addPlnToTree(candTree* tree, cuOptCand* pln)
+{
+  nvtxRangePush("addPlnToTree");
+
+  FOLD // Get new max  .
+  {
+    int ggr = 0;
+
+    for (int indy = 0; indy < pln->noZ; indy++ )
+    {
+      for (int indx = 0; indx < pln->noR ; indx++ )
+      {
+        float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
+        //if ( yy2 > cand->power )
+        {
+          cand* canidate = new cand;
+
+          canidate->numharm = pln->noHarms;
+          canidate->power   = yy2;
+          canidate->r       = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+          canidate->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+          canidate->sig     = yy2;
+
+          ggr++;
+
+          //          printf("\r ggr: %i", ggr);
+          //
+          //          if ( ggr == 786 )
+          //            int tmp = 0;
+
+          tree->insert(canidate, 0.2 );
+        }
+      }
+    }
+    //printf("\n");
+  }
+
+  nvtxRangePop();
+}
+
+candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn)
+{
+  nvtxRangePush("opt_cont");
+
+  int rep       = 0;
+  int lrep      = 0;
+  int noP       = 30;
+  float snoop   = 0.3;
+  float sz;
+  float v1, v2;
+
+  const int mxRep = 10;
+
+  cand* canidate = (cand*)cont->data;
+
+  candTree* thisOpt = new candTree;
+
+  if ( canidate->numharm == 1  )
+    sz = optSz01;
+  if ( canidate->numharm == 2  )
+    sz = optSz02;
+  if ( canidate->numharm == 4  )
+    sz = optSz04;
+  if ( canidate->numharm == 8  )
+    sz = optSz08;
+  if ( canidate->numharm == 16 )
+    sz = optSz16;
+
+  //int numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / pln->noHarms ;
+
+  //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
+
+  pln->halfWidth = 0;
+
+  int plt = 0;
+
+  if ( optpln01 > 0 )
+  {
+    noP               = optpln01 ;
+    lrep              = 0;
+    canidate->power   = 0;     // Set initial power to zero
+    do
+    {
+      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+
+      container* optC =  oTree->getLargest(canidate, 1);
+
+      if ( optC )
+      {
+        // This has feature has already been optimised!
+        cont->flag |= REMOVE_CONTAINER;
+        nvtxRangePop();
+        return thisOpt;
+      }
+
+      //addPlnToTree(thisOpt, pln);
+
+      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+
+      if ( ++lrep > mxRep )
+      {
+        break;
+      }
+    }
+    while ( v1 > snoop || v2 > snoop );
+    sz /= downScale;
+  }
+
+  if ( optpln02 > 0 )
+  {
+    noP               = optpln02 ;
+    lrep              = 0;
+    canidate->power   = 0;     // Set initial power to zero
+    do
+    {
+      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+
+      container* optC =  oTree->getLargest(canidate, 1);
+
+      if ( optC )
+      {
+        // This has feature has already been optimised!
+        cont->flag |= REMOVE_CONTAINER;
+        nvtxRangePop();
+        return thisOpt;
+      }
+
+      //addPlnToTree(thisOpt, pln);
+
+      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+
+      if ( ++lrep > mxRep )
+      {
+        break;
+      }
+    }
+    while ( v1 > snoop || v2 > snoop );
+    sz /= downScale;
+  }
+
+  if ( optpln03 > 0 )
+  {
+    noP               = optpln03 ;
+    lrep              = 0;
+    canidate->power   = 0;     // Set initial power to zero
+    do
+    {
+      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+
+      container* optC =  oTree->getLargest(canidate, 1);
+
+      if ( optC )
+      {
+        // This has feature has already been optimised!
+        cont->flag |= REMOVE_CONTAINER;
+        nvtxRangePop();
+        return thisOpt;
+      }
+
+      //addPlnToTree(thisOpt, pln);
+
+      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+
+      if ( ++lrep > mxRep )
+      {
+        break;
+      }
+    }
+    while ( v1 > snoop || v2 > snoop );
+    sz /= downScale*2;
+  }
+
+  if ( optpln04 > 0 )
+  {
+    noP               = optpln04 ;
+    lrep              = 0;
+    canidate->power   = 0;     // Set initial power to zero
+    do
+    {
+      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+
+      container* optC =  oTree->getLargest(canidate, 1);
+
+      if ( optC )
+      {
+        // This has feature has already been optimised!
+        cont->flag |= REMOVE_CONTAINER;
+        nvtxRangePop();
+        return thisOpt;
+      }
+
+      //addPlnToTree(thisOpt, pln);
+
+      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+
+      if ( ++lrep > mxRep )
+      {
+        break;
+      }
+    }
+    while ( v1 > snoop || v2 > snoop );
+    sz /= downScale*2;
+  }
+
+  if ( optpln05 > 0 )
+  {
+    noP               = optpln05 ;
+    lrep              = 0;
+    canidate->power   = 0;     // Set initial power to zero
+    do
+    {
+      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+
+      container* optC =  oTree->getLargest(canidate, 1);
+
+      if ( optC )
+      {
+        // This has feature has already been optimised!
+        cont->flag |= REMOVE_CONTAINER;
+        nvtxRangePop();
+        return thisOpt;
+      }
+
+      //addPlnToTree(thisOpt, pln);
+
+      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+
+      if ( ++lrep > mxRep )
+      {
+        break;
+      }
+    }
+    while ( v1 > snoop || v2 > snoop );
+    sz /= downScale*2;
+  }
+
+  if ( optpln06 > 0 )
+  {
+    noP               = optpln06 ;
+    lrep              = 0;
+    canidate->power   = 0;     // Set initial power to zero
+    do
+    {
+      generatePln<double>(canidate, fft, pln, noP, sz, plt++, nn );
+
+      container* optC =  oTree->getLargest(canidate, 1);
+
+      if ( optC )
+      {
+        // This has feature has already been optimised!
+        cont->flag |= REMOVE_CONTAINER;
+        nvtxRangePop();
+        return thisOpt;
+      }
+
+      //addPlnToTree(thisOpt, pln);
+
+      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+
+      if ( ++lrep > mxRep )
+      {
+        break;
+      }
+    }
+    while ( v1 > snoop || v2 > snoop );
+    sz /= downScale*2;
+  }
+
+  cont->flag |= OPTIMISED_CONTAINER;
+  nvtxRangePop();
+  return thisOpt;
 }
 
 template<typename T>
@@ -1542,45 +1940,45 @@ void calcNQ(double x, long long n, double* p, double* q)
     return;
   }
 
-//  if ( trueV > 0.9 )
-//  {
-//    int tmp = 0;
-//
-//    {
-//      double term = 1;
-//      long long k = 0;
-//      double sum0 = sum;
-//      double dff ;
-//      double coef = 1;
-//      double fact = 1;
-//
-//      int sz1 = sizeof(double);
-//      int sz2 = sizeof(coef);
-//
-//      do
-//      {
-//        sum0 = sum;
-//        coef *= ( n - (k) );
-//        k++;
-//        fact *= k;
-//        double bcoef1 = coef / fact ;
-//        double bcoef2 = boost::math::binomial_coefficient<double>(n,k);
-//
-//        double t1   = pow(-x,k);
-//        term = bcoef1*t1;
-//        sum -= term;
-//        dff = fabs(sum0-sum);
-//
-//        printf("calcNQ %03i sum: %9.4e  term: %9.6e   dff: %7.3e  bcoef1 %12.8e    bcoef2: %12.8e  \n", k-1, sum, term, dff, bcoef1, bcoef2 );
-//      }
-//      while ( dff > 0 && k < n && k <= 10 );
-//    }
-//  }
+  //  if ( trueV > 0.9 )
+  //  {
+  //    int tmp = 0;
+  //
+  //    {
+  //      double term = 1;
+  //      long long k = 0;
+  //      double sum0 = sum;
+  //      double dff ;
+  //      double coef = 1;
+  //      double fact = 1;
+  //
+  //      int sz1 = sizeof(double);
+  //      int sz2 = sizeof(coef);
+  //
+  //      do
+  //      {
+  //        sum0 = sum;
+  //        coef *= ( n - (k) );
+  //        k++;
+  //        fact *= k;
+  //        double bcoef1 = coef / fact ;
+  //        double bcoef2 = boost::math::binomial_coefficient<double>(n,k);
+  //
+  //        double t1   = pow(-x,k);
+  //        term = bcoef1*t1;
+  //        sum -= term;
+  //        dff = fabs(sum0-sum);
+  //
+  //        printf("calcNQ %03i sum: %9.4e  term: %9.6e   dff: %7.3e  bcoef1 %12.8e    bcoef2: %12.8e  \n", k-1, sum, term, dff, bcoef1, bcoef2 );
+  //      }
+  //      while ( dff > 0 && k < n && k <= 10 );
+  //    }
+  //  }
 
-//  if ( x > 1e-8 || trueV > 0.4 )
-//  {
-//    return trueV;
-//  }
+  //  if ( x > 1e-8 || trueV > 0.4 )
+  //  {
+  //    return trueV;
+  //  }
 
   FOLD // Else do a series expansion  .
   {
@@ -1625,7 +2023,7 @@ void calcNQ(double x, long long n, double* p, double* q)
       pp  += term;
       dff = fabs(sum0-qq);
 
-//      if ( trueV > 0.5 )
+      //      if ( trueV > 0.5 )
       //printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
     }
     while ( dff > 0 && k < n && k <= 20 );
@@ -1652,7 +2050,7 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
   int     n       = numharm;
 
   if ( poww > 100 )
- {
+  {
     if      ( n == 1  )
     {
       logQ = -poww;
@@ -1691,15 +2089,15 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
   }
   else
   {
-    if     (numharm==1 )
+    if      ( numharm == 1 )
       cdfgam_d<1>(poww, &gpu_p, &gpu_q );
-    else if(numharm==2 )
+    else if ( numharm == 2 )
       cdfgam_d<2>(poww, &gpu_p, &gpu_q );
-    else if(numharm==4 )
+    else if ( numharm == 4 )
       cdfgam_d<4>(poww, &gpu_p, &gpu_q );
-    else if(numharm==8 )
+    else if ( numharm == 8 )
       cdfgam_d<8>(poww, &gpu_p, &gpu_q );
-    else if(numharm==16)
+    else if ( numharm == 16)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
     else
     {
@@ -1813,8 +2211,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+            //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > mxRep )
             {
@@ -1838,8 +2236,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+            //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > mxRep )
             {
@@ -1863,8 +2261,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+            //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > mxRep )
             {
@@ -1889,8 +2287,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+            //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > mxRep )
             {
@@ -1915,8 +2313,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+            //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > mxRep )
             {
@@ -1941,8 +2339,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
             v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
             v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-//            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
-//            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
+            //            cand->sigma   = candidate_sigma_cl(cand->power, pln->noHarms, numindep );
+            //            printf("      optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", pln->noHarms, pln->centR, pln->centZ, cand->power, cand->sigma );
 
             if ( ++lrep > mxRep )
             {
@@ -1990,13 +2388,13 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
               numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (ii+1) ;
               sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
 
-//              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
-//              if ( lPower > 3 )
-//              {
-//                sPower      += lPower;
-//                noS++;
-//              }
-//              printf("          %02i  pow: %8.3f  sig: %8.4f   Sum: pow: %8.3f  sig: %8.4f\n", ii+1, lPower, sSig, cand->power, sig );
+              //              sSig           = candidate_sigma_cl(lPower, 1, numindepS );
+              //              if ( lPower > 3 )
+              //              {
+              //                sPower      += lPower;
+              //                noS++;
+              //              }
+              //              printf("          %02i  pow: %8.3f  sig: %8.4f   Sum: pow: %8.3f  sig: %8.4f\n", ii+1, lPower, sSig, cand->power, sig );
 
               if ( sig > maxSig )
               {
@@ -2008,11 +2406,11 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           }
 
 
-//          numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (maxHarms) ;
-//          sSig            = candidate_sigma(sPower, maxHarms, numindep );
-//          printf("\n" );
-//          printf("              pow: %8.3f  sig: %8.4f\n", sPower, sSig );
-//          printf("---------------------\n" );
+          //          numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (maxHarms) ;
+          //          sSig            = candidate_sigma(sPower, maxHarms, numindep );
+          //          printf("\n" );
+          //          printf("              pow: %8.3f  sig: %8.4f\n", sPower, sSig );
+          //          printf("---------------------\n" );
 
           cand->numharm = bestH;
           cand->sigma   = maxSig;
@@ -2020,8 +2418,8 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
 
         }
 
-//        noStages      = log2((double)cand->numharm);
-//        cand->sigma   = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
+        //        noStages      = log2((double)cand->numharm);
+        //        cand->sigma   = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
 
         nvtxRangePop();
       }

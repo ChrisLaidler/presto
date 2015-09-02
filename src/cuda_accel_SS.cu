@@ -414,6 +414,7 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
     double sigc = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) ) ;
 
     return sigc;
+
   }
   else
   {
@@ -427,10 +428,10 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
       cdfgam_d<8>(poww, &gpu_p, &gpu_q );
     else if (numharm==16)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
-    else
-    {
-      cdfgam_d(poww, numharm*2, &gpu_p, &gpu_q );
-    }
+//    else
+//    {
+//      cdfgam_d(poww, numharm*2, &gpu_p, &gpu_q );
+//    }
 
     if (gpu_p == 1.0)
       gpu_q *= numindep;
@@ -839,6 +840,11 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
 
       candTree* qt =(candTree*)res->cndData;
 
+      if ( *res->noResults > 1946)
+      {
+        int tmp = 0;
+      }
+
       if ( !(res->flag & FLAG_SIG_GPU) ) // Do the sigma calculation  .
       {
         sig     = candidate_sigma_cl(poww, numharm, res->numindep[stage]);
@@ -860,10 +866,7 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
 
       (*res->noResults)++;
 
-      printf("Insert %6i \n", *res->noResults);
-
-      if ( *res->noResults == 656 )
-        int tmp = 0;
+      //printf("Insert %6i \n", *res->noResults);
 
       qt->insert(candidate);
     }
@@ -880,7 +883,6 @@ void* processSearchResults(void* ptr)
   FILE * myfile;
   myfile = fopen ( "/home/chris/src.cvs", "a+" );
   fseek(myfile, 0, SEEK_END);
-
 
   resultData* res = (resultData*)ptr;
 

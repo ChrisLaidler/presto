@@ -91,15 +91,15 @@ __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element
 
 __device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
-  const int hw  = 56 * 2  ; // HWIDTH_STAGE[0];
-  const int al  = 3870 ; //ALEN ;
-  const int ns  = 4 ; // NO_STEPS
-  int row   = offset  / ( INMEM_FFT_WIDTH * ns ) ;
-  int col   = offset  % INMEM_FFT_WIDTH;
-  int step  = ( offset % ( INMEM_FFT_WIDTH * ns ) ) / INMEM_FFT_WIDTH;
+//  const int hw  = HWIDTH_STAGE[0];
+//  const int al  = ALEN ;
+//  const int ns  = NO_STEPS;
+//  int row   = offset  / ( INMEM_FFT_WIDTH * ns ) ;
+//  int col   = offset  % INMEM_FFT_WIDTH;
+//  int step  = ( offset % ( INMEM_FFT_WIDTH * ns ) ) / INMEM_FFT_WIDTH;
 
 
-  col      -= hw;
+//  col      -= hw;
 
   //if ( col >= 0 && col < al )
   {

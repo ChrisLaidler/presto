@@ -552,18 +552,21 @@ int main(int argc, char *argv[])
             }
           }
 
-          testTest(master);
+          FOLD // finish off in-mem search  .
+          {
+            if      ( master->flag & FLAG_SS_INMEM     )
+            {
+              inmemSumAndSearch(cuSrch);
+            }
+          }
+
+          //testTest(master);
 
           FOLD // Process candidates  .
           {
             FOLD // Basic timing  .
             {
               gettimeofday(&start01, NULL);
-            }
-
-            if      ( master->flag & FLAG_SS_INMEM     )
-            {
-              inmemSumAndSearch(cuSrch);
             }
 
             if      ( master->cndType & CU_STR_ARR    ) // Copying candidates from array to list for optimisation  .
@@ -610,6 +613,10 @@ int main(int argc, char *argv[])
 #endif
 
               nvtxRangePop();
+            }
+            else if ( master->cndType & CU_STR_QUAD    ) // Copying candidates from array to list for optimisation  .
+            {
+              candsGPU = testTest(master, candsGPU);
             }
 
             cands = candsGPU;
@@ -725,10 +732,10 @@ int main(int argc, char *argv[])
 
       cands = sort_accelcands(cands);
 
-#ifdef DEBUG
+//#ifdef DEBUG
       sprintf(name,"%s_GPU_02_Cands_Sorted.csv",fname);
       printCands(name, cands, obs.T);
-#endif
+//#endif
 
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))

@@ -66,7 +66,7 @@ SS_10
 #FLAG_RAND_1
 
 
-SS_SLICES	1
+SS_SLICES	5
 
 SS_CHUNK	9
 
@@ -80,14 +80,14 @@ SS_CHUNK	9
 #FLAG_STORE_EXP
 
 # CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
-CAND_QUAD
+CU_CAND_QUAD
 
 
 ###### Optimisation ########
 
-optpln01 30
-optpln02 20
-optpln03 10
+optpln01 40
+optpln02 30
+optpln03 20
 optpln04 10
 optpln05 0
 optpln06 0

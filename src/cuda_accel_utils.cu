@@ -288,7 +288,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else
       {
-        if ( flags |= FLAG_SS_INMEM  )
+        if ( flags & FLAG_SS_INMEM  )
         {
           fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible\n\tThere is %.2f GB of free memory.\n\tIn-mem GPU search would require ~%.2f GB\n\n", free*1e-9, (totalSize + appRoxWrk)*1e-9 );
         }
@@ -1262,27 +1262,29 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else if ( kernel->cndType & CU_STR_QUAD )
         {
+          remove( "/home/chris/src.cvs" ); // TMP
+
           if ( sInf->sSpec->outData == NULL )
           {
-//            gridQuadTree<double, float>* qt;
-//            vector2<double> center( 0, 0 );
-//            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
-//
-//            qt = new gridQuadTree<double, float>(center, width);
-//
-//            kernel->h_candidates = qt;
+            //            gridQuadTree<double, float>* qt;
+            //            vector2<double> center( 0, 0 );
+            //            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
+            //
+            //            qt = new gridQuadTree<double, float>(center, width);
+            //
+            //            kernel->h_candidates = qt;
 
 
-//            candQuadNode* node;
-//
-//            location* loc;
-//
-//            cand* canidate;
-//
-//            if ( *loc < *node )
-//            {
-//              printf("BOB\n");
-//            }
+            //            candQuadNode* node;
+            //
+            //            location* loc;
+            //
+            //            cand* canidate;
+            //
+            //            if ( *loc < *node )
+            //            {
+            //              printf("BOB\n");
+            //            }
 
             candTree* qt = new candTree;
             kernel->h_candidates = qt;
@@ -4328,24 +4330,252 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
 
 GSList* getCanidates(cuFFdotBatch* batch, GSList *cands )
 {
-//  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
-//  quadNode<double, float>* head = qt->getHead();
-//
-//  qt->update();
-//
-//  printf("GPU search found %li unique values in tree.\n", head->noEls );
+  //  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
+  //  quadNode<double, float>* head = qt->getHead();
+  //
+  //  qt->update();
+  //
+  //  printf("GPU search found %li unique values in tree.\n", head->noEls );
 
   return cands;
 }
 
-void testTest(cuFFdotBatch* batch)
+int hilClimb(candTree* tree, double tooclose = 5)
 {
-  uint no;
+  container* cont = tree->getSmallest();
+  //double tooclose = 5;
+
+  while ( cont )
+  {
+    container* largest = tree->getLargest(cont, tooclose);
+    if ( *largest > *cont )
+    {
+      tree->markForRemoval(cont);
+    }
+    cont = cont->larger;
+  }
+
+  uint rem = tree->removeMarked();
+  printf("hilClimb  Removed %6i - %6i remain \n", rem, tree->noVals() );
+
+  return rem;
+}
+
+double ratioARR[] = {
+    3.0 / 2.0,
+    5.0 / 2.0,
+    2.0 / 3.0,
+    4.0 / 3.0,
+    5.0 / 3.0,
+    3.0 / 4.0,
+    5.0 / 4.0,
+    2.0 / 5.0,
+    3.0 / 5.0,
+    4.0 / 5.0,
+    5.0 / 6.0,
+    2.0 / 7.0,
+    3.0 / 7.0,
+    4.0 / 7.0,
+    3.0 / 8.0,
+    5.0 / 8.0,
+    2.0 / 9.0,
+    3.0 / 10.0,
+    2.0 / 11.0,
+    3.0 / 11.0,
+    2.0 / 13.0,
+    3.0 / 13.0,
+    2.0 / 15.0
+};
+
+int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
+{
+  int maxharm = 16;
+  int numremoved = 0;
+
+  //double tooclose = 1.5;
+
+  cand* tmpCand = new cand;
+  container* next;
+  container* close;
+  container* serch;
+
+  container* lst = tree->getLargest();
+
+  while ( lst )
+  {
+    cand* candidate = (cand*)lst->data;
+
+    tmpCand->power    = candidate->power;
+    tmpCand->numharm  = candidate->numharm;
+    tmpCand->r        = candidate->r;
+    tmpCand->z        = candidate->z;
+    tmpCand->sig      = candidate->sig;
+
+    // Remove harmonics down
+    for (double ii = 1; ii <= maxharm; ii++)
+    {
+      FOLD // Remove down candidates  .
+      {
+        tmpCand->r  = candidate->r / ii;
+        tmpCand->z  = candidate->z / ii;
+        serch       = contFromCand(tmpCand);
+        close       =  tree->getAll(serch, tooclose);
+
+        while (close)
+        {
+          next = close->smaller;
+
+          if ( *close != *lst )
+          {
+            tree->remove(close);
+            numremoved++;
+          }
+
+          close = next;
+        }
+      }
+
+      FOLD // Remove down up  .
+      {
+        tmpCand->r  = candidate->r * ii;
+        tmpCand->z  = candidate->z * ii;
+        serch       = contFromCand(tmpCand);
+        close       =  tree->getAll(serch, tooclose/**sqrt(ii)*/);
+
+        while (close)
+        {
+          next = close->smaller;
+
+          if ( *close != *lst )
+          {
+            tree->remove(close);
+            numremoved++;
+          }
+
+          close = next;
+        }
+      }
+    }
+
+    for (int ii = 1; ii < 23; ii++)
+    {
+      tmpCand->r  = candidate->r * ratioARR[ii];
+      tmpCand->z  = candidate->z * ratioARR[ii];
+      serch       = contFromCand(tmpCand);
+      close       =  tree->getAll(serch, tooclose);
+
+      while (close)
+      {
+        next = close->smaller;
+
+        if ( *close != *lst )
+        {
+          tree->remove(close);
+          numremoved++;
+        }
+
+        close = next;
+      }
+    }
+
+    lst = lst->smaller;
+  }
+
+  printf("Harmonics Removed %6i - %6i remain \n", numremoved, tree->noVals() );
+
+  return numremoved;
+}
+
+GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
+{
+
+  int     cdx;
+  double  poww, sig;
+  double  rr, zz;
+  int     added = 0;
+  int     numharm;
+
+  candTree optemised;
+
+  candTree trees[batch->noHarmStages];
 
   candTree* qt =(candTree*)batch->h_candidates;
 
-  no = qt->count();
+  hilClimb(qt, 5);
+  eliminate_harmonics(qt);
 
+  cuOptCand* oPlnPln;
+  oPlnPln   = initOptPln(batch->sInf->sSpec);
 
-  int tmp = 0;
+  container* cont = qt->getLargest();
+
+  int i = 0;
+
+  while ( cont )
+  {
+    i++;
+    printf("\n");
+    //if ( i == 12 )
+    {
+      cand*   candidate = (cand*)cont->data;
+      cont->flag &= ~OPTIMISED_CONTAINER;
+
+      printf("Candidate %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+
+      //
+      //    numharm   = candidate->numharm;
+      //    sig       = candidate->sig;
+      //    rr        = candidate->r;
+      //    zz        = candidate->z;
+      //    poww      = candidate->power;
+      //
+      //    candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+
+      //accelcand *cand = new accelcand;
+      //memset(cand, 0, sizeof(accelcand));
+      //cand->power   = candidate->power;
+      //cand->r       = candidate->r;
+      //cand->sigma   = candidate->sig;
+      //cand->z       = candidate->z;
+      //cand->numharm = candidate->numharm;
+
+      //accelcand* cand = create_accelcand(candidate->power, candidate->sig, candidate->numharm, candidate->r, candidate->z);
+
+      //candsGPU = insert_accelcand(candsGPU, cand),
+
+      int stg = log2((float)candidate->numharm);
+      candTree* ret = opt_cont(&trees[stg], oPlnPln, cont, &batch->sInf->sSpec->fftInf, i);
+
+      trees[stg].add(ret);
+
+      delete(ret);
+
+      if ( cont->flag & OPTIMISED_CONTAINER )
+      {
+        candidate->sig = candidate_sigma_cl(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
+        container* cont = optemised.insert(candidate, 0.1);
+
+        if ( cont )
+        {
+          printf("          %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+        }
+        else
+        {
+          printf("          NO\n");
+        }
+      }
+      else
+      {
+        printf("          Already Done\n");
+      }
+    }
+
+    cont = cont->smaller;
+  }
+
+  printf("Optimisation Removed %6i - %6i remain \n", qt->noVals() - optemised.noVals(), optemised.noVals() );
+
+  eliminate_harmonics(&optemised);
+
+  return candsGPU;
 }

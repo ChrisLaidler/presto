@@ -149,7 +149,7 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ARCH =
 #ARCH 		+= -gencode arch=compute_20,code=sm_21
-ARCH 		+= -gencode arch=compute_30,code=sm_30
+#ARCH 		+= -gencode arch=compute_30,code=sm_30
 #ARCH 		+= -gencode arch=compute_35,code=sm_35
 ARCH 		+= -gencode arch=compute_50,code=sm_50
 
@@ -185,7 +185,7 @@ else
   $(info Compileing in release mode)
   
   # CPU optimisations
-  CFLAGS		+=-O3 -ffast-math 
+  CFLAGS		+=-O3 -ffast-math
 
   # Additional CPU optimisations
   CFLAGS		+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
@@ -254,6 +254,9 @@ ifeq ($(WITH_CUDA),yes)
 
   NVCC_SRCS  	= $(wildcard *.cu)
   NVCC_OBS   	= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
+  
+#  CPP_SRCS  	= $(wildcard *.cpp)
+#  NVCC_OBS		+= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(CPP_SRCS)  )
   
   NVCCFLAGS  	+= -DCUDA -Xcompiler -fPIC
   NVCLFLAGS  	+= -DCUDA -Xcompiler -fPIC

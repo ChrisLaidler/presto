@@ -586,7 +586,7 @@ typedef struct cuSearch
     searchScale*  SrchSz;             ///< Details on o the size (in bins) of the search
     int*          pIdx;               ///< The index of the plains in the Presto harmonic summing order
 
-    resThrds*       threasdInfo;      ///< Information on threads to handle returned candidates.
+    resThrds*     threasdInfo;        ///< Information on threads to handle returned candidates.
 
     float*        powerCut;           ///< The power cutoff
     long long*    numindep;           ///< The number of independent trials
@@ -786,12 +786,12 @@ ExternC void printCommandLine(int argc, char *argv[]);
 
 ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
 
-ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList *cands );
+ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList* cands );
 
 ExternC double candidate_sigma_cl(double poww, int numharm, long long numindep);
 
 ExternC void inMem(cuFFdotBatch* batch);
 
-ExternC void testTest(cuFFdotBatch* batch);
+ExternC GSList* testTest(cuFFdotBatch* batch, GSList* candsGPU);
 
 #endif // CUDA_ACCEL_INCLUDED

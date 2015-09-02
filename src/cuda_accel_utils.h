@@ -16,11 +16,12 @@
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
+#include "candTree.h"
 
 #ifdef CBL
 #include "array.h"
 #include "arrayDsp.h"
-#include "candTree.h"
+//#include "candTree.h"
 //#include "aTest.h"
 #endif
 
@@ -424,7 +425,11 @@ extern float  optSz16;
 
 extern int    pltOpt;
 
+//extern int    gdb = -1;
+
 //-------------------------  Prototypes  -------------------------------\\
+
+
 
 
 /* Calculate the 'r' you need for subharmonic  */
@@ -622,6 +627,12 @@ void sumAndSearch(cuFFdotBatch* batch);
  *
  */
 void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers);
+
+
+
+//////////////////////////////////////// Optimisation \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn = 0 );
 
 
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

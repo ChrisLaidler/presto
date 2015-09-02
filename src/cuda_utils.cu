@@ -102,6 +102,65 @@ static SMVal nGpuArchCoresPerSM[] =
     {   -1, -1 }
 };
 
+
+void debugMessage ( const char* format, ... )
+{
+#ifdef DEBUG
+  if ( detect_gdb_tree() )
+  {
+    //printf("in GDB\n");
+    va_list ap;
+    va_start ( ap, format );
+    vprintf ( format, ap );      // Write the line
+    va_end ( ap );
+
+    //std::cout.flush();
+  }
+  else
+  {
+    //printf("NOT in GDB\n");
+    printf ( MAGENTA );
+
+    va_list ap;
+    va_start ( ap, format );
+    vprintf ( format, ap );      // Write the line
+    va_end ( ap );
+
+    printf ( RESET );
+    //std::cout.flush();
+  }
+#endif
+}
+
+void errMsg ( const char* format, ... )
+{
+  va_list ap;
+  va_start ( ap, format );
+  vfprintf (stderr, format, ap );
+  va_end ( ap );
+}
+
+int detect_gdb_tree(void)
+{
+  //if ( gdb < 0 )
+  int gdb;
+  {
+    int rc = 0;
+    FILE *fd = fopen("/tmp", "r");
+
+    if (fileno(fd) >= 5)
+    {
+      rc = 1;
+    }
+
+    fclose(fd);
+    gdb = rc;
+  }
+
+  return gdb;
+}
+
+
 void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg)
 {
   if (cudaStat != CUFFT_SUCCESS)

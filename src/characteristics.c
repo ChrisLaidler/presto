@@ -177,7 +177,7 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
 
   float *powers, medianv, norm;
 
-  powers = gen_fvect(numamps);
+  powers = (float *) malloc((size_t) (sizeof(float) * numamps));
 
   /* Step through the input FFT and create powers */
   for (ii = 0; ii < numamps; ii++)
@@ -190,6 +190,8 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
 
   //norm = sqrt(medianv/log(2.0));
   norm = medianv/log(2.0);           // Powers need to be divided by the sqr of the true normalisation factor
+
+  free(powers);
 
   //printf("Norm factor %8.3f\n",norm);
 
