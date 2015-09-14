@@ -42,11 +42,11 @@ __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, in
 
   if ( tid < len )
   {
-//    int tmpRe[noHarms];
-//    for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
-//    {
-//      tmpRe[harm]=0;
-//    }
+    //    int tmpRe[noHarms];
+    //    for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
+    //    {
+    //      tmpRe[harm]=0;
+    //    }
 
 
     FOLD  // Set the local and return candidate powers to zero  .
@@ -64,12 +64,12 @@ __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, in
     {
       FOLD 	// Calculate the x indices or create a pointer offset by the correct amount  .
       {
-          for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
-          {
-            //int   ix        = roundf( idx*FRAC_STAGE[harm] ) - firstBin;
-            int   ix        = floorf( idx*FRAC_STAGE[harm] ) - firstBin;
-            inds[harm]      = ix;
-          }
+        for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
+        {
+          //int   ix        = roundf( idx*FRAC_STAGE[harm] ) - firstBin;
+          int   ix        = floorf( idx*FRAC_STAGE[harm] ) - firstBin;
+          inds[harm]      = ix;
+        }
       }
     }
 
@@ -116,14 +116,14 @@ __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, in
                   long iyP       = -1;
                   float pow     = 0 ;
 
-//                  int     sy0 = YINDS[ (zeroHeight+INDS_BUFF)*harm + y ];
-//                  int     sy1 = YINDS[ (zeroHeight+INDS_BUFF)*harm + y + cunkSize - 1 ];
-//                  float   vals[cunkSize];
-//
-//                  for( int yPlus = sy0; yPlus <= sy1; yPlus++ )     // Loop over the chunk  .
-//                  {
-//                    vals[yPlus-sy0] = get(read, yPlus*iStride + ix1 );
-//                  }
+                  //                  int     sy0 = YINDS[ (zeroHeight+INDS_BUFF)*harm + y ];
+                  //                  int     sy1 = YINDS[ (zeroHeight+INDS_BUFF)*harm + y + cunkSize - 1 ];
+                  //                  float   vals[cunkSize];
+                  //
+                  //                  for( int yPlus = sy0; yPlus <= sy1; yPlus++ )     // Loop over the chunk  .
+                  //                  {
+                  //                    vals[yPlus-sy0] = get(read, yPlus*iStride + ix1 );
+                  //                  }
 
                   for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
                   {
@@ -204,10 +204,10 @@ __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, in
 
   }
 
-//  if( tid == 0 )
-//  {
-//    printf("\n");
-//  }
+  //  if( tid == 0 )
+  //  {
+  //    printf("\n");
+  //  }
 }
 
 template<typename T, const int noStages, const int noHarms>
@@ -222,7 +222,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch)
   rVal = &((*batch->rInput)[0][0]);
 #endif
 
-  FOLD // TMP
+  FOLD // TMP  .
   {
     double lastBin_d  = batch->sInf->sSpec->fftInf.rlo*ACCEL_RDR + batch->SrchSz->noSteps * batch->accelLen ;
     double maxUint    = std::numeric_limits<uint>::max();
@@ -246,76 +246,76 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch)
 
   switch ( batch->ssChunk )
   {
-//    case 1 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 2 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 3 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 4 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 5 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 6 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 7 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 8 :
-//    {
-//      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
+    case 1 :
+    {
+      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 2 :
+    {
+      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 3 :
+    {
+      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 4 :
+    {
+      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 5 :
+    {
+      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 6 :
+    {
+      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 7 :
+    {
+      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 8 :
+    {
+      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
     case 9 :
     {
       searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
       break;
     }
-//    case 10:
-//    {
-//      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 12:
-//    {
-//      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 14:
-//    {
-//      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 20:
-//    {
-//      searchINMEM_k<T,noStages,noHarms,20><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
-//    case 25:
-//    {
-//      searchINMEM_k<T,noStages,noHarms,25><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
-//      break;
-//    }
+    case 10:
+    {
+      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 12:
+    {
+      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 14:
+    {
+      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 20:
+    {
+      searchINMEM_k<T,noStages,noHarms,20><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
+    case 25:
+    {
+      searchINMEM_k<T,noStages,noHarms,25><<<dimGrid,  dimBlock, 0, batch->strmSearch >>>((T*)batch->d_plainFull, batch->sInf->mInf->inmemStride, batch->strideRes, firstBin, start, end, (candPZs*)batch->d_retData );
+      break;
+    }
     default:
       fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
       exit(EXIT_FAILURE);
@@ -329,26 +329,26 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
 
   switch (noStages)
   {
-//    case 1 :
-//    {
-//      searchINMEM_c<T,1,1>(batch);
-//      break;
-//    }
-//    case 2 :
-//    {
-//      searchINMEM_c<T,2,2>(batch);
-//      break;
-//    }
-//    case 3 :
-//    {
-//      searchINMEM_c<T,3,4>(batch);
-//      break;
-//    }
-//    case 4 :
-//    {
-//      searchINMEM_c<T,4,8>(batch);
-//      break;
-//    }
+    case 1 :
+    {
+      searchINMEM_c<T,1,1>(batch);
+      break;
+    }
+    case 2 :
+    {
+      searchINMEM_c<T,2,2>(batch);
+      break;
+    }
+    case 3 :
+    {
+      searchINMEM_c<T,3,4>(batch);
+      break;
+    }
+    case 4 :
+    {
+      searchINMEM_c<T,4,8>(batch);
+      break;
+    }
     case 5 :
     {
       searchINMEM_c<T,5,16>(batch);
@@ -376,7 +376,13 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
   if ( batch->flag & FLAG_HALF  )
   {
+#if __CUDACC_VER__ >= 70500
     searchINMEM_p<half>(batch);
+#else
+    fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+
   }
   else
   {
@@ -542,7 +548,7 @@ __global__ void addSplit_k(T* read, uint iStride, T* write, uint oStride, uint f
 
   d_cands[ blockIdx.y*cStride + tid ] = cand;
 }
-*/
+ */
 
 __host__ void addSplit(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch, uint firstBin, uint start, uint end, int stage)
 {
@@ -1026,4 +1032,4 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
   CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
   nvtxRangePop();
 }
-*/
+ */

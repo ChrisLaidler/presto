@@ -969,6 +969,7 @@ void* processSearchResults(void* ptr)
         else
         {
           fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+          sem_trywait(&res->threasdInfo->running_threads);
           exit(EXIT_FAILURE);
         }
 
@@ -1605,6 +1606,9 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     uint firstBin = 0;
     uint len      = 0;
 
+    //uint ite = 0;
+    //printf("\nPar %2i\n", tid );
+
     FOLD // Set all r-values to zero  .
     {
       for ( int step = 0; step < batch->noSteps; step++ )
@@ -1619,6 +1623,8 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
     while ( endBin > startBin )
     {
+
+
 #pragma omp critical
       FOLD // Calculate the step  .
       {
@@ -1626,6 +1632,8 @@ void inmemSumAndSearch(cuSearch* cuSrch)
         len         = MIN(batch->strideRes, endBin - firstBin) ;
         startBin   += len;
       }
+
+      //printf("\nIN:  tid %2i ite %03i   firstBin: %6i  endBin %6i \n", tid, ite, firstBin, endBin );
 
       rVals* rVal   = &((*batch->rInput)[0][0]);
       rVal->drlo    = firstBin * ACCEL_DR;
@@ -1661,7 +1669,12 @@ void inmemSumAndSearch(cuSearch* cuSrch)
         printf("\rSearching  in-mem GPU plain. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+startBin)/totaBinsl*100.0, noTrd );
         fflush(stdout);
       }
+
+      //printf("\nOUT: tid %2i ite %03i \n", tid, ite++ );
+
     }
+
+    //printf("\nSearching %2i Done\n", tid );
 
     FOLD // Process results
     {
@@ -1670,6 +1683,8 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   }
 
   printf("\rSearching  in-mem GPU plain. %5.1f%%                                                                                    \n\n", 100.0 );
+
+  //printf("Searching Done\n");
 
   FOLD // Wait for all processing threads to terminate
   {
@@ -1716,7 +1731,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
         nvtxRangePop();
       }
 
-      printf("\n", msg);
+      printf("\n");
       nvtxRangePop();
     }
   }

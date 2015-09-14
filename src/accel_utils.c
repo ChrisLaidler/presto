@@ -1489,6 +1489,11 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     obs->numbins = chkfilelen(obs->fftfile, sizeof(fcomplex));
     if (usemmap)
     {
+
+#ifdef CUDA
+      nvtxRangePush("Read file");
+#endif
+
       unsigned long freeRam = getFreeRamCU();
 
       if ( freeRam * 0.6 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
@@ -1542,6 +1547,11 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
           obs->mmap_file = 0;
         }
       }
+
+#ifdef CUDA
+      nvtxRangePop();
+#endif
+
     }
     else
     {

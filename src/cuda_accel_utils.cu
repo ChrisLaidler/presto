@@ -2,8 +2,6 @@
 
 #include <cufft.h>
 #include <algorithm>
-#include <omp.h>
-
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
@@ -236,9 +234,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       int    plnY       = calc_required_z(1.0, (float)sInf->sSpec->zMax );
 
       if ( flags & FLAG_HALF )
+      {
+#if __CUDACC_VER__ >= 70500
         plnElsSZ = sizeof(half);
-      else
+#else
         plnElsSZ = sizeof(float);
+        fprintf(stderr, "ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
+        flags &= ~FLAG_HALF;
+#endif
+      }
+      else
+      {
+        plnElsSZ = sizeof(float);
+      }
 
       double totalSize  = plnX * plnY * plnElsSZ ;
       double appRoxWrk  = plnY * INMEM_FFT_WIDTH * ( 4 * 3 + 1) ; // 4 plains * ( input + CUFFT )
@@ -257,6 +265,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else
         {
+#if __CUDACC_VER__ >= 60500
           noHarms               = 1;
           sInf->sSpec->pWidth   = INMEM_FFT_WIDTH / 1000.0 ;
 
@@ -284,6 +293,22 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             sInf->sSpec->retType &= ~CU_SRT_ALL;
             sInf->sSpec->retType |= CU_STR_ARR;
           }
+#else
+          fprintf(stderr,"ERROR: At the moment in-mem search requires CUDA 6.5 or later for CUFFT callbacks.\n");
+
+          flags &= ~FLAG_CUFFT_CB_OUT;
+          flags &= ~FLAG_CUFFT_CB_IN;
+          flags |=  FLAG_SS_10 ;
+
+          FOLD // Set types  .
+          {
+            sInf->sSpec->retType &= ~CU_TYPE_ALLL;
+            sInf->sSpec->retType |= CU_POWERZ_S;
+
+            sInf->sSpec->retType &= ~CU_SRT_ALL;
+            sInf->sSpec->retType |= CU_STR_ARR;
+          }
+#endif
         }
       }
       else
@@ -1076,9 +1101,18 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         FOLD // Determine the size of the powers plain  .
         {
           if ( (kernel->flag & FLAG_SS_INMEM) && (kernel->flag & FLAG_HALF) )
+          {
+#if __CUDACC_VER__ >= 70500
             kernel->pwrDataSize *= sizeof(half);
-          else
+#else
             kernel->pwrDataSize *= sizeof(float);
+            fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+#endif
+          }
+          else
+          {
+            kernel->pwrDataSize *= sizeof(float);
+          }
         }
 
         batchSize             = kernel->inpDataSize + kernel->plnDataSize + kernel->pwrDataSize + kernel->retDataSize;  // This is currently the size of one step
@@ -2933,12 +2967,20 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_CUFFT_CB_IN" ) || strCom(line, "CB_IN" ) )
       {
+#if __CUDACC_VER__ >= 60500
         (*flags) |= FLAG_CUFFT_CB_IN;
+#else
+        fprintf(stderr,"ERROR: use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
+#endif
       }
 
       else if ( strCom(line, "FLAG_CUFFT_CB_OUT" ) || strCom(line, "CB_OUT" ) )
       {
+#if __CUDACC_VER__ >= 60500
         (*flags) |= FLAG_CUFFT_CB_OUT;
+#else
+        fprintf(stderr,"ERROR: use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
+#endif
       }
 
       else if ( strCom(line, "FLAG_NO_CB" ) || strCom(line, "NO_CB" ) )
@@ -3011,8 +3053,15 @@ void readAccelDefalts(searchSpecs *sSpec)
       }
       else if ( strCom(line, "FLAG_SS_INMEM") || strCom(line, "SS_INMEM") )
       {
+#if __CUDACC_VER__ >= 60500
         (*flags) |= FLAG_SS_INMEM;
         (*flags) |= FLAG_CUFFT_CB_OUT;
+#else
+        fprintf(stderr,"ERROR: use of in-mem search requires CUDA 6.5 for CUFFT callbacks.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
+        (*flags) &= ~FLAG_SS_INMEM;
+        (*flags) &= ~FLAG_CUFFT_CB_OUT;
+#endif
+
       }
       else if ( strCom(line, "FLAG_SS_A"    ) || strCom(line, "SS_A"   	) )
       {
@@ -3074,8 +3123,14 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else if ( strCom(line, "INMEM" ) || strCom(line, "inmem" ) )
         {
+#if __CUDACC_VER__ >= 60500
           (*flags) |= FLAG_SS_INMEM;
           (*flags) |= FLAG_CUFFT_CB_OUT;
+#else
+          fprintf(stderr,"ERROR: use of in-mem search requires CUDA 6.5 for CUFFT callbacks.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
+          (*flags) &= ~FLAG_SS_INMEM;
+          (*flags) &= ~FLAG_CUFFT_CB_OUT;
+#endif
         }
         else
         {
@@ -3170,7 +3225,12 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_HALF" 	  ) )
       {
+#if __CUDACC_VER__ >= 70500
         (*flags) |= FLAG_HALF;
+#else
+        (*flags) &= ~FLAG_HALF;
+        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision.\n");
+#endif
       }
       else if ( strCom(line, "FLAG_SINGLE" 	) )
       {
@@ -3414,11 +3474,17 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_THREAD      ; // Multithreading really slows down debug so only turn it on by default for release mode, Note: This can be over ridden in the defaults file
 #endif
 
+#if __CUDACC_VER__ >= 60500
+  sSpec.flags         |= FLAG_CUFFT_CB_OUT;
+#endif
+
   sSpec.cndType       |= CU_CANDFULL    ;   // Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
   sSpec.cndType       |= CU_STR_ARR     ;   // Candidate storage structure - CU_STR_ARR    is generally the fastest
 
   sSpec.retType       |= CU_POWERZ_S    ;   // Return type
   sSpec.retType       |= CU_STR_ARR     ;   // Candidate storage structure
+
+
 
   sSpec.fftInf.fft    = obs->fft;
   sSpec.fftInf.nor    = obs->numbins;
@@ -3432,8 +3498,14 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   if ( obs->inmem )
   {
+#if __CUDACC_VER__ >= 60500
     sSpec.flags |= FLAG_SS_INMEM;
     sSpec.flags |= FLAG_CUFFT_CB_OUT;
+#else
+    fprintf(stderr, "ERROR: At the moment use of in-mem search requires CUDA 6.5 for CUFFT callbacks.\n");
+    sSpec.flags &= ~FLAG_SS_INMEM;
+    sSpec.flags &= ~FLAG_CUFFT_CB_OUT;
+#endif
   }
 
   readAccelDefalts(&sSpec);
@@ -3576,7 +3648,7 @@ void initCuAccel(cuSearch* sSrch )
 
     if ( bNo != sSrch->mInf->noBatches )
     {
-      fprintf(stderr, "WARNING: Number of batches created does not match the number anticipated.");
+      fprintf(stderr, "WARNING: Number of batches created does not match the number anticipated.\n");
       sSrch->mInf->noBatches = bNo;
     }
 
@@ -3756,8 +3828,6 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
       //sem_post(&srch->threasdInfo->running_threads); // Set to 1
       int noTrd;
       sem_getvalue(&srch->threasdInfo->running_threads, &noTrd );
-
-      TMP
     }
 
 
@@ -4097,7 +4167,7 @@ void printCommandLine(int argc, char *argv[])
 
 void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
 {
-  //#ifdef CBL
+#ifdef CBL
   searchSpecs* sSpec;  ///< Specifications of the search
   cuMemInfo* mInf;  ///< The allocated Device and host memory and data structures to create plains including the kernels
   cuFFdotBatch* batch;
@@ -4325,7 +4395,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
   }
 
   cvsLog->csvEndLine();
-  //#endif
+#endif
 }
 
 GSList* getCanidates(cuFFdotBatch* batch, GSList *cands )

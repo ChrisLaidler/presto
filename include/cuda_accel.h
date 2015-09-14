@@ -7,11 +7,17 @@
 #include <cuda.h>
 #include <cufft.h>
 #include <cufftXt.h>
+
+#if __CUDACC_VER__ >= 70500 // Half precision
 #include <cuda_fp16.h>
+#endif
 
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
 
+#ifdef WITHOMP
+#include <omp.h>
+#endif
 
 #ifdef __cplusplus
 #define ExternC extern "C"
@@ -29,8 +35,8 @@ extern "C"
 }
 #endif
 
-#undef CBL                // TMP
-#define CBL               // TMP
+//#undef CBL                // TMP
+//#define CBL               // TMP
 
 #undef TIMING
 //#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)

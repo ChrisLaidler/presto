@@ -67,6 +67,26 @@ inline int twon_to_index(int n) // TODO: fix this to be called from one place (i
   return x;
 }
 
+void* contextInitTrd(void* ptr)
+{
+  long long* contextInit = malloc(sizeof(long long));
+  struct timeval start, end;
+  *contextInit = 0;
+  gpuSpecs* gSpec = (gpuSpecs*)ptr;
+
+  // Start the timer
+  gettimeofday(&start, NULL);
+
+  nvtxRangePush("Context");
+  initGPUs(gSpec);
+  nvtxRangePop();
+
+  gettimeofday(&end, NULL);
+  *contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+  pthread_exit(contextInit);
+}
+
 int main(int argc, char *argv[])
 {
   int ii;
@@ -121,28 +141,43 @@ int main(int argc, char *argv[])
   printf("    Fourier-Domain Acceleration Search Routine\n");
   printf("               by Scott M. Ransom\n\n");
 
-
 #ifdef CUDA // CUDA Runtime initialisation  .
 
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
   searchSpecs   sSpec;
   char          name[1024];
+  pthread_t     cntxThread = NULL;
+
+  // Start the timer
+  gettimeofday(&start, NULL);
 
   if ( cmd->gpuP ) // Initialises CUDA context(s)  .
   {
     printf("      with GPU additions by Chris Laidler\n\n");
+    printf("      The GPU version is still under development.\n");
+    printf("      If you find any bugs pleas report to:\n");
+    printf("            chris.laidler@gmail.com\n\n");
 
     gSpec        = readGPUcmd(cmd);
 
-    gettimeofday(&start, NULL);
-    nvtxRangePush("Context");
-    printf("Initializing CUDA context's\n");
-    initGPUs(&gSpec);
-    nvtxRangePop();
+    int  iret1 = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
+    if ( iret1 )
+    {
+      fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
+      cntxThread = NULL;
 
-    gettimeofday(&end, NULL);
-    contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+      // Start the timer
+      gettimeofday(&start, NULL);
+
+      nvtxRangePush("Context");
+      printf("Initializing CUDA context's\n");
+      initGPUs(&gSpec);
+      nvtxRangePop();
+
+      gettimeofday(&end, NULL);
+      contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    }
   }
 
   nvtxRangePush("Prep");
@@ -336,10 +371,25 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP )            // --=== The GPU Search == --  .
       {
 #ifdef CUDA
+
+        if (cntxThread)
+        {
+          void *status;
+          if ( !pthread_join(cntxThread, &status) )
+          {
+            contextInit = *(long long *)(status);
+          }
+          else
+          {
+            fprintf(stderr,"ERROR: Failed to join context thread.\n");
+          }
+        }
+
         printf("\n*************************************************************************************************\n                         Doing GPU Search \n*************************************************************************************************\n");
 
         int maxxx;
         cuFFdotBatch* master;
+        char srcTyp[1024];
 
         long  noCands           = 0;
         int   ss                = 0;
@@ -381,10 +431,20 @@ int main(int argc, char *argv[])
 
           gettimeofday(&end, NULL);
           gpuKerTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+          if      ( master->flag & FLAG_SS_INMEM     )
+            sprintf(srcTyp, "Generating in-mem GPU plain");
+          else
+            sprintf(srcTyp, "GPU search");
         }
 
         FOLD //                                 ---===== Main Loop =====---  .
         {
+
+
+
+
+
 #ifndef DEBUG 	// Parallel if we are not in debug mode  .
           omp_set_num_threads(cuSrch->mInf->noBatches);
 #pragma omp parallel
@@ -469,14 +529,8 @@ int main(int argc, char *argv[])
 #ifndef STPMSG
               int noTrd;
               sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-              printf("\rGenerating in-mem GPU plain. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", firstStep/(float)maxxx*100.0, noTrd );
+              printf("\r%s  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", srcTyp, firstStep/(float)maxxx*100.0, noTrd );
               fflush(stdout);
-
-              //print_percent_complete(startrs[0] - startr, sSpec.fftInf.rhi - startr, "search", 0);
-              //int noTrd;
-              //sem_getvalue(&trdBatch->sInf->threasdInfo->running_threads, &noTrd );
-              //printf(" %02d Search threads  ", noTrd );
-              //fflush(stdout);
 #endif
             }
 
@@ -500,8 +554,7 @@ int main(int argc, char *argv[])
             }
           }
 
-          //print_percent_complete(sSpec.fftInf.rhi - startr, sSpec.fftInf.rhi - startr, "search", 0);
-          printf("\rGenerating in-mem GPU plain. %5.1f%%                                                                                         \n", 100.0);
+          printf("\r%s. %5.1f%%                                                                                         \n", srcTyp, 100.0);
 
           FOLD // Wait for CPU threads to complete  .
           {
@@ -521,7 +574,7 @@ int main(int argc, char *argv[])
 
                 ite++;
 
-                if ( noTrd > 1 )
+                if ( noTrd >= 1 )
                 {
                   sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
 
@@ -559,8 +612,6 @@ int main(int argc, char *argv[])
               inmemSumAndSearch(cuSrch);
             }
           }
-
-          //testTest(master);
 
           FOLD // Process candidates  .
           {
@@ -732,10 +783,10 @@ int main(int argc, char *argv[])
 
       cands = sort_accelcands(cands);
 
-//#ifdef DEBUG
+#ifdef DEBUG
       sprintf(name,"%s_GPU_02_Cands_Sorted.csv",fname);
       printCands(name, cands, obs.T);
-//#endif
+#endif
 
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
@@ -852,10 +903,12 @@ int main(int argc, char *argv[])
             if ( candGPUP ) // Optimise  .
             {
               opt_candPlns(candGPUP, &obs, ti, oPlnPln);
-              //print_percent_complete(ti, numcands, "optimization", 0);
+              print_percent_complete(ti, numcands, "optimization", 0);
             }
           }
         }
+
+        print_percent_complete(numcands, numcands, "optimization", 0);
 
         nvtxRangePop();
         gettimeofday(&end01, NULL);
@@ -962,9 +1015,8 @@ int main(int argc, char *argv[])
     {
       printf("\n*************************************************************************************************\n                            Timing\n*************************************************************************************************\n");
 
-      printf("\nTiming: Prep:\t%9.06f\tCPU ker:\t%9.06f\tCPU:\t%9.06f\tGPU ker:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\tCandate:\t%9.06f\n\n", prepTime * 1e-6, cpuKerTime * 1e-6, cupTime * 1e-6, gpuKerTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6, cndTime*1e-6 );
-
-      writeLogEntry("/home/chris/accelsearch_log.csv", &obs, cuSrch, prepTime, cpuKerTime, cupTime, gpuKerTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
+      //printf("\nTiming: Context:\t%9.06f\tPrep:\t%9.06f\tCPU ker:\t%9.06f\tCPU:\t%9.06f\tGPU ker:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\tCandate:\t%9.06f\n\n", contextInit * 1e-6, prepTime * 1e-6, cpuKerTime * 1e-6, cupTime * 1e-6, gpuKerTime * 1e-6, gpuTime * 1e-6, cupTime / (double) gpuTime, optTime * 1e-6, cndTime*1e-6 );
+      //writeLogEntry("/home/chris/accelsearch_log.csv", &obs, cuSrch, prepTime, cpuKerTime, cupTime, gpuKerTime, gpuTime, optTime, cpuOptTime, gpuOptTime );
 
 #ifdef TIMING  // Advanced timing massage  .
 
@@ -1077,13 +1129,24 @@ int main(int argc, char *argv[])
   wallTime = ((wallEnd.tv_sec - wallStart.tv_sec) * 1e6 + (wallEnd.tv_usec - wallStart.tv_usec));
 
   printf("\nTiming summary:\n");
+
+#ifdef CUDA // More timing  .
+  printf("     Prep time: %.3f sec\n", prepTime     * 1e-6 );
+  printf("  CUDA Context: %.3f sec\n", contextInit  * 1e-6 );
+  if ( cmd->cpuP )
+    printf("    CPU search: %.3f sec\n", cupTime      * 1e-6 );
+  if ( cmd->gpuP )
+    printf("    GPU search: %.3f sec\n", gpuTime      * 1e-6 );
+  printf("  Optimization: %.3f sec\n", optTime      * 1e-6 );
+#endif
+
   tott = times(&runtimes)   / (double) CLK_TCK - tott;
   utim = runtimes.tms_utime / (double) CLK_TCK;
   stim = runtimes.tms_stime / (double) CLK_TCK;
   ttim = utim + stim;
-  printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n", ttim, utim, stim);
-  printf("  Total time: %.3f sec\n", tott);
-  printf("   Wall time: %.3f sec\n\n", wallTime*1e-6);
+  printf("      CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n", ttim, utim, stim);
+  printf("    Total time: %.3f sec\n\n", tott);
+  //printf("    Wall time: %.3f sec\n\n", wallTime*1e-6);
 
   printf("Final candidates in binary format are in '%s'.\n",    obs.candnm);
   printf("Final Candidates in a text format are in '%s'.\n\n",  obs.accelnm);
@@ -1091,7 +1154,6 @@ int main(int argc, char *argv[])
 #ifdef CUDA
   freeCuSearch(cuSrch);
   cuProfilerStop(); // TMP
-  //cudaDeviceReset();
 #endif
 
   free_accelobs(&obs);

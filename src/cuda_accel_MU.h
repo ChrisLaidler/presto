@@ -3,6 +3,10 @@
 #include <cufft.h>
 #include <cufftXt.h>
 
+#if __CUDACC_VER__ >= 70500 // Half precision
+#include <cuda_fp16.h>
+#endif
+
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 

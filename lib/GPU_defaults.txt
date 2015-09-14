@@ -1,39 +1,44 @@
 
-######## memory #########
+######## Memory #########
 
+# Interleaving 
 #  IL_ROW   or   IL_PLN
 IL_PLN
 
 ######### Kernel #########
 
+# Higher accuracy for z values closer to 0  
 #FLAG_KER_ACC
-
 
 ########## Input #########
 
+# Normalise input in the CPU or the GPU
 # NORM_CPU NORM_GPU
 NORM_CPU
 
+# FFT input in the CPU or the GPU
 # FFT_CPU  FFT_GPU
-FFT_GPU
-
+FFT_CPU
 
 ######## Convolve ########
 
+# Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
-FLAG_MUL_AA
+MUL_AA
 
 # Other Convolve options
 # FLAG_TEX_MUL
 
-#MUL_SLICES	1			# Last Edited by run time script
+# The number of slices to separate the multiplication kernel into 
+#MUL_SLICES	1
 
-#MUL_CHUNK	6			# Last Edited by run time script
+# The size of chunks to use in the multiplication kernel
+#MUL_CHUNK	6
 
 ######### FFT ############
 
 # FLAG_CUFFT_CB_IN 	# In my testing this is very slow, like 7 times slower (FFT only)!
-FLAG_CUFFT_CB_OUT       	# Last Edited by run time script
+FLAG_CUFFT_CB_OUT       # Almost always a good option!
 
 # FLAG_NO_CB
 
@@ -55,21 +60,19 @@ FLAG_HALF
 #FLAG_TEX_INTERP
 # SIG_GPU or SIG_CPU (default)
 
-# FLAG_THREAD 			FLAG_SEQ               # Threading is on by default
-FLAG_SEQ
+# Use separate CPU threads to process results
+# FLAG_THREAD   OR      FLAG_SEQ               # Threading is on by default
+FLAG_THREAD
 
 
-#  SS_CPU  SS_00  SS_10  SS_20   SS_30  SS_INMEM  SS_AA
-SS_10
+# The type of Sum & Search to perform
+#  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
+SS_AA
 
 
-#FLAG_RAND_1
+#SS_SLICES	1
 
-
-SS_SLICES	5
-
-SS_CHUNK	9
-
+#SS_CHUNK	9
 
 
 ###### Candidates ########
@@ -80,7 +83,7 @@ SS_CHUNK	9
 #FLAG_STORE_EXP
 
 # CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
-CU_CAND_QUAD
+CU_CAND_ARR
 
 
 ###### Optimisation ########
@@ -92,6 +95,13 @@ optpln04 10
 optpln05 0
 optpln06 0
 
+# optpln01 100
+# optpln02 50
+# optpln03 40
+# optpln04 20
+# optpln05 0
+# optpln06 0
+
 #optSz01 4
 #optSz02 4
 #optSz04 4
@@ -100,13 +110,6 @@ optpln06 0
 
 
 ###### Other ########
-
-#FLAG_RAND_1
-#FLAG_RAND_2
-#FLAG_RAND_3
-#FLAG_RAND_4
-
-#globalInt01	4			# Last Edited by run time script
 
 #PLT_OPT
 #UNOPT

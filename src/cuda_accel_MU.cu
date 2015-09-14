@@ -1,20 +1,21 @@
-#include <cuda_fp16.h>
-
 #include "cuda_accel_MU.h"
 
 //====================================== Constant variables  ===============================================\\
 
+#if __CUDACC_VER__ >= 60500
 __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
 __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
 __device__ cufftCallbackStoreC d_storeInmemRow      = CB_PowerOutInmem_ROW;
 __device__ cufftCallbackStoreC d_storeInmemPln      = CB_PowerOutInmem_PLN;
-
+#endif
 
 //======================================= Global variables  ================================================\\
 
 
 //========================================== Functions  ====================================================\\
+
+#if __CUDACC_VER__ >= 60500
 
 __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
@@ -80,6 +81,7 @@ __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element
   ((float*)callerInfo)[offset] = power;
 }
 
+#if __CUDACC_VER__ >= 70500
 __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
   // Calculate power
@@ -88,18 +90,19 @@ __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element
   // Write result (offsets are the same)
   ((half*)callerInfo)[offset] = __float2half(power);
 }
+#endif
 
 __device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
-//  const int hw  = HWIDTH_STAGE[0];
-//  const int al  = ALEN ;
-//  const int ns  = NO_STEPS;
-//  int row   = offset  / ( INMEM_FFT_WIDTH * ns ) ;
-//  int col   = offset  % INMEM_FFT_WIDTH;
-//  int step  = ( offset % ( INMEM_FFT_WIDTH * ns ) ) / INMEM_FFT_WIDTH;
+  //  const int hw  = HWIDTH_STAGE[0];
+  //  const int al  = ALEN ;
+  //  const int ns  = NO_STEPS;
+  //  int row   = offset  / ( INMEM_FFT_WIDTH * ns ) ;
+  //  int col   = offset  % INMEM_FFT_WIDTH;
+  //  int step  = ( offset % ( INMEM_FFT_WIDTH * ns ) ) / INMEM_FFT_WIDTH;
 
 
-//  col      -= hw;
+  //  col      -= hw;
 
   //if ( col >= 0 && col < al )
   {
@@ -236,6 +239,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
         {
           if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
+#if __CUDACC_VER__ >= 60500
             if ( batch->flag & FLAG_SS_INMEM  )
             {
               rVals* rVal;
@@ -249,6 +253,11 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
             {
               CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
             }
+#else
+            fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+            exit(EXIT_FAILURE);
+#endif
+
           }
         }
 
@@ -368,6 +377,8 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   }
 }
 
+#endif
+
 /** Multiply and inverse FFT the complex f-∂f plain
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
@@ -388,7 +399,13 @@ void multiplyBatch(cuFFdotBatch* batch)
 #ifdef STPMSG
       printf("\t\tMultiply with CUFFT\n");
 #endif
+
+#if __CUDACC_VER__ >= 60500
       multiplyBatchCUFFT( batch );
+#else
+      fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+      exit(EXIT_FAILURE);
+#endif
     }
     else                                    // Do the multiplication and FFT separately  .
     {
@@ -419,6 +436,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             {
               // Have to wait for search to finish reading data
               CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+
             }
 
             if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
@@ -562,7 +580,13 @@ void multiplyBatch(cuFFdotBatch* batch)
         {
           if ( batch->flag & FLAG_HALF )
           {
+#if __CUDACC_VER__ >= 70500
             copyIFFTtoPln<half>( batch, cStack );
+#else
+            fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+            exit(EXIT_FAILURE);
+#endif
+
           }
           else
           {
@@ -648,7 +672,12 @@ void multiplyBatch(cuFFdotBatch* batch)
           {
             if ( batch->flag & FLAG_CUFFT_CB_OUT )
             {
+#if __CUDACC_VER__ >= 60500
               CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+#else
+              fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+              exit(EXIT_FAILURE);
+#endif
             }
           }
 

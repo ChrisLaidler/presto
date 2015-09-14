@@ -906,7 +906,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   if ( newInp )
   {
-    printf("New input  old stride  %4i   new Stride %4i \n", pln->inpStride, inpStride );
+    //printf("New input  old stride  %4i   new Stride %4i \n", pln->inpStride, inpStride );
 
     pln->inpStride = inpStride;
 
@@ -2350,7 +2350,6 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           while ( v1 > snoop || v2 > snoop );
           sz /= downScale*2;
         }
-
       }
 
       FOLD // Optimise derivatives  .

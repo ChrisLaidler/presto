@@ -8,7 +8,14 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHCBL    = yes
+WITHCBL    = no
+
+CUDA_ARCH  =
+#CUDA_ARCH += 20
+#CUDA_ARCH += 30
+#CUDA_ARCH += 35
+CUDA_ARCH += 50
+
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
 OS_ARCH    = $(shell uname -m)
@@ -83,7 +90,6 @@ endif
 FFTINC  := $(shell pkg-config --cflags fftw3f)
 FFTLINK := $(shell pkg-config --libs fftw3f)
 
-
 # Include and link information for the GLIB 2.0 library
 GLIBINC  := $(shell pkg-config --cflags glib-2.0)
 GLIBLINK := $(shell pkg-config --libs glib-2.0)
@@ -147,25 +153,24 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
 ######## CUDA flags
 
-ARCH =
-#ARCH 		+= -gencode arch=compute_20,code=sm_21
-#ARCH 		+= -gencode arch=compute_30,code=sm_30
-#ARCH 		+= -gencode arch=compute_35,code=sm_35
-ARCH 		+= -gencode arch=compute_50,code=sm_50
-
+#Change CUDA_ARCH to the correct form
+CUDA_ARCH  := $(foreach root, $(CUDA_ARCH), -gencode arch=compute_$(root),code=sm_$(root))
+#CUDA_ARCH  := $(foreach root, $(CUDA_ARCH), -arch compute_$(root))
+$(info CUDA_ARCH: ${CUDA_ARCH})
+  
 CUDA_PATH  = /usr/local/cuda
 
 CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
 CUDAINC    = -I$(CUDA_PATH)/include
 
-NVCCFLAGS  = $(CUDAINC) $(ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS} 
+NVCCFLAGS  = $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS} 
 NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
 NVCCFLAGS  += -Xcompiler -Wno-comment
 
-NVCLFLAGS  = $(CUDAINC) $(ARCH) $(CUDALIBS)  
+NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)  
 NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 
 
-$(info )
+$(info)
 
 #Settings dependent on release or debug build
 ifeq ($(DEBUG),1)
@@ -229,25 +234,6 @@ ifeq ($(WITHOMP),yes)
   NVCLFLAGS   += -Xcompiler -fopenmp -DWITHOMP
 endif
 
-ifeq ($(WITHCBL),yes)
-  $(info • Compileing with Chris utility libraries)
-
-  # Include and link information for FreeType	
-  FTCFLG     = $(shell freetype-config --cflags)
-  FTLINK     = $(shell freetype-config --libs)
-
-  LNDARR     += -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
-  INDARR     += -I$(SRC)/libs/build/include/ $(FTCFLG) 
-
-  NVCCFLAGS  += -DCBL $(INDARR)
-  NVCLFLAGS  += -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter -lpng $(FTLINK)
-  
-  CXXFLAGS   += -DCBL $(INDARR)
-else
-  LNDARR     =
-  INDARR     =  
-endif
-
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
   $(info • Compileing with CUDA)
@@ -262,7 +248,7 @@ ifeq ($(WITH_CUDA),yes)
   NVCLFLAGS  	+= -DCUDA -Xcompiler -fPIC
   
   #NVCCFLAGS		+= -ptx -keep
- 	#NVCLFLAGS		+= -ptx -keep
+  #NVCLFLAGS		+= -ptx -keep
   
   CFLAGS     	+= -DCUDA $(CUDAINC)
   FLAGS      	+= -DCUDA $(CUDAINC)
@@ -272,12 +258,33 @@ ifeq ($(WITH_CUDA),yes)
 
   CUACCL     	= -lcuaccel$(POSTFIX)
 
-  GPUOUTP    	= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+  GPUOUTP    	= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 else
   NVCC        = $(CC)
   NVCC_OBS    =
   NVCLFLAGS   = $(CLINKFLAGS)
   GPUOUTP     =
+endif
+
+ifeq ($(WITHCBL),yes)
+  $(info • Compileing with Chris utility libraries)
+
+  # Include and link information for FreeType	
+  FTCFLG     = $(shell freetype-config --cflags)
+  FTLINK     = $(shell freetype-config --libs)
+
+  LNDARR     += -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  INDARR     += -I$(SRC)/libs/build/include/ $(FTCFLG) 
+
+  NVCCFLAGS  += -DCBL $(INDARR)
+  NVCLFLAGS  += -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  
+  CXXFLAGS   += -DCBL $(INDARR)
+  
+  GPUOUTP    += $(BINPATH)/test_GPUaccel$(POSTFIX)
+else
+  LNDARR     =
+  INDARR     =  
 endif
 
 $(info )
