@@ -3484,8 +3484,6 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.retType       |= CU_POWERZ_S    ;   // Return type
   sSpec.retType       |= CU_STR_ARR     ;   // Candidate storage structure
 
-
-
   sSpec.fftInf.fft    = obs->fft;
   sSpec.fftInf.nor    = obs->numbins;
   sSpec.fftInf.rlo    = obs->rlo;

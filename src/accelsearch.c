@@ -574,7 +574,7 @@ int main(int argc, char *argv[])
 
                 ite++;
 
-                if ( noTrd >= 1 )
+                if ( noTrd >= 1 && !(ite % 10) )
                 {
                   sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
 
@@ -600,7 +600,10 @@ int main(int argc, char *argv[])
 
                 nvtxRangePop();
               }
-              printf("\n\n");
+
+              if (ite >= 10 )
+                printf("\n\n");
+
               nvtxRangePop();
             }
           }

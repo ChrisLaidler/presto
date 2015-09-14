@@ -67,7 +67,7 @@ FLAG_THREAD
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
-SS_AA
+# SS_AA
 
 
 #SS_SLICES	1
