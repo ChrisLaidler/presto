@@ -1,27 +1,36 @@
 /*
  * cuda_utils.cu
  *
- *      Author: claidler Laidler 
+ *      Author: claidler Laidler
  *      e-mail: chris.laidler@gmail.com
- *      
+ *
  *      This contains a number of basic functions for use with CUDA applications
  */
 
 #include "cuda_utils.h"
- 
+
 #if _WIN32
 #include <windows.h>
-size_t getFreeRam()
+size_t getFreeRamCU()
 {
-    MEMORYSTATUSEX status;
-    status.dwLength = sizeof(status);
-    GlobalMemoryStatusEx(&status);
-    return status.ullTotalPhys;
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  GlobalMemoryStatusEx(&status);
+  return status.ullTotalPhys;
 }
 #elif __linux
 #include <sys/sysinfo.h>
-size_t getFreeRam()
+/** Get the amount of free RAM in bytes
+ *
+ */
+unsigned long getFreeRamCU()
 {
+  long pages = sysconf(_SC_PHYS_PAGES);
+  long freePages = sysconf(_SC_AVPHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+
+  //return freePages*page_size;
+
   struct sysinfo sys_info;
   if(sysinfo(&sys_info) != 0)
   {
@@ -29,19 +38,21 @@ size_t getFreeRam()
     return 0;
   }
   else
-    return sys_info.freeram + sys_info.bufferram;
+  {
+    return (sys_info.freeram + sys_info.bufferram )* sys_info.mem_unit ;
+  }
 }
 #else
-size_t getFreeRam()
+unsigned long getFreeRamCU()
 {
-  fprintf(stderr, "ERROR: getFreeRam not enablend on this system.");
+  fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
 #endif
 
 // 32-bit floating-point add, multiply, multiply-add Operations per Clock Cycle per Multiprocessor
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions__throughput-native-arithmetic-instructions
 static SMVal opsF32_A_M_MAD_perMPperCC[] =
-{ 
+{
     { 0x10, 8 },      // Tesla   Generation (SM 1.0) G80   class
     { 0x11, 8 },      // Tesla   Generation (SM 1.1) G8x   class
     { 0x12, 8 },      // Tesla   Generation (SM 1.2) G9x   class
@@ -58,6 +69,7 @@ static SMVal opsF32_A_M_MAD_perMPperCC[] =
 
 // 64-bit floating-point add, multiply, multiply-add Operations per Clock Cycle per Multiprocessor
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions__throughput-native-arithmetic-instructions
+/*
 static SMVal opsF64_A_M_MAD_perMPperCC[] =
 {
     { 0x10, 0 },      // Tesla  Generation  (SM 1.0) G80   class
@@ -67,11 +79,12 @@ static SMVal opsF64_A_M_MAD_perMPperCC[] =
     { 0x20, 16 },     // Fermi  Generation  (SM 2.0) GF100 class
     { 0x21, 4 },      // Fermi  Generation  (SM 2.1) GF10x class
     { 0x30, 8 },      // Kepler Generation  (SM 3.0) GK10x class
-    { 0x35, 64 },     // Kepler Generation  (SM 3.5) GK11x class    
+    { 0x35, 64 },     // Kepler Generation  (SM 3.5) GK11x class
     { 0x50, 1 },      // Maxwell Generation (SM 5.0) GM10x class
     { -1, -1 }
 };
- 
+ */
+
 // Defined number of cores for SM of specific compute versions ( Taken from CUDA 6.5 Samples )
 static SMVal nGpuArchCoresPerSM[] =
 {
@@ -89,6 +102,65 @@ static SMVal nGpuArchCoresPerSM[] =
     {   -1, -1 }
 };
 
+
+void debugMessage ( const char* format, ... )
+{
+#ifdef DEBUG
+  if ( detect_gdb_tree() )
+  {
+    //printf("in GDB\n");
+    va_list ap;
+    va_start ( ap, format );
+    vprintf ( format, ap );      // Write the line
+    va_end ( ap );
+
+    //std::cout.flush();
+  }
+  else
+  {
+    //printf("NOT in GDB\n");
+    printf ( MAGENTA );
+
+    va_list ap;
+    va_start ( ap, format );
+    vprintf ( format, ap );      // Write the line
+    va_end ( ap );
+
+    printf ( RESET );
+    //std::cout.flush();
+  }
+#endif
+}
+
+void errMsg ( const char* format, ... )
+{
+  va_list ap;
+  va_start ( ap, format );
+  vfprintf (stderr, format, ap );
+  va_end ( ap );
+}
+
+int detect_gdb_tree(void)
+{
+  //if ( gdb < 0 )
+  int gdb;
+  {
+    int rc = 0;
+    FILE *fd = fopen("/tmp", "r");
+
+    if (fileno(fd) >= 5)
+    {
+      rc = 1;
+    }
+
+    fclose(fd);
+    gdb = rc;
+  }
+
+  return gdb;
+}
+
+
 void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg)
 {
   if (cudaStat != CUFFT_SUCCESS)
@@ -96,7 +168,7 @@ void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, con
     fprintf(stderr, "CUFFT ERROR: %s [ %s at line %d in file %s ]\n", errorMsg, _cudaGetErrorEnum(cudaStat), line, file);
     exit(EXIT_FAILURE);
   }
-} 
+}
 
 void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const char *errorMsg)
 {
@@ -120,23 +192,188 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 
   while (vals[index].SM != -1)
   {
-    int thisSM = ((major << 4) + minor);
-    int testSM = vals[index].SM;
+    //int thisSM = ((major << 4) + minor);
+    //int testSM = vals[index].SM;
 
     if (vals[index].SM == ((major << 4) + minor))
       return vals[index].value;
 
     index++;
   }
-  
+
   // If we get here we didn't find the value in the array
   return -1;
+}
+
+void* initGPU(void* ptr)
+{
+  int currentDevvice;
+  char txt[1024];
+
+  //int device = (int)ptr;
+  int device = *((int*)(&ptr));
+
+  printf("Device no is %i \n",device);
+
+  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+
+  // Check if the the current device is 'device'
+  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+  if ( currentDevvice != device)
+  {
+    fprintf(stderr, "ERROR: Device not set.\n");
+  }
+  else // call something to initialise the device
+  {
+    sprintf(txt,"Init device %02i", device );
+    nvtxRangePush(txt);
+
+    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+    cudaFree(0);
+
+    nvtxRangePop();
+  }
+}
+
+void* initGPUs(void* ptr)
+{
+  gpuSpecs* gSpec = (gpuSpecs*)ptr;
+
+  int currentDevvice, deviceCount;
+  size_t free, total;
+  char txt[1024];
+
+  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
+
+  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
+  {
+    int device = gSpec->devId[dIdx];
+
+
+//    int* tmp = (int*)device;
+//
+//    if (0)
+//    {
+//      pthread_t thread;
+//      int  iret1 = 0;
+//      iret1 = pthread_create( &thread, NULL, initGPUs, (void*) gSpec);
+//
+//      if(iret1)
+//      {
+//        fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
+//        initGPUs((void*)gSpec);
+//      }
+//    }
+//    else
+//    {
+//      initGPUs((void*)gSpec);
+//    }
+
+    //
+    //
+    //    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+    //
+    //    // Check if the the current device is 'device'
+    //    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+    //    if ( currentDevvice != device)
+    //    {
+    //      fprintf(stderr, "ERROR: Device not set.\n");
+    //      exit(EXIT_FAILURE);
+    //    }
+    //
+    //    FOLD // call something to initialise the device
+    //    {
+    //      sprintf(txt,"Init device %02i", device );
+    //      nvtxRangePush(txt);
+    //
+    //      //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+    //
+    //      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+    //      cudaFree(0);
+    //
+    //      break;
+    //
+    //      nvtxRangePop();
+    //    }
+  }
+}
+
+void initGPUs(gpuSpecs* gSpec)
+{
+
+  int currentDevvice, deviceCount;
+  size_t free, total;
+  char txt[1024];
+
+  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
+
+  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
+  {
+    int device = gSpec->devId[dIdx];
+
+    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+
+    // Check if the the current device is 'device'
+    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+    if ( currentDevvice != device)
+    {
+      fprintf(stderr, "ERROR: Device not set.\n");
+    }
+    else // call something to initialise the device
+    {
+      sprintf(txt,"Init device %02i", device );
+      nvtxRangePush(txt);
+
+      //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+      cudaFree(0);
+
+      nvtxRangePop();
+    }
+
+//    int* tmp = (int*)device;
+//
+//    if (1)
+//    {
+//      pthread_t thread;
+//      int  iret1 = 0;
+//      iret1 = pthread_create( &thread, NULL, initGPU, (void*) tmp);
+//
+//      if(iret1)
+//      {
+//        fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
+//        initGPUs((void*)gSpec);
+//      }
+//    }
+//    else
+//    {
+//      initGPUs((void*)gSpec);
+//    }
+  }
+
+  //  if (0)
+  //  {
+  //    pthread_t thread;
+  //    int  iret1 = 0;
+  //    iret1 = pthread_create( &thread, NULL, initGPUs, (void*) gSpec);
+  //
+  //    if(iret1)
+  //    {
+  //      fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
+  //      initGPUs((void*)gSpec);
+  //    }
+  //  }
+  //  else
+  //  {
+  //    initGPUs((void*)gSpec);
+  //  }
 }
 
 void listDevices()
 {
   cudaDeviceProp deviceProp;
-  int currentDevvice, deviceCount; 
+  int currentDevvice, deviceCount;
   size_t free, total;
 
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
@@ -146,17 +383,15 @@ void listDevices()
     return;
   }
 
-  
-  
   int driverVersion = 0, runtimeVersion = 0;
-  
+
   CUDA_SAFE_CALL( cudaDriverGetVersion (&driverVersion),  "Failed to get driver version using cudaDriverGetVersion");
   CUDA_SAFE_CALL( cudaRuntimeGetVersion(&runtimeVersion), "Failed to get run time version using cudaRuntimeGetVersion");
   printf("\n  CUDA Driver Version    %d.%d \n", driverVersion  / 1000, (driverVersion  % 100) / 10);
   printf("  Runtime Version        %d.%d \n",   runtimeVersion / 1000, (runtimeVersion % 100) / 10);
 
   printf("\nListing %i device(s):\n",deviceCount);
-  
+
   for (int device = 0; device < deviceCount; device++)
   {
     CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
@@ -164,11 +399,11 @@ void listDevices()
     // Check if the the current device is 'device'
     CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
     if ( currentDevvice != device)
-    { 
+    {
       fprintf(stderr, "ERROR: Device not set.\n");
       exit(EXIT_FAILURE);
     }
- 
+
     CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
 
     printf("\nDevice %d: \"%s\"\n", device, deviceProp.name);
@@ -194,21 +429,45 @@ void listDevices()
 
     // This is supported in CUDA 5.0 (runtime API device properties)
     sprintf(msg,
-        "  Total amount of global memory:                 %.1f GBytes (%llu bytes)\n",
+        "  Total amount of global memory:                 %.1f Gibibyte (%llu bytes)\n",
         (float) deviceProp.totalGlobalMem / 1073741824.0f,
         (unsigned long long) deviceProp.totalGlobalMem);
     printf("%s", msg);
-    
+
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
     sprintf(msg,
-        "   of which %6.2f%% is currently free:           %.1f GBytes (%llu bytes) free\n",
+        "   of which %6.2f%% is currently free:           %.1f Gibibyte (%llu bytes) free\n",
         free / (float)total * 100.0f, (float) free / 1073741824.0f,
         (unsigned long long) free);
     printf("%s", msg);
-    
+
     printf("  Memory Clock rate:                             %.0f Mhz\n",
         deviceProp.memoryClockRate * 1e-3f);
-  } 
+  }
+
   printf("\n");
+}
+
+int getMemAlignment()
+{
+  size_t stride;
+  float* rnd;
+
+  CUDA_SAFE_CALL(cudaMallocPitch(&rnd,    &stride, sizeof(float), 1),   "Failed to allocate device memory for getMemAlignment.");
+  CUDA_SAFE_CALL(cudaFree(rnd),                                         "Failed to free device memory for getMemAlignment.");
+
+  return stride;
+}
+
+int getStrie(int noEls, int elSz, int blockSz)
+{
+  int     noBlocks = ceil(noEls*elSz/(float)blockSz);
+  float   elStride = noBlocks * blockSz / (float)elSz;
+
+  float rem = elStride - (int)elStride;
+  if ( rem != 0 )
+    fprintf(stderr, "ERROR: Memory not aligned to the size of stride.\n");
+
+  return elStride;
 }
 

@@ -331,6 +331,7 @@ static fftpart *get_fftpart(int rlo, int numr)
    }
 }
 
+
 static void free_fftpart(fftpart * fp)
 {
    vect_free(fp->normvals);

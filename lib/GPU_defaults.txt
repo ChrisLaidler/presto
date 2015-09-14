@@ -1,0 +1,116 @@
+
+######## Memory #########
+
+# Interleaving 
+#  IL_ROW   or   IL_PLN
+IL_PLN
+
+######### Kernel #########
+
+# Higher accuracy for z values closer to 0  
+#FLAG_KER_ACC
+
+########## Input #########
+
+# Normalise input in the CPU or the GPU
+# NORM_CPU NORM_GPU
+NORM_CPU
+
+# FFT input in the CPU or the GPU
+# FFT_CPU  FFT_GPU
+FFT_CPU
+
+######## Convolve ########
+
+# Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
+# MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
+MUL_AA
+
+# Other Convolve options
+# FLAG_TEX_MUL
+
+# The number of slices to separate the multiplication kernel into 
+#MUL_SLICES	1
+
+# The size of chunks to use in the multiplication kernel
+#MUL_CHUNK	6
+
+######### FFT ############
+
+# FLAG_CUFFT_CB_IN 	# In my testing this is very slow, like 7 times slower (FFT only)!
+FLAG_CUFFT_CB_OUT       # Almost always a good option!
+
+# FLAG_NO_CB
+
+
+######## Return ##########
+
+# FLAG_RET_ARR  FLAG_RET_PLN
+FLAG_RET_ARR
+
+
+######## Search ##########
+
+# If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
+# FLAG_HALF or FLAG_SINGLE
+FLAG_HALF
+
+
+#FLAG_SAS_TEX
+#FLAG_TEX_INTERP
+# SIG_GPU or SIG_CPU (default)
+
+# Use separate CPU threads to process results
+# FLAG_THREAD   OR      FLAG_SEQ               # Threading is on by default
+FLAG_THREAD
+
+
+# The type of Sum & Search to perform
+#  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
+SS_AA
+
+
+#SS_SLICES	1
+
+#SS_CHUNK	9
+
+
+###### Candidates ########
+
+# FLAG_RETURN_ALL or FLAG_RETURN_FINAL
+
+#FLAG_STORE_ALL
+#FLAG_STORE_EXP
+
+# CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
+CU_CAND_ARR
+
+
+###### Optimisation ########
+
+optpln01 40
+optpln02 30
+optpln03 20
+optpln04 10
+optpln05 0
+optpln06 0
+
+# optpln01 100
+# optpln02 50
+# optpln03 40
+# optpln04 20
+# optpln05 0
+# optpln06 0
+
+#optSz01 4
+#optSz02 4
+#optSz04 4
+#optSz08 4
+#optSz16 4
+
+
+###### Other ########
+
+#PLT_OPT
+#UNOPT
+

@@ -65,8 +65,8 @@ void rzw_interp(fcomplex * data, int numdata, double r, double z,
 
    /* Generate the response function */
 
-   numkern = 2 * kern_half_width;
-   response = gen_w_response(fracfreq, 1, z, w, numkern);
+   numkern    = 2 * kern_half_width;
+   response   = gen_w_response(fracfreq, 1, z, w, numkern);
 
    /* Determine the summation boundaries */
 

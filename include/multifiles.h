@@ -1,6 +1,9 @@
 #include <string.h>
 #include "chkio.h"
 
+#ifndef MULTIFILES_H
+#define MULTIFILES_H
+
 #define DEFAULT_MAXLEN 2000000000
 
 typedef struct MULTIFILE {
@@ -65,3 +68,5 @@ void rewind_multifile(multifile *mfile);
 
 long long ftell_multifile(multifile *mfile);
 /* Report the current position of a muiltifile. */
+
+#endif // MULTIFILES_H

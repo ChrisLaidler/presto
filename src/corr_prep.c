@@ -73,9 +73,15 @@ void place_complex_kernel(fcomplex * kernel, int numkernel,
    fcomplex zeros = { 0.0, 0.0 };
 
    halfwidth = numkernel / 2;
+
+   // Zero everything
    for (ii = 0; ii < numresult; ii++)
       result[ii] = zeros;
+
+   // Copy last half of the kernel to the beginning of the result vector
    memcpy(result, kernel + halfwidth, sizeof(fcomplex) * halfwidth);
+
+   // Copy first half of the kernel to the end of the result vector
    memcpy(result + numresult - halfwidth, kernel, sizeof(fcomplex) * halfwidth);
 }
 
@@ -96,9 +102,15 @@ void place_real_kernel(float *kernel, int numkernel, float *result, int numresul
    int ii, halfwidth;
 
    halfwidth = numkernel / 2;
+
+   // Zero everything
    for (ii = 0; ii < numresult; ii++)
       result[ii] = 0.0;
+
+   // Copy last half of the kernel to the beginning of the result vector
    memcpy(result, kernel + halfwidth, sizeof(float) * halfwidth);
+
+   // Copy first half of the kernel to the end of the result vector
    memcpy(result + numresult - halfwidth, kernel, sizeof(float) * halfwidth);
 }
 

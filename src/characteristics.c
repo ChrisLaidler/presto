@@ -92,6 +92,8 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
    int binsperside, kern_half_width;
    fcomplex ans;
 
+   //printf("\nget_localpower3d   r: %12.5f   z: %12.5f   w: %12.5f\n", r, z, w );
+
    binsperside = NUMLOCPOWAVG / 2;
    kern_half_width = w_resp_halfwidth(z, w, LOWACC);
 
@@ -123,10 +125,12 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
 
    /* Perform the summation */
 
+   //printf("Below\n");
    for (freq = lo1; freq < hi1; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
    }
+   //printf("Above\n");
    for (freq = lo2; freq < hi2; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
@@ -135,6 +139,64 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
    return sum;
 }
 
+
+float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double w)
+{
+  double powargr, powargi;
+  double lo1, hi1;
+  int binsperside, kern_half_width,ii;
+
+  binsperside = NUMLOCPOWAVG / 2;
+  kern_half_width = w_resp_halfwidth(z, w, LOWACC);
+
+  const int extra = 2000;
+
+  /* Set the bounds of our summation */
+
+  lo1 = r - DELTAAVGBINS - binsperside - kern_half_width - extra;
+  hi1 = r + DELTAAVGBINS + binsperside + kern_half_width + extra;
+
+  /* Make sure we don't try to read non-existant data */
+
+  if (lo1 < 0.0)
+    lo1 = 0.0;
+  if (hi1 < 0.0)
+    hi1 = 0.0;
+  if (lo1 > numdata)
+    lo1 = (double) numdata;
+  if (hi1 > numdata)
+    hi1 = (double) numdata;
+
+  int numamps = hi1 - lo1;
+
+  if ( numamps <= 0 )
+  {
+    int tmp = 0;
+    return 0 ;
+  }
+
+  float *powers, medianv, norm;
+
+  powers = (float *) malloc((size_t) (sizeof(float) * numamps));
+
+  /* Step through the input FFT and create powers */
+  for (ii = 0; ii < numamps; ii++)
+  {
+    powers[ii] = POWER(data[(int)lo1+ii].r, data[(int)lo1+ii].i);
+  }
+
+  /* Calculate initial values */
+  medianv = median(powers, numamps);
+
+  //norm = sqrt(medianv/log(2.0));
+  norm = medianv/log(2.0);           // Powers need to be divided by the sqr of the true normalisation factor
+
+  free(powers);
+
+  //printf("Norm factor %8.3f\n",norm);
+
+  return norm;
+}
 
 void get_derivs3d(fcomplex * data, int numdata, double r,
                   double z, double w, double localpower, rderivs * result)
@@ -161,6 +223,8 @@ void get_derivs3d(fcomplex * data, int numdata, double r,
    double powargr, powargi, radargr, radargi, radtmp, pwr[5], phs[5];
    int ii, kern_half_width;
    fcomplex ans;
+
+   //printf("get_derivs3d\n");
 
    /* Read the powers and phases: */
 
@@ -396,7 +460,7 @@ void calc_rzwerrs(fourierprops * props, double T, rzwerrs * result)
 double extended_equiv_gaussian_sigma(double logp)
 /*
   extended_equiv_gaussian_sigma(double logp):
-      Return the equivalent gaussian sigma corresponding to the 
+      Return the equivalent gaussian sigma corresponding to the
           natural log of the cumulative gaussian probability logp.
           In other words, return x, such that Q(x) = p, where Q(x)
           is the cumulative normal distribution.  This version uses
@@ -495,7 +559,7 @@ double chi2_logp(double chi2, int dof)
 /* of chi2 given dof degrees of freedom. */
 {
     double logp;
-    
+
     if (chi2 <= 0.0) {
         return -INFINITY;
     }
@@ -504,6 +568,9 @@ double chi2_logp(double chi2, int dof)
         // printf("Using asymtotic expansion...\n");
         // Use some asymtotic expansions for the chi^2 distribution
         //   this is eqn 26.4.19 of A & S
+      double tmp_l1 = log_asymtotic_incomplete_gamma(0.5*dof, 0.5*chi2);
+      double tmp_l2 = log_asymtotic_gamma(0.5*dof);
+
         logp = log_asymtotic_incomplete_gamma(0.5*dof, 0.5*chi2) -
             log_asymtotic_gamma(0.5*dof);
     } else {
@@ -546,6 +613,60 @@ double chi2_sigma(double chi2, int dof)
 }
 
 
+double adjustNumTrial(double power, long long numtrials)
+{
+  double qq  = 0;
+
+  double trueV = 1-pow((1-power),numtrials);
+
+  if ( trueV > 0.95 )
+  {
+    return 1.0-pow((long double)(1.0-power),(long double)numtrials);
+  }
+
+  FOLD // Else do a series expansion  .
+  {
+    double term = 1;
+    long long k = 0;
+    double  sum0 = qq;
+    double  dff ;
+    double  coef = 1;
+    double  fact = 1;
+
+    qq = 0;
+
+    do
+    {
+      sum0 = qq;
+      coef *= ( numtrials - (k) );
+      k++;
+      fact *= k;
+      double bcoef = coef / fact ;
+
+      double t1   = pow(-power,k);
+
+      if( t1 == 0 )
+      {
+        if ( k > 1 )
+        {
+          return qq;
+        }
+        else
+        {
+          return numtrials * power;
+        }
+      }
+
+      term  = bcoef*t1;
+      qq  -= term;
+      dff = fabs(sum0-qq);
+    }
+    while ( dff > 0 && k < numtrials && k <= 20 );
+  }
+  return qq;
+}
+
+
 double candidate_sigma(double power, int numsum, double numtrials)
 /* Return the approximate significance in Gaussian       */
 /* sigmas of a candidate of numsum summed powers,        */
@@ -563,7 +684,15 @@ double candidate_sigma(double power, int numsum, double numtrials)
     logp = chi2_logp(chi2, dof);
 
     // Correct for numtrials
-    logp += log(numtrials);
+    if ( power > 100 )
+    {
+      logp += log(numtrials);
+    }
+    else
+    {
+      double q = adjustNumTrial(exp(logp), numtrials);
+      logp = log(q);
+    }
 
     // Convert to sigma
     return equivalent_gaussian_sigma(logp);
@@ -588,8 +717,32 @@ double power_for_sigma(double sigma, int numsum, double numtrials)
       printf("   p = %g, q = %g, x = %g, mean = %g, sd = %g\n\n", p, q, x, mean, sd);
       exit(1);
    }
-   q = q / numtrials;
+
+   double xx;
+   double pp = 1 - q;
+   double pw = pow(p,1/numtrials);
+   double qq = 1 - pow(1-q,1/numtrials);
+   pp = 1 - qq;
+
+   which = 2;
+   df = 2.0 * numsum;
+   status = 0;
+   cdfchi(&which, &pp, &qq, &xx, &df, &status, &bound);
+
+
+   // CBL fixed as the assumption of 2 sigma in not really high enough to justify using the
+   if ( q > 0.001 )
+   {
+     q = 1 - pow((1-q),1/numtrials);
+   }
+   else
+   {
+     q = q / numtrials;
+   }
+
    p = 1.0 - q;
+
+
    which = 2;
    df = 2.0 * numsum;
    status = 0;

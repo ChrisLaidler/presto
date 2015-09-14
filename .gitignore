@@ -19,7 +19,9 @@ TAGS
 *.cproject
 *.settings*
 *.tar.gz
+*.csv
 lib/fftw_wisdom.txt
+bin/*_debug*
 bin/GBT350filterbank
 bin/accelsearch
 bin/bary
@@ -67,7 +69,9 @@ bin/window
 bin/zapbirds
 lib/python/ppgplot/
 lib/python/presto/
+lib/*_debug*
 python/build/
 src/slalib/sla_test
 src/makewisdom
 src/fftw_wisdom.txt
+src/build*

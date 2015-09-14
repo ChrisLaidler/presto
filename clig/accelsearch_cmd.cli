@@ -12,20 +12,19 @@ Commandline full_cmd_line
 
 Int -gpu   gpu          {A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu} \
   -r 0 32       \
-  -c 0 32       \
-  -d 0
-Int -nplains nplains    {A list of the number of plains to process on each CUDA device, listed in the same order as -gpu. If only one claue is specifyed it will be used for all GPUs} \
-  -r 1 5        \
-  -c 0 32       \
-  -d 2
-Int -nsteps nsteps      {A list of the number of steps all the thread on each CUDA device is to process, listed in the same order as -gpu. If only one claue is specifyed it will be used for all threads} \
+  -c 0 32       
+Int -nsteps nsteps      {A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches} \
   -r 1 8        \
   -c 0 32       \
   -d 4
-Int -width width        {The width of the f-∂f plain in 1000's of points, ie 4 -> 4096 , 8 -> 8192 ...} \
-  -r 2 32       \
+Int -nbatch nbatch      {A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs} \
+  -r 1 5        \
+  -c 0 32       \
+  -d 2
+Int -width width        {The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.} \
+  -r 1 64       \
   -c 1 1        \
-  -d 8
+  -d 4
 Flag  -lsgpu lsgpu      {List all available CUDA GPU's and exit}
 Flag  -cpu   cpu        {Do a CPU search} 
 Int -ncpus   ncpus      {Number of processors to use with OpenMP} \

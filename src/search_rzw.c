@@ -364,6 +364,7 @@ int main(int argc, char *argv[])
          totnumsearched += worknumbins;
       }
       vect_free(filedata);
+      //clearCorrData(corrd);
    } while (nextbin <= highestbin);
 
    /* Free the memory used by the correlation kernels */

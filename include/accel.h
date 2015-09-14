@@ -18,6 +18,18 @@
 // #define ACCEL_USELEN 3850 // This works up to zmax=100 to use 4K FFTs
 // #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
 
+#undef  ACCEL_USELEN
+#define ACCEL_USELEN	3962			// Added by run time script for 4K FFT's at a ZMAZ of 50
+
+
+#undef FOLD
+#undef FOUT
+#undef Fout
+
+#define   FOLD  if (1)                   /// A simple marker used for folding blocks of code in NSIGHT
+#define   Fout  if (0)                   /// A simple marker used for folding blocks of code in NSIGHT
+#define   FOUT  if (0)
+
 /* Stepsize in Fourier Freq */
 #define ACCEL_NUMBETWEEN 2
 /* Stepsize in Fourier Freq */
@@ -119,20 +131,20 @@ typedef struct ffdotpows{
 subharminfo **create_subharminfos(accelobs *obs);
 void free_subharminfos(accelobs *obs, subharminfo **shis);
 void create_accelobs(accelobs *obs, infodata *idata, 
-		     Cmdline *cmd, int usemmap);
+                     Cmdline *cmd, int usemmap);
 GSList *sort_accelcands(GSList *list);
 GSList *eliminate_harmonics(GSList *cands, int *numcands);
 void deredden(fcomplex *fft, int numamps);
-void optimize_accelcand(accelcand *cand, accelobs *obs);
+void optimize_accelcand(accelcand *cand, accelobs *obs,int nn);
 void output_fundamentals(fourierprops *props, GSList *list, 
-			 accelobs *obs, infodata *idata);
+                         accelobs *obs, infodata *idata);
 void output_harmonics(GSList *list, accelobs *obs, infodata *idata);
 void free_accelcand(gpointer data, gpointer user_data);
 void print_accelcand(gpointer data, gpointer user_data);
 fcomplex *get_fourier_amplitudes(int lobin, int numbins, accelobs *obs);
 ffdotpows *subharm_ffdot_plane(int numharm, int harmnum, 
-			       double fullrlo, double fullrhi, 
-			       subharminfo *shi, accelobs *obs);
+                               double fullrlo, double fullrhi, 
+                               subharminfo *shi, accelobs *obs);
 ffdotpows *copy_ffdotpows(ffdotpows *orig);
 void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs);
 void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs,
@@ -149,7 +161,12 @@ GSList *search_ffdotpows(ffdotpows *ffdot, int numharm,
                          accelobs *obs, GSList *cands);
 void free_accelobs(accelobs *obs);
 
+accelcand *duplicate_accelcand(accelcand *cand);
+GSList *copy_accelcands(GSList * list);
+GSList *duplicate_accelcands(GSList * list);
+
 //static
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
+GSList *insert_accelcand(GSList * list, accelcand *cand);
 
 #endif // _ACECEL_H

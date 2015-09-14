@@ -216,6 +216,9 @@ fcomplex *gen_r_response(double roffset, int numbetween, int numkern)
          sinc = s / r;
       response[ii].r = c * sinc;
       response[ii].i = s * sinc;
+
+      //printf("%04i response: %15.10f %15.10f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", ii, response[ii].r, response[ii].i, r, c, s, sinc );
+
       c = alpha * (tmp = c) - beta * s + c;
       s = alpha * s + beta * tmp + s;
    }
@@ -243,10 +246,12 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
   /*       contain.                                                    */
 {
    int ii, signz, numkernby2;
-   double absz, zd, tmp, r, xx, yy, zz, startr, startroffset;
+   double absz, zd, q_r, xx, Yr, Zr, startr, startroffset;
    double fressy, frescy, fressz, frescz, tmprl, tmpim;
    double s, c, pibyz, cons, delta;
    fcomplex *response;
+
+   //printf("gen_z_response( roffset %13.6f,  numbetween %02i,  z %13.8f,  numkern %5i ) \n", roffset, numbetween, z, numkern );
 
    /* Check that the arguments are OK */
 
@@ -271,7 +276,8 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
    /* If z~=0 use the normal Fourier interpolation kernel */
 
    absz = fabs(z);
-   if (absz < 1E-4) {
+   if ( absz < 1E-4 )
+   {
       response = gen_r_response(roffset, numbetween, numkern);
       return response;
    }
@@ -280,41 +286,59 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
 
    /* Begin the calculations */
 
-   startr = roffset - (0.5 * z);
-   startroffset = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
-   signz = (z < 0.0) ? -1 : 1;
-   zd = signz * SQRT2 / sqrt(absz);
-   cons = zd / 2.0;
-   pibyz = PI / z;
-   startr += numkern / (double) (2 * numbetween);
-   delta = -1.0 / numbetween;
+   startr             = roffset - (0.5 * z);
+   startroffset       = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
+   signz              = (z < 0.0) ? -1 : 1;
+   zd                 = signz * SQRT2 / sqrt(absz);
+   cons               = zd / 2.0;
+   pibyz              = PI / z;
+   startr             += numkern / (double) (2 * numbetween);
+   delta              = -1.0 / numbetween;
 
-   for (ii = 0, r = startr; ii < numkern; ii++, r += delta) {
-      yy = r * zd;
-      zz = yy + z * zd;
-      xx = pibyz * r * r;
-      c = cos(xx);
-      s = sin(xx);
-      fresnl(yy, &fressy, &frescy);
-      fresnl(zz, &fressz, &frescz);
-      tmprl = signz * (frescz - frescy);
-      tmpim = fressy - fressz;
-      response[ii].r = ((tmp = tmprl) * c - tmpim * s) * cons;
-      response[ii].i = -(tmp * s + tmpim * c) * cons;
+   for ( ii = 0, q_r = startr; ii < numkern; ii++, q_r += delta )
+   {
+      Yr              = q_r * zd;
+      Zr              = Yr + z * zd;
+      xx              = pibyz * q_r * q_r;
+      c               = cos(xx);
+      s               = sin(xx);
+      fresnl(Yr, &fressy, &frescy);
+      fresnl(Zr, &fressz, &frescz);
+      tmprl           = signz * (frescz - frescy);
+      tmpim           = fressy - fressz;
+      response[ii].r  = ((tmprl) * c - tmpim * s) * cons;
+      response[ii].i  = -(tmprl  * s + tmpim * c) * cons;
+
+      //printf("%03i  q_r %10.5f \n", ii, q_r );
+
+      // NB TODO: When I checked the math I think real and ima are inverted ??????
+
+      //double Ster = fressz - fressy;
+      //double Cter = frescy - frescz;
+      //double tR   = cons * (c*Ster + signz*s*Cter);
+      //double tI   = cons * (s*Ster - signz*c*Cter);
+
+      //response[ii].r = tR;
+      //response[ii].i = tI;
+
+      //printf("[(%7.6f %7.6f) ",  response[ii].r,  response[ii].i );
+      //printf("(%7.6f %7.6f)] ",  tR,              tI );
+      //fflush(stdout);
    }
+   //printf("\n");
 
    /* Correct for divide by zero when the roffset and z is close to zero */
 
-   if (startroffset < 1E-3 && absz < 1E-3) {
-      zz = z * z;
+   if (startroffset < 1E-3 && absz < 1E-3)
+   {
+      Zr = z * z;
       xx = startroffset * startroffset;
       numkernby2 = numkern / 2;
-      response[numkernby2].r = 1.0 - 0.16449340668482264365 * zz;
+      response[numkernby2].r = 1.0 - 0.16449340668482264365 * Zr;
       response[numkernby2].i = -0.5235987755982988731 * z;
       response[numkernby2].r += startroffset * 1.6449340668482264365 * z;
-      response[numkernby2].i += startroffset * (PI - 0.5167712780049970029 * zz);
-      response[numkernby2].r += xx * (-6.579736267392905746
-                                      + 0.9277056288952613070 * zz);
+      response[numkernby2].i += startroffset * (PI - 0.5167712780049970029 * Zr);
+      response[numkernby2].r += xx * (-6.579736267392905746 + 0.9277056288952613070 * Zr);
       response[numkernby2].i += xx * (3.1006276680299820175 * z);
    }
    return response;

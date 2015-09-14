@@ -61,6 +61,8 @@
 /* Blocksize to use when reading datafiles or subbands */
 #define SUBSBLOCKLEN 1024
 
+#define FOLD    if(1)
+
 /* various function-like macros */
 
 #ifndef SWAP
@@ -277,6 +279,17 @@ typedef struct bird{
   double hibin;
 } bird;
 
+typedef struct corrData{
+    fcomplex *dataarray;
+    fcomplex *kernarray;
+    int firsttime;
+    int oldnumbetween;
+    int oldkern_half_width;
+    int oldfftlen;
+    int oldnumdata;
+    int oldlobin;
+} corrData;
+
 /*****  Function Prototypes    *****/
 
 /* From swapendian.c: */
@@ -439,6 +452,8 @@ double get_localpower3d(fcomplex *data, int numdata, double r, \
   /*       signal smears over during the observation).            */
   /*   'w' is the Fourier Frequency 2nd derivative (change in the */
   /*       Fourier f-dot during the observation).                 */
+
+float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double w);
 
 void get_derivs3d(fcomplex *data, int numdata, double r, \
 		  double z, double w, double localpower, \
@@ -921,10 +936,71 @@ float *real_corr_conv(float *data, float *kernel, int numdata, \
 
 /* In corr_routines.c */
 
-int corr_complex(fcomplex *data, int numdata, presto_datainf datainf, \
-		 fcomplex *kern, int numkern, presto_datainf kerninf, \
-		 fcomplex *result, int numresult, int lobin, \
-		 int numbetween, int kern_half_width, presto_optype optype);
+corrData* initCorrData();
+
+void clearCorrData( corrData* corrd);
+
+int corr_complex(\
+                 fcomplex * data, int numdata, presto_datainf datainf,\
+                 fcomplex * kern, int numkern, presto_datainf kerninf,\
+                 fcomplex * result, int numresult, int lobin,         \
+                 int numbetween, int kern_half_width, presto_optype optype);
+//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf,
+//		 fcomplex *kern, int numkern, presto_datainf kerninf,
+//		 fcomplex *result, int numresult, int lobin,
+//		 int numbetween, int kern_half_width, presto_optype optype);
+  /* This routine is a general correlation or convolution routine    */
+  /* for complex data.  It can perform convolutions or correlations  */
+  /* on raw complex data, data that is prepared for a convolution/   */
+  /* correlation but not FFTd, or already FFTd data.  The kernel     */
+  /* that it uses can also be raw, prepped, or FFTd.  If you call    */
+  /* the routine multiple times with either the same kernel or data  */
+  /* array, it uses a saved version of the array from the previous   */
+  /* call to cut down on many processing steps. The return value     */
+  /* tells how many usable (i.e.  non-contaminated) points were      */
+  /* returned in the result array (the first value will be that of   */
+  /* 'lobin').  This routine will _not_ perform in-place             */
+  /* correlations or convolutions (i.e. it ignores those choices     */
+  /* for 'optype').                                                  */
+  /* Arguments:                                                      */
+  /*   'data' is a complex array of the data to be interpolated.     */
+  /*   'numdata' is the number of complex points in 'data'.          */
+  /*   'datainf' is one of the following that describes the data:    */
+  /*              RAW = Normal un-altered complex data.              */
+  /*              PREPPED = Data has been padded and spread based    */
+  /*                        on 'kern_half_width' and 'numbetween'    */
+  /*                        and is ready to be FFTd.                 */
+  /*              FFT = Data has already been prepared and FFTd.     */
+  /*              SAME = Data is the same as the previous call.      */
+  /*                        The routine uses its saved data.         */
+  /*   'kern' is the correlation kernel.                             */
+  /*   'numkern' is the number of complex points in 'kern'.          */
+  /*   'kerninf' is one of the same choices as 'datainf' above.      */
+  /*   'result' is the resulting complex array (must already exist). */
+  /*   'numresult' is the number of complex points in 'result'.      */
+  /*   'lobin' is the lowest fourier bin to convolve/correlate.      */
+  /*   'numbetween' is the number of bins to spread the data points. */
+  /*   'kern_half_width' is half the width (bins) of the raw kernel. */
+  /*   'optype' is either CORR or CONV (correlation or convolution). */
+  /* Notes:                                                          */
+  /*   If either 'datainf' or 'kerninf' are of type PREPPED or FFT,  */
+  /*   then the length of the FFTs used in the correlation/          */
+  /*   convolution calculations will be of length 'numdata' or       */
+  /*   'numkern'.  If both 'datainf' and 'kerninf' are of type       */
+  /*   PREPPED or FFT then 'numdata' and 'numkern' must have the     */
+  /*   same value.  In order for SAME values of 'datainf' and        */
+  /*   'kerninf' to help out, the routine must be called with the    */
+  /*   same values for 'kern_half_width' and 'numbetween' as well.   */
+
+int corr_complex2( corrData* corrd,                                     \
+                 fcomplex * data, int numdata, presto_datainf datainf,  \
+                 fcomplex * kern, int numkern, presto_datainf kerninf,  \
+                 fcomplex * result, int numresult, int lobin,           \
+                 int numbetween, int kern_half_width, presto_optype optype);
+//int corr_complex(fcomplex *data, int numdata, presto_datainf datainf,
+//     fcomplex *kern, int numkern, presto_datainf kerninf,
+//     fcomplex *result, int numresult, int lobin,
+//     int numbetween, int kern_half_width, presto_optype optype);
   /* This routine is a general correlation or convolution routine    */
   /* for complex data.  It can perform convolutions or correlations  */
   /* on raw complex data, data that is prepared for a convolution/   */
@@ -1097,11 +1173,16 @@ double max_rz_file(FILE *fftfile, double rin, double zin, \
   /* maximizes the power of the candidate in 'fftfile'.       */
 
 
+void optemiseDerivs(fcomplex * data[], int num_harmonics,
+                            int r_offset[],
+                            int numdata, double r, double z,
+                            rderivs derivs[], double power[], int nn);
+
 void max_rz_arr_harmonics(fcomplex * data[], int num_harmonics,
                             int r_offset[],
                             int numdata, double rin, double zin,
                             double *rout, double *zout, rderivs derivs[],
-                            double power[]);
+                            double power[], int nn);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
 
@@ -1109,7 +1190,7 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
                              int lobin,
                              double rin, double zin,
                              double *rout, double *zout, rderivs derivs[],
-                             double maxpow[]);
+                             double maxpow[], int nn);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power of the candidate in 'fftfile'.       */
 
