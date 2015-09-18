@@ -366,12 +366,75 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         printf("Determining GPU step size and plain width:\n");
 
+        FOLD // TMP!
+        {
+          int   zmax0 = calc_required_z(1, sInf->sSpec->zMax);
+
+          int   sSz = (noHarms*ACCEL_RDR);
+          int   oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax);
+          int   aLen = floor( oAccelLen1/(float)(sSz) ) * (sSz);
+
+          int i = 0;
+
+          //for ( int i = 0; i < 100; i++ )
+          while ( aLen - i * sSz > 0 )
+          {
+            int waist = 0;
+            int good = 0;
+            int waist2 = 0;
+            int waist3 = 0;
+
+            int aLength = aLen - i * sSz;
+            int wsth;
+
+            for (int h = noHarms; h > 0; h--)
+            {
+              float harmFrac    = (h) / (float)noHarms;
+              int   zmax        = calc_required_z(harmFrac, sInf->sSpec->zMax);
+              int   height      = (zmax / ACCEL_DZ) * 2 + 1;
+              int   end_effects = 2 * ACCEL_NUMBETWEEN * z_resp_halfwidth(calc_required_z(harmFrac, zmax0), LOWACC);
+              int   pWidth      = harmFrac * aLength + 2 + end_effects ;
+              int   sWidth      = calc_fftlen3(harmFrac, zmax0, aLength);
+
+              waist += height * (sWidth - pWidth );
+              good  += height * ( pWidth );
+
+              if ( h == noHarms)
+                wsth = sWidth;
+
+              if ( wsth == sWidth )
+              {
+                waist3 += height * (sWidth - pWidth );
+              }
+
+              pWidth      = harmFrac * aLength + 2 ;
+              waist2 += height * (sWidth - pWidth );
+            }
+
+            printf("%i\t%i\t%i\t%i\t%i\t%.4f\n", i, wsth, aLength, waist, good, good/(float)(waist+good));
+
+            i++;
+          }
+
+          printf("\n\n");
+        }
+
         if ( noHarms > 1 )
         {
+          int   oAccelLen1, oAccelLen2;
+
           // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-          int   oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax);
-          int   oAccelLen2  = calcAccellen(sInf->sSpec->pWidth/2.0, sInf->sSpec->zMax/2.0);
-          kernel->accelLen  = MIN(oAccelLen2*2, oAccelLen1);
+          oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax);
+          oAccelLen2  = calcAccellen(sInf->sSpec->pWidth/2.0, sInf->sSpec->zMax/2.0);
+
+          if ( sInf->sSpec->pWidth > 100 )
+          {
+            kernel->accelLen  = oAccelLen1;
+          }
+          else
+          {
+            kernel->accelLen  = MIN(oAccelLen2*2, oAccelLen1);
+          }
 
           if ( sInf->sSpec->pWidth < 100 ) // Check  .
           {
@@ -416,7 +479,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           {
             if ( sInf->sSpec->pWidth != kernel->accelLen )
             {
-              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by noHarms*ACCEL_RDR (%i) try %i.\n", noHarms*ACCEL_RDR, kernel->accelLen );
+              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by numharm * %i (%i) try %i.\n", ACCEL_RDR, noHarms*ACCEL_RDR, kernel->accelLen );
               exit(EXIT_FAILURE);
             }
           }

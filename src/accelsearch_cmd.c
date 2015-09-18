@@ -1085,7 +1085,7 @@ usage(void)
   fprintf(stderr,"%s","                   0...32 int values between 1 and 5\n");
   fprintf(stderr,"%s","                   default: `2'\n");
   fprintf(stderr,"%s","           -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
-  fprintf(stderr,"%s","                   1 int value between 1 and 64\n");
+  fprintf(stderr,"%s","                   1 int value between 1 and 65536\n");
   fprintf(stderr,"%s","                   default: `4'\n");
   fprintf(stderr,"%s","           -lsgpu: List all available CUDA GPU's and exit\n");
   fprintf(stderr,"%s","             -cpu: Do a CPU search\n");
@@ -1128,7 +1128,7 @@ usage(void)
   fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 26Aug15\n");
+  fprintf(stderr,"%s","  version: 17Sep15\n");
   fprintf(stderr,"%s","  ");
   exit(EXIT_FAILURE);
 }
@@ -1181,7 +1181,7 @@ parseCmdline(int argc, char **argv)
       cmd.widthP = 1;
       i = getIntOpt(argc, argv, i, &cmd.width, 1);
       cmd.widthC = i-keep;
-      checkIntLower("-width", &cmd.width, cmd.widthC, 64);
+      checkIntLower("-width", &cmd.width, cmd.widthC, 65536);
       checkIntHigher("-width", &cmd.width, cmd.widthC, 1);
       continue;
     }
