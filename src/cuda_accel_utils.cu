@@ -226,7 +226,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     nvtxRangePop();
   }
 
-  FOLD // Now see if this device could do a GPU in-mem search
+  FOLD // Now see if this device could do a GPU in-mem search  .
   {
     if ( master == NULL ) // For the moment lets try this on only the first card!
     {
@@ -366,7 +366,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         printf("Determining GPU step size and plain width:\n");
 
-        FOLD // TMP!
+        Fout // TMP!
         {
           int   zmax0 = calc_required_z(1, sInf->sSpec->zMax);
 
@@ -1435,8 +1435,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           cuFfdotStack* cStack = &kernel->stacks[i];
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-          sprintf(strBuff,"%i FFT Input %i Stack", device, i);
+          //sprintf(strBuff,"%i FFT Input %i Stack", device, i);
+          sprintf(strBuff,"%i.%i.2.0 FFT Input", device, i);
           nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+          printf("cudaStreamCreate: %s\n", strBuff);
         }
       }
 
@@ -1444,8 +1446,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-        sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
+        //sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
+        sprintf(strBuff,"%i.%i.2.0 FFT Plain", device, i);
         nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+        printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
 
@@ -1979,6 +1983,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
           sprintf(strBuff,"%i.%i.0.0 batch input", batch->device, no);
           nvtxNameCudaStreamA(batch->inpStream, strBuff);
+          printf("cudaStreamCreate: %s\n", strBuff);
         }
 
         if      ( batch->flag & CU_NORM_GPU  )
@@ -1990,6 +1995,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inptStream), "Creating input data multStream for stack");
             sprintf(strBuff,"%i.%i.0.%i Stack Input", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->inptStream, strBuff);
+            printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -2007,9 +2013,11 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-            sprintf(strBuff,"%i FFT Input %i Stack", batch->device, i);
+            //sprintf(strBuff,"%i FFT Input %i Stack", batch->device, i);
+            sprintf(strBuff,"%i.%i.2.0 FFT Input", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
             kStack->fftIStream = cStack->fftIStream;
+            printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -2021,6 +2029,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
           sprintf(strBuff,"%i.%i.0.0 batch multiply", batch->device, no);
           nvtxNameCudaStreamA(batch->multStream, strBuff);
+          printf("cudaStreamCreate: %s\n", strBuff);
         }
 
         if ( (batch->flag & FLAG_MUL_STK) || (batch->flag & FLAG_MUL_PLN)  )
@@ -2032,6 +2041,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
             sprintf(strBuff,"%i.%i.1.%i Stack Multiply", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->multStream, strBuff);
+            printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -2049,9 +2059,11 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-            sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
+            //sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
+            sprintf(strBuff,"%i.%i.2.0 FFT Plain", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
             kStack->fftPStream = cStack->fftPStream;
+            printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -2059,8 +2071,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       FOLD // Search stream  .
       {
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
-        sprintf(strBuff,"%i.%i.2.0 batch search", batch->device, no);
+        sprintf(strBuff,"%i.%i.3.0 batch search", batch->device, no);
         nvtxNameCudaStreamA(batch->strmSearch, strBuff);
+        printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
 
@@ -2387,7 +2400,7 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
 
   // Create streams
   CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
-  nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
+  //nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
 
   // Events
   CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );

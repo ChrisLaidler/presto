@@ -469,7 +469,8 @@ void multiplyBatch(cuFFdotBatch* batch)
 #endif
 
           // Multiply this entire stack in one block
-          for (int ss = 0; ss < batch->noStacks; ss++)
+          //for (int ss = 0; ss < batch->noStacks; ss++)
+          for (int ss = batch->noStacks-1; ss >= 0; ss--)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
 
@@ -550,6 +551,88 @@ void multiplyBatch(cuFFdotBatch* batch)
               pStack = cStack;
 #endif
             }
+
+            FOLD // IFFT  TMP!!!  .
+            {
+              FOLD // Synchronisation  .
+              {
+      #ifdef STPMSG
+                printf("\t\t\t\tSynchronisation\n");
+      #endif
+                cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
+                cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
+
+                if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+                {
+                  CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+                }
+
+                if ( batch->flag & FLAG_SS_INMEM  )
+                {
+                  CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+                }
+
+      #ifdef SYNCHRONOUS
+                // Wait for all the multiplications to complete
+                for (int ss = 0; ss< batch->noStacks; ss++)
+                {
+                  cuFfdotStack* cStack2 = &batch->stacks[ss];
+                  cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
+                }
+
+                // Wait for the previous fft to complete
+                if ( pStack != NULL )
+                  cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
+      #endif
+              }
+
+              FOLD // Call the inverse CUFFT  .
+              {
+      #pragma omp critical
+                {
+      #ifdef STPMSG
+                  printf("\t\t\t\tCall the inverse CUFFT\n");
+      #endif
+
+                  FOLD // Timing  .
+                  {
+      #ifdef TIMING
+                    cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
+      #endif
+                  }
+
+                  rVals* rVal;
+                  rVal = &((*batch->rInput)[0][0]);
+
+                  FOLD // Set store FFT callback  .
+                  {
+                    if ( batch->flag & FLAG_CUFFT_CB_OUT )
+                    {
+      #if __CUDACC_VER__ >= 60500
+                      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+      #else
+                      fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+                      exit(EXIT_FAILURE);
+      #endif
+                    }
+                  }
+
+                  FOLD // Call the FFT  .
+                  {
+                    CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
+                    CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
+                  }
+      #ifdef SYNCHRONOUS
+                  pStack = cStack;
+      #endif
+                }
+              }
+
+              FOLD // Synchronisation  .
+              {
+                cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
+              }
+            }
           }
         }
         else if ( batch->flag & FLAG_MUL_PLN ) 	  // Do the multiplications one plain  at a time  .
@@ -610,96 +693,101 @@ void multiplyBatch(cuFFdotBatch* batch)
     cuFfdotStack* pStack = NULL;  // Previous stack
 #endif
 
-    for (int ss = 0; ss < batch->noStacks; ss++)
+    if ( !(batch->flag & FLAG_MUL_STK) )
     {
-      cuFfdotStack* cStack = &batch->stacks[ss];
 
-#ifdef STPMSG
-      printf("\t\t\tStack %i\n",ss);
-#endif
-
-      FOLD // Synchronisation  .
+      //for (int ss = 0; ss < batch->noStacks; ss++)
+      for (int ss = batch->noStacks-1; ss >= 0; ss--)
       {
+        cuFfdotStack* cStack = &batch->stacks[ss];
+
 #ifdef STPMSG
-        printf("\t\t\t\tSynchronisation\n");
+        printf("\t\t\tStack %i\n",ss);
 #endif
-        cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
-        cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
 
-        if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
-        {
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-        }
-
-        if ( batch->flag & FLAG_SS_INMEM  )
-        {
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-        }
-
-#ifdef SYNCHRONOUS
-        // Wait for all the multiplications to complete
-        for (int ss = 0; ss< batch->noStacks; ss++)
-        {
-          cuFfdotStack* cStack2 = &batch->stacks[ss];
-          cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
-        }
-
-        // Wait for the previous fft to complete
-        if ( pStack != NULL )
-          cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
-#endif
-      }
-
-      FOLD // Call the inverse CUFFT  .
-      {
-#pragma omp critical
+        FOLD // Synchronisation  .
         {
 #ifdef STPMSG
-          printf("\t\t\t\tCall the inverse CUFFT\n");
+          printf("\t\t\t\tSynchronisation\n");
 #endif
+          cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
+          cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
 
-          FOLD // Timing  .
+          if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
           {
-#ifdef TIMING
-            cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
-#endif
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
           }
 
-          rVals* rVal;
-          rVal = &((*batch->rInput)[0][0]);
-
-          FOLD // Set store FFT callback  .
+          if ( batch->flag & FLAG_SS_INMEM  )
           {
-            if ( batch->flag & FLAG_CUFFT_CB_OUT )
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+          }
+
+#ifdef SYNCHRONOUS
+          // Wait for all the multiplications to complete
+          for (int ss = 0; ss< batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack2 = &batch->stacks[ss];
+            cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
+          }
+
+          // Wait for the previous fft to complete
+          if ( pStack != NULL )
+            cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
+#endif
+        }
+
+        FOLD // Call the inverse CUFFT  .
+        {
+#pragma omp critical
+          {
+#ifdef STPMSG
+            printf("\t\t\t\tCall the inverse CUFFT\n");
+#endif
+
+            FOLD // Timing  .
             {
-#if __CUDACC_VER__ >= 60500
-              CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
-#else
-              fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
-              exit(EXIT_FAILURE);
+#ifdef TIMING
+              cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 #endif
             }
-          }
 
-          FOLD // Call the FFT  .
-          {
-            CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-            CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
-          }
-#ifdef SYNCHRONOUS
-          pStack = cStack;
+            rVals* rVal;
+            rVal = &((*batch->rInput)[0][0]);
+
+            FOLD // Set store FFT callback  .
+            {
+              if ( batch->flag & FLAG_CUFFT_CB_OUT )
+              {
+#if __CUDACC_VER__ >= 60500
+                CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
+#else
+                fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+                exit(EXIT_FAILURE);
 #endif
-        }
-      }
+              }
+            }
 
-      FOLD // Synchronisation  .
-      {
-        cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
-      }
+            FOLD // Call the FFT  .
+            {
+              CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
+              CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_plainData, (cufftComplex *) cStack->d_plainData, CUFFT_INVERSE),"Error executing CUFFT plan.");
+            }
+#ifdef SYNCHRONOUS
+            pStack = cStack;
+#endif
+          }
+        }
+
+        FOLD // Synchronisation  .
+        {
+          cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
+        }
 
 #ifdef STPMSG
-      printf("\t\t\tDone\n",ss);
+        printf("\t\t\tDone\n",ss);
 #endif
+      }
     }
 
     batch->state |=  HAVE_PLN;

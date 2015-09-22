@@ -8,11 +8,11 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHCBL    = no
+WITHCBL    = yes
 
 CUDA_ARCH  =
 #CUDA_ARCH += 20
-#CUDA_ARCH += 30
+CUDA_ARCH += 30
 #CUDA_ARCH += 35
 CUDA_ARCH += 50
 

@@ -35,8 +35,8 @@ extern "C"
 }
 #endif
 
-//#undef CBL                // TMP
-//#define CBL               // TMP
+#undef CBL                // TMP
+#define CBL               // TMP
 
 #undef TIMING
 //#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)

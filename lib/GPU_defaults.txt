@@ -1,13 +1,13 @@
 
 ######## Memory #########
 
-# Interleaving 
+# Interleaving
 #  IL_ROW   or   IL_PLN
 IL_ROW			# Last Edited by run time script
 
 ######### Kernel #########
 
-# Higher accuracy for z values closer to 0  
+# Higher accuracy for z values closer to 0
 #FLAG_KER_ACC
 
 ########## Input #########
@@ -29,7 +29,7 @@ FLAG_MUL_AA			# Last Edited by run time script
 # Other Convolve options
 # FLAG_TEX_MUL
 
-# The number of slices to separate the multiplication kernel into 
+# The number of slices to separate the multiplication kernel into
 MUL_SLICES	1			# Last Edited by run time script
 
 # The size of chunks to use in the multiplication kernel
@@ -70,7 +70,7 @@ FLAG_THREAD
 FLAG_SS_10			# Last Edited by run time script
 
 
-SS_SLICES	1			# Last Edited by run time script
+SS_SLICES	5			# Last Edited by run time script
 
 SS_CHUNK	9			# Last Edited by run time script
 
