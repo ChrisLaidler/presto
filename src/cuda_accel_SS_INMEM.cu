@@ -214,13 +214,13 @@ template<typename T, const int noStages, const int noHarms>
 __host__ void searchINMEM_c(cuFFdotBatch* batch)
 {
   dim3 dimBlock, dimGrid;
-  rVals* rVal;
-
-#ifdef SYNCHRONOUS
-  rVal = &((*batch->rInput)[0][0]);
-#else
-  rVal = &((*batch->rInput)[0][0]);
-#endif
+//  rVals* rVal;
+//#ifdef SYNCHRONOUS
+//  rVal = &((*batch->rInput)[0][0]);
+//#else
+//  rVal = &((*batch->rInput)[0][0]);
+//#endif
+  rVals* rVal = &batch->rArrays[3][0][0];
 
   FOLD // TMP  .
   {

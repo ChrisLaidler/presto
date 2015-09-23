@@ -801,7 +801,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         if ( stp < noInput )
           iLen.val[stp] = rVal->numdata ;
@@ -820,7 +821,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -837,7 +839,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -854,7 +857,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -871,7 +875,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -888,7 +893,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -905,7 +911,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -922,7 +929,8 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &((*batch->rInput)[step][harm]);
+        //rVals* rVal = &((*batch->rInput)[step][harm]);
+        rVals* rVal = &batch->rArrays[0][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;

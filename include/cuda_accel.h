@@ -512,9 +512,12 @@ typedef struct cuFFdotBatch
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;
 
-    rVals*** rInput;                  ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
-    rVals*** rConvld;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
-    rVals*** rSearch;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+    int       noRArryas;              ///< The number of r value arrays
+    rVals*** rArrays;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+
+//    rVals*** rInput;                  ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+//    rVals*** rConvld;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+//    rVals*** rSearch;                 ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
 
     // Streams
     cudaStream_t inpStream;           ///< CUDA stream for work on input data for the batch

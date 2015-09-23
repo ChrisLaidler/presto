@@ -183,12 +183,13 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                 {
                   if ( candLists[stage][step].value > batch->sInf->powerCut[stage] )
                   {
-                    rVals* rVal;
-#ifdef SYNCHRONOUS
-                    rVal = &((*batch->rConvld)[step][0]);
-#else
-                    rVal = &((*batch->rSearch)[step][0]);
-#endif
+//                    rVals* rVal;
+//#ifdef SYNCHRONOUS
+//                    rVal = &((*batch->rConvld)[step][0]);
+//#else
+//                    rVal = &((*batch->rSearch)[step][0]);
+//#endif
+                    rVals* rVal = &batch->rArrays[4][step][0];
 
                     int numharm   = (1<<stage);
                     double rr     = rVal->drlo + ix *  ACCEL_DR ;

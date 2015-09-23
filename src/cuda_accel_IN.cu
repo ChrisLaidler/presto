@@ -27,20 +27,22 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 
       for (int si = 0; si < cStack->noInStack; si++)
       {
-        //cuHarmInfo* cHInfo  = &batch->hInfos[harm];      // The current harmonic we are working on
-
         for (int step = 0; step < batch->noSteps; step++)
         {
-          rVals* rVal = &((*batch->rInput)[step][harm]);
+          //rVals* rVal = &((*batch->rInput)[step][harm]);
+          rVals* rVal = &batch->rArrays[0][step][harm];
+
           if ( rVal->numdata )
           {
             if ( norm_type== 0 )  // Normal normalise  .
             {
               double norm;    /// The normalising factor
 
+
+
               FOLD // Calculate and store powers  .
               {
-                //nvtxRangePush("Powers");
+                nvtxRangePush("Powers");
                 for (int ii = 0; ii < rVal->numdata; ii++)
                 {
                   if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->SrchSz->searchRHigh ) // Zero Pad
@@ -52,17 +54,20 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                     batch->normPowers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
                   }
                 }
-                //nvtxRangePop();
+                nvtxRangePop();
               }
 
-              //nvtxRangePush("Median");
-              norm = 1.0 / sqrt(median(batch->normPowers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
-              //norm = 1.0 / sqrt(median(&plains->h_powers[start], (rVal->numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion)
-              //nvtxRangePop();
+              FOLD // Calculate normalisation factor from median  .
+              {
+                nvtxRangePush("Median");
+                norm = 1.0 / sqrt(median(batch->normPowers, (rVal->numdata))/ log(2.0));                       /// NOTE: This is the same method as CPU version
+                //norm = 1.0 / sqrt(median(&plains->normPowers[start], (rVal->numdata-start))/ log(2.0));       /// NOTE: This is a slightly better method (in my opinion) TODO: Fix this
+                nvtxRangePop();
+              }
 
               FOLD // Normalise and spread  .
               {
-                //nvtxRangePush("Write");
+                nvtxRangePush("Write");
                 for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
                 {
                   if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->SrchSz->searchRHigh )  // Zero Pad
@@ -82,7 +87,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                     cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * norm;
                   }
                 }
-                //nvtxRangePop();
+                nvtxRangePop();
               }
             }
             else                  // or double-tophat normalisation
@@ -167,7 +172,8 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
 
     for (int step = 0; step < batch->noSteps; step++)
     {
-      rVals* rVal           = &((*batch->rInput)[step][harm]);
+      //rVals* rVal           = &((*batch->rInput)[step][harm]);
+      rVals* rVal           = &batch->rArrays[0][step][harm];
 
       if ( searchRLow[step] == searchRHi[step])
       {
@@ -229,10 +235,7 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
   struct timeval start, end;
 #endif
 
-  // Calculate R values
-  setStackRVals(batch, searchRLow, searchRHi );
-
-  if ( batch->rInput[0][0]->numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
+  if ( batch->rArrays[0][0][0].numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
     nvtxRangePush("Input");
 
@@ -279,7 +282,8 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
               {
                 for (int step = 0; step < batch->noSteps; step++)
                 {
-                  rVals* rVal = &((*batch->rInput)[step][harm]);
+                  //rVals* rVal = &((*batch->rInput)[step][harm]);
+                  rVals* rVal = &batch->rArrays[0][step][harm];
 
                   if ( rVal->numdata )
                   {

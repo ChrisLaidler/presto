@@ -1003,9 +1003,10 @@ void* processSearchResults(void* ptr)
   fclose(myfile); // TMPS
 }
 
-void processSearchResults(cuFFdotBatch* batch)
+void processSearchResults(cuFFdotBatch* batch, int rIdx)
 {
-  if ( (batch->state & HAVE_RES) )
+  //if ( (batch->state & HAVE_RES) )
+  if ( batch->rArrays[rIdx][0][0].numrs )
   {
 #ifdef STPMSG
     printf("\t\tProcess previous results\n");
@@ -1042,11 +1043,12 @@ void processSearchResults(cuFFdotBatch* batch)
 #endif
 
 
-#ifdef SYNCHRONOUS
-      rVal = &((*batch->rConvld)[0][0]);
-#else
-      rVal = &((*batch->rSearch)[0][0]);
-#endif
+//#ifdef SYNCHRONOUS
+//      rVal = &((*batch->rConvld)[0][0]);
+//#else
+//      rVal = &((*batch->rSearch)[0][0]);
+//#endif
+      rVals* rVal = &batch->rArrays[4][0][0];
 
       resultData* thrdDat = new resultData;
       memset(thrdDat, 0, sizeof(resultData) );
@@ -1088,11 +1090,12 @@ void processSearchResults(cuFFdotBatch* batch)
 
       for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
       {
-#ifdef SYNCHRONOUS
-        rVal = &((*batch->rConvld)[step][0]);
-#else
-        rVal = &((*batch->rSearch)[step][0]);
-#endif
+//#ifdef SYNCHRONOUS
+//        rVal = &((*batch->rConvld)[step][0]);
+//#else
+//        rVal = &((*batch->rSearch)[step][0]);
+//#endif
+        rVals* rVal = &batch->rArrays[4][step][0];
 
         thrdDat->x1 += rVal->numrs;
       }
@@ -1142,9 +1145,10 @@ void processSearchResults(cuFFdotBatch* batch)
   }
 }
 
-void getResults(cuFFdotBatch* batch)
+void getResults(cuFFdotBatch* batch, int rIdx)
 {
-  if ( batch->state & HAVE_SS )
+  //if ( batch->state & HAVE_SS )
+  if ( batch->rArrays[rIdx][0][0].numrs )
   {
     FOLD // Synchronisations  .
     {
@@ -1187,7 +1191,39 @@ void getResults(cuFFdotBatch* batch)
   }
 }
 
-void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and process data in normal steps  .
+void sumAndSearch(cuFFdotBatch* batch, int rIdx)        // Function to call to SS and process data in normal steps  .
+{
+  // Sum and search the IFFT'd data  .
+  if ( batch->rArrays[rIdx][0][0].numrs )
+  {
+    nvtxRangePush("S&S");
+
+#ifdef STPMSG
+    printf("\tSum & Search\n");
+#endif
+
+    if      ( batch->retType & CU_STR_PLN )
+    {
+      // Nothing!
+    }
+    else if ( batch->flag & FLAG_SS_INMEM )
+    {
+      // NOTHING
+    }
+    else if ( batch->flag & FLAG_SS_CPU )
+    {
+      // NOTHING
+    }
+    else
+    {
+      SSKer(batch);
+    }
+
+    nvtxRangePop();
+  }
+}
+
+void sumAndSearchOrr(cuFFdotBatch* batch)        // Function to call to SS and process data in normal steps  .
 {
   FOLD // Sum and search the IFFT'd data  .
   {
@@ -1507,7 +1543,8 @@ void sumAndMax(cuFFdotBatch* batch)
 
       for ( int step = 0; step < batch->noSteps; step++ )
       {
-        rVals* rVal = &((*batch->rInput)[step][0]);
+        //rVals* rVal = &((*batch->rInput)[step][0]);
+        rVals* rVal = &batch->rArrays[3][step][0];
 
         //int gIdx = batch->plains[0].searchRlowPrev[step] ;
         int gIdx = rVal->drlo;
@@ -1615,7 +1652,8 @@ void inmemSumAndSearch(cuSearch* cuSrch)
       {
         for ( int harm = 0; harm < batch->noHarms; harm++ )
         {
-          rVals* rVal   = &((*batch->rInput)[step][harm]);
+          //rVals* rVal   = &((*batch->rInput)[step][harm]);
+          rVals* rVal = &batch->rArrays[0][step][harm];
           memset(rVal, 0, sizeof(rVals) );
         }
       }
@@ -1635,7 +1673,8 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
       //printf("\nIN:  tid %2i ite %03i   firstBin: %6i  endBin %6i \n", tid, ite, firstBin, endBin );
 
-      rVals* rVal   = &((*batch->rInput)[0][0]);
+      //rVals* rVal   = &((*batch->rInput)[0][0]);
+      rVals* rVal   = &batch->rArrays[0][0][0];
       rVal->drlo    = firstBin * ACCEL_DR;
       rVal->numrs   = len;
 
@@ -1656,9 +1695,10 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
       FOLD // Cycle r values  .
       {
-        rVals*** rvals    = batch->rSearch;
-        batch->rSearch = batch->rInput;
-        batch->rInput  = rvals;
+        // TODO: fix!
+        //rVals*** rvals    = batch->rSearch;
+        //batch->rSearch = batch->rInput;
+        //batch->rInput  = rvals;
       }
 
 #pragma omp critical

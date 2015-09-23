@@ -491,7 +491,8 @@ int main(int argc, char *argv[])
               {
                 for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
                 {
-                  rVals* rVal     = &((*trdBatch->rInput)[step][0]);
+                  //rVals* rVal     = &((*trdBatch->rInput)[step][0]);
+                  rVals* rVal = &trdBatch->rArrays[0][step][0];
 
                   if ( step < rest )
                   {
@@ -504,7 +505,8 @@ int main(int argc, char *argv[])
                     int harm;
                     for (harm = 0; harm < trdBatch->noHarms; harm++)
                     {
-                      rVal          = &((*trdBatch->rInput)[step][harm]);
+                      //rVal          = &((*trdBatch->rInput)[step][harm]);
+                      rVal          = &trdBatch->rArrays[0][step][harm];
                       rVal->step    = firstStep + step;
                     }
                   }
@@ -540,7 +542,7 @@ int main(int argc, char *argv[])
               }
 
               // Finish searching the plains, this is required because of the out of order asynchronous calls
-              for ( step = 0 ; step < 2; step++ )
+              for ( step = 0 ; step < trdBatch->noRArryas; step++ )
               {
                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)sSpec.fftInf.fft, obs.numindep);
               }

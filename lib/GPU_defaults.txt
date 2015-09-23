@@ -30,7 +30,7 @@ FLAG_MUL_AA			# Last Edited by run time script
 # FLAG_TEX_MUL
 
 # The number of slices to separate the multiplication kernel into
-MUL_SLICES	1			# Last Edited by run time script
+MUL_SLICES	3			# Last Edited by run time script
 
 # The size of chunks to use in the multiplication kernel
 MUL_CHUNK	9			# Last Edited by run time script

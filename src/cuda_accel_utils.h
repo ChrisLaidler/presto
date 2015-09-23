@@ -594,6 +594,7 @@ float cuGetMedian(float *data, uint len);
  */
 void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft);
 
+void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
 
 
 
@@ -606,11 +607,24 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch );
  */
 void multiplyBatchCUFFT(cuFFdotBatch* batch );
 
+
+/** Multiply the complex f-∂f plain
+ * This assumes the input data is ready and on the device
+ * This creates a complex f-∂f plain
+ */
+void multiplyBatch(cuFFdotBatch* batch, int rIdx = 0);
+
+/** inverse FFT the complex f-∂f plain
+ * This assumes the input data is ready and on the device
+ * This creates a complex f-∂f plain
+ */
+void IFFTBatch(cuFFdotBatch* batch, int rIdx = 0);
+
 /** Multiply and inverse FFT the complex f-∂f plain
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void multiplyBatch(cuFFdotBatch* batch);
+void convolveBatch(cuFFdotBatch* batch);
 
 
 
@@ -621,7 +635,13 @@ int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long l
 __host__ __device__ double incdf (double p, double q );
 __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 
-void sumAndSearch(cuFFdotBatch* batch);
+void processSearchResults(cuFFdotBatch* batch, int rIdx = 0);
+
+void getResults(cuFFdotBatch* batch, int rIdx = 0);
+
+void sumAndSearch(cuFFdotBatch* batch, int rIdx = 0);
+
+void sumAndSearchOrr(cuFFdotBatch* batch);
 
 /** A function to call a kernel to harmonicall sum a plan and retunr the max of each column
  *

@@ -1447,7 +1447,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         cuFfdotStack* cStack = &kernel->stacks[i];
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
         //sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
-        sprintf(strBuff,"%i.%i.2.0 FFT Plain", device, i);
+        sprintf(strBuff,"%i.%i.4.0 FFT Plain", device, i);
         nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
         printf("cudaStreamCreate: %s\n", strBuff);
       }
@@ -1842,39 +1842,55 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Allocate R value lists  .
     {
-      rVals*    l;
-      rVals**   ll;
-      int oSet;
+      rVals*    rLev1;
+      rVals**   rLev2;
 
-      l  = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noHarms*3);
+      int oSet;
+      batch->noRArryas = 5;
+
+      rLev1  = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
+      memset(rLev1, 0, sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
+
+      batch->rArrays = (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
       oSet = 0;
 
-      ll = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      for(int step = 0; step < batch->noSteps; step++)
+      for (int rIdx = 0; rIdx < batch->noRArryas; rIdx++)
       {
-        ll[step] = &l[oSet];
-        oSet+= batch->noHarms;
+        rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+        for(int step = 0; step < batch->noSteps; step++)
+        {
+          rLev2[step] = &rLev1[oSet];
+          oSet+= batch->noHarms;
+        }
+        batch->rArrays[rIdx]  = rLev2;
       }
-      batch->rInput  = (rVals***)malloc(sizeof(rVals**));
-      *batch->rInput = ll;
 
-      ll = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      for(int step = 0; step < batch->noSteps; step++)
-      {
-        ll[step] = &l[oSet];
-        oSet+= batch->noHarms;
-      }
-      batch->rSearch  = (rVals***)malloc(sizeof(rVals**));
-      *batch->rSearch = ll;
-
-      ll = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      for(int step = 0; step < batch->noSteps; step++)
-      {
-        ll[step] = &l[oSet];
-        oSet+= batch->noHarms;
-      }
-      batch->rConvld  = (rVals***)malloc(sizeof(rVals**));
-      *batch->rConvld = ll;
+      //      rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+      //      for(int step = 0; step < batch->noSteps; step++)
+      //      {
+      //        rLev2[step] = &rLev1[oSet];
+      //        oSet+= batch->noHarms;
+      //      }
+      //      batch->rInput  = (rVals***)malloc(sizeof(rVals**));
+      //      *batch->rInput = rLev2;
+      //
+      //      rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+      //      for(int step = 0; step < batch->noSteps; step++)
+      //      {
+      //        rLev2[step] = &rLev1[oSet];
+      //        oSet+= batch->noHarms;
+      //      }
+      //      batch->rSearch  = (rVals***)malloc(sizeof(rVals**));
+      //      *batch->rSearch = rLev2;
+      //
+      //      rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+      //      for(int step = 0; step < batch->noSteps; step++)
+      //      {
+      //        rLev2[step] = &rLev1[oSet];
+      //        oSet+= batch->noHarms;
+      //      }
+      //      batch->rConvld  = (rVals***)malloc(sizeof(rVals**));
+      //      *batch->rConvld = rLev2;
     }
 
     FOLD // Allocate device Memory for Plains, Stacks & Input data (steps)  .
@@ -1981,7 +1997,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         if      ( (batch->flag & CU_NORM_GPU) || (batch->flag & CU_NORM_CPU)  )
         {
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
-          sprintf(strBuff,"%i.%i.0.0 batch input", batch->device, no);
+          sprintf(strBuff,"%i.%i.0.0 Batch Input", batch->device, no);
           nvtxNameCudaStreamA(batch->inpStream, strBuff);
           printf("cudaStreamCreate: %s\n", strBuff);
         }
@@ -2027,7 +2043,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         if      ( batch->flag & FLAG_MUL_BATCH )
         {
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
-          sprintf(strBuff,"%i.%i.0.0 batch multiply", batch->device, no);
+          sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->device, no);
           nvtxNameCudaStreamA(batch->multStream, strBuff);
           printf("cudaStreamCreate: %s\n", strBuff);
         }
@@ -2039,7 +2055,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             cuFfdotStack* cStack  = &batch->stacks[i];
 
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
-            sprintf(strBuff,"%i.%i.1.%i Stack Multiply", batch->device, no, i);
+            sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->multStream, strBuff);
             printf("cudaStreamCreate: %s\n", strBuff);
           }
@@ -2060,7 +2076,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
             //sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
-            sprintf(strBuff,"%i.%i.2.0 FFT Plain", batch->device, i);
+            sprintf(strBuff,"%i.%i.4.0 FFT Plain", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
             kStack->fftPStream = cStack->fftPStream;
             printf("cudaStreamCreate: %s\n", strBuff);
@@ -2071,7 +2087,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       FOLD // Search stream  .
       {
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
-        sprintf(strBuff,"%i.%i.3.0 batch search", batch->device, no);
+        sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->device, no);
         nvtxNameCudaStreamA(batch->strmSearch, strBuff);
         printf("cudaStreamCreate: %s\n", strBuff);
       }
@@ -2603,11 +2619,23 @@ void cycleRlists(cuFFdotBatch* batch)
 #ifdef STPMSG
   printf("\tcycleRlists\n");
 #endif
-  rVals*** rvals    = batch->rSearch;
 
-  batch->rSearch = batch->rConvld;
-  batch->rConvld = batch->rInput;
-  batch->rInput  = rvals;
+#ifdef SYNCHRONOUS
+  // TODO: Write this!
+#else
+
+  for ( int i = batch->noRArryas-1; i > 0; i-- )
+  {
+    batch->rArrays[i] =  batch->rArrays[i - 1];
+  }
+
+#endif
+
+  //  rVals*** rvals    = batch->rSearch;
+  //
+  //  batch->rSearch = batch->rConvld;
+  //  batch->rConvld = batch->rInput;
+  //  batch->rInput  = rvals;
 }
 
 void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep )
@@ -2618,36 +2646,71 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
   printf("  search_ffdot_batch_CU\n");
 #endif
 
-  FOLD // Initialise input data  .
+  // Calculate R values
+  setStackRVals(batch, searchRLow, searchRHi );
+
+  FOLD // 3  .
   {
+
+  }
+
+  FOLD // 2  .
+  {
+    // Sum and Search
+    sumAndSearch(batch, 2);
+  }
+
+  FOLD // 1  .
+  {
+    // Multiplication
+    multiplyBatch(batch, 1);
+
+    // IFFT
+    IFFTBatch(batch, 1);
+  }
+
+  FOLD // 2  .
+  {
+    processSearchResults(batch, 3);
+
+    // Read output
+    getResults(batch, 2);
+  }
+
+  FOLD // 0  .
+  {
+    // Initialise input data  .
     initInput(batch, searchRLow, searchRHi, norm_type, fft);
   }
 
-#ifdef SYNCHRONOUS
+  // Change R-values
+  cycleRlists(batch);
 
-  FOLD // Multiply & inverse FFT  .
-  {
-    multiplyBatch(batch);
-  }
-
-  FOLD // Sum & Search  .
-  {
-    sumAndSearch(batch);
-  }
-
-#else
-
-  FOLD // Sum & Search  .
-  {
-    sumAndSearch(batch);
-  }
-
-  FOLD // Multiply & inverse FFT  .
-  {
-    multiplyBatch(batch);
-  }
-
-#endif
+  //#ifdef SYNCHRONOUS
+  //
+  //  FOLD // Multiply & inverse FFT  .
+  //  {
+  //    convolveBatch(batch);
+  //  }
+  //
+  //  FOLD // Sum & Search  .
+  //  {
+  //    sumAndSearch(batch);
+  //  }
+  //
+  //#else
+  //
+  //  FOLD // Sum & Search  .
+  //  {
+  //    sumAndSearch(batch);
+  //  }
+  //
+  //  FOLD // Multiply & inverse FFT  .
+  //  {
+  //    convolveBatch(batch);
+  //  }
+  //
+  //#endif
 
 #ifdef STPMSG
   printf("  Done (search_ffdot_batch_CU)\n");
@@ -2685,7 +2748,7 @@ void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRH
 
   FOLD // Multiply & inverse FFT  .
   {
-    multiplyBatch(batch);
+    convolveBatch(batch);
   }
 
   FOLD // Sum & Max
@@ -2702,7 +2765,7 @@ void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRH
 
   FOLD // Multiply & inverse FFT  .
   {
-    multiplyBatch(batch);
+    convolveBatch(batch);
   }
 
 #endif
@@ -4102,7 +4165,8 @@ void plotPlains(cuFFdotBatch* batch)
         cuHarmInfo   *cHInfo  = &batch->hInfos[harm];
         cuFfdotStack *cStack  = &batch->stacks[cHInfo->stackNo];
         //cuFFdot*      cPlain  = &batch->plains[harm];
-        rVals*        rVal    = &((*batch->rInput)[step][harm]);
+        //rVals*        rVal    = &((*batch->rInput)[step][harm]);
+        rVals* rVal           = &batch->rArrays[0][step][harm];
 
         for( int y = 0; y < cHInfo->height; y++ )
         {
