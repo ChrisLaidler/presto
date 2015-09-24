@@ -92,21 +92,24 @@ extern "C"
 #define     FLAG_SS_CPU         (1<<17)   ///< Do the sum and searching on the CPU
 #define     FLAG_SS_00          (1<<18)   ///<
 #define     FLAG_SS_10          (1<<19)   ///<
-#define     FLAG_SS_20          (1<<20)   ///<
-#define     FLAG_SS_30          (1<<21)   ///<
-#define     FLAG_SS_INMEM       (1<<22)   ///< Do an in memory GPU search
-#define     FLAG_SS_STG         ( FLAG_SS_00  | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30 )
+//#define     FLAG_SS_20          (1<<20)   ///<
+//#define     FLAG_SS_30          (1<<21)   ///<
+#define     FLAG_SS_INMEM       (1<<20)   ///< Do an in memory GPU search
+#define     FLAG_SS_STG         ( FLAG_SS_00  | FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
 #define     FLAG_SS_KERS        ( FLAG_SS_STG | FLAG_SS_INMEM  )
 #define     FLAG_SS_ALL         ( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define     FLAG_HALF           (1<<23)   ///< Use half precision when doing a INMEM search
-#define     FLAG_RET_STAGES     (1<<24)   ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      (1<<25)   ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<26)   ///< Store expanded candidates
-#define     FLAG_THREAD         (1<<29)   ///< Use separate CPU threads to search for candidates in returned data
+#define     FLAG_HALF           (1<<21)   ///< Use half precision when doing a INMEM search
+#define     FLAG_RET_STAGES     (1<<22)   ///< Return results for all stages of summing, default is only the final result
+#define     FLAG_STORE_ALL      (1<<23)   ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<24)   ///< Store expanded candidates
+#define     FLAG_THREAD         (1<<25)   ///< Use separate CPU threads to search for candidates in returned data
 
-#define     FLAG_RAND_1         (1<<27)   ///< Random Flag 1
-#define     FLAG_RAND_2         (1<<28)   ///< Random Flag 2
+#define     FLAG_STK_UP         (1<<26)   ///<
+#define     FLAG_CONV           (1<<27)   ///<
+
+#define     FLAG_RAND_1         (1<<28)   ///< Random Flag 1
+#define     FLAG_RAND_2         (1<<29)   ///< Random Flag 2
 #define     FLAG_KER_ACC        (1<<30)   ///< Random Flag 4
 
 // ----------- This is a list of the data types that and storage structures
@@ -506,8 +509,7 @@ typedef struct cuFFdotBatch
     //int haveInput;                    ///< Weather the the plain has input ready to convolve
     //int haveConvData;                 ///< Weather the the plain has convolved data ready for searching
     //int haveSearchResults;            ///< Weather the the plain has been searched and there is candidate data to process
-    uint    state;                    ///< What state is the batch in
-
+    //uint    state;                    ///< What state is the batch in
 
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;

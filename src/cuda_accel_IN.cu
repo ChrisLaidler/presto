@@ -560,15 +560,13 @@ void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int n
       }
     }
 
-    batch->state |= HAVE_INPUT;
-
     nvtxRangePop();
   }
 
 #ifdef TIMING // Timing  .
 
 #ifndef SYNCHRONOUS
-  if ( batch->state & COMP_SS )
+  if ( batch->rArrays[0][0][0].numrs )
 #endif
   {
     FOLD // Make sure the previous thread has complete reading from page locked memory

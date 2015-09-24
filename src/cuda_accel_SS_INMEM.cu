@@ -389,8 +389,6 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     //searchINMEM_p<float>(batch);
   }
 
-  batch->state |= HAVE_SS;
-
   FOLD // Synchronisation  .
   {
     CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");

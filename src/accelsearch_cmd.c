@@ -20,22 +20,22 @@
 char *Program;
 
 /*@-null*/
-static int nstepsDefault[] = {4};
 static int nbatchDefault[] = {2};
+static int nstepsDefault[] = {4};
 
 static Cmdline cmd = {
   /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
   /* gpuP = */ 0,
   /* gpu = */ (int*)0,
   /* gpuC = */ 0,
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
-  /* nstepsP = */ 1,
-  /* nsteps = */ nstepsDefault,
-  /* nstepsC = */ 1,
   /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   /* nbatchP = */ 1,
   /* nbatch = */ nbatchDefault,
   /* nbatchC = */ 1,
+  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  /* nstepsP = */ 1,
+  /* nsteps = */ nstepsDefault,
+  /* nstepsC = */ 1,
   /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   /* widthP = */ 1,
   /* width = */ 4,
@@ -821,22 +821,6 @@ showOptionValues(void)
     }
   }
 
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
-  if( !cmd.nstepsP ) {
-    printf("-nsteps not found.\n");
-  } else {
-    printf("-nsteps found:\n");
-    if( !cmd.nstepsC ) {
-      printf("  no values\n");
-    } else {
-      printf("  values =");
-      for(i=0; i<cmd.nstepsC; i++) {
-        printf(" `%d'", cmd.nsteps[i]);
-      }
-      printf("\n");
-    }
-  }
-
   /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   if( !cmd.nbatchP ) {
     printf("-nbatch not found.\n");
@@ -848,6 +832,22 @@ showOptionValues(void)
       printf("  values =");
       for(i=0; i<cmd.nbatchC; i++) {
         printf(" `%d'", cmd.nbatch[i]);
+      }
+      printf("\n");
+    }
+  }
+
+  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  if( !cmd.nstepsP ) {
+    printf("-nsteps not found.\n");
+  } else {
+    printf("-nsteps found:\n");
+    if( !cmd.nstepsC ) {
+      printf("  no values\n");
+    } else {
+      printf("  values =");
+      for(i=0; i<cmd.nstepsC; i++) {
+        printf(" `%d'", cmd.nsteps[i]);
       }
       printf("\n");
     }
@@ -1074,16 +1074,16 @@ showOptionValues(void)
 void
 usage(void)
 {
-  fprintf(stderr,"%s","   [-gpu [gpu]] [-nsteps [nsteps]] [-nbatch [nbatch]] [-width width] [-lsgpu] [-cpu] [-ncpus ncpus] [-lobin lobin] [-numharm numharm] [-zmax zmax] [-sigma sigma] [-rlo rlo] [-rhi rhi] [-flo flo] [-fhi fhi] [-inmem] [-photon] [-median] [-locpow] [-zaplist zaplist] [-baryv baryv] [-otheropt] [-noharmpolish] [-noharmremove] [--] infile\n");
+  fprintf(stderr,"%s","   [-gpu [gpu]] [-nbatch [nbatch]] [-nsteps [nsteps]] [-width width] [-lsgpu] [-cpu] [-ncpus ncpus] [-lobin lobin] [-numharm numharm] [-zmax zmax] [-sigma sigma] [-rlo rlo] [-rhi rhi] [-flo flo] [-fhi fhi] [-inmem] [-photon] [-median] [-locpow] [-zaplist zaplist] [-baryv baryv] [-otheropt] [-noharmpolish] [-noharmremove] [--] infile\n");
   fprintf(stderr,"%s","      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
   fprintf(stderr,"%s","             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
   fprintf(stderr,"%s","                   0...32 int values between 0 and 32\n");
-  fprintf(stderr,"%s","          -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
-  fprintf(stderr,"%s","                   0...32 int values between 1 and 8\n");
-  fprintf(stderr,"%s","                   default: `4'\n");
   fprintf(stderr,"%s","          -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
   fprintf(stderr,"%s","                   0...32 int values between 1 and 5\n");
   fprintf(stderr,"%s","                   default: `2'\n");
+  fprintf(stderr,"%s","          -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
+  fprintf(stderr,"%s","                   0...32 int values between 1 and 8\n");
+  fprintf(stderr,"%s","                   default: `4'\n");
   fprintf(stderr,"%s","           -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
   fprintf(stderr,"%s","                   1 int value between 1 and 65536\n");
   fprintf(stderr,"%s","                   default: `4'\n");
@@ -1128,7 +1128,7 @@ usage(void)
   fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 17Sep15\n");
+  fprintf(stderr,"%s","  version: 24Sep15\n");
   fprintf(stderr,"%s","  ");
   exit(EXIT_FAILURE);
 }
@@ -1156,16 +1156,6 @@ parseCmdline(int argc, char **argv)
       continue;
     }
 
-    if( 0==strcmp("-nsteps", argv[i]) ) {
-      int keep = i;
-      cmd.nstepsP = 1;
-      i = getIntOpts(argc, argv, i, &cmd.nsteps, 0, 32);
-      cmd.nstepsC = i-keep;
-      checkIntLower("-nsteps", cmd.nsteps, cmd.nstepsC, 8);
-      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 1);
-      continue;
-    }
-
     if( 0==strcmp("-nbatch", argv[i]) ) {
       int keep = i;
       cmd.nbatchP = 1;
@@ -1173,6 +1163,16 @@ parseCmdline(int argc, char **argv)
       cmd.nbatchC = i-keep;
       checkIntLower("-nbatch", cmd.nbatch, cmd.nbatchC, 5);
       checkIntHigher("-nbatch", cmd.nbatch, cmd.nbatchC, 1);
+      continue;
+    }
+
+    if( 0==strcmp("-nsteps", argv[i]) ) {
+      int keep = i;
+      cmd.nstepsP = 1;
+      i = getIntOpts(argc, argv, i, &cmd.nsteps, 0, 32);
+      cmd.nstepsC = i-keep;
+      checkIntLower("-nsteps", cmd.nsteps, cmd.nstepsC, 8);
+      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 1);
       continue;
     }
 

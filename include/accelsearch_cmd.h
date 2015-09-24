@@ -13,14 +13,14 @@ typedef struct s_Cmdline {
   char gpuP;
   int *gpu;
   int gpuC;
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
-  char nstepsP;
-  int *nsteps;
-  int nstepsC;
   /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   char nbatchP;
   int *nbatch;
   int nbatchC;
+  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  char nstepsP;
+  int *nsteps;
+  int nstepsC;
   /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   char widthP;
   int width;

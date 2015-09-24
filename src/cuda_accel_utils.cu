@@ -1436,7 +1436,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           cuFfdotStack* cStack = &kernel->stacks[i];
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
           //sprintf(strBuff,"%i FFT Input %i Stack", device, i);
-          sprintf(strBuff,"%i.%i.2.0 FFT Input", device, i);
+          sprintf(strBuff,"%i.0.2.%i FFT Input", device, i);
           nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
           printf("cudaStreamCreate: %s\n", strBuff);
         }
@@ -1447,7 +1447,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         cuFfdotStack* cStack = &kernel->stacks[i];
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
         //sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
-        sprintf(strBuff,"%i.%i.4.0 FFT Plain", device, i);
+        sprintf(strBuff,"%i.0.4.%i FFT Plain", device, i);
         nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
         printf("cudaStreamCreate: %s\n", strBuff);
       }
@@ -2030,7 +2030,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
             //sprintf(strBuff,"%i FFT Input %i Stack", batch->device, i);
-            sprintf(strBuff,"%i.%i.2.0 FFT Input", batch->device, i);
+            sprintf(strBuff,"%i.0.2.%i FFT Input", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
             kStack->fftIStream = cStack->fftIStream;
             printf("cudaStreamCreate: %s\n", strBuff);
@@ -2076,7 +2076,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
             //sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
-            sprintf(strBuff,"%i.%i.4.0 FFT Plain", batch->device, i);
+            sprintf(strBuff,"%i.0.4.%i FFT Plain", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
             kStack->fftPStream = cStack->fftPStream;
             printf("cudaStreamCreate: %s\n", strBuff);
@@ -2649,39 +2649,67 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
   // Calculate R values
   setStackRVals(batch, searchRLow, searchRHi );
 
-  FOLD // 3  .
+  if ( 1 )
   {
+    FOLD // 3  .
+    {
+
+    }
+
+    FOLD // 2  .
+    {
+      // Sum and Search
+      sumAndSearch(batch, 2);
+    }
+
+    FOLD // 1  .
+    {
+//      // Multiplication
+//      multiplyBatch(batch, 1);
+//
+//      // IFFT
+//      IFFTBatch(batch, 1);
+
+      convolveBatch(batch, 1);
+
+    }
+
+    FOLD // 2  .
+    {
+      processSearchResults(batch, 3);
+
+      // Read output
+      getResults(batch, 2);
+    }
+
+    FOLD // 0  .
+    {
+      // Initialise input data  .
+      initInput(batch, searchRLow, searchRHi, norm_type, fft);
+    }
 
   }
-
-  FOLD // 2  .
+  else
   {
-    // Sum and Search
-    sumAndSearch(batch, 2);
-  }
-
-  FOLD // 1  .
-  {
-    // Multiplication
-    multiplyBatch(batch, 1);
-
-    // IFFT
-    IFFTBatch(batch, 1);
-  }
-
-  FOLD // 2  .
-  {
-    processSearchResults(batch, 3);
-
-    // Read output
-    getResults(batch, 2);
-  }
-
-  FOLD // 0  .
-  {
-    // Initialise input data  .
     initInput(batch, searchRLow, searchRHi, norm_type, fft);
+
+    sumAndSearch(batch, 1);
+
+    processSearchResults(batch, 2);
+
+    getResults(batch, 1);
+
+
+//    // Multiplication
+//    multiplyBatch(batch, 0);
+//
+//    // IFFT
+//    IFFTBatch(batch, 0);
+
+    convolveBatch(batch, 0);
   }
+
+
 
   // Change R-values
   cycleRlists(batch);
@@ -3180,16 +3208,16 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_SS_ALL;
         (*flags) |= FLAG_SS_10;
       }
-      else if ( strCom(line, "FLAG_SS_20"  	) || strCom(line, "SS_20"  	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_20;
-      }
-      else if ( strCom(line, "FLAG_SS_30"  	) || strCom(line, "SS_30"  	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_30;
-      }
+//      else if ( strCom(line, "FLAG_SS_20"  	) || strCom(line, "SS_20"  	) )
+//      {
+//        (*flags) &= ~FLAG_SS_ALL;
+//        (*flags) |= FLAG_SS_20;
+//      }
+//      else if ( strCom(line, "FLAG_SS_30"  	) || strCom(line, "SS_30"  	) )
+//      {
+//        (*flags) &= ~FLAG_SS_ALL;
+//        (*flags) |= FLAG_SS_30;
+//      }
       else if ( strCom(line, "FLAG_SS_INMEM") || strCom(line, "SS_INMEM") )
       {
 #if __CUDACC_VER__ >= 60500
@@ -3224,16 +3252,16 @@ void readAccelDefalts(searchSpecs *sSpec)
           (*flags) &= ~FLAG_SS_ALL;
           (*flags) |= FLAG_SS_10;
         }
-        else if ( no == 2 )
-        {
-          (*flags) &= ~FLAG_SS_ALL;
-          (*flags) |= FLAG_SS_20;
-        }
-        else if ( no == 3 )
-        {
-          (*flags) &= ~FLAG_SS_ALL;
-          (*flags) |= FLAG_SS_30;
-        }
+//        else if ( no == 2 )
+//        {
+//          (*flags) &= ~FLAG_SS_ALL;
+//          (*flags) |= FLAG_SS_20;
+//        }
+//        else if ( no == 3 )
+//        {
+//          (*flags) &= ~FLAG_SS_ALL;
+//          (*flags) |= FLAG_SS_30;
+//        }
         else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
         {
           (*flags) &= ~FLAG_SS_ALL;
@@ -3415,6 +3443,19 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_THREAD;
       }
 
+      else if ( strCom(line, "FLAG_STK_UP" ) )
+      {
+        (*flags) |= FLAG_STK_UP;
+      }
+      else if ( strCom(line, "FLAG_STK_DOWN" ) )
+      {
+        (*flags) &= ~FLAG_STK_UP;
+      }
+
+      else if ( strCom(line, "FLAG_CONV" ) )
+      {
+        (*flags) |= FLAG_CONV;
+      }
 
       else if ( strCom(line, "FLAG_STORE_EXP" ) )
       {
@@ -3647,7 +3688,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   readAccelDefalts(&sSpec);
 
-  if ( sSpec.flags & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
+  if ( sSpec.flags & (FLAG_SS_10 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
   {
     // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
     sSpec.fftInf.rlo  = floor(obs->rlo/(float)cmd->numharm)*cmd->numharm;
@@ -4394,10 +4435,10 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
       cvsLog->csvWrite("SS",    "flg", "00");
     else if ( batch->flag & FLAG_SS_10  )
       cvsLog->csvWrite("SS",    "flg", "10");
-    else if ( batch->flag & FLAG_SS_20  )
-      cvsLog->csvWrite("SS",    "flg", "20");
-    else if ( batch->flag & FLAG_SS_30  )
-      cvsLog->csvWrite("SS",    "flg", "30");
+//    else if ( batch->flag & FLAG_SS_20  )
+//      cvsLog->csvWrite("SS",    "flg", "20");
+//    else if ( batch->flag & FLAG_SS_30  )
+//      cvsLog->csvWrite("SS",    "flg", "30");
     else if ( batch->flag & FLAG_SS_CPU )
       cvsLog->csvWrite("SS",    "flg", "CPU");
     else

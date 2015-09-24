@@ -670,74 +670,68 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
 void SSKer(cuFFdotBatch* batch)
 {
-  if ( batch->state & HAVE_PLN )
+  nvtxRangePush("Add & Search");
+
+  FOLD // Do synchronisations  .
   {
-    nvtxRangePush("Add & Search");
-
-    FOLD // Do synchronisations  .
+    for (int ss = 0; ss < batch->noStacks; ss++)
     {
-      for (int ss = 0; ss < batch->noStacks; ss++)
+      cuFfdotStack* cStack = &batch->stacks[ss];
+
+      if ( batch->flag & FLAG_SS_INMEM )
       {
-        cuFfdotStack* cStack = &batch->stacks[ss];
-
-        if ( batch->flag & FLAG_SS_INMEM )
-        {
-          cudaStreamWaitEvent(batch->strmSearch, cStack->ifftMemComp, 0);
-        }
-        else
-        {
-          cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0);
-        }
-      }
-    }
-
-    FOLD // Timing event  .
-    {
-#ifdef TIMING // Timing event
-      CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
-#endif
-    }
-
-#ifdef STPMSG
-    printf("\t\tSum & search kernel\n");
-#endif
-
-    FOLD // Call the SS kernel  .
-    {
-      if ( batch->retType & CU_POWERZ_S )
-      {
-        if      ( batch->flag & FLAG_SS_STG )
-        {
-          add_and_searchCU3(batch->strmSearch, batch );
-        }
-        else if ( batch->flag & FLAG_SS_INMEM )
-        {
-          add_and_search_IMMEM(batch);
-        }
-        else
-        {
-          fprintf(stderr,"ERROR: function %s is not setup to handle this type of search.\n",__FUNCTION__);
-          exit(EXIT_FAILURE);
-        }
+        cudaStreamWaitEvent(batch->strmSearch, cStack->ifftMemComp, 0);
       }
       else
       {
-        fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+        cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0);
+      }
+    }
+  }
+
+  FOLD // Timing event  .
+  {
+#ifdef TIMING // Timing event
+    CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
+#endif
+  }
+
+#ifdef STPMSG
+  printf("\t\tSum & search kernel\n");
+#endif
+
+  FOLD // Call the SS kernel  .
+  {
+    if ( batch->retType & CU_POWERZ_S )
+    {
+      if      ( batch->flag & FLAG_SS_STG )
+      {
+        add_and_searchCU3(batch->strmSearch, batch );
+      }
+      else if ( batch->flag & FLAG_SS_INMEM )
+      {
+        add_and_search_IMMEM(batch);
+      }
+      else
+      {
+        fprintf(stderr,"ERROR: function %s is not setup to handle this type of search.\n",__FUNCTION__);
         exit(EXIT_FAILURE);
       }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error at SSKer kernel launch");
     }
-
-    FOLD // Synchronisation  .
+    else
     {
-      CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+      fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+      exit(EXIT_FAILURE);
     }
-
-    batch->state |=  HAVE_SS;
-    batch->state &= ~HAVE_PLN;
-
-    nvtxRangePop();
+    CUDA_SAFE_CALL(cudaGetLastError(), "Error at SSKer kernel launch");
   }
+
+  FOLD // Synchronisation  .
+  {
+    CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+  }
+
+  nvtxRangePop();
 }
 
 int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double sig, int stage, int numharm, FILE* myfile = NULL)
@@ -813,28 +807,28 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
     }
     else if ( res->cndType & CU_STR_QUAD    )
     {
-//      gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(res->cndData) ;
-//
-//      quadPoint<double, float> voxel;
-//      voxel.position.x  = rr;
-//      voxel.position.y  = zz;
-//      voxel.value       = poww;
-//
-//      qt->insertDynamic(voxel);
-//
-//      quadNode<double, float>* head = qt->getHead();
+      //      gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(res->cndData) ;
+      //
+      //      quadPoint<double, float> voxel;
+      //      voxel.position.x  = rr;
+      //      voxel.position.y  = zz;
+      //      voxel.value       = poww;
+      //
+      //      qt->insertDynamic(voxel);
+      //
+      //      quadNode<double, float>* head = qt->getHead();
 
 
-//      candQuadNode* node;
-//
-//      location* loc;
-//
-//      cand* canidate;
-//
-//      if ( *loc < *node )
-//      {
-//        printf("BOB\n");
-//      }
+      //      candQuadNode* node;
+      //
+      //      location* loc;
+      //
+      //      cand* canidate;
+      //
+      //      if ( *loc < *node )
+      //      {
+      //        printf("BOB\n");
+      //      }
 
 
 
@@ -1005,7 +999,6 @@ void* processSearchResults(void* ptr)
 
 void processSearchResults(cuFFdotBatch* batch, int rIdx)
 {
-  //if ( (batch->state & HAVE_RES) )
   if ( batch->rArrays[rIdx][0][0].numrs )
   {
 #ifdef STPMSG
@@ -1048,7 +1041,7 @@ void processSearchResults(cuFFdotBatch* batch, int rIdx)
 //#else
 //      rVal = &((*batch->rSearch)[0][0]);
 //#endif
-      rVals* rVal = &batch->rArrays[4][0][0];
+      rVals* rVal = &batch->rArrays[rIdx][0][0];
 
       resultData* thrdDat = new resultData;
       memset(thrdDat, 0, sizeof(resultData) );
@@ -1095,7 +1088,7 @@ void processSearchResults(cuFFdotBatch* batch, int rIdx)
 //#else
 //        rVal = &((*batch->rSearch)[step][0]);
 //#endif
-        rVals* rVal = &batch->rArrays[4][step][0];
+        rVals* rVal = &batch->rArrays[rIdx][step][0];
 
         thrdDat->x1 += rVal->numrs;
       }
@@ -1140,14 +1133,11 @@ void processSearchResults(cuFFdotBatch* batch, int rIdx)
     {
       CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
     }
-
-    batch->state &= ~HAVE_RES;
   }
 }
 
 void getResults(cuFFdotBatch* batch, int rIdx)
 {
-  //if ( batch->state & HAVE_SS )
   if ( batch->rArrays[rIdx][0][0].numrs )
   {
     FOLD // Synchronisations  .
@@ -1185,9 +1175,6 @@ void getResults(cuFFdotBatch* batch, int rIdx)
     {
       CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
     }
-
-    batch->state &= ~HAVE_SS;
-    batch->state |=  HAVE_RES;
   }
 }
 
@@ -1487,104 +1474,104 @@ void sumAndSearchOrr(cuFFdotBatch* batch)        // Function to call to SS and p
 
 void sumAndMax(cuFFdotBatch* batch)
 {
-  //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-
-  dim3 dimBlock, dimGrid;
-
-  nvtxRangePush("Add & Max");
-
-  if ( (batch->state & HAVE_SS) || (batch->state & HAVE_MULT) ) // previous plain has data data so sum and search  .
-  {
-    int noStages = log(batch->noHarms)/log(2) + 1;
-
-    FOLD // Do synchronisations  .
-    {
-      for (int ss = 0; ss< batch->noStacks; ss++)
-      {
-        cuFfdotStack* cStack = &batch->stacks[ss];
-
-        cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0);
-      }
-    }
-
-    if ( batch->state & HAVE_MULT ) // We have a convolved plain so call Sum & search  kernel .
-    {
-      FOLD // Call the main sum & search kernel
-      {
-        //        dimBlock.x  = SS3_X;
-        //        dimBlock.y  = SS3_Y;
-        //
-        //        float bw    = SS3_X * SS3_Y;
-        //        //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
-        //        float ww    = batch->accelLen / ( bw );
-        //
-        //        dimGrid.x   = ceil(ww);
-        //        dimGrid.y   = 1;
-        //
-        //        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
-        //
-        //        // Run message
-        //        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
-        //
-        //        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
-      }
-    }
-
-    if ( (batch->state & HAVE_SS) ) // Process previous results  .
-    {
-      FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-      {
-        nvtxRangePush("EventSynch");
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-        nvtxRangePop();
-      }
-
-      nvtxRangePush("CPU Process results");
-
-      for ( int step = 0; step < batch->noSteps; step++ )
-      {
-        //rVals* rVal = &((*batch->rInput)[step][0]);
-        rVals* rVal = &batch->rArrays[3][step][0];
-
-        //int gIdx = batch->plains[0].searchRlowPrev[step] ;
-        int gIdx = rVal->drlo;
-
-        if ( batch->flag & FLAG_STORE_EXP )
-          gIdx =  ( rVal->drlo ) * ACCEL_RDR ;
-
-        float* gWrite = (float*)batch->h_candidates + gIdx;
-        float* pRead = (float*)(batch->h_retData) + batch->hInfos->width*step;
-
-        memcpy(gWrite, pRead, batch->accelLen*sizeof(float));
-      }
-
-      nvtxRangePop();
-
-      // Do some Synchronisation
-      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
-
-      batch->state &= ~HAVE_SS;
-    }
-
-    FOLD // Copy results from device to host  .
-    {
-      if ( (batch->state & HAVE_MULT) )
-      {
-        cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
-        cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
-
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
-
-        CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
-
-        batch->state &= ~HAVE_MULT;
-        batch->state |=  HAVE_SS;
-      }
-    }
-  }
-
-  nvtxRangePop();
+//  //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+//
+//  dim3 dimBlock, dimGrid;
+//
+//  nvtxRangePush("Add & Max");
+//
+//  if ( (batch->state & HAVE_SS) || (batch->state & HAVE_MULT) ) // previous plain has data data so sum and search  .
+//  {
+//    int noStages = log(batch->noHarms)/log(2) + 1;
+//
+//    FOLD // Do synchronisations  .
+//    {
+//      for (int ss = 0; ss< batch->noStacks; ss++)
+//      {
+//        cuFfdotStack* cStack = &batch->stacks[ss];
+//
+//        cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0);
+//      }
+//    }
+//
+//    if ( batch->state & HAVE_MULT ) // We have a convolved plain so call Sum & search  kernel .
+//    {
+//      FOLD // Call the main sum & search kernel
+//      {
+//        //        dimBlock.x  = SS3_X;
+//        //        dimBlock.y  = SS3_Y;
+//        //
+//        //        float bw    = SS3_X * SS3_Y;
+//        //        //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
+//        //        float ww    = batch->accelLen / ( bw );
+//        //
+//        //        dimGrid.x   = ceil(ww);
+//        //        dimGrid.y   = 1;
+//        //
+//        //        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
+//        //
+//        //        // Run message
+//        //        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
+//        //
+//        //        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+//      }
+//    }
+//
+//    if ( (batch->state & HAVE_SS) ) // Process previous results  .
+//    {
+//      FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
+//      {
+//        nvtxRangePush("EventSynch");
+//        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+//        nvtxRangePop();
+//      }
+//
+//      nvtxRangePush("CPU Process results");
+//
+//      for ( int step = 0; step < batch->noSteps; step++ )
+//      {
+//        //rVals* rVal = &((*batch->rInput)[step][0]);
+//        rVals* rVal = &batch->rArrays[3][step][0];
+//
+//        //int gIdx = batch->plains[0].searchRlowPrev[step] ;
+//        int gIdx = rVal->drlo;
+//
+//        if ( batch->flag & FLAG_STORE_EXP )
+//          gIdx =  ( rVal->drlo ) * ACCEL_RDR ;
+//
+//        float* gWrite = (float*)batch->h_candidates + gIdx;
+//        float* pRead = (float*)(batch->h_retData) + batch->hInfos->width*step;
+//
+//        memcpy(gWrite, pRead, batch->accelLen*sizeof(float));
+//      }
+//
+//      nvtxRangePop();
+//
+//      // Do some Synchronisation
+//      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
+//
+//      batch->state &= ~HAVE_SS;
+//    }
+//
+//    FOLD // Copy results from device to host  .
+//    {
+//      if ( (batch->state & HAVE_MULT) )
+//      {
+//        cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
+//        cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
+//
+//        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+//
+//        CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
+//        CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
+//
+//        batch->state &= ~HAVE_MULT;
+//        batch->state |=  HAVE_SS;
+//      }
+//    }
+//  }
+//
+//  nvtxRangePop();
 }
 
 void inMem(cuFFdotBatch* batch)

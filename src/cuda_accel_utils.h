@@ -624,7 +624,7 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx = 0);
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void convolveBatch(cuFFdotBatch* batch);
+void convolveBatch(cuFFdotBatch* batch, int rIdx = 0);
 
 
 
