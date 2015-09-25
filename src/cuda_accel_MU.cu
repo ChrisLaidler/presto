@@ -2,12 +2,14 @@
 
 //====================================== Constant variables  ===============================================\\
 
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
 __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
+#if CUDA_VERSION >= 7050
 __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
-__device__ cufftCallbackStoreC d_storeInmemRow      = CB_PowerOutInmem_ROW;
-__device__ cufftCallbackStoreC d_storeInmemPln      = CB_PowerOutInmem_PLN;
+#endif
+//__device__ cufftCallbackStoreC d_storeInmemRow      = CB_PowerOutInmem_ROW;
+//__device__ cufftCallbackStoreC d_storeInmemPln      = CB_PowerOutInmem_PLN;
 #endif
 
 //======================================= Global variables  ================================================\\
@@ -15,7 +17,7 @@ __device__ cufftCallbackStoreC d_storeInmemPln      = CB_PowerOutInmem_PLN;
 
 //========================================== Functions  ====================================================\\
 
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
 
 __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
@@ -81,7 +83,7 @@ __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element
   ((float*)callerInfo)[offset] = power;
 }
 
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
 __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
   // Calculate power
@@ -92,67 +94,67 @@ __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element
 }
 #endif
 
-__device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  //  const int hw  = HWIDTH_STAGE[0];
-  //  const int al  = ALEN ;
-  //  const int ns  = NO_STEPS;
-  //  int row   = offset  / ( INMEM_FFT_WIDTH * ns ) ;
-  //  int col   = offset  % INMEM_FFT_WIDTH;
-  //  int step  = ( offset % ( INMEM_FFT_WIDTH * ns ) ) / INMEM_FFT_WIDTH;
-
-
-  //  col      -= hw;
-
-  //if ( col >= 0 && col < al )
-  {
-
-    // Calculate power
-    float power = element.x*element.x + element.y*element.y ;
-    //half  power = __float2half(element.x*element.x + element.y*element.y) ;
-
-    // Write result (offsets are the same)
-    //int plnOff = /*row * PLN_STRIDE*/ + step*al + col;
-    //PLN_START[plnOff] = power;
-    //PLN_START[offset] = power;
-    //((float*)callerInfo)[plnOff] = power;
-    //((float*)callerInfo)[offset] = power;
-    ((half*)callerInfo)[offset] = __float2half(power);
-    //((half*)callerInfo)[offset] = power;
-
-    //  if ( offset == 162735 )
-    //  {
-    //    printf("\n");
-    //
-    //    printf("PLN_START:  %p \n", PLN_START);
-    //    printf("PLN_STRIDE: %i \n", PLN_STRIDE);
-    //    printf("NO_STEPS:   %i \n", NO_STEPS);
-    //    printf("step0:      %i \n", step0);
-    //
-    //    printf("row:        %i \n", row);
-    //    printf("col:        %i \n", col);
-    //    printf("step:       %i \n", step);
-    //  }
-  }
-}
-
-__device__ void CB_PowerOutInmem_PLN( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  //  int step0 = (int)callerInfo; // I know this isn't right but its faster than accessing the pointer =)
-  //  int row   = offset  / INMEM_FFT_WIDTH;
-  //  int step  = row /  HEIGHT_STAGE[0];
-  //  row       = row %  HEIGHT_STAGE[0];  // Assumes plain interleaved!
-  //  int col   = offset % INMEM_FFT_WIDTH;
-  //int plnOff = row * PLN_STRIDE + step0 + step + col;
-
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y ;
-
-  // Write result
-  //PLN_START[plnOff] = power;
-  //((float*)callerInfo)[offset] = power;
-  ((half*)callerInfo)[offset] = __float2half(power);
-}
+//__device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+//{
+//  //  const int hw  = HWIDTH_STAGE[0];
+//  //  const int al  = ALEN ;
+//  //  const int ns  = NO_STEPS;
+//  //  int row   = offset  / ( INMEM_FFT_WIDTH * ns ) ;
+//  //  int col   = offset  % INMEM_FFT_WIDTH;
+//  //  int step  = ( offset % ( INMEM_FFT_WIDTH * ns ) ) / INMEM_FFT_WIDTH;
+//
+//
+//  //  col      -= hw;
+//
+//  //if ( col >= 0 && col < al )
+//  {
+//
+//    // Calculate power
+//    float power = element.x*element.x + element.y*element.y ;
+//    //half  power = __float2half(element.x*element.x + element.y*element.y) ;
+//
+//    // Write result (offsets are the same)
+//    //int plnOff = /*row * PLN_STRIDE*/ + step*al + col;
+//    //PLN_START[plnOff] = power;
+//    //PLN_START[offset] = power;
+//    //((float*)callerInfo)[plnOff] = power;
+//    //((float*)callerInfo)[offset] = power;
+//    ((half*)callerInfo)[offset] = __float2half(power);
+//    //((half*)callerInfo)[offset] = power;
+//
+//    //  if ( offset == 162735 )
+//    //  {
+//    //    printf("\n");
+//    //
+//    //    printf("PLN_START:  %p \n", PLN_START);
+//    //    printf("PLN_STRIDE: %i \n", PLN_STRIDE);
+//    //    printf("NO_STEPS:   %i \n", NO_STEPS);
+//    //    printf("step0:      %i \n", step0);
+//    //
+//    //    printf("row:        %i \n", row);
+//    //    printf("col:        %i \n", col);
+//    //    printf("step:       %i \n", step);
+//    //  }
+//  }
+//}
+//
+//__device__ void CB_PowerOutInmem_PLN( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+//{
+//  //  int step0 = (int)callerInfo; // I know this isn't right but its faster than accessing the pointer =)
+//  //  int row   = offset  / INMEM_FFT_WIDTH;
+//  //  int step  = row /  HEIGHT_STAGE[0];
+//  //  row       = row %  HEIGHT_STAGE[0];  // Assumes plain interleaved!
+//  //  int col   = offset % INMEM_FFT_WIDTH;
+//  //int plnOff = row * PLN_STRIDE + step0 + step + col;
+//
+//  // Calculate power
+//  float power = element.x*element.x + element.y*element.y ;
+//
+//  // Write result
+//  //PLN_START[plnOff] = power;
+//  //((float*)callerInfo)[offset] = power;
+//  ((half*)callerInfo)[offset] = __float2half(power);
+//}
 
 void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
@@ -176,7 +178,12 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
   if (  (batch->flag & FLAG_SS_INMEM) && ( batch->flag & FLAG_HALF) )
   {
+#if CUDA_VERSION >= 7050
     CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "");
+#else
+    fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
   }
   else
   {
@@ -195,9 +202,16 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 #endif
 
   // Multiply this entire stack in one block
-  for (int ss = 0; ss< batch->noStacks; ss++)
+  for (int ss = 0; ss < batch->noStacks; ss++)
   {
-    cuFfdotStack* cStack = &batch->stacks[ss];
+    int sIdx;
+
+    if ( batch->flag & FLAG_STK_UP )
+      sIdx = batch->noStacks - 1 - ss;
+    else
+      sIdx = ss;
+
+    cuFfdotStack* cStack = &batch->stacks[sIdx];
 
     FOLD // Synchronisation  .
     {
@@ -211,9 +225,9 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 
 #ifdef SYNCHRONOUS
       // Wait for all the input FFT's to complete
-      for (int ss = 0; ss < batch->noStacks; ss++)
+      for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
       {
-        cuFfdotStack* cStack2 = &batch->stacks[ss];
+        cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
         cudaStreamWaitEvent(cStack->fftPStream, cStack2->prepComp, 0);
       }
 
@@ -239,7 +253,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
         {
           if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
             if ( batch->flag & FLAG_SS_INMEM  )
             {
               //rVals* rVal;
@@ -396,7 +410,7 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx)
       printf("\t\tMultiply with CUFFT\n");
 #endif
 
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
       multiplyBatchCUFFT( batch );
 #else
       fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
@@ -416,9 +430,11 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx)
         {
           FOLD // Synchronisation  .
           {
-            for (int ss = 0; ss < batch->noStacks; ss++) // Synchronise input data preparation for all stacks
+            // Synchronise input data preparation for all stacks
+            for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
             {
-              cuFfdotStack* cStack = &batch->stacks[ss];
+              cuFfdotStack* cStack = &batch->stacks[synchIdx];
+
               CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),      "Waiting for GPU to be ready to copy data to device.");    // Need input data
 
               if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
@@ -467,12 +483,14 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx)
           // Multiply this entire stack in one block
           for (int ss = 0; ss < batch->noStacks; ss++)
           {
-            cuFfdotStack* cStack;
+            int sIdx;
 
             if ( batch->flag & FLAG_STK_UP )
-              cStack = &batch->stacks[ss];
+              sIdx = batch->noStacks - 1 - ss;
             else
-              cStack = &batch->stacks[batch->noStacks - 1 - ss];
+              sIdx = ss;
+
+            cuFfdotStack* cStack = &batch->stacks[sIdx];
 
             FOLD // Synchronisation  .
             {
@@ -496,9 +514,9 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx)
 
 #ifdef SYNCHRONOUS
               // Wait for all the input FFT's to complete
-              for (int ss = 0; ss < batch->noStacks; ss++)
+              for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
               {
-                cuFfdotStack* cStack2 = &batch->stacks[ss];
+                cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
                 cudaStreamWaitEvent(cStack->multStream, cStack2->prepComp, 0);
               }
 
@@ -519,19 +537,19 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx)
             {
               if      ( cStack->flag & FLAG_MUL_00 )
               {
-                mult00(cStack->multStream, batch, ss);
+                mult00(cStack->multStream, batch, sIdx);
               }
               else if ( cStack->flag & FLAG_MUL_21 )
               {
-                mult21_f(cStack->multStream, batch, ss);
+                mult21_f(cStack->multStream, batch, sIdx);
               }
               else if ( cStack->flag & FLAG_MUL_22 )
               {
-                mult22_f(cStack->multStream, batch, ss);
+                mult22_f(cStack->multStream, batch, sIdx);
               }
               else if ( cStack->flag & FLAG_MUL_23 )
               {
-                mult23_f(cStack->multStream, batch, ss);
+                mult23_f(cStack->multStream, batch, sIdx);
               }
               else
               {
@@ -584,15 +602,17 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
 
     for (int ss = 0; ss < batch->noStacks; ss++)
     {
-      cuFfdotStack* cStack;
+      int sIdx;
 
       if ( batch->flag & FLAG_STK_UP )
-        cStack = &batch->stacks[ss];
+        sIdx = batch->noStacks - 1 - ss;
       else
-        cStack = &batch->stacks[batch->noStacks - 1 - ss];
+        sIdx = ss;
+
+      cuFfdotStack* cStack = &batch->stacks[sIdx];
 
 #ifdef STPMSG
-      printf("\t\t\tStack %i\n",ss);
+      printf("\t\t\tStack %i\n", sIdx);
 #endif
 
       FOLD // Synchronisation  .
@@ -615,9 +635,9 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
 
 #ifdef SYNCHRONOUS
         // Wait for all the multiplications to complete
-        for (int ss = 0; ss< batch->noStacks; ss++)
+        for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
         {
-          cuFfdotStack* cStack2 = &batch->stacks[ss];
+          cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
           cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
         }
 
@@ -648,7 +668,7 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
           {
             if ( batch->flag & FLAG_CUFFT_CB_OUT )
             {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
               CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
 #else
               fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
@@ -674,7 +694,7 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
       }
 
 #ifdef STPMSG
-      printf("\t\t\tDone\n",ss);
+      printf("\t\t\tDone\n", sIdx);
 #endif
     }
 
@@ -682,8 +702,48 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
   }
 }
 
+void copyToInMemPln(cuFFdotBatch* batch, int rIdx)
+{
+  if ( batch->rArrays[rIdx][0][0].numrs )
+  {
+    if ( batch->flag & FLAG_SS_INMEM )
+    {
+      // Copy back data  (out of order)  .
+      for (int ss = 0; ss < batch->noStacks; ss++)
+      {
+        int sIdx;
 
-/** Multiply and inverse FFT the complex f-∂f plain
+        if ( batch->flag & FLAG_STK_UP )
+          sIdx = batch->noStacks - 1 - ss;
+        else
+          sIdx = ss;
+
+        cuFfdotStack* cStack = &batch->stacks[sIdx];
+
+        FOLD // Copy memory on the device  .
+        {
+          if ( batch->flag & FLAG_HALF )
+          {
+#if CUDA_VERSION >= 7050
+            copyIFFTtoPln<half>( batch, cStack );
+#else
+            fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+            exit(EXIT_FAILURE);
+#endif
+          }
+          else
+          {
+            copyIFFTtoPln<float>( batch, cStack );
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - cudaMemcpy2DAsync");
+        }
+      }
+    }
+  }
+}
+
+/** Multiply and inverse FFT the complex f-∂f plain  .
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
@@ -705,7 +765,7 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
       printf("\t\tMultiply with CUFFT\n");
 #endif
 
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
       multiplyBatchCUFFT( batch );
 #else
       fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
@@ -725,9 +785,11 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
         {
           FOLD // Synchronisation  .
           {
-            for (int ss = 0; ss < batch->noStacks; ss++) // Synchronise input data preparation for all stacks
+            // Synchronise input data preparation for all stacks
+            for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
             {
-              cuFfdotStack* cStack = &batch->stacks[ss];
+              cuFfdotStack* cStack = &batch->stacks[synchIdx];
+
               CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),      "Waiting for GPU to be ready to copy data to device.");    // Need input data
 
               if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
@@ -776,12 +838,14 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
           // Multiply this entire stack in one block
           for (int ss = 0; ss < batch->noStacks; ss++)
           {
-            cuFfdotStack* cStack;
+            int sIdx;
 
             if ( batch->flag & FLAG_STK_UP )
-              cStack = &batch->stacks[ss];
+              sIdx = batch->noStacks - 1 - ss;
             else
-              cStack = &batch->stacks[batch->noStacks - 1 - ss];
+              sIdx = ss;
+
+            cuFfdotStack* cStack = &batch->stacks[sIdx];
 
             FOLD // Multiply  .
             {
@@ -807,9 +871,9 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
 
 #ifdef SYNCHRONOUS
                 // Wait for all the input FFT's to complete
-                for (int ss = 0; ss < batch->noStacks; ss++)
+                for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
                 {
-                  cuFfdotStack* cStack2 = &batch->stacks[ss];
+                  cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
                   cudaStreamWaitEvent(cStack->multStream, cStack2->prepComp, 0);
                 }
 
@@ -830,19 +894,19 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
               {
                 if      ( cStack->flag & FLAG_MUL_00 )
                 {
-                  mult00(cStack->multStream, batch, ss);
+                  mult00(cStack->multStream, batch, sIdx);
                 }
                 else if ( cStack->flag & FLAG_MUL_21 )
                 {
-                  mult21_f(cStack->multStream, batch, ss);
+                  mult21_f(cStack->multStream, batch, sIdx);
                 }
                 else if ( cStack->flag & FLAG_MUL_22 )
                 {
-                  mult22_f(cStack->multStream, batch, ss);
+                  mult22_f(cStack->multStream, batch, sIdx);
                 }
                 else if ( cStack->flag & FLAG_MUL_23 )
                 {
-                  mult23_f(cStack->multStream, batch, ss);
+                  mult23_f(cStack->multStream, batch, sIdx);
                 }
                 else
                 {
@@ -851,7 +915,7 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
                 }
 
                 // Run message
-                CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch (mult7)");
+                CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch multiplication");
               }
 
               FOLD // Synchronisation  .
@@ -888,9 +952,9 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
 
 #ifdef SYNCHRONOUS
                   // Wait for all the multiplications to complete
-                  for (int ss = 0; ss< batch->noStacks; ss++)
+                  for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
                   {
-                    cuFfdotStack* cStack2 = &batch->stacks[ss];
+                    cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
                     cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
                   }
 
@@ -921,7 +985,7 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
                     {
                       if ( batch->flag & FLAG_CUFFT_CB_OUT )
                       {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
                         CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
 #else
                         fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
@@ -963,36 +1027,44 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
     nvtxRangePop();
   }
 
-//  if ( batch->flag & FLAG_SS_INMEM )
-//  {
-//    if ( batch->state & HAVE_PLN ) // Copy back data  (out of order)  .
-//    {
-//      for (int ss = 0; ss < batch->noStacks; ss++)
-//      {
-//        cuFfdotStack* cStack = &batch->stacks[ss];
-//        FOLD // Copy memory on the device  .
-//        {
-//          if ( batch->flag & FLAG_HALF )
-//          {
-//#if __CUDACC_VER__ >= 70500
-//            copyIFFTtoPln<half>( batch, cStack );
-//#else
-//            fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-//            exit(EXIT_FAILURE);
-//#endif
-//
-//          }
-//          else
-//          {
-//            copyIFFTtoPln<float>( batch, cStack );
-//          }
-//
-//          CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - cudaMemcpy2DAsync");
-//        }
-//      }
-//      batch->state &= ~HAVE_PLN;
-//    }
-//  }
+  //  if ( batch->flag & FLAG_SS_INMEM )
+  //  {
+  //    if ( batch->state & HAVE_PLN ) // Copy back data  (out of order)  .
+  //    {
+  //      for (int ss = 0; ss < batch->noStacks; ss++)
+  //      {
+  //        int sIdx;
+  //
+  //        if ( batch->flag & FLAG_STK_UP )
+  //          sIdx = batch->noStacks - 1 - ss;
+  //        else
+  //          sIdx = ss;
+  //
+  //        cuFfdotStack* cStack = &batch->stacks[sIdx];
+  //
+  //        FOLD // Copy memory on the device  .
+  //        {
+  //          if ( batch->flag & FLAG_HALF )
+  //          {
+  //#if CUDA_VERSION >= 7050
+  //            copyIFFTtoPln<half>( batch, cStack );
+  //#else
+  //            fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+  //            exit(EXIT_FAILURE);
+  //#endif
+  //
+  //          }
+  //          else
+  //          {
+  //            copyIFFTtoPln<float>( batch, cStack );
+  //          }
+  //
+  //          CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - cudaMemcpy2DAsync");
+  //        }
+  //      }
+  //      batch->state &= ~HAVE_PLN;
+  //    }
+  //  }
 
   // IFFT  .
   if ( batch->rArrays[rIdx][0][0].numrs )
@@ -1011,15 +1083,17 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
 
       for (int ss = 0; ss < batch->noStacks; ss++)
       {
-        cuFfdotStack* cStack;
+        int sIdx;
 
         if ( batch->flag & FLAG_STK_UP )
-          cStack = &batch->stacks[ss];
+          sIdx = batch->noStacks - 1 - ss;
         else
-          cStack = &batch->stacks[batch->noStacks - 1 - ss];
+          sIdx = ss;
+
+        cuFfdotStack* cStack = &batch->stacks[sIdx];
 
 #ifdef STPMSG
-        printf("\t\t\tStack %i\n",ss);
+        printf("\t\t\tStack %i\n", sIdx);
 #endif
 
         FOLD // Synchronisation  .
@@ -1042,9 +1116,9 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
 
 #ifdef SYNCHRONOUS
           // Wait for all the multiplications to complete
-          for (int ss = 0; ss< batch->noStacks; ss++)
+          for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
           {
-            cuFfdotStack* cStack2 = &batch->stacks[ss];
+            cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
             cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
           }
 
@@ -1075,7 +1149,7 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
             {
               if ( batch->flag & FLAG_CUFFT_CB_OUT )
               {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
                 CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_plainPowers ),"");
 #else
                 fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
@@ -1101,7 +1175,7 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
         }
 
 #ifdef STPMSG
-        printf("\t\t\tDone\n",ss);
+        printf("\t\t\tDone\n", sIdx);
 #endif
       }
 

@@ -397,8 +397,8 @@ int main(int argc, char *argv[])
 
         FOLD // Basic timing  .
         {
+          //cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
           gettimeofday(&start, NULL);
-          cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
         }
 
         FOLD // init GPU kernels and plains  .
@@ -436,6 +436,13 @@ int main(int argc, char *argv[])
             sprintf(srcTyp, "Generating in-mem GPU plain");
           else
             sprintf(srcTyp, "GPU search");
+        }
+
+        FOLD // Basic timing  .
+        {
+          gettimeofday(&end, NULL);
+          long long initTimeG = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+          printf("GPU initialisation %.3fs \n", initTimeG*1e-6);
         }
 
         FOLD //                                 ---===== Main Loop =====---  .

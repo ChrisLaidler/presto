@@ -592,7 +592,7 @@ float cuGetMedian(float *data, uint len);
  * @param norm_type   The type of normalisation to perform
  * @param fft         The fft
  */
-void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft);
+void initInput(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft);
 
 void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
 
@@ -619,6 +619,8 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx = 0);
  * This creates a complex f-∂f plain
  */
 void IFFTBatch(cuFFdotBatch* batch, int rIdx = 0);
+
+void copyToInMemPln(cuFFdotBatch* batch, int rIdx = 0);
 
 /** Multiply and inverse FFT the complex f-∂f plain
  * This assumes the input data is ready and on the device

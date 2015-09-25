@@ -10,20 +10,24 @@ __device__ inline float get(float* __restrict__ adress, int offset)
   return adress[offset];
 }
 
+#if CUDA_VERSION >= 7050
 __device__ inline float get(half* __restrict__ adress, int offset)
 {
   return __half2float(adress[offset]);
 }
+#endif
 
 __device__ inline void set(float* adress, uint offset, float value)
 {
   adress[offset] = value;
 }
 
+#if CUDA_VERSION >= 7050
 __device__ inline void set(half* adress, uint offset, float value)
 {
   adress[offset] = __float2half(value);
 }
+#endif
 
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
 __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, int firstBin, int start, int end, candPZs* d_cands)
@@ -376,7 +380,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
   if ( batch->flag & FLAG_HALF  )
   {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
     searchINMEM_p<half>(batch);
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");

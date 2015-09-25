@@ -235,7 +235,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       if ( flags & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         plnElsSZ = sizeof(half);
 #else
         plnElsSZ = sizeof(float);
@@ -265,7 +265,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else
         {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
           noHarms               = 1;
           sInf->sSpec->pWidth   = INMEM_FFT_WIDTH / 1000.0 ;
 
@@ -674,14 +674,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           cStack->strideCmplx =   getStrie(cStack->width, sizeof(cufftComplex), alignment);
           cStack->strideFloat =   getStrie(cStack->width, sizeof(float),        alignment);
 
-          FOLD // TMP
-          {
-            size_t hStride      =   getStrie(cStack->width, sizeof(half),        alignment);
-            if ( hStride != cStack->strideFloat )
-            {
-              fprintf(stderr,"\n\nHEY! half stride != float stride\n\n");
-            }
-          }
+//          FOLD // TMP
+//          {
+//            size_t hStride      =   getStrie(cStack->width, sizeof(half),        alignment);
+//            if ( hStride != cStack->strideFloat )
+//            {
+//              fprintf(stderr,"\n\nHEY! half stride != float stride\n\n");
+//            }
+//          }
 
           kernel->inpDataSize +=  cStack->strideCmplx * cStack->noInStack * sizeof(cufftComplex);
           kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * sizeof(cufftComplex);
@@ -1050,7 +1050,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else if (kernel->retType & CU_HALF      )
       {
+#if CUDA_VERSION >= 7050 // Half precision
         retSZ = sizeof(half);
+#else
+        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+        exit(EXIT_FAILURE);
+#endif
       }
       else if (kernel->retType & CU_FLOAT    	)
       {
@@ -1165,7 +1170,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           if ( (kernel->flag & FLAG_SS_INMEM) && (kernel->flag & FLAG_HALF) )
           {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
             kernel->pwrDataSize *= sizeof(half);
 #else
             kernel->pwrDataSize *= sizeof(float);
@@ -2649,11 +2654,10 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
   // Calculate R values
   setStackRVals(batch, searchRLow, searchRHi );
 
-  if ( 1 )
+  if ( 0 )
   {
     FOLD // 3  .
     {
-
     }
 
     FOLD // 2  .
@@ -2671,7 +2675,6 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
 //      IFFTBatch(batch, 1);
 
       convolveBatch(batch, 1);
-
     }
 
     FOLD // 2  .
@@ -2685,13 +2688,13 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
     FOLD // 0  .
     {
       // Initialise input data  .
-      initInput(batch, searchRLow, searchRHi, norm_type, fft);
+      initInput(batch, norm_type, fft);
     }
 
   }
   else
   {
-    initInput(batch, searchRLow, searchRHi, norm_type, fft);
+    initInput(batch, norm_type, fft);
 
     sumAndSearch(batch, 1);
 
@@ -2699,12 +2702,14 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
 
     getResults(batch, 1);
 
+    if (batch->flag & FLAG_SS_INMEM )
+    {
+      multiplyBatch(batch, 0);
 
-//    // Multiplication
-//    multiplyBatch(batch, 0);
-//
-//    // IFFT
-//    IFFTBatch(batch, 0);
+      copyToInMemPln(batch, 1);
+
+      IFFTBatch(batch, 0);
+    }
 
     convolveBatch(batch, 0);
   }
@@ -2769,7 +2774,7 @@ void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRH
 
   FOLD // Initialise input data  .
   {
-    initInput(batch, searchRLow, searchRHi, norm_type, fft);
+    initInput(batch, norm_type, fft);
   }
 
 #ifdef SYNCHRONOUS
@@ -3134,7 +3139,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_CUFFT_CB_IN" ) || strCom(line, "CB_IN" ) )
       {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
         (*flags) |= FLAG_CUFFT_CB_IN;
 #else
         fprintf(stderr,"ERROR: use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
@@ -3143,7 +3148,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_CUFFT_CB_OUT" ) || strCom(line, "CB_OUT" ) )
       {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
         (*flags) |= FLAG_CUFFT_CB_OUT;
 #else
         fprintf(stderr,"ERROR: use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
@@ -3220,7 +3225,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 //      }
       else if ( strCom(line, "FLAG_SS_INMEM") || strCom(line, "SS_INMEM") )
       {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
         (*flags) |= FLAG_SS_INMEM;
         (*flags) |= FLAG_CUFFT_CB_OUT;
 #else
@@ -3290,7 +3295,7 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else if ( strCom(line, "INMEM" ) || strCom(line, "inmem" ) )
         {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
           (*flags) |= FLAG_SS_INMEM;
           (*flags) |= FLAG_CUFFT_CB_OUT;
 #else
@@ -3392,7 +3397,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_HALF" 	  ) )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         (*flags) |= FLAG_HALF;
 #else
         (*flags) &= ~FLAG_HALF;
@@ -3455,6 +3460,10 @@ void readAccelDefalts(searchSpecs *sSpec)
       else if ( strCom(line, "FLAG_CONV" ) )
       {
         (*flags) |= FLAG_CONV;
+      }
+      else if ( strCom(line, "FLAG_SEP" ) )
+      {
+        (*flags) &= ~FLAG_CONV;
       }
 
       else if ( strCom(line, "FLAG_STORE_EXP" ) )
@@ -3654,7 +3663,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_THREAD      ; // Multithreading really slows down debug so only turn it on by default for release mode, Note: This can be over ridden in the defaults file
 #endif
 
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
   sSpec.flags         |= FLAG_CUFFT_CB_OUT;
 #endif
 
@@ -3676,7 +3685,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   if ( obs->inmem )
   {
-#if __CUDACC_VER__ >= 60500
+#if CUDA_VERSION >= 6050
     sSpec.flags |= FLAG_SS_INMEM;
     sSpec.flags |= FLAG_CUFFT_CB_OUT;
 #else

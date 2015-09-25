@@ -229,7 +229,7 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
  * @param norm_type   The type of normalisation to perform
  * @param fft         The fft
  */
-void initInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft)
+void initInput(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 {
 #ifdef TIMING // Timing variables  .
   struct timeval start, end;

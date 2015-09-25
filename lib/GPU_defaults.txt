@@ -36,9 +36,10 @@ MUL_SLICES	3			# Last Edited by run time script
 MUL_CHUNK	9			# Last Edited by run time script
 
 # Multiply and IFFT
-FLAG_CONV
+# FLAG_SEP  FLAG_CONV
+FLAG_SEP
 
-#  FLAG_STK_UP  FLAG_STK_DOWN
+#  FLAG_STK_DOWN  FLAG_STK_UP
 FLAG_STK_UP
 
 ######### FFT ############
@@ -76,7 +77,7 @@ FLAG_THREAD
 FLAG_SS_10			# Last Edited by run time script
 
 
-SS_SLICES	5			# Last Edited by run time script
+SS_SLICES	3			# Last Edited by run time script
 
 SS_CHUNK	9			# Last Edited by run time script
 
@@ -101,12 +102,12 @@ optpln04 10
 optpln05 0
 optpln06 0
 
-# optpln01 100
-# optpln02 50
-# optpln03 40
-# optpln04 20
-# optpln05 0
-# optpln06 0
+optpln01 20
+optpln02 0
+optpln03 0
+optpln04 0
+optpln05 0
+optpln06 0
 
 #optSz01 4
 #optSz02 4
