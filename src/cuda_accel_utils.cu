@@ -2730,8 +2730,6 @@ void cycleRlists(cuFFdotBatch* batch)
     batch->rArrays[i] =  batch->rArrays[i - 1];
   }
   batch->rArrays[0] = hold;
-
-#endif
 }
 
 void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
@@ -2774,7 +2772,7 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
   if ( 0 )
   {
     // This ordering has been deprecated
-    
+
     setActiveBatch(batch, 2);
     sumAndSearch(batch);
 
