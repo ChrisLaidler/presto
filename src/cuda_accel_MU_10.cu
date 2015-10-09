@@ -79,10 +79,8 @@ __host__  void mult10(cuFFdotBatch* batch)
             fprintf(stderr,"ERROR: Cannot do single plain multiplications with row-interleaved multi step stacks.\n");
             exit(EXIT_FAILURE);
           }
-          else if ( batch->flag & FLAG_ITLV_PLN )
-            d_plainData   = cPlain->d_plainData + step * cHInfo->height * cStack->strideCmplx;   // Shift by plain height
           else
-            d_plainData   = cPlain->d_plainData;  // If nothing is specified just use plain data
+            d_plainData   = cPlain->d_plainData + step * cHInfo->height * cStack->strideCmplx;   // Shift by plain height
 
           if ( batch->flag & FLAG_TEX_MUL )
             mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_plainData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);

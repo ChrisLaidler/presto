@@ -26,8 +26,6 @@ extern "C"
 #ifdef CBL
 #include <unistd.h>
 #include "log.h"
-//#include "quadTree.h"
-//#include "candTree.h"
 #endif
 
 __device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  height  in stage order
@@ -112,13 +110,11 @@ __host__ __device__ long long next2_to_n_cu(long long x)
   return i;
 }
 
-/*
-void printData_cu(cuFFdotBatch* batch, const int FLAGS, int harmonic, int nX, int nY, int sX, int sY)
+void setActiveBatch(cuFFdotBatch* batch, int rIdx)
 {
-  //cuFFdot* cPlain       = &batch->plains[harmonic];
-  //printfData<<<1,1,0,0>>>((float*)cPlain->d_iData, nX, nY, cPlain->harmInf->inpStride, sX, sY);
+  batch->rValues = batch->rArrays[rIdx];
 }
- */
+
 
 /* The fft length needed to properly process a subharmonic */
 int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen)
@@ -301,15 +297,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             sInf->gSpec->noDevices = 1;
           }
 
-          //          if ( sInf->gSpec->noDevBatches[0] > 1 )
-          //          {
-          //            fprintf(stderr,"Warning: Reverting to a single batch search, perhaps use more steps?.\n");
-          //            sInf->gSpec->noDevBatches[0] = 1;
-          //          }
-
           flags |= FLAG_CUFFT_CB_OUT;
           flags |= FLAG_SS_INMEM ;
-          //flags |= FLAG_RET_STAGES;
 
           FOLD // Set types  .
           {
@@ -649,12 +638,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             kernel->stageIdx[i]             = idx;
           }
         }
-
-        // Multi-step data layout method  .
-        if ( !(kernel->flag & FLAG_ITLV_ALL ) )
-        {
-          kernel->flag |= FLAG_ITLV_ROW ;          //  FLAG_ITLV_ROW   or    FLAG_ITLV_PLN
-        }
       }
 
       FOLD // Set up the basic details of all the harmonics  .
@@ -700,15 +683,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           cStack->strideCmplx =   getStrie(cStack->width, sizeof(cufftComplex), alignment);
           cStack->strideFloat =   getStrie(cStack->width, sizeof(float),        alignment);
 
-//          FOLD // TMP
-//          {
-//            size_t hStride      =   getStrie(cStack->width, sizeof(half),        alignment);
-//            if ( hStride != cStack->strideFloat )
-//            {
-//              fprintf(stderr,"\n\nHEY! half stride != float stride\n\n");
-//            }
-//          }
-
           kernel->inpDataSize +=  cStack->strideCmplx * cStack->noInStack * sizeof(cufftComplex);
           kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * sizeof(cufftComplex);
           kernel->plnDataSize +=  cStack->strideCmplx * cStack->height    * sizeof(cufftComplex);
@@ -725,8 +699,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   FOLD // Allocate device memory for all the kernels data  .
   {
     nvtxRangePush("kernel malloc");
-
-    // CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
 
     if ( kernel->kerDataSize > free )
     {
@@ -1311,15 +1283,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       FOLD // How to handle input  .
       {
-        if ( !(kernel->flag & CU_NORM_ALL) )
-        {
-          kernel->flag    |= CU_NORM_CPU;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
-        }
-
         if ( (kernel->flag & CU_INPT_FFT_CPU) && !(kernel->flag & CU_NORM_CPU) )
         {
           fprintf(stderr, "WARNING: Using CPU FFT of the input data necessitate doing the normalisation on CPU.\n");
-          kernel->flag &= ~CU_NORM_ALL;
           kernel->flag |= CU_NORM_CPU;
         }
       }
@@ -1394,29 +1360,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
           if ( sInf->sSpec->outData == NULL )
           {
-            //            gridQuadTree<double, float>* qt;
-            //            vector2<double> center( 0, 0 );
-            //            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
-            //
-            //            qt = new gridQuadTree<double, float>(center, width);
-            //
-            //            kernel->h_candidates = qt;
-
-
-            //            candQuadNode* node;
-            //
-            //            location* loc;
-            //
-            //            cand* canidate;
-            //
-            //            if ( *loc < *node )
-            //            {
-            //              printf("BOB\n");
-            //            }
-
             candTree* qt = new candTree;
             kernel->h_candidates = qt;
-
           }
           else
           {
@@ -1466,7 +1411,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           cuFfdotStack* cStack = &kernel->stacks[i];
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-          //sprintf(strBuff,"%i FFT Input %i Stack", device, i);
           sprintf(strBuff,"%i.0.2.%i FFT Input", device, i);
           nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
           printf("cudaStreamCreate: %s\n", strBuff);
@@ -1477,7 +1421,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-        //sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
         sprintf(strBuff,"%i.0.4.%i FFT Plain", device, i);
         nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
         printf("cudaStreamCreate: %s\n", strBuff);
@@ -1876,52 +1819,25 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       rVals*    rLev1;
       rVals**   rLev2;
 
-      int oSet;
-      batch->noRArryas = 5;
+      int oSet                = 0;
+      batch->noRArryas        = 5; // This is just a convenient value
 
-      rLev1  = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
+      rLev1                   = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
       memset(rLev1, 0, sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
 
-      batch->rArrays = (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
-      oSet = 0;
+      batch->rArrays          = (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
 
       for (int rIdx = 0; rIdx < batch->noRArryas; rIdx++)
       {
-        rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-        for(int step = 0; step < batch->noSteps; step++)
-        {
-          rLev2[step] = &rLev1[oSet];
-          oSet+= batch->noHarms;
-        }
+        rLev2                 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
         batch->rArrays[rIdx]  = rLev2;
-      }
 
-      //      rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      //      for(int step = 0; step < batch->noSteps; step++)
-      //      {
-      //        rLev2[step] = &rLev1[oSet];
-      //        oSet+= batch->noHarms;
-      //      }
-      //      batch->rInput  = (rVals***)malloc(sizeof(rVals**));
-      //      *batch->rInput = rLev2;
-      //
-      //      rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      //      for(int step = 0; step < batch->noSteps; step++)
-      //      {
-      //        rLev2[step] = &rLev1[oSet];
-      //        oSet+= batch->noHarms;
-      //      }
-      //      batch->rSearch  = (rVals***)malloc(sizeof(rVals**));
-      //      *batch->rSearch = rLev2;
-      //
-      //      rLev2 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      //      for(int step = 0; step < batch->noSteps; step++)
-      //      {
-      //        rLev2[step] = &rLev1[oSet];
-      //        oSet+= batch->noHarms;
-      //      }
-      //      batch->rConvld  = (rVals***)malloc(sizeof(rVals**));
-      //      *batch->rConvld = rLev2;
+        for (int step = 0; step < batch->noSteps; step++)
+        {
+          rLev2[step]         = &rLev1[oSet];
+          oSet               += batch->noHarms;
+        }
+      }
     }
 
     FOLD // Allocate device Memory for Plains, Stacks & Input data (steps)  .
@@ -1998,23 +1914,25 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     FOLD // Create timing arrays  .
     {
 #ifdef TIMING
-      batch->copyH2DTime  = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->normTime     = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->InpFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->multTime     = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->InvFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->searchTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->resultTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->copyD2HTime  = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->copyH2DTime    = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->normTime       = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->InpFFTTime     = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->multTime       = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->InvFFTTime     = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->copyToPlnTime  = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->searchTime     = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->resultTime     = (float*)malloc(batch->noStacks*sizeof(float));
+      batch->copyD2HTime    = (float*)malloc(batch->noStacks*sizeof(float));
 
-      memset(batch->copyH2DTime,  0,batch->noStacks*sizeof(float));
-      memset(batch->normTime,     0,batch->noStacks*sizeof(float));
-      memset(batch->InpFFTTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->multTime,     0,batch->noStacks*sizeof(float));
-      memset(batch->InvFFTTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->searchTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->resultTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->copyD2HTime,  0,batch->noStacks*sizeof(float));
+      memset(batch->copyH2DTime,    0,batch->noStacks*sizeof(float));
+      memset(batch->normTime,       0,batch->noStacks*sizeof(float));
+      memset(batch->InpFFTTime,     0,batch->noStacks*sizeof(float));
+      memset(batch->multTime,       0,batch->noStacks*sizeof(float));
+      memset(batch->InvFFTTime,     0,batch->noStacks*sizeof(float));
+      memset(batch->copyToPlnTime,  0,batch->noStacks*sizeof(float));
+      memset(batch->searchTime,     0,batch->noStacks*sizeof(float));
+      memset(batch->resultTime,     0,batch->noStacks*sizeof(float));
+      memset(batch->copyD2HTime,    0,batch->noStacks*sizeof(float));
 #endif
     }
   }
@@ -2025,15 +1943,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       FOLD // Input streams  .
       {
-        if      ( (batch->flag & CU_NORM_GPU) || (batch->flag & CU_NORM_CPU)  )
-        {
-          CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
-          sprintf(strBuff,"%i.%i.0.0 Batch Input", batch->device, no);
-          nvtxNameCudaStreamA(batch->inpStream, strBuff);
-          printf("cudaStreamCreate: %s\n", strBuff);
-        }
+        // Batch input ( Always needed, for copying input to device )
+        CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
+        sprintf(strBuff,"%i.%i.0.0 Batch Input", batch->device, no);
+        nvtxNameCudaStreamA(batch->inpStream, strBuff);
+        printf("cudaStreamCreate: %s\n", strBuff);
 
-        if      ( batch->flag & CU_NORM_GPU  )
+        // Stack input
+        if ( !(batch->flag & CU_NORM_CPU)  )
         {
           for (int i = 0; i < batch->noStacks; i++)
           {
@@ -2117,9 +2034,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Search stream  .
       {
-        CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
+        CUDA_SAFE_CALL(cudaStreamCreate(&batch->srchStream), "Creating strmSearch for batch.");
         sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->device, no);
-        nvtxNameCudaStreamA(batch->strmSearch, strBuff);
+        nvtxNameCudaStreamA(batch->srchStream, strBuff);
         printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
@@ -2140,9 +2057,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyInit),  "Creating input event candCpyInit.");
         CUDA_SAFE_CALL(cudaEventCreate(&batch->multInit),     "Creating input event multInit.");
         CUDA_SAFE_CALL(cudaEventCreate(&batch->searchInit),   "Creating input event searchInit.");
-
-        //cudaEventRecord(batch->iDataCpyInit);
-        //cudaEventRecord(batch->iDataCpyComp);
 #else
         CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->iDataCpyComp,   cudaEventDisableTiming ), "Creating input event iDataCpyComp.");
         CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->candCpyComp,    cudaEventDisableTiming ), "Creating input event candCpyComp.");
@@ -2284,16 +2198,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
             }
-            else if ( batch->flag & FLAG_ITLV_PLN )
+            else
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
-            }
-            else
-            {
-              // Error
             }
           }
           else // Implies complex numbers
@@ -2305,16 +2215,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
             }
-            else if ( batch->flag & FLAG_ITLV_PLN )
+            else
             {
               resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
               resDesc.res.pitch2D.width           = cPlain->harmInf->width * 2;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
               resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
-            }
-            else
-            {
-              // Error
             }
           }
 
@@ -2414,14 +2320,15 @@ void freeBatch(cuFFdotBatch* batch)
     freeNull(batch->plains);
 
 #ifdef TIMING
-    freeNull(batch->copyH2DTime );
-    freeNull(batch->normTime    );
-    freeNull(batch->InpFFTTime  );
-    freeNull(batch->multTime    );
-    freeNull(batch->InvFFTTime  );
-    freeNull(batch->searchTime  );
-    freeNull(batch->resultTime  );
-    freeNull(batch->copyD2HTime );
+    freeNull(batch->copyH2DTime   );
+    freeNull(batch->normTime      );
+    freeNull(batch->InpFFTTime    );
+    freeNull(batch->multTime      );
+    freeNull(batch->InvFFTTime    );
+    freeNull(batch->copyToPlnTime );
+    freeNull(batch->searchTime    );
+    freeNull(batch->resultTime    );
+    freeNull(batch->copyD2HTime   );
 #endif
   }
 
@@ -2641,6 +2548,172 @@ void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
   free(h_fArr);
 }
 
+void timeAsynch(cuFFdotBatch* batch)
+{
+  if ( batch->rValues[0][0].numrs )
+  {
+#ifdef TIMING // Timing  .
+
+    float time;         // Time in ms of the thing
+    cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+    FOLD // Norm Timing  .
+    {
+      if ( !(batch->flag & CU_NORM_CPU) )
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
+
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->normTime[ss] += time;
+          }
+        }
+      }
+    }
+
+    FOLD // Input FFT timing  .
+    {
+      if ( !(batch->flag & CU_INPT_FFT_CPU) )
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
+
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->InpFFTTime[ss] += time;
+          }
+        }
+      }
+    }
+
+    FOLD // Copy input data  .
+    {
+      ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
+
+      if ( ret != cudaErrorNotReady )
+      {
+#pragma omp atomic
+        batch->copyH2DTime[0] += time;
+      }
+    }
+
+    FOLD // Convolution timing  .
+    {
+      if ( !(batch->flag & FLAG_CUFFT_CB_IN) )
+      {
+        // Did the convolution by separate kernel
+
+        if ( batch->flag & FLAG_MUL_BATCH )   // Convolution was done on the entire batch  .
+        {
+          ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
+
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->multTime[0] += time;
+          }
+        }
+        else                                // Convolution was on a per stack basis  .
+        {
+          for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
+
+            if ( ret != cudaErrorNotReady )
+            {
+#pragma omp atomic
+              batch->multTime[ss] += time;
+            }
+          }
+        }
+      }
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Convolution timing  .");
+    }
+
+    FOLD // Inverse FFT timing  .
+    {
+      for (int ss = 0; ss < batch->noStacks; ss++)
+      {
+        cuFfdotStack* cStack = &batch->stacks[ss];
+
+        ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
+        if ( ret != cudaErrorNotReady )
+        {
+#pragma omp atomic
+          batch->InvFFTTime[ss] += time;
+        }
+      }
+      CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
+    }
+
+    FOLD // Copy to InMem Plain timing  .
+    {
+      if ( batch->flag & FLAG_SS_INMEM )
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->ifftComp, cStack->ifftMemComp);
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->copyToPlnTime[ss] += time;
+          }
+        }
+        CUDA_SAFE_CALL(cudaGetLastError(), "Copy to InMem Plain timing");
+      }
+    }
+
+    FOLD // Search Timing  .
+    {
+      if ( !(batch->flag & FLAG_SS_CPU) && !(batch->flag & FLAG_SS_INMEM ) )
+      {
+        ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
+
+        if ( ret != cudaErrorNotReady )
+        {
+#pragma omp atomic
+          batch->searchTime[0] += time;
+        }
+
+        CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
+      }
+    }
+
+    FOLD // Copy D2H  .
+    {
+      if ( !(batch->flag & FLAG_SS_INMEM ) )
+      {
+        ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
+
+        if ( ret != cudaErrorNotReady )
+        {
+#pragma omp atomic
+          batch->copyD2HTime[0] += time;
+        }
+
+        CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
+      }
+    }
+
+#endif
+  }
+
+}
+
 /** Cycle the arrays of r-values  .
  *
  * @param batch
@@ -2651,130 +2724,115 @@ void cycleRlists(cuFFdotBatch* batch)
   printf("\tcycleRlists\n");
 #endif
 
-#ifdef SYNCHRONOUS
-  // TODO: Write this!
-#else
-
+  rVals** hold = batch->rArrays[batch->noRArryas-1];
   for ( int i = batch->noRArryas-1; i > 0; i-- )
   {
     batch->rArrays[i] =  batch->rArrays[i - 1];
   }
+  batch->rArrays[0] = hold;
 
 #endif
-
-  //  rVals*** rvals    = batch->rSearch;
-  //
-  //  batch->rSearch = batch->rConvld;
-  //  batch->rConvld = batch->rInput;
-  //  batch->rInput  = rvals;
 }
 
-void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep )
+void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
 {
   CUDA_SAFE_CALL(cudaGetLastError(), "Error entering search_ffdot_batch_CU.");
 
 #ifdef STPMSG
-  printf("  search_ffdot_batch_CU\n");
+  printf("  %s\n", __FUNCTION__);
 #endif
 
   // Calculate R values
+  setActiveBatch(batch, 0);
   setStackRVals(batch, searchRLow, searchRHi );
 
-  if ( 0 )
+#ifdef SYNCHRONOUS
+
+  initInput(batch, norm_type);
+
+  multiplyBatch(batch);
+
+  IFFTBatch(batch);
+
+  if  ( batch->flag & FLAG_SS_INMEM )
   {
-    FOLD // 3  .
-    {
-    }
-
-    FOLD // 2  .
-    {
-      // Sum and Search
-      sumAndSearch(batch, 2);
-    }
-
-    FOLD // 1  .
-    {
-//      // Multiplication
-//      multiplyBatch(batch, 1);
-//
-//      // IFFT
-//      IFFTBatch(batch, 1);
-
-      convolveBatch(batch, 1);
-    }
-
-    FOLD // 2  .
-    {
-      processSearchResults(batch, 3);
-
-      // Read output
-      getResults(batch, 2);
-    }
-
-    FOLD // 0  .
-    {
-      // Initialise input data  .
-      initInput(batch, norm_type, fft);
-    }
-
+    copyToInMemPln(batch);
   }
   else
   {
-    initInput(batch, norm_type, fft);
+    sumAndSearch(batch);
 
-    sumAndSearch(batch, 1);
+    getResults(batch);
 
-    processSearchResults(batch, 2);
-
-    getResults(batch, 1);
-
-    if (batch->flag & FLAG_SS_INMEM )
-    {
-      multiplyBatch(batch, 0);
-
-      copyToInMemPln(batch, 1);
-
-      IFFTBatch(batch, 0);
-    }
-
-    convolveBatch(batch, 0);
+    processSearchResults(batch);
   }
 
+  timeAsynch(batch);
 
+#else
+
+  if ( 0 )
+  {
+    // This ordering has been deprecated
+    
+    setActiveBatch(batch, 2);
+    sumAndSearch(batch);
+
+    setActiveBatch(batch, 1);
+    convolveBatch(batch);
+
+    setActiveBatch(batch, 3);
+    processSearchResults(batch);
+
+    setActiveBatch(batch, 2);
+    getResults(batch);
+
+    setActiveBatch(batch, 0);
+    initInput(batch, norm_type);
+  }
+  else
+  {
+    setActiveBatch(batch, 0);
+    initInput(batch, norm_type);
+
+    if  ( !(batch->flag & FLAG_SS_INMEM) )
+    {
+      setActiveBatch(batch, 1);
+      sumAndSearch(batch);
+
+      setActiveBatch(batch, 2);
+      processSearchResults(batch);
+
+      setActiveBatch(batch, 1);
+      getResults(batch);
+
+      setActiveBatch(batch, 0);
+      convolveBatch(batch);
+    }
+    else
+    {
+      setActiveBatch(batch, 0);
+      multiplyBatch(batch);
+
+      setActiveBatch(batch, 1);
+      copyToInMemPln(batch);
+
+      setActiveBatch(batch, 0);
+      IFFTBatch(batch);
+    }
+
+  }
+#endif
 
   // Change R-values
   cycleRlists(batch);
 
-  //#ifdef SYNCHRONOUS
-  //
-  //  FOLD // Multiply & inverse FFT  .
-  //  {
-  //    convolveBatch(batch);
-  //  }
-  //
-  //  FOLD // Sum & Search  .
-  //  {
-  //    sumAndSearch(batch);
-  //  }
-  //
-  //#else
-  //
-  //  FOLD // Sum & Search  .
-  //  {
-  //    sumAndSearch(batch);
-  //  }
-  //
-  //  FOLD // Multiply & inverse FFT  .
-  //  {
-  //    convolveBatch(batch);
-  //  }
-  //
-  //#endif
-
 #ifdef STPMSG
-  printf("  Done (search_ffdot_batch_CU)\n");
+  printf("  Done (%s)\n", __FUNCTION__);
 #endif
 }
+
+
 
 void finish_Search(cuFFdotBatch* batch)
 {
@@ -2800,7 +2858,8 @@ void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRH
 
   FOLD // Initialise input data  .
   {
-    initInput(batch, norm_type, fft);
+    setActiveBatch(batch, 0);
+    initInput(batch, norm_type);
   }
 
 #ifdef SYNCHRONOUS
@@ -3049,29 +3108,24 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       if      ( strCom(line, "FLAG_ITLV_ROW" ) || strCom(line, "INTERLEAVE_ROW" ) ||  strCom(line, "IL_ROW" ) )
       {
-        (*flags) &= ~FLAG_ITLV_ALL;
         (*flags) |= FLAG_ITLV_ROW;
       }
-      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) || strCom(line, "INTERLEAVE_PLAIN" ) || strCom(line, "IL_PLN" ) )
+      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) ||  strCom(line, "IL_PLN" ) )
       {
-        (*flags) &= ~FLAG_ITLV_ALL;
-        (*flags) |= FLAG_ITLV_PLN;
+        (*flags) &= ~FLAG_ITLV_ROW;
       }
 
       else if ( strCom(line, "CU_NORM_CPU" ) || strCom(line, "NORM_CPU" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
       }
       else if ( strCom(line, "CU_NORM_GPU" ) || strCom(line, "NORM_GPU" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
-        (*flags) |= CU_NORM_GPU;
+        (*flags) &= ~CU_NORM_CPU;
       }
 
       else if ( strCom(line, "CU_INPT_FFT_CPU" ) || strCom(line, "CPU_FFT" ) || strCom(line, "FFT_CPU" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
         (*flags) |= CU_INPT_FFT_CPU;
       }
@@ -3239,16 +3293,16 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_SS_ALL;
         (*flags) |= FLAG_SS_10;
       }
-//      else if ( strCom(line, "FLAG_SS_20"  	) || strCom(line, "SS_20"  	) )
-//      {
-//        (*flags) &= ~FLAG_SS_ALL;
-//        (*flags) |= FLAG_SS_20;
-//      }
-//      else if ( strCom(line, "FLAG_SS_30"  	) || strCom(line, "SS_30"  	) )
-//      {
-//        (*flags) &= ~FLAG_SS_ALL;
-//        (*flags) |= FLAG_SS_30;
-//      }
+      //      else if ( strCom(line, "FLAG_SS_20"  	) || strCom(line, "SS_20"  	) )
+      //      {
+      //        (*flags) &= ~FLAG_SS_ALL;
+      //        (*flags) |= FLAG_SS_20;
+      //      }
+      //      else if ( strCom(line, "FLAG_SS_30"  	) || strCom(line, "SS_30"  	) )
+      //      {
+      //        (*flags) &= ~FLAG_SS_ALL;
+      //        (*flags) |= FLAG_SS_30;
+      //      }
       else if ( strCom(line, "FLAG_SS_INMEM") || strCom(line, "SS_INMEM") )
       {
 #if CUDA_VERSION >= 6050
@@ -3283,16 +3337,16 @@ void readAccelDefalts(searchSpecs *sSpec)
           (*flags) &= ~FLAG_SS_ALL;
           (*flags) |= FLAG_SS_10;
         }
-//        else if ( no == 2 )
-//        {
-//          (*flags) &= ~FLAG_SS_ALL;
-//          (*flags) |= FLAG_SS_20;
-//        }
-//        else if ( no == 3 )
-//        {
-//          (*flags) &= ~FLAG_SS_ALL;
-//          (*flags) |= FLAG_SS_30;
-//        }
+        //        else if ( no == 2 )
+        //        {
+        //          (*flags) &= ~FLAG_SS_ALL;
+        //          (*flags) |= FLAG_SS_20;
+        //        }
+        //        else if ( no == 3 )
+        //        {
+        //          (*flags) &= ~FLAG_SS_ALL;
+        //          (*flags) |= FLAG_SS_30;
+        //        }
         else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
         {
           (*flags) &= ~FLAG_SS_ALL;
@@ -3683,7 +3737,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   // Defaults for accel search
   sSpec.flags         |= FLAG_RET_STAGES  ;
-  sSpec.flags         |= FLAG_ITLV_ROW    ; //   FLAG_ITLV_ROW    FLAG_ITLV_PLN
+  sSpec.flags         |= FLAG_ITLV_ROW    ;
 
 #ifndef DEBUG
   sSpec.flags         |= FLAG_THREAD      ; // Multithreading really slows down debug so only turn it on by default for release mode, Note: This can be over ridden in the defaults file
@@ -4240,9 +4294,7 @@ void plotPlains(cuFFdotBatch* batch)
       {
         cuHarmInfo   *cHInfo  = &batch->hInfos[harm];
         cuFfdotStack *cStack  = &batch->stacks[cHInfo->stackNo];
-        //cuFFdot*      cPlain  = &batch->plains[harm];
-        //rVals*        rVal    = &((*batch->rInput)[step][harm]);
-        rVals* rVal           = &batch->rArrays[0][step][harm];
+        rVals* rVal           = &batch->rValues[step][harm];
 
         for( int y = 0; y < cHInfo->height; y++ )
         {
@@ -4255,7 +4307,7 @@ void plotPlains(cuFFdotBatch* batch)
             cmplxData = &batch->d_plainData[(y*batch->noSteps + step)*cStack->strideCmplx ];
             powers    = &batch->d_plainPowers[((y*batch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ) ];
           }
-          else if ( batch->flag & FLAG_ITLV_PLN )
+          else
           {
             cmplxData = &batch->d_plainData[   (y + step*cHInfo->height)*cStack->strideCmplx ];
             powers    = &batch->d_plainPowers[((y + step*cHInfo->height)*cStack->strideFloat  + cHInfo->halfWidth * 2 ) ];
@@ -4285,74 +4337,6 @@ void plotPlains(cuFFdotBatch* batch)
   fprintf(stderr,"ERROR: Not compiled with debug libraries.\n");
 #endif
 }
-
-/*
-void generatePlain(fftInfo fft, long long loBin, long long hiBin, int zMax, int noHarms)
-{
-  int width = hiBin - loBin;
-  int gpuC = 0;
-  int dev  = 0;
-  int nplainsC = 5;
-  int nplains[10];
-  int nsteps[10];
-  int gpu[10];
-  nplains[0]=2;
-  nsteps[0]=2;
-  int numharmstages = twon_to_index(noHarms);
-  noHarms = 1 << numharmstages ;
-  long long numindep[numharmstages];
-  float powc[numharmstages];
-
-  int flags;
-
-  gpu[0] = 1;
-
-  cuFFdotBatch* kernels;             // List of stacks with the kernels, one for each device being used
-  cuFFdotBatch* master   = NULL;     // The first kernel stack created
-  int nPlains           = 0;        // The number of plains
-  int noKers            = 0;        // Real number of kernels/devices being used
-
-  fftInfo fftinf;
-  fftinf.fft    = fft;
-  fftinf.nor    = centerBin + width*2;
-  fftinf.rlow   = centerBin - width;
-  fftinf.rhi    = centerBin + width;
-
-  int ww =  twon_to_index(width);
-
-  int numz      = (zMax / ACCEL_DZ) * 2 + 1;
-
-  for (int ii = 0; ii < numharmstages; ii++) // Calculate numindep
-  {
-    powc[ii] = 0;
-
-    if (numz == 1)
-      numindep[ii] = (fftinf.rhi - fftinf.rlow) / (1<<ii);
-    else
-    {
-      numindep[ii] = (fftinf.rhi - fftinf.rlow) * (numz + 1) * (ACCEL_DZ / 6.95) / (1<<ii);
-    }
-  }
-
-  flags = FLAG_CUFFT_CB_OUT ;
-
-  gpu[0] = 0;
-  kernels = new cuFFdotBatch;
-  int added = initHarmonics(kernels, master, numharmstages, zMax, fftinf, 0, 1, ww, 1, powc, numindep, flags, CU_FLOAT, CU_FLOAT, NULL );
-  cuFFdotBatch* batch = initStkList(kernels, 0, 0);
-
-  cuFFdotBatch* trdStack = batch;
-  double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
-  double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
-
-  startrs[0] = (centerBin - width) * noHarms ;
-  lastrs[0] = startrs[0] + master->accelLen * ACCEL_DR - ACCEL_DR;
-
-  max_ffdot_planeCU(trdStack, startrs, lastrs, 1, (fcomplexcu*)fftinf.fft, numindep, NULL);
-
-  nvtxRangePop();
-}
- */
 
 void printBitString(uint val)
 {
@@ -4470,10 +4454,10 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
       cvsLog->csvWrite("SS",    "flg", "00");
     else if ( batch->flag & FLAG_SS_10  )
       cvsLog->csvWrite("SS",    "flg", "10");
-//    else if ( batch->flag & FLAG_SS_20  )
-//      cvsLog->csvWrite("SS",    "flg", "20");
-//    else if ( batch->flag & FLAG_SS_30  )
-//      cvsLog->csvWrite("SS",    "flg", "30");
+    //    else if ( batch->flag & FLAG_SS_20  )
+    //      cvsLog->csvWrite("SS",    "flg", "20");
+    //    else if ( batch->flag & FLAG_SS_30  )
+    //      cvsLog->csvWrite("SS",    "flg", "30");
     else if ( batch->flag & FLAG_SS_CPU )
       cvsLog->csvWrite("SS",    "flg", "CPU");
     else
@@ -4561,6 +4545,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
     float InpFFT    = 0;
     float multT     = 0;
     float InvFFT    = 0;
+    float plnCpy    = 0;
     float ss        = 0;
     float resultT   = 0;
     float copyD2HT  = 0;
@@ -4572,6 +4557,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
       float l_InpFFT    = 0;
       float l_multT     = 0;
       float l_InvFFT    = 0;
+      float l_plnCpy    = 0;
       float l_ss        = 0;
       float l_resultT   = 0;
       float l_copyD2HT  = 0;
@@ -4584,6 +4570,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
         l_InpFFT    += batches->InpFFTTime[stack];
         l_multT     += batches->multTime[stack];
         l_InvFFT    += batches->InvFFTTime[stack];
+        l_plnCpy    += batches->copyToPlnTime[stack];
         l_ss        += batches->searchTime[stack];
         l_resultT   += batches->resultTime[stack];
         l_copyD2HT  += batches->copyD2HTime[stack];
@@ -4593,19 +4580,21 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
       InpFFT    += l_InpFFT;
       multT     += l_multT;
       InvFFT    += l_InvFFT;
+      plnCpy    += l_plnCpy;
       ss        += l_ss;
       resultT   += l_resultT;
       copyD2HT  += l_copyD2HT;
     }
 #endif
-    cvsLog->csvWrite("copyH2D",   "ms", "%12.6f", copyH2DT);
-    cvsLog->csvWrite("InpNorm",   "ms", "%12.6f", InpNorm);
-    cvsLog->csvWrite("InpFFT",    "ms", "%12.6f", InpFFT);
-    cvsLog->csvWrite("Mult",      "ms", "%12.6f", multT);
-    cvsLog->csvWrite("InvFFT",    "ms", "%12.6f", InvFFT);
-    cvsLog->csvWrite("Sum & Srch", "ms", "%12.6f", ss);
-    cvsLog->csvWrite("result",    "ms", "%12.6f", resultT);
-    cvsLog->csvWrite("copyD2H",   "ms", "%12.6f", copyD2HT);
+    cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", copyH2DT);
+    cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", InpNorm);
+    cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", InpFFT);
+    cvsLog->csvWrite("Mult",        "ms", "%12.6f", multT);
+    cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", InvFFT);
+    cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", plnCpy);
+    cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", ss);
+    cvsLog->csvWrite("result",      "ms", "%12.6f", resultT);
+    cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", copyD2HT);
   }
 
   cvsLog->csvEndLine();
@@ -4746,13 +4735,6 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 
 GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
 {
-
-  int     cdx;
-  double  poww, sig;
-  double  rr, zz;
-  int     added = 0;
-  int     numharm;
-
   candTree optemised;
 
   candTree trees[batch->noHarmStages];

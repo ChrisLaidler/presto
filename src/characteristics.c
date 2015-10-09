@@ -156,7 +156,7 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   lo1 = r - DELTAAVGBINS - binsperside - kern_half_width - extra;
   hi1 = r + DELTAAVGBINS + binsperside + kern_half_width + extra;
 
-  /* Make sure we don't try to read non-existant data */
+  /* Make sure we don't try to read non-existent data */
 
   if (lo1 < 0.0)
     lo1 = 0.0;
@@ -171,7 +171,7 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
 
   if ( numamps <= 0 )
   {
-    int tmp = 0;
+    fprintf(stderr, "WARNING: numamps <= 0 in %s in %s\n", __FUNCTION__, __FILE__ );
     return 0 ;
   }
 

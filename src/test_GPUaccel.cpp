@@ -1087,7 +1087,7 @@ int main(int argc, char *argv[])
 
             FOLD // Call the CUDA search  .
             {
-              search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1,  (fcomplexcu*)obs.fft, obs.numindep);
+              search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
             }
 
             FOLD // Copy data from device  .
@@ -1130,7 +1130,7 @@ int main(int argc, char *argv[])
                           cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
                           powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
                         }
-                        else if ( trdBatch->flag & FLAG_ITLV_PLN )
+                        else
                         {
                           cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
                           powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
@@ -1678,7 +1678,7 @@ int main(int argc, char *argv[])
             // Finish searching the plains, this is required because of the out of order asynchronous calls
             for ( int step = 0 ; step < 2; step++ )
             {
-              search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)obs.fft, obs.numindep);
+              search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
             }
           }
         }

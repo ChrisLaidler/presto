@@ -62,7 +62,7 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
           {
             off1  = pHeight + plainY*noSteps*stride;
           }
-          else if ( FLAGS & FLAG_ITLV_PLN )
+          else
           {
             off1  = pHeight + plainY*stride;
           }
@@ -76,7 +76,7 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
             {
               idx  = off1 + step * stride;
             }
-            else if ( FLAGS & FLAG_ITLV_PLN )
+            else
             {
               idx  = off1 + step * ns2;
             }
@@ -168,11 +168,6 @@ __host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult22_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
-  else if ( batch->flag & FLAG_ITLV_PLN )
-    mult22_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch, stack);
   else
-  {
-    fprintf(stderr, "ERROR: mult22 has not been templated for layout.\n");
-    exit(EXIT_FAILURE);
-  }
+    mult22_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);
 }

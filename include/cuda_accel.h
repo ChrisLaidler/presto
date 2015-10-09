@@ -61,12 +61,9 @@ extern "C"
 //====================================== Bit flag values =================================================
 
 #define     FLAG_ITLV_ROW       (1<<0)      ///< Multi-step Row   interleaved        - This seams to be best in most cases
-#define     FLAG_ITLV_PLN       (1<<1)      ///< Multi-step Plain interleaved        -
-#define     FLAG_ITLV_ALL       ( FLAG_ITLV_ROW | FLAG_ITLV_PLN )
 
-#define     CU_NORM_CPU         (1<<2)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_NORM_GPU         (1<<3)      ///< Prepare input data one step at a time, using GPU - normalisation on GPU
-#define     CU_NORM_ALL         (CU_NORM_GPU | CU_NORM_CPU)
+#define     CU_NORM_CPU         (1<<1)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define     CU_NORM_EQUIV       (1<<2)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
 
 #define     CU_INPT_FFT_CPU     (1<<4)      ///< Do the FFT on the CPU
 
@@ -105,8 +102,8 @@ extern "C"
 #define     FLAG_STORE_EXP      (1<<24)     ///< Store expanded candidates
 #define     FLAG_THREAD         (1<<25)     ///< Use separate CPU threads to search for candidates in returned data
 
-#define     FLAG_STK_UP         (1<<26)     ///<
-#define     FLAG_CONV           (1<<27)     ///<
+#define     FLAG_STK_UP         (1<<26)     ///< Process stack in increasing size order
+#define     FLAG_CONV           (1<<27)     ///< Multiply and FFT each stack "together"
 
 #define     FLAG_RAND_1         (1<<28)     ///< Random Flag 1
 #define     FLAG_RAND_2         (1<<29)     ///< Random Flag 2
@@ -140,10 +137,6 @@ extern "C"
 #define     HAVE_PLN            (1<<3)      ///< The Plain data is ready to search
 #define     HAVE_SS             (1<<4)      ///< The S&S is complete and the data is read to read
 #define     HAVE_RES            (1<<5)      ///< The S&S is complete and the data is read to read
-
-//int haveInput;                              ///< Weather the the plain has input ready to convolve
-//int haveConvData;                           ///< Weather the the plain has convolved data ready for searching
-//int haveSearchResults;                      ///< Weather the the plain has been searched and there is candidate data to process
 
 
 //========================================== Macros ======================================================
@@ -511,12 +504,13 @@ typedef struct cuFFdotBatch
     cufftCallbackStoreC   h_stCallbackPtr;
 
     int             noRArryas;          ///< The number of r value arrays
-    rVals***        rArrays;            ///< Pointer to a 2D array [step][harmonic] of the base expanded r index
+    rVals***        rArrays;            ///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
+    rVals**         rValues;            ///< Pointer to the active 2D array [step][harmonic] of the base expanded r index
 
     // Streams
     cudaStream_t    inpStream;          ///< CUDA stream for work on input data for the batch
     cudaStream_t    multStream;         ///< CUDA stream for multiplication
-    cudaStream_t    strmSearch;         ///< CUDA stream for summing and searching the data
+    cudaStream_t    srchStream;         ///< CUDA stream for summing and searching the data
 
     // TIMING events
     cudaEvent_t     iDataCpyInit;       ///< Copying input data to device
@@ -539,6 +533,7 @@ typedef struct cuFFdotBatch
     float*          InpFFTTime;         ///< Array of floats from timing one for each stack
     float*          multTime;           ///< Array of floats from timing one for each stack
     float*          InvFFTTime;         ///< Array of floats from timing one for each stack
+    float*          copyToPlnTime;      ///< Array of floats from timing one for each stack
     float*          searchTime;         ///< Array of floats from timing one for each stack
     float*          resultTime;         ///< Array of floats from timing one for each stack
     float*          copyD2HTime;        ///< Array of floats from timing one for each stack
@@ -769,7 +764,7 @@ ExternC void freeBatchGPUmem(cuFFdotBatch* batch);
 
 ExternC void printCands(const char* fileName, GSList *candsCPU, double T);
 
-ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep );
+ExternC void search_ffdot_batch_CU(cuFFdotBatch* plains, double* searchRLow, double* searchRHi, int norm_type );
 
 ExternC void inmemSumAndSearch(cuSearch* cuSrch);
 

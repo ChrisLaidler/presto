@@ -482,6 +482,11 @@ double _GammaQ (double n, double x);
 template<typename T>
 __device__ void fresnl(T xxa, T* ss, T* cc);
 
+/** Set the active batch
+ *
+ */
+void setActiveBatch(cuFFdotBatch* batch, int rIdx = 0);
+
 /** Cycle the arrays of r-values  .
  *
  * @param batch
@@ -580,6 +585,8 @@ int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
 float cuGetMedian(float *data, uint len);
 
+void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
+
 /** Initialise input data for a f-∂f plain(s)  ready for multiplication  .
  * This:
  *  Normalises the chunk of input data
@@ -592,9 +599,7 @@ float cuGetMedian(float *data, uint len);
  * @param norm_type   The type of normalisation to perform
  * @param fft         The fft
  */
-void initInput(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft);
-
-void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
+void initInput(cuFFdotBatch* batch, int norm_type );
 
 
 
@@ -612,21 +617,21 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch );
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void multiplyBatch(cuFFdotBatch* batch, int rIdx = 0);
+void multiplyBatch(cuFFdotBatch* batch );
 
 /** inverse FFT the complex f-∂f plain
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void IFFTBatch(cuFFdotBatch* batch, int rIdx = 0);
+void IFFTBatch(cuFFdotBatch* batch );
 
-void copyToInMemPln(cuFFdotBatch* batch, int rIdx = 0);
+void copyToInMemPln(cuFFdotBatch* batch );
 
 /** Multiply and inverse FFT the complex f-∂f plain
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void convolveBatch(cuFFdotBatch* batch, int rIdx = 0);
+void convolveBatch(cuFFdotBatch* batch );
 
 
 
@@ -637,11 +642,11 @@ int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long l
 __host__ __device__ double incdf (double p, double q );
 __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 
-void processSearchResults(cuFFdotBatch* batch, int rIdx = 0);
+void processSearchResults(cuFFdotBatch* batch );
 
-void getResults(cuFFdotBatch* batch, int rIdx = 0);
+void getResults(cuFFdotBatch* batch );
 
-void sumAndSearch(cuFFdotBatch* batch, int rIdx = 0);
+void sumAndSearch(cuFFdotBatch* batch );
 
 void sumAndSearchOrr(cuFFdotBatch* batch);
 

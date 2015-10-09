@@ -158,7 +158,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             {
               offsetPart1  = pHeight + plainY*noSteps*stride;
             }
-            else if ( FLAGS & FLAG_ITLV_PLN )
+            else
             {
               offsetPart1  = pHeight + plainY*stride;
             }
@@ -174,7 +174,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
               {
                 idx  = offsetPart1 + step * stride;
               }
-              else if ( FLAGS & FLAG_ITLV_PLN )
+              else
               {
                 idx  = offsetPart1 + step * ns2;
               }
@@ -335,11 +335,6 @@ __host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
-  else if ( batch->flag & FLAG_ITLV_PLN )
-    mult23_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch, stack);
   else
-  {
-    fprintf(stderr, "ERROR: mult23 has not been templated for layout.\n");
-    exit(EXIT_FAILURE);
-  }
+    mult23_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);
 }

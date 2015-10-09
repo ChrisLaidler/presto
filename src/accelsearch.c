@@ -496,10 +496,11 @@ int main(int argc, char *argv[])
 
               FOLD // Set start r-vals for all steps in this batch  .
               {
+                trdBatch->rValues = trdBatch->rArrays[0];
+
                 for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
                 {
-                  //rVals* rVal     = &((*trdBatch->rInput)[step][0]);
-                  rVals* rVal = &trdBatch->rArrays[0][step][0];
+                  rVals* rVal = &trdBatch->rValues[step][0];
 
                   if ( step < rest )
                   {
@@ -512,8 +513,7 @@ int main(int argc, char *argv[])
                     int harm;
                     for (harm = 0; harm < trdBatch->noHarms; harm++)
                     {
-                      //rVal          = &((*trdBatch->rInput)[step][harm]);
-                      rVal          = &trdBatch->rArrays[0][step][harm];
+                      rVal          = &trdBatch->rValues[step][harm];
                       rVal->step    = firstStep + step;
                     }
                   }
@@ -521,14 +521,13 @@ int main(int argc, char *argv[])
                   {
                     startrs[step]   = 0 ;
                     lastrs[step]    = 0 ;
-                    rVal->step      = -1;
                   }
                 }
               }
 
               FOLD // Call the CUDA search  .
               {
-                search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)sSpec.fftInf.fft, obs.numindep);
+                search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
               }
 
 #ifndef STPMSG
@@ -542,7 +541,7 @@ int main(int argc, char *argv[])
             FOLD  // Finish off CUDA search  .
             {
               // Set r values to 0 so as to not process details
-              for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
+              for ( step = 0; step < (int)trdBatch->noSteps ; step++)
               {
                 startrs[step] = 0;
                 lastrs[step]  = 0;
@@ -551,7 +550,7 @@ int main(int argc, char *argv[])
               // Finish searching the plains, this is required because of the out of order asynchronous calls
               for ( step = 0 ; step < trdBatch->noRArryas; step++ )
               {
-                search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type, 1, (fcomplexcu*)sSpec.fftInf.fft, obs.numindep);
+                search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
               }
 
               // Wait for asynchronous execution to complete
@@ -1034,6 +1033,7 @@ int main(int argc, char *argv[])
       float InpFFT    = 0;
       float multT     = 0;
       float InvFFT    = 0;
+      float plnCpy    = 0;
       float ss        = 0;
       float resultT   = 0;
       float copyD2HT  = 0;
@@ -1053,6 +1053,7 @@ int main(int argc, char *argv[])
         float l_InpFFT    = 0;
         float l_multT     = 0;
         float l_InvFFT    = 0;
+        float l_plnCpy    = 0;
         float l_ss        = 0;
         float l_resultT   = 0;
         float l_copyD2HT  = 0;
@@ -1062,10 +1063,10 @@ int main(int argc, char *argv[])
           printf("\t\t");
           printf("%s\t","Copy H2D");
 
-          if ( batches->flag & CU_NORM_GPU )
-            printf("%s\t","Norm GPU");
-          else
+          if ( batches->flag & CU_NORM_CPU )
             printf("%s\t","Norm CPU");
+          else
+            printf("%s\t","Norm GPU");
 
           if ( batches->flag & CU_INPT_FFT_CPU )
             printf("%s\t","Inp FFT CPU");
@@ -1085,18 +1086,29 @@ int main(int argc, char *argv[])
 
           printf("%s\t","Copy D2H");
 
+          if ( batches->flag & FLAG_SS_INMEM )
+          {
+            printf("%s\t","Cpy to pln");
+          }
+
           printf("\n");
         }
 
         for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
         {
-          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+          printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
+          if ( batches->flag & FLAG_SS_INMEM )
+          {
+            printf("\t%9.04f", batches->copyToPlnTime[stack]);
+          }
+          printf("\n");
 
           l_copyH2DT  += batches->copyH2DTime[stack];
           l_InpNorm   += batches->normTime[stack];
           l_InpFFT    += batches->InpFFTTime[stack];
           l_multT     += batches->multTime[stack];
           l_InvFFT    += batches->InvFFTTime[stack];
+          l_plnCpy    += batches->copyToPlnTime[stack];
           l_ss        += batches->searchTime[stack];
           l_resultT   += batches->resultTime[stack];
           l_copyD2HT  += batches->copyD2HTime[stack];
@@ -1104,8 +1116,20 @@ int main(int argc, char *argv[])
 
         if ( cuSrch->mInf->noBatches > 1 )
         {
-          printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------\n");
-          printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", l_copyH2DT, l_InpNorm, l_InpFFT, l_multT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
+          printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------");
+          if ( batches->flag & FLAG_SS_INMEM )
+          {
+            printf("\t---------");
+          }
+          printf("\n");
+
+
+          printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", l_copyH2DT, l_InpNorm, l_InpFFT, l_multT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
+          if ( batches->flag & FLAG_SS_INMEM )
+          {
+            printf("\t%9.04f",l_plnCpy);
+          }
+          printf("\n");
         }
 
         copyH2DT  += l_copyH2DT;
@@ -1113,12 +1137,24 @@ int main(int argc, char *argv[])
         InpFFT    += l_InpFFT;
         multT     += l_multT;
         InvFFT    += l_InvFFT;
+        plnCpy    += l_plnCpy;
         ss        += l_ss;
         resultT   += l_resultT;
         copyD2HT  += l_copyD2HT;
       }
-      printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------\n");
-      printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\n", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
+      printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------");
+      if ( cuSrch->mInf->batches->flag & FLAG_SS_INMEM )
+      {
+        printf("\t---------");
+      }
+      printf("\n");
+
+      printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
+      if ( cuSrch->mInf->batches->flag & FLAG_SS_INMEM )
+      {
+        printf("\t%9.04f",plnCpy);
+      }
+      printf("\n");
 
       printf("\n===========================================================================================================================================\n\n");
 

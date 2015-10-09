@@ -58,7 +58,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
             *ffdot = val;
             ffdot += stride;  // Stride output pointer to next plain
           }
-          else if ( FLAGS & FLAG_ITLV_PLN )
+          else
           {
             ffdot[plnOffset + step*PlnStride ] = val;
           }
@@ -68,7 +68,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
         ker += stride;
       }
 
-      if ( FLAGS & FLAG_ITLV_PLN ) 	                // Stride output pointer to next plain  .
+      if ( !(FLAGS & FLAG_ITLV_ROW) ) 	                // Stride output pointer to next plain  .
       {
         ffdot += noSteps*height*stride;
       }
@@ -141,11 +141,6 @@ __host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch)
 
   if      ( batch->flag & FLAG_ITLV_ROW )
     mult30_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);
-  else if ( batch->flag & FLAG_ITLV_PLN )
-    mult30_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch);
   else
-  {
-    fprintf(stderr, "ERROR: mult5 has not been templated for layout.\n");
-    exit(EXIT_FAILURE);
-  }
+    mult30_s<0>(dimGrid, dimBlock, 0, multStream, batch);
 }

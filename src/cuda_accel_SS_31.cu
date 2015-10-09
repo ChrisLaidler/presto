@@ -102,14 +102,15 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
                     {
                       FOLD // Calculate index  .
                       {
-                        if        ( FLAGS & FLAG_ITLV_PLN )
+                        if        ( FLAGS & FLAG_ITLV_ROW )
                         {
-                          iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
+                          ix2 = ix1 + step    * STRIDE_STAGE[harm] ;
+                                                    iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
+
                         }
                         else
                         {
-                          ix2 = ix1 + step    * STRIDE_STAGE[harm] ;
-                          iy2 = iy1 * noSteps * STRIDE_STAGE[harm];
+                          iy2 = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
                         }
                       }
 
@@ -423,25 +424,15 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     {
       if      ( FLAGS & FLAG_ITLV_ROW )
         add_and_searchCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
-      else if ( FLAGS & FLAG_ITLV_PLN )
-        add_and_searchCU31_p<FLAG_CUFFT_CB_OUT | FLAG_ITLV_PLN>  (dimGrid, dimBlock, stream, batch);
       else
-      {
-        fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
-        exit(EXIT_FAILURE);
-      }
+        add_and_searchCU31_p<FLAG_CUFFT_CB_OUT >  (dimGrid, dimBlock, stream, batch);
     }
     else
     {
       if      ( FLAGS & FLAG_ITLV_ROW )
         add_and_searchCU31_p<FLAG_ITLV_ROW> (dimGrid, dimBlock, stream, batch);
-      else if ( FLAGS & FLAG_ITLV_PLN )
-        add_and_searchCU31_p<FLAG_ITLV_PLN> (dimGrid, dimBlock, stream, batch);
       else
-      {
-        fprintf(stderr, "ERROR: %s has not been templated for flag combination. \n", __FUNCTION__ );
-        exit(EXIT_FAILURE);
-      }
+        add_and_searchCU31_p<0> (dimGrid, dimBlock, stream, batch);
     }
   }
 }

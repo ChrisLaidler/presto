@@ -52,18 +52,18 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
   int plnHeight   = HEIGHT_HARM[pIdx];
   int step;
 
-  if ( inf->flag & FLAG_ITLV_PLN )
-  {
-    step = row / plnHeight;
-    row  = row % plnHeight;
-  }
-  else
+  if ( inf->flag & FLAG_ITLV_ROW )
   {
     step  = row % noSteps;
     row   = row / noSteps;
   }
+  else
+  {
+    step = row / plnHeight;
+    row  = row % plnHeight;
+  }
 
-  cufftComplex ker = ((cufftComplex*)(KERNEL_HARM[pIdx]))[row*stackStrd + col];      //
+  cufftComplex ker = ((cufftComplex*)(KERNEL_HARM[pIdx]))[row*stackStrd + col];           //
   cufftComplex inp = ((cufftComplex*)inf->d_iData)[(pln*noSteps+step)*stackStrd + col];   //
 
   // Do the multiplication
@@ -164,12 +164,8 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
   //  {
   //    if      ( batch->flag & FLAG_ITLV_ROW )
   //      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemRow, sizeof(cufftCallbackStoreC)),  "");
-  //    else if ( batch->flag & FLAG_ITLV_PLN )
-  //      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemPln, sizeof(cufftCallbackStoreC)),  "");
   //    else
-  //    {
-  //      fprintf(stderr,"ERROR: invalid memory lay out. Line %i in %s\n", __LINE__, __FILE__);
-  //    }
+  //      CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storeInmemPln, sizeof(cufftCallbackStoreC)),  "");
   //  }
   //  else
   //  {
@@ -256,9 +252,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 #if CUDA_VERSION >= 6050
             if ( batch->flag & FLAG_SS_INMEM  )
             {
-              //rVals* rVal;
-              //rVal = &((*batch->rSearch)[0][0]);
-              rVals* rVal = &batch->rArrays[1][0][0];
+              rVals* rVal = &batch->rValues[0][0];
 
               printf("\nRval: %i  adressL %p  \n", rVal->step, &rVal->step );
 
@@ -332,8 +326,6 @@ void cpyPowers( T* __restrict__ dst, size_t  dpitch, T* __restrict__ src, size_t
 template<typename T>
 void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  rVals* rVal;
-
   T* dst;
   T* src;
   size_t  dpitch;
@@ -352,9 +344,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
   for ( int step = 0; step < batch->noSteps; step++ )
   {
-    //rVal = &((*batch->rInput)[step][0]);
-    //rVal = &((*batch->rConvld)[step][0]);
-    rVals* rVal = &batch->rArrays[2][0][0];
+    rVals* rVal = &batch->rValues[step][0];
 
     if ( rVal->numrs )
     {
@@ -365,19 +355,15 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
         src     = ((T*)cStack->d_plainPowers)  + cStack->strideFloat*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
         spitch  = cStack->strideFloat*batch->noSteps*powSz;
       }
-      else if ( batch->flag & FLAG_ITLV_PLN )
-      {
-        src     = ((T*)cStack->d_plainPowers)  + cStack->strideFloat*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
-      }
       else
       {
-        fprintf(stderr,"ERROR: Invalid interleaving, on line %i in %s.", __LINE__, __FILE__);
+        src     = ((T*)cStack->d_plainPowers)  + cStack->strideFloat*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
       }
 
       //CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, cStack->fftPStream ),"Error calling cudaMemcpy2DAsync after IFFT.");
 
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0), "");
-      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->strmSearch ),"Error calling cudaMemcpy2DAsync after IFFT.");
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp, 0), "");
+      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Error calling cudaMemcpy2DAsync after IFFT.");
 
       //cpyPowers<T>(dst, dpitch, src, spitch,  width,  height, batch->strmSearch );
 
@@ -388,16 +374,16 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
     FOLD // Synchronisation  .
     {
-      cudaEventRecord(cStack->ifftMemComp, batch->strmSearch);
+      cudaEventRecord(cStack->ifftMemComp, batch->srchStream);
     }
   }
 }
 
 #endif
 
-void multiplyBatch(cuFFdotBatch* batch, int rIdx)
+void multiplyBatch(cuFFdotBatch* batch)
 {
-  if ( batch->rArrays[rIdx][0][0].numrs )
+  if ( batch->rValues[0][0].numrs )
   {
     nvtxRangePush("Multiply");
 #ifdef STPMSG
@@ -586,9 +572,9 @@ void multiplyBatch(cuFFdotBatch* batch, int rIdx)
   }
 }
 
-void IFFTBatch(cuFFdotBatch* batch, int rIdx)
+void IFFTBatch(cuFFdotBatch* batch)
 {
-  if ( batch->rArrays[rIdx][0][0].numrs ) // Inverse FFT the batch  .
+  if ( batch->rValues[0][0].numrs ) // Inverse FFT the batch  .
   {
     nvtxRangePush("IFFT");
 
@@ -662,8 +648,6 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
 #endif
           }
 
-          rVals* rVal = &batch->rArrays[rIdx][0][0];
-
           FOLD // Set store FFT callback  .
           {
             if ( batch->flag & FLAG_CUFFT_CB_OUT )
@@ -702,13 +686,13 @@ void IFFTBatch(cuFFdotBatch* batch, int rIdx)
   }
 }
 
-void copyToInMemPln(cuFFdotBatch* batch, int rIdx)
+void copyToInMemPln(cuFFdotBatch* batch)
 {
-  if ( batch->rArrays[rIdx][0][0].numrs )
+  if ( batch->rValues[0][0].numrs )
   {
     if ( batch->flag & FLAG_SS_INMEM )
     {
-      // Copy back data  (out of order)  .
+      // Copy back data
       for (int ss = 0; ss < batch->noStacks; ss++)
       {
         int sIdx;
@@ -747,19 +731,17 @@ void copyToInMemPln(cuFFdotBatch* batch, int rIdx)
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plain
  */
-void convolveBatch(cuFFdotBatch* batch, int rIdx)
+void convolveBatch(cuFFdotBatch* batch)
 {
-  //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-
   // Multiply
-  if ( batch->rArrays[rIdx][0][0].numrs )
+  if ( batch->rValues[0][0].numrs )
   {
     nvtxRangePush("Multiply");
 #ifdef STPMSG
     printf("\tMultiply & FFT\n");
 #endif
 
-    if ( batch->flag & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback  .
+    if ( batch->flag & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback (in my testing this is VERY slow!)  .
     {
 #ifdef STPMSG
       printf("\t\tMultiply with CUFFT\n");
@@ -803,7 +785,6 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
             {
               // Have to wait for search to finish reading data
               CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-
             }
 
             if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
@@ -937,8 +918,13 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
 #ifdef STPMSG
                   printf("\t\t\t\tSynchronisation\n");
 #endif
-                  cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
-                  cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
+
+                  // Wait for multiplication to finish
+                  cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,   0);
+                  cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,    0);
+
+                  // Wait for previous search to finish
+                  cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,  0);
 
                   if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
                   {
@@ -978,8 +964,6 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
                       cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 #endif
                     }
-
-                    rVals* rVal = &batch->rArrays[rIdx][0][0];
 
                     FOLD // Set store FFT callback  .
                     {
@@ -1067,7 +1051,7 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
   //  }
 
   // IFFT  .
-  if ( batch->rArrays[rIdx][0][0].numrs )
+  if ( batch->rValues[0][0].numrs )
   {
     if ( !( (batch->flag & FLAG_CONV) && (batch->flag & FLAG_MUL_STK) ) )
     {
@@ -1101,8 +1085,13 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
 #ifdef STPMSG
           printf("\t\t\t\tSynchronisation\n");
 #endif
-          cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp, 0);
-          cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,  0);
+
+          // Wait for multiplication to finish
+          cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,   0);
+          cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,    0);
+
+          // Wait for previous search to finish
+          cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,  0);
 
           if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
           {
@@ -1142,8 +1131,6 @@ void convolveBatch(cuFFdotBatch* batch, int rIdx)
               cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 #endif
             }
-
-            rVals* rVal = &batch->rArrays[rIdx][0][0];
 
             FOLD // Set store FFT callback  .
             {

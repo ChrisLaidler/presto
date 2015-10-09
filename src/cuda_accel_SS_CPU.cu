@@ -128,14 +128,14 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 
                   FOLD // Calculate index  .
                   {
-                    if        ( FLAGS & FLAG_ITLV_PLN )
+                    if        ( FLAGS & FLAG_ITLV_ROW )
                     {
-                      iy2 = ( iy1 + step * hInf->height ) * hInf->inpStride ;
+                      ix2 = ix1 + step    * hInf->inpStride;
+                      iy2 = iy1 * noSteps * hInf->inpStride;
                     }
                     else
                     {
-                      ix2 = ix1 + step    * hInf->inpStride ;
-                      iy2 = iy1 * noSteps * hInf->inpStride;
+                      iy2 = ( iy1 + step * hInf->height ) * hInf->inpStride ;
                     }
                   }
 
@@ -183,13 +183,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                 {
                   if ( candLists[stage][step].value > batch->sInf->powerCut[stage] )
                   {
-//                    rVals* rVal;
-//#ifdef SYNCHRONOUS
-//                    rVal = &((*batch->rConvld)[step][0]);
-//#else
-//                    rVal = &((*batch->rSearch)[step][0]);
-//#endif
-                    rVals* rVal = &batch->rArrays[4][step][0];
+                    rVals* rVal = &batch->rValues[step][0];
 
                     int numharm   = (1<<stage);
                     double rr     = rVal->drlo + ix *  ACCEL_DR ;
