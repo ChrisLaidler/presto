@@ -1413,7 +1413,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
           sprintf(strBuff,"%i.0.2.%i FFT Input", device, i);
           nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
-          printf("cudaStreamCreate: %s\n", strBuff);
+          //printf("cudaStreamCreate: %s\n", strBuff);
         }
       }
 
@@ -1423,7 +1423,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
         sprintf(strBuff,"%i.0.4.%i FFT Plain", device, i);
         nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
-        printf("cudaStreamCreate: %s\n", strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
 
@@ -1947,7 +1947,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
         sprintf(strBuff,"%i.%i.0.0 Batch Input", batch->device, no);
         nvtxNameCudaStreamA(batch->inpStream, strBuff);
-        printf("cudaStreamCreate: %s\n", strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
 
         // Stack input
         if ( !(batch->flag & CU_NORM_CPU)  )
@@ -1959,7 +1959,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inptStream), "Creating input data multStream for stack");
             sprintf(strBuff,"%i.%i.0.%i Stack Input", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->inptStream, strBuff);
-            printf("cudaStreamCreate: %s\n", strBuff);
+            //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -1981,7 +1981,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             sprintf(strBuff,"%i.0.2.%i FFT Input", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
             kStack->fftIStream = cStack->fftIStream;
-            printf("cudaStreamCreate: %s\n", strBuff);
+            //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -1993,7 +1993,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
           sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->device, no);
           nvtxNameCudaStreamA(batch->multStream, strBuff);
-          printf("cudaStreamCreate: %s\n", strBuff);
+          //printf("cudaStreamCreate: %s\n", strBuff);
         }
 
         if ( (batch->flag & FLAG_MUL_STK) || (batch->flag & FLAG_MUL_PLN)  )
@@ -2005,7 +2005,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
             sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->multStream, strBuff);
-            printf("cudaStreamCreate: %s\n", strBuff);
+            //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -2027,7 +2027,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             sprintf(strBuff,"%i.0.4.%i FFT Plain", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
             kStack->fftPStream = cStack->fftPStream;
-            printf("cudaStreamCreate: %s\n", strBuff);
+            //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
@@ -2037,7 +2037,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->srchStream), "Creating strmSearch for batch.");
         sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->device, no);
         nvtxNameCudaStreamA(batch->srchStream, strBuff);
-        printf("cudaStreamCreate: %s\n", strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
 
@@ -2829,8 +2829,6 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
   printf("  Done (%s)\n", __FUNCTION__);
 #endif
 }
-
-
 
 void finish_Search(cuFFdotBatch* batch)
 {
@@ -3794,7 +3792,6 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
  * @param numindep
  * @return
  */
-//cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long long* numindep)
 void initCuAccel(cuSearch* sSrch )
 {
   //cuMemInfo* aInf = new cuMemInfo;
