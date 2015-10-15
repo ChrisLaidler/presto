@@ -80,7 +80,7 @@ __host__  void mult10(cuFFdotBatch* batch)
             exit(EXIT_FAILURE);
           }
           else
-            d_plainData   = cPlain->d_plainData + step * cHInfo->height * cStack->strideCmplx;   // Shift by plain height
+            d_plainData   = cPlain->d_planeMult + step * cHInfo->height * cStack->strideCmplx;   // Shift by plain height
 
           if ( batch->flag & FLAG_TEX_MUL )
             mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_plainData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);

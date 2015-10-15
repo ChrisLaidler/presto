@@ -228,82 +228,22 @@ void* initGPU(void* ptr)
     sprintf(txt,"Init device %02i", device );
     nvtxRangePush(txt);
 
+    //size_t free, total;
     //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
     cudaFree(0);
 
     nvtxRangePop();
   }
-}
 
-void* initGPUs(void* ptr)
-{
-  gpuSpecs* gSpec = (gpuSpecs*)ptr;
-
-  int currentDevvice, deviceCount;
-  size_t free, total;
-  char txt[1024];
-
-  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
-
-  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
-  {
-    int device = gSpec->devId[dIdx];
-
-
-//    int* tmp = (int*)device;
-//
-//    if (0)
-//    {
-//      pthread_t thread;
-//      int  iret1 = 0;
-//      iret1 = pthread_create( &thread, NULL, initGPUs, (void*) gSpec);
-//
-//      if(iret1)
-//      {
-//        fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
-//        initGPUs((void*)gSpec);
-//      }
-//    }
-//    else
-//    {
-//      initGPUs((void*)gSpec);
-//    }
-
-    //
-    //
-    //    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-    //
-    //    // Check if the the current device is 'device'
-    //    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-    //    if ( currentDevvice != device)
-    //    {
-    //      fprintf(stderr, "ERROR: Device not set.\n");
-    //      exit(EXIT_FAILURE);
-    //    }
-    //
-    //    FOLD // call something to initialise the device
-    //    {
-    //      sprintf(txt,"Init device %02i", device );
-    //      nvtxRangePush(txt);
-    //
-    //      //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-    //
-    //      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-    //      cudaFree(0);
-    //
-    //      break;
-    //
-    //      nvtxRangePop();
-    //    }
-  }
+  return NULL;
 }
 
 void initGPUs(gpuSpecs* gSpec)
 {
-
   int currentDevvice, deviceCount;
-  size_t free, total;
   char txt[1024];
 
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
@@ -325,49 +265,16 @@ void initGPUs(gpuSpecs* gSpec)
       sprintf(txt,"Init device %02i", device );
       nvtxRangePush(txt);
 
+      //size_t free, total;
       //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+
       //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+
       cudaFree(0);
 
       nvtxRangePop();
     }
-
-//    int* tmp = (int*)device;
-//
-//    if (1)
-//    {
-//      pthread_t thread;
-//      int  iret1 = 0;
-//      iret1 = pthread_create( &thread, NULL, initGPU, (void*) tmp);
-//
-//      if(iret1)
-//      {
-//        fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
-//        initGPUs((void*)gSpec);
-//      }
-//    }
-//    else
-//    {
-//      initGPUs((void*)gSpec);
-//    }
   }
-
-  //  if (0)
-  //  {
-  //    pthread_t thread;
-  //    int  iret1 = 0;
-  //    iret1 = pthread_create( &thread, NULL, initGPUs, (void*) gSpec);
-  //
-  //    if(iret1)
-  //    {
-  //      fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
-  //      initGPUs((void*)gSpec);
-  //    }
-  //  }
-  //  else
-  //  {
-  //    initGPUs((void*)gSpec);
-  //  }
 }
 
 void listDevices()

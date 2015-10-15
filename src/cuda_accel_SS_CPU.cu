@@ -21,7 +21,9 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   printf("\t\tSum & search CPU\n");
 #endif
 
+#ifdef TIMING // Timing  .
   struct timeval start, end;
+#endif
 
   const int noStages    = batch->noHarmStages;
   const int noHarms     = batch->noHarms;
@@ -56,8 +58,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       {
         int stgIDX = batch->stageIdx[harm];
 
-        pwerPlnF[stgIDX] = &((float*)batch->h_retData)[bace];
-        pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_retData)[bace];
+        pwerPlnF[stgIDX] = &((float*)batch->h_retData1)[bace];
+        pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_retData1)[bace];
 
         bace += batch->hInfos[harm].height * batch->stacks[batch->hInfos[harm].stackNo].strideFloat * noSteps;
       }

@@ -156,11 +156,10 @@ CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 #Change CUDA_ARCH to the correct form
 CUDA_ARCH  := $(foreach root, $(CUDA_ARCH), -gencode arch=compute_$(root),code=sm_$(root))
 #CUDA_ARCH  := $(foreach root, $(CUDA_ARCH), -arch compute_$(root))
-$(info CUDA_ARCH: ${CUDA_ARCH})
 
 CUDA_PATH  = /usr/local/cuda
 
-CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt -lcufft_static -lculibos
+CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
 CUDAINC    = -I$(CUDA_PATH)/include
 
 NVCCFLAGS  = $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
@@ -179,8 +178,8 @@ ifeq ($(DEBUG),1)
   CFLAGS        += -O0 -ggdb  -DDEBUG
   LFLAGS        += -O0 -ggdb  -DDEBUG
 
-  NVCCFLAGS     += -g -O0 -DDEBUG
-  NVCLFLAGS     += -g -O0 -DDEBUG
+  NVCCFLAGS     += -g -G -O0 -DDEBUG
+  NVCLFLAGS     += -g -G -O0 -DDEBUG
 
   DEBUG_TARGET  =debug
   POSTFIX       =_debug
@@ -236,7 +235,10 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
-  $(info • Compileing with CUDA)
+  
+  CUDA_VER    = $(shell $(NVCC) -V | grep release | cut -f 5 -d ' ' | tr -d ,)
+  
+  $(info • Compileing with CUDA version $(CUDA_VER))
 
   NVCC_SRCS  	= $(wildcard *.cu)
   NVCC_OBS   	= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
@@ -259,6 +261,14 @@ ifeq ($(WITH_CUDA),yes)
   CUACCL     	= -lcuaccel$(POSTFIX)
 
   GPUOUTP    	= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+
+	# Check for CUDA 6.5 for CUFFT callbacks 
+ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
+  CUDALIBS  	+= -lcufft_static -lculibos
+else
+  CUDALIBS		+= -lcufft
+endif
+
 else
   NVCC        = $(CC)
   NVCC_OBS    =

@@ -1127,13 +1127,13 @@ int main(int argc, char *argv[])
                         float *powers;
                         if      ( trdBatch->flag & FLAG_ITLV_ROW )
                         {
-                          cmplxData = &plan->d_plainData[(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          powers    = &plan->d_plainPowers[(y*trdBatch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
+                          cmplxData = &plan->d_planeMult[(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+                          powers    = &plan->d_planePowr[(y*trdBatch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
                         }
                         else
                         {
-                          cmplxData = &plan->d_plainData[(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          powers    = &plan->d_plainPowers[(y + step*cHInfo->height)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
+                          cmplxData = &plan->d_planeMult[(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+                          powers    = &plan->d_planePowr[(y + step*cHInfo->height)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
                         }
 
                         if      ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
@@ -1259,21 +1259,21 @@ int main(int argc, char *argv[])
 
                         if      ( trdBatch->retType & CU_CANDMIN  )
                         {
-                          candMin candM         = ((candMin*)trdBatch->h_retData)[idx];
+                          candMin candM         = ((candMin*)trdBatch->h_retData1)[idx];
                           sig                   = candM.power;
                           poww                  = candM.power;
                           iz                    = candM.z;
                         }
                         else if ( trdBatch->retType & CU_POWERZ_S   )
                         {
-                          candPZs candM          = ((candPZs*)trdBatch->h_retData)[idx];
+                          candPZs candM          = ((candPZs*)trdBatch->h_retData1)[idx];
                           sig                   = candM.value;
                           poww                  = candM.value;
                           iz                    = candM.z;
                         }
                         else if ( trdBatch->retType & CU_CANDBASC )
                         {
-                          accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData)[idx];
+                          accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData1)[idx];
                           poww                  = candB.sigma;
                           sig                   = candB.sigma;
                           iz                    = candB.z;

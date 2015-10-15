@@ -8,7 +8,8 @@
 #include <cufft.h>
 #include <cufftXt.h>
 
-#if CUDA_VERSION >= 7050 // Half precision
+//#if CUDA_VERSION >= 7050 // Half precision
+#if __CUDACC_VER__ >= 70500
 #include <cuda_fp16.h>
 #endif
 
@@ -358,8 +359,9 @@ typedef struct cuFFdot
     cuKernel*       kernel;             ///< A pointer to the kernel for this plain
 
     // pointers to device data
-    fcomplexcu*     d_plainData;        ///< A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
-    float*          d_plainPowers;      ///< A pointer to the powers for this stack
+    fcomplexcu*     d_planeMult;        ///< A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
+    fcomplexcu*     d_planeIFFT;        ///< A pointer to the first element of the complex f-∂f plain (Width, Stride and height determined by harmInf)
+    float*          d_planePowr;        ///< A pointer to the powers for this stack
     fcomplexcu*     d_iData;            ///< A pointer to the input data for this plain this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
     // Texture objects
@@ -399,8 +401,9 @@ typedef struct cuFfdotStack
 
     // Pointers to device memory
     fcomplexcu*     d_kerData;          ///< Kernel data for this stack
-    fcomplexcu*     d_plainData;        ///< Plain data for this stack
-    float*          d_plainPowers;      ///< Powers for this stack
+    fcomplexcu*     d_planeMult;        ///< Plain of complex data for multiplication
+    fcomplexcu*     d_planeIFFT;        ///< Plain of complex data for output of the iFFT
+    float*          d_planePowr;        ///< Plain of float data for the search
     fcomplexcu*     d_iData;            ///< Input data for this stack
 
     stackInfo*      d_sInf;             ///< Stack info structure on the device (usually in constant memory)
@@ -485,14 +488,18 @@ typedef struct cuFFdotBatch
     int             kerDataSize;        ///< The size of the plain data memory in bytes
 
     fcomplexcu*     d_kerData;          ///< Kernel data for all the stacks, generally this is only allocated once per device
-    fcomplexcu*     d_plainData;        ///< Plain data for all the stacks
-    float*          d_plainPowers;      ///< Powers for all the stack
+    fcomplexcu*     d_planeMult;        ///< Plain of complex data for multiplication
+    fcomplexcu*     d_planeIFFT;        ///< Plain of complex data for output of the iFFT
+    float*          d_planePowr;        ///< Plain of float data for the search
 
     int             retType;            ///< The type of output
     int             cndType;            ///< The type of output
 
-    void*           h_retData;          ///< The output
-    void*           d_retData;          ///< The output
+    void*           h_retData1;         ///< The output
+    void*           d_retData1;         ///< The output
+
+    void*           h_retData2;         ///< The output
+    void*           d_retData2;         ///< The output
 
     void*           h_candidates;       ///< Host memory for candidates
     void*           d_plainFull;        ///< Device memory for the in-mem f-∂f plain
@@ -500,8 +507,13 @@ typedef struct cuFFdotBatch
     fcomplexcu*     h_iData;            ///< Pointer to page locked host memory of Input data for t
     fcomplexcu*     d_iData;            ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
+#if CUDA_VERSION >= 6050
     cufftCallbackLoadC    h_ldCallbackPtr;
     cufftCallbackStoreC   h_stCallbackPtr;
+#else
+
+#endif
+
 
     int             noRArryas;          ///< The number of r value arrays
     rVals***        rArrays;            ///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
@@ -511,6 +523,7 @@ typedef struct cuFFdotBatch
     cudaStream_t    inpStream;          ///< CUDA stream for work on input data for the batch
     cudaStream_t    multStream;         ///< CUDA stream for multiplication
     cudaStream_t    srchStream;         ///< CUDA stream for summing and searching the data
+    cudaStream_t    resStream;          ///< CUDA stream for
 
     // TIMING events
     cudaEvent_t     iDataCpyInit;       ///< Copying input data to device

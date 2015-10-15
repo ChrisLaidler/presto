@@ -108,42 +108,42 @@ __host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult22_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 2:
     {
-      mult22_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 3:
     {
-      mult22_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 4:
     {
-      mult22_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 5:
     {
-      mult22_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 6:
     {
-      mult22_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 7:
     {
-      mult22_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 8:
     {
-      mult22_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     default:

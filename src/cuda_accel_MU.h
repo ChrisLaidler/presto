@@ -3,7 +3,8 @@
 #include <cufft.h>
 #include <cufftXt.h>
 
-#if CUDA_VERSION >= 7050 // Half precision
+//#if CUDA_VERSION >= 7050 // Half precision
+#if __CUDACC_VER__ >= 70500
 #include <cuda_fp16.h>
 #endif
 
@@ -30,11 +31,12 @@ extern "C"
 
 //======================================= CUFFT callbacks =================================================\\
 
+#if CUDA_VERSION >= 6050        // CUFFT callbacks only implimented in CUDA 6.5
+
 extern  __device__ cufftCallbackLoadC d_loadCallbackPtr;
 extern  __device__ cufftCallbackStoreC d_storePow_f;
 extern  __device__ cufftCallbackStoreC d_storeInmemRow;
 extern  __device__ cufftCallbackStoreC d_storeInmemPln;
-
 
 /** CFFT Callback function to multiply the input before the main IFFT
  *
@@ -85,6 +87,8 @@ __device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex 
  * @return
  */
 __device__ void CB_PowerOutInmem_PLN( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
+#endif
 
 /** Multiplication kernel - Just write 0 to all locations
  */

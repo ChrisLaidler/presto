@@ -72,6 +72,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
       {
         ffdot += noSteps*height*stride;
       }
+
     }
   }
 }
@@ -83,42 +84,42 @@ __host__  void mult30_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult30_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 2:
     {
-      mult30_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 3:
     {
-      mult30_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 4:
     {
-      mult30_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 5:
     {
-      mult30_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 6:
     {
-      mult30_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 7:
     {
-      mult30_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     case 8:
     {
-      mult30_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_plainData, batch->noHarms);
+      mult30_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noHarms);
       break;
     }
     default:

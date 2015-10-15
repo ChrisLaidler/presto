@@ -135,14 +135,14 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
     dimGrid.x = ceil(cStack->width                    / (float) ( CNV_DIMX ));
     dimGrid.y = ceil(cStack->height*batch->noSteps    / (float) ( CNV_DIMX ));
 
-    mult00_k<<<dimGrid, dimBlock, 0, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+    mult00_k<<<dimGrid, dimBlock, 0, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }
   else
   {
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = cStack->mulSlices;
 
-    mult01_k<<<dimGrid, dimBlock, 0, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+    mult01_k<<<dimGrid, dimBlock, 0, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }
 
 }
@@ -259,42 +259,42 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult02_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 2:
     {
-      mult02_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 3:
     {
-      mult02_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 4:
     {
-      mult02_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 5:
     {
-      mult02_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 6:
     {
-      mult02_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 7:
     {
-      mult02_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     case 8:
     {
-      mult02_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
     default:

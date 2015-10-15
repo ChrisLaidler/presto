@@ -265,7 +265,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
   T tR, tI;     // Response values
 
   T zT = z;
-  T rT = r;
+  //T rT = r;
 
   fcomplexcu inp;
   fcomplexcu ans;
@@ -491,8 +491,8 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
   const int idx       = iy * noR + ix;
   const int wrpNo     = floor(idx/32.0);
   const int sz        = 32 ; // noR * noZ - wrpNo * 32 ;
-  const int lane      = idx % sz;
-  const int oLane     = (lane+1) % sz;
+  //const int lane      = idx % sz;
+  //const int oLane     = (lane+1) % sz;
 
   curandState state;
 
@@ -626,7 +626,7 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
           //nBestZ = __shfl(lGlo.y,oLane);
 
           int2 tmpForExchIn, tmpForExchOut;
-          float tt = gBestP;
+          //float tt = gBestP;
 
           for ( int ln = 0; ln < 32; ln++) // Shuffle with all elements in the warp
           {
@@ -999,8 +999,6 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   //CUDA_SAFE_CALL(cudaEventRecord(pln->outInit, pln->stream),"Recording event: outInit");
   CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
   CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
-
-  int TMPP = 0;
 }
 
 template<typename T>
@@ -1021,15 +1019,16 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
   //    exit(EXIT_FAILURE);
   //  }
 
-  int16   rOff;
-  float16 norm;
-  int     off;
-  int datStart,  datEnd, noDat;
+  //int16   rOff;
+  //int     off;
+  //int datStart,  datEnd, noDat;
 
-  for( int h = 0; h < 16; h++)
-  {
-    rOff.val[h] = 0;
-  }
+//  for( int h = 0; h < 16; h++)
+//  {
+//    rOff.val[h] = 0;
+//  }
+
+  float16 norm;
 
   for( int h = 0; h < pln->noHarms; h++)
   {
@@ -1073,8 +1072,6 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
     CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, pln->noZ*pln->noR*sizeof(candOpt), cudaMemcpyDeviceToHost, pln->stream ), "Copying optimisation results back from the device.");
     CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
   }
-
-  int TMPP = 0;
 }
 
 void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ, int halfwidth)
@@ -1085,14 +1082,11 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
     rz_interp((fcomplex*)fft, noBins, centR, centZ, halfwidth, &ans);
   }
 
-  float *cuPowers;
   fcomplexcu *cuInp;
-  fcomplexcu *cpuInp;
   int     rOff, lodata;
   double factor;
   double log2 = log(2.0);
 
-  //halfwidth       = z_resp_halfwidth(fabs(centZ), HIGHACC);
   int noInp       = 2*halfwidth;
   lodata          = floor( centR ) - halfwidth ;
   rOff            = lodata - loR ;
@@ -1148,9 +1142,6 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
 
     // Call the kernel to normalise and spread the input data
     rz_interp_ker<<<dimGrid, dimBlock, 0, 0>>>(centR, centZ, cuInp, rOff, noInp, halfwidth, factor);
-
-    //cudaDeviceSynchronize();          // TMP
-    int TMPP = 0;
   }
 }
 
@@ -1292,13 +1283,14 @@ int addPlnToTree(candTree* tree, cuOptCand* pln)
   }
 
   nvtxRangePop();
+
+  return 0;
 }
 
 candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn)
 {
   nvtxRangePush("opt_cont");
 
-  int rep       = 0;
   int lrep      = 0;
   int noP       = 30;
   float snoop   = 0.3;
@@ -2119,12 +2111,12 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
   int ii;
   int *r_offset;
   fcomplex **data;
-  double r, z;
-  int noP;
-  float scale;
 
-  struct timeval start, end, start1, end1;
-  double timev1, timev2, timev3;
+  //double r, z;
+  //int noP;
+  //float scale;
+  //struct timeval start, end, start1, end1;
+  //double timev1, timev2, timev3;
 
   //printf("%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sig: %8.4f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
@@ -2151,9 +2143,6 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
   fft.nor       = obs->numbins;
   fft.idx       = obs->lobin;
   fft.rhi       = obs->lobin + obs->numbins;
-
-  if ( nn == 52 )
-    int tmp = 0;
 
   for ( int i=1; i <= maxHarms; i++ )
   {
@@ -2192,8 +2181,7 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
         if ( cand->numharm == 16 )
           sz = optSz16;
 
-        int numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / pln->noHarms ;
-
+        //int numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / pln->noHarms ;
         //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
 
         pln->halfWidth = 0;
@@ -2372,10 +2360,10 @@ void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
           double  sig         = 0; // can be a float
           int     numindep;
 
-          double sSig;
-          int     numindepS   = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) ;
-          float   sPower      = 0;
-          int     noS         = 0;
+          //double sSig;
+          //int     numindepS   = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) ;
+          //float   sPower      = 0;
+          //int     noS         = 0;
 
           cand->power         = 0;
           for( ii=0; ii < maxHarms; ii++ )
@@ -2488,8 +2476,6 @@ void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)
         //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
 
         opt_candBySwrm<float>(cand, &fft, pln, noP, sz,  rep++, nn );
-
-        int tmp = 0;
       }
 
       FOLD // Optimise derivatives  .

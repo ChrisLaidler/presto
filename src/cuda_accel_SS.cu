@@ -2,21 +2,6 @@
 
 #include <semaphore.h>
 
-/*
-#include <cub/cub.cuh>
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
-
-#include "cuda_accel_utils.h"
-#include "cuda_utils.h"
-
-extern "C"
-{
-#define __float128 long double
-#include "accel.h"
-}
- */
-
 #include <cufft.h>
 #include <algorithm>
 
@@ -843,9 +828,9 @@ void* processSearchResults(void* ptr)
   // Decrease the count number of running threads
   sem_post(&res->threasdInfo->running_threads);
 
-  FILE * myfile;                                    // TMPS
-  myfile = fopen ( "/home/chris/src.cvs", "a+" );   // TMPS
-  fseek(myfile, 0, SEEK_END);                       // TMPS
+//  FILE * myfile;                                    // TMPS
+//  myfile = fopen ( "/home/chris/src.cvs", "a+" );   // TMPS
+//  fseek(myfile, 0, SEEK_END);                       // TMPS
 
 #ifdef TIMING // Timing  .
   struct timeval start, end;
@@ -938,7 +923,8 @@ void* processSearchResults(void* ptr)
         {
           // This value is was above the threshold
           rr      = res->rLow + x * ACCEL_DR ;
-          procesCanidate(res, rr, zz, poww, sig, stage, numharm, myfile ) ;
+          //procesCanidate(res, rr, zz, poww, sig, stage, numharm, myfile ) ;
+          procesCanidate(res, rr, zz, poww, sig, stage, numharm ) ;
         }
       }
     }
@@ -961,7 +947,7 @@ void* processSearchResults(void* ptr)
     free (res);
   }
 
-  fclose(myfile);                                   // TMPS
+  //fclose(myfile);                                   // TMPS
 
   return NULL;
 }
@@ -1005,8 +991,17 @@ void processSearchResults(cuFFdotBatch* batch)
 
       // Copy data
       nvtxRangePush("memcpy");
-      memcpy(thrdDat->retData, batch->h_retData, batch->retDataSize);
+      if ( batch->flag & FLAG_SS_INMEM )
+        memcpy(thrdDat->retData, batch->h_retData2, batch->retDataSize);
+      else
+        memcpy(thrdDat->retData, batch->h_retData1, batch->retDataSize);
       nvtxRangePop();
+
+      FOLD // Synchronisation  .
+      {
+        // This will allow kernels to run while the CPU continues
+        CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: searchComp");
+      }
 
       thrdDat->SrchSz       = batch->SrchSz;
       thrdDat->cndData      = batch->h_candidates;
@@ -1065,11 +1060,6 @@ void processSearchResults(cuFFdotBatch* batch)
     }
 
     nvtxRangePop();
-
-    FOLD // Synchronisation  .
-    {
-      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: searchComp");
-    }
   }
 }
 
@@ -1079,8 +1069,8 @@ void getResults(cuFFdotBatch* batch)
   {
     FOLD // Synchronisations  .
     {
-      cudaStreamWaitEvent(batch->srchStream, batch->searchComp,  0);
-      cudaStreamWaitEvent(batch->srchStream, batch->processComp, 0);
+      cudaStreamWaitEvent(batch->resStream, batch->searchComp,  0);
+      cudaStreamWaitEvent(batch->resStream, batch->processComp, 0);
     }
 
 #ifdef TIMING // Timing event  .
@@ -1096,13 +1086,13 @@ void getResults(cuFFdotBatch* batch)
       if      ( batch->retType & CU_STR_PLN )
       {
         if ( batch->flag & FLAG_CUFFT_CB_OUT )
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainPowers, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->srchStream), "Failed to copy results back");
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData1, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
         else
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainData, batch->plnDataSize, cudaMemcpyDeviceToHost, batch->srchStream), "Failed to copy results back");
+          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData1, batch->d_planeIFFT, batch->plnDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
       else
       {
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize, cudaMemcpyDeviceToHost, batch->srchStream), "Failed to copy results back");
+        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData1, batch->d_retData1, batch->retDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
@@ -1110,7 +1100,7 @@ void getResults(cuFFdotBatch* batch)
 
     FOLD // Synchronisations  .
     {
-      CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->srchStream),"Recording event: readComp");
+      CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->resStream),"Recording event: readComp");
     }
   }
 }
@@ -1143,7 +1133,7 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
   }
 }
 
-void sumAndSearchOrr(cuFFdotBatch* batch)        // Function to call to SS and process data in normal steps  .
+void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and process data in normal steps  .
 {
   FOLD // Sum and search the IFFT'd data  .
   {
@@ -1232,7 +1222,7 @@ void sumAndMax(cuFFdotBatch* batch)
 //
 //  nvtxRangePush("Add & Max");
 //
-//  if ( (batch->state & HAVE_SS) || (batch->state & HAVE_MULT) ) // previous plain has data data so sum and search  .
+//  if ( (batch->state & HAVE_SS) || (batch->state & HAVE_MULT) ) // previous plane has data data so sum and search  .
 //  {
 //    int noStages = log(batch->noHarms)/log(2) + 1;
 //
@@ -1246,7 +1236,7 @@ void sumAndMax(cuFFdotBatch* batch)
 //      }
 //    }
 //
-//    if ( batch->state & HAVE_MULT ) // We have a convolved plain so call Sum & search  kernel .
+//    if ( batch->state & HAVE_MULT ) // We have a convolved plane so call Sum & search  kernel .
 //    {
 //      FOLD // Call the main sum & search kernel
 //      {
@@ -1393,8 +1383,11 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
 #endif
 
-  // Cycle r values  .
+  // Cycle r values
   cycleRlists(batch);
+
+  // Cycle r output
+  cycleOutput(batch);
 }
 
 void inmemSumAndSearch(cuSearch* cuSrch)
@@ -1451,7 +1444,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
       {
         int noTrd;
         sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-        printf("\rSearching  in-mem GPU plain. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+startBin)/totaBinsl*100.0, noTrd );
+        printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+startBin)/totaBinsl*100.0, noTrd );
         fflush(stdout);
       }
 
@@ -1463,7 +1456,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     }
   }
 
-  printf("\rSearching  in-mem GPU plain. %5.1f%%                                                                                    \n\n", 100.0 );
+  printf("\rSearching  in-mem GPU plane. %5.1f%%                                                                                    \n\n", 100.0 );
 
   //printf("Searching Done\n");
 

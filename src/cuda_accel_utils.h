@@ -493,6 +493,14 @@ void setActiveBatch(cuFFdotBatch* batch, int rIdx = 0);
  */
 void cycleRlists(cuFFdotBatch* batch);
 
+
+/** Cycle the arrays of r-values  .
+ *
+ * @param batch
+ */
+void cycleOutput(cuFFdotBatch* batch);
+
+
 /** Return the first value of 2^n >= x
  */
 __host__ __device__ long long next2_to_n_cu(long long x);

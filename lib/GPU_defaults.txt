@@ -3,7 +3,7 @@
 
 # Interleaving
 #  IL_ROW   or   IL_PLN
-IL_ROW			# Last Edited by run time script
+IL_ROW
 
 ######### Kernel #########
 
@@ -24,16 +24,16 @@ FFT_CPU
 
 # Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
-FLAG_MUL_AA			# Last Edited by run time script
+FLAG_MUL_AA
 
 # Other Convolve options
 # FLAG_TEX_MUL
 
 # The number of slices to separate the multiplication kernel into
-MUL_SLICES	3			# Last Edited by run time script
+MUL_SLICES	3
 
 # The size of chunks to use in the multiplication kernel
-MUL_CHUNK	9			# Last Edited by run time script
+MUL_CHUNK	9
 
 # Multiply and IFFT
 # FLAG_SEP  FLAG_CONV
@@ -69,17 +69,17 @@ FLAG_HALF
 
 # Use separate CPU threads to process results
 # FLAG_THREAD   OR      FLAG_SEQ               # Threading is on by default
-FLAG_THREAD
+# FLAG_THREAD
 
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
-SS_10			# Last Edited by run time script
+SS_INMEM
 
 
-SS_SLICES	3			# Last Edited by run time script
+SS_SLICES	3
 
-SS_CHUNK	9			# Last Edited by run time script
+SS_CHUNK	9
 
 
 ###### Candidates ########
@@ -102,12 +102,12 @@ optpln04 10
 optpln05 0
 optpln06 0
 
-optpln01 20
-optpln02 0
-optpln03 0
-optpln04 0
-optpln05 0
-optpln06 0
+# optpln01 20
+# optpln02 0
+# optpln03 0
+# optpln04 0
+# optpln05 0
+# optpln06 0
 
 #optSz01 4
 #optSz02 4

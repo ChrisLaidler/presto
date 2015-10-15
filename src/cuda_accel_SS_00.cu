@@ -135,6 +135,7 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
               fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
               tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
             }
+
           }
         }
 
@@ -230,11 +231,19 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx = i;
-    powers.val[i]   = batch->plains[idx].d_plainPowers;
-    cmplx.val[i]    = batch->plains[idx].d_plainData;
+    powers.val[i]   = batch->plains[idx].d_planePowr;
+
+    if ( batch->flag & FLAG_CUFFT_CB_OUT )
+    {
+      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+    }
+    else
+    {
+      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+    }
   }
 
-  add_and_searchCU00_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  add_and_searchCU00_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData1, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
 template<uint FLAGS>
@@ -247,11 +256,19 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx         = batch->stageIdx[i]; // Stage order
-    powers.val[i]   = batch->plains[idx].d_plainPowers;
-    cmplx.val[i]    = batch->plains[idx].d_plainData;
+    powers.val[i]   = batch->plains[idx].d_planePowr;
+
+    if ( batch->flag & FLAG_CUFFT_CB_OUT )
+    {
+      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+    }
+    else
+    {
+      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+    }
   }
 
-  add_and_searchCU01_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  add_and_searchCU01_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData1, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
 template<uint FLAGS>
@@ -264,8 +281,16 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx         = batch->stageIdx[i]; // Stage order
-    powers.val[i]   = batch->plains[idx].d_plainPowers;
-    cmplx.val[i]    = batch->plains[idx].d_plainData;
+    powers.val[i]   = batch->plains[idx].d_planePowr;
+
+    if ( batch->flag & FLAG_CUFFT_CB_OUT )
+    {
+      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+    }
+    else
+    {
+      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+    }
   }
 
   //  switch (batch->ssChunk)
@@ -355,7 +380,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   //      exit(EXIT_FAILURE);
   //  }
 
-  add_and_searchCU02_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  add_and_searchCU02_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData1, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
 __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )

@@ -6,7 +6,6 @@
 #define CUDA  // TMP
 
 
-
 #ifdef USEMMAP
 #include <unistd.h>
 #include <sys/mman.h>
@@ -401,7 +400,7 @@ int main(int argc, char *argv[])
           gettimeofday(&start, NULL);
         }
 
-        FOLD // init GPU kernels and plains  .
+        FOLD // init GPU kernels and planes  .
         {
           cuSrch    = initCuSearch(&sSpec, &gSpec, NULL);
           master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
@@ -416,7 +415,7 @@ int main(int argc, char *argv[])
           else
             startr  = sSpec.fftInf.rlo;
 
-          //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of plains to make
+          //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of planes to make
 
           if ( maxxx < 0 )
             maxxx = 0;
@@ -427,13 +426,13 @@ int main(int argc, char *argv[])
           printf("GPU loop will process %i steps\n", maxxx);
 #endif
 
-          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f plains spread across %i device(s) .\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
+          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s) .\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
 
           gettimeofday(&end, NULL);
           gpuKerTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
           if      ( master->flag & FLAG_SS_INMEM     )
-            sprintf(srcTyp, "Generating in-mem GPU plain");
+            sprintf(srcTyp, "Generating in-mem GPU plane");
           else
             sprintf(srcTyp, "GPU search");
         }
@@ -442,7 +441,7 @@ int main(int argc, char *argv[])
         {
           gettimeofday(&end, NULL);
           long long initTimeG = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-          printf("GPU initialisation %.3fs \n", initTimeG*1e-6);
+          //printf("GPU initialisation %.3fs \n", initTimeG*1e-6);
         }
 
         FOLD //                                 ---===== Main Loop =====---  .
@@ -488,7 +487,7 @@ int main(int argc, char *argv[])
 
                 if ( firstStep + (int)trdBatch->noSteps >= maxxx ) // End case (there is some overflow)  .
                 {
-                  // TODO: there are a number of families we don't need to run see if we can use 'setPlainPointers(trdBatch)'
+                  // TODO: there are a number of families we don't need to run see if we can use 'setplanePointers(trdBatch)'
                   // To see if we can do less work on the last step
                   rest = maxxx - firstStep;
                 }
@@ -531,9 +530,17 @@ int main(int argc, char *argv[])
               }
 
 #ifndef STPMSG
-              int noTrd;
-              sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-              printf("\r%s  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", srcTyp, firstStep/(float)maxxx*100.0, noTrd );
+              if      ( master->flag & FLAG_SS_INMEM     )
+              {
+                printf("\rGenerating in-mem GPU plane  %5.1f%%", firstStep/(float)maxxx*100.0);
+              }
+              else
+              {
+                int noTrd;
+                sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+                printf("\rGPU search  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", firstStep/(float)maxxx*100.0, noTrd);
+              }
+              //printf("\r%s  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", srcTyp, firstStep/(float)maxxx*100.0, noTrd );
               fflush(stdout);
 #endif
             }
@@ -547,7 +554,7 @@ int main(int argc, char *argv[])
                 lastrs[step]  = 0;
               }
 
-              // Finish searching the plains, this is required because of the out of order asynchronous calls
+              // Finish searching the planes, this is required because of the out of order asynchronous calls
               for ( step = 0 ; step < trdBatch->noRArryas; step++ )
               {
                 search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
@@ -1178,9 +1185,9 @@ int main(int argc, char *argv[])
   printf("     Prep time: %.3f sec\n", prepTime     * 1e-6 );
   printf("  CUDA Context: %.3f sec\n", contextInit  * 1e-6 );
   if ( cmd->cpuP )
-    printf("    CPU search: %.3f sec\n", cupTime      * 1e-6 );
+    printf("    CPU search: %.3f sec\n", cupTime    * 1e-6 );
   if ( cmd->gpuP )
-    printf("    GPU search: %.3f sec\n", gpuTime      * 1e-6 );
+    printf("    GPU search: %.3f sec\n", gpuTime    * 1e-6 );
   printf("  Optimization: %.3f sec\n", optTime      * 1e-6 );
 #endif
 
