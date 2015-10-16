@@ -487,7 +487,7 @@ int main(int argc, char *argv[])
 
                 if ( firstStep + (int)trdBatch->noSteps >= maxxx ) // End case (there is some overflow)  .
                 {
-                  // TODO: there are a number of families we don't need to run see if we can use 'setplanePointers(trdBatch)'
+                  // TODO: There are a number of families we don't need to run see if we can use 'setplanePointers(trdBatch)'
                   // To see if we can do less work on the last step
                   rest = maxxx - firstStep;
                 }
@@ -881,7 +881,7 @@ int main(int argc, char *argv[])
               exit(EXIT_FAILURE);
             }
             int currentDevvice;
-            CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+            CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
             CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
             if (currentDevvice != device)
             {

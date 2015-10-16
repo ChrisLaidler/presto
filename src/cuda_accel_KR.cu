@@ -447,7 +447,7 @@ int createStackKernel(cuFfdotStack* cStack)
     init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_RDR);
 
     // Run message
-    CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+    CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
   }
 
   return 0;
@@ -488,7 +488,7 @@ int createStackKernels(cuFfdotStack* cStack)
     init_kernels_stack<<<dimGrid, dimBlock>>>((float2*) cStack->d_kerData, cStack->width, cStack->strideCmplx, cStack->height, cStack->noInStack , startR, zmax);
 
     // Run message
-    CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+    CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
   }
 
   return 0;
@@ -511,7 +511,7 @@ int createStackKernels(cuFfdotStack* cStack)
 //      init_kernels<<<dimGrid, dimBlock>>>(cKer->d_kerData, cKer->maxZ, cKer->width, cKer->noZ, cKer->noR );
 //
 //      // Run message
-//      CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+//      CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
 //    }
 //
 //    return 0;

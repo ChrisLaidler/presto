@@ -168,12 +168,12 @@ __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element
  */
 void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
-  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "");
+  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
 
   if (  (batch->flag & FLAG_SS_INMEM) && ( batch->flag & FLAG_HALF) )
   {
 #if __CUDACC_VER__ >= 70500
-    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "");
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
@@ -181,7 +181,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
   }
   else
   {
-    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC)),  "");
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
   }
 
 }
@@ -435,7 +435,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
         src     = ((Tin*)cStack->d_planePowr)  + cStack->strideFloat*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
       }
 
-      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Error calling cudaMemcpy2DAsync after IFFT.");
+      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
     }
   }
 }
@@ -550,7 +550,7 @@ void multStack(cuFFdotBatch* batch, cuFfdotStack* cStack, int sIdx, cuFfdotStack
     }
 
     // Run message
-    CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch (mult7)");
+    CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch (mult7)");
   }
 
   FOLD // Synchronisation  .
@@ -630,7 +630,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             mult30_f(batch->multStream, batch);
 
             // Run message
-            CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+            CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
           }
 
           FOLD // Synchronisation  .
@@ -852,7 +852,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
             cmplxToPln( batch, cStack );
           }
 
-          CUDA_SAFE_CALL(cudaGetLastError(), "Error at IFFT - copyToInMemPln");
+          CUDA_SAFE_CALL(cudaGetLastError(), "At IFFT - copyToInMemPln");
         }
 
         FOLD // Synchronisation  .
@@ -939,7 +939,7 @@ void convolveBatch(cuFFdotBatch* batch)
             mult30_f(batch->multStream, batch);
 
             // Run message
-            CUDA_SAFE_CALL(cudaGetLastError(), "Error at kernel launch");
+            CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
           }
 
           FOLD // Synchronisation  .

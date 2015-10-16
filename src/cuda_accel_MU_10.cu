@@ -88,7 +88,7 @@ __host__  void mult10(cuFFdotBatch* batch)
             mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->d_kerData);
 
           // Run message
-          CUDA_SAFE_CALL(cudaGetLastError(), "Error at multiplication kernel launch");
+          CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");
         }
       }
     }

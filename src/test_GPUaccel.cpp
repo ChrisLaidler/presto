@@ -902,7 +902,7 @@ int main(int argc, char *argv[])
 
             // Copy data from device
             CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->mInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
-            //CUDA_SAFE_CALL(cudaDeviceSynchronize(),"Error synchronising");
+            //CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Synchronising using cudaEventSynchronize");
 
             for ( int row=0; row < sinf->numkern; row++  )
             {
@@ -1839,7 +1839,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
           }
           int currentDevvice;
-          CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+          CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
           CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
           if (currentDevvice != device)
           {

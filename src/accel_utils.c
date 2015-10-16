@@ -525,7 +525,6 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
 }
 
 
-// FIXME: this shouldn't be a #define, or it shouldn't be here
 void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
 {
   int ii;

@@ -1161,7 +1161,7 @@ void generatePln(cand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "Synchronising using cudaEventSynchronize.");
     nvtxRangePop();
   }
 
@@ -1549,7 +1549,7 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "Synchronising using cudaEventSynchronize.");
     nvtxRangePop();
   }
 
@@ -1637,7 +1637,7 @@ void opt_candBySwrm(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doub
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "ERROR: copying result from device to host.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "Synchronising using cudaEventSynchronize");
     nvtxRangePop();
   }
 

@@ -203,7 +203,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   int alignment       = 0;
   float plnElsSZ      = 0;
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initKernel.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initKernel.");
 
   FOLD // See if we can use the cuda device  and whether it may be possible to do GPU in-mem search .
   {
@@ -215,7 +215,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       return 0;
     }
     int currentDevvice;
-    CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+    CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
     CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
     if (currentDevvice != device)
     {
@@ -694,7 +694,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     else
     {
       CUDA_SAFE_CALL(cudaMalloc((void**)&kernel->d_kerData, kernel->kerDataSize), "Failed to allocate device memory for kernel stack.");
-      CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error allocation of device memory for kernel?.\n");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Allocation of device memory for kernel?.\n");
     }
 
     nvtxRangePop();
@@ -731,7 +731,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       nvtxRangePush("Initialise kernels");
 
       // Run message
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error before creating GPU kernels");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Before creating GPU kernels");
 
       float contamination = (kernel->hInfos->halfWidth*2*ACCEL_NUMBETWEEN)/(float)kernel->hInfos->width*100 ;
 
@@ -1142,7 +1142,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
     {
-      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: this call may not be necessary we could calculate this from previous values
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
       freeRam = getFreeRamCU();
 
       printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n",total / 1073741824.0, (free )  / 1073741824.0, freeRam / 1073741824.0 );
@@ -1338,8 +1338,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           }
           else
           {
-            // TODO: this needs to be freed at some point
-
             // This memory has already been allocated
             kernel->h_candidates = sInf->sSpec->outData;
             memset(kernel->h_candidates, 0, fullCSize ); // NOTE: this may error if the preallocated memory int karge enough!
@@ -1429,7 +1427,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
 
-      CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating texture from kernel data.");
 
       for (int i = 0; i < kernel->noStacks; i++)           // Loop through Stacks
       {
@@ -1452,9 +1450,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         resDesc.res.pitch2D.pitchInBytes  = cStack->strideCmplx * sizeof(fcomplex);
         resDesc.res.pitch2D.height        = cStack->kerHeigth;
 
-        CUDA_SAFE_CALL(cudaCreateTextureObject(&cStack->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
+        CUDA_SAFE_CALL(cudaCreateTextureObject(&cStack->kerDatTex, &resDesc, &texDesc, NULL), "Creating texture from kernel data.");
 
-        CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from the stack of kernel data.");
+        CUDA_SAFE_CALL(cudaGetLastError(), "Creating texture from the stack of kernel data.");
 
         // Create the actual texture object
         for (int j = 0; j< cStack->noInStack; j++)        // Loop through planes in stack
@@ -1466,8 +1464,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           resDesc.res.pitch2D.width         = cKer->harmInf->width;
           resDesc.res.pitch2D.pitchInBytes  = cStack->strideCmplx * sizeof(fcomplex);
 
-          CUDA_SAFE_CALL(cudaCreateTextureObject(&cKer->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
-          CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
+          CUDA_SAFE_CALL(cudaCreateTextureObject(&cKer->kerDatTex, &resDesc, &texDesc, NULL), "Creating texture from kernel data.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Creating texture from kernel data.");
         }
       }
     }
@@ -1549,7 +1547,7 @@ void freeKernelGPUmem(cuFFdotBatch* kernrl)
 {
   cudaFreeNull(kernrl->d_kerData);
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error freeing device memory for kernel.\n");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Freeing device memory for kernel.\n");
 }
 
 /** Free kernel data structure  .
@@ -1593,7 +1591,7 @@ void setPlanePointers(cuFFdotBatch* batch)
       if (cStack->d_planeIFFT)
         cPlane->d_planeIFFT     = &cStack->d_planeIFFT[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
       if (cStack->d_planePowr)
-        cPlane->d_planePowr     = &cStack->d_planePowr[ cStack->startZ[j] * batch->noSteps * cStack->strideFloat ]; // TODO: Fix
+        cPlane->d_planePowr     = &cStack->d_planePowr[ cStack->startZ[j] * batch->noSteps * cStack->strideFloat ];
       cPlane->d_iData           = &cStack->d_iData[cStack->strideCmplx*j*batch->noSteps];
       cPlane->harmInf           = &cStack->harmInf[j];
       cPlane->kernel            = &cStack->kernels[j];
@@ -1626,7 +1624,7 @@ void setStkPointers(cuFFdotBatch* batch)
     if (batch->d_planeIFFT)
       cStack->d_planeIFFT = &batch->d_planeIFFT[cmplStart];
     if (batch->d_planePowr)
-      cStack->d_planePowr = &batch->d_planePowr[pwrStart]; // TODO: Fix
+      cStack->d_planePowr = &batch->d_planePowr[pwrStart];
 
     // Increment the various values used for offset
     harm                 += cStack->noInStack;
@@ -2392,7 +2390,7 @@ cuOptCand* initOptCand(searchSpecs* sSpec)
 
   // Create streams
   CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
-  //nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
+  nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
 
   // Events
   CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
@@ -2550,7 +2548,7 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(fcomplexcu*), cudaMemcpyHostToDevice),      "Copying stages to device");
   }
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the constant memory values for the multiplications.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the constant memory values for the multiplications.");
 
   return 1;
 }
@@ -2784,7 +2782,7 @@ void cycleOutput(cuFFdotBatch* batch)
 
 void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
 {
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering search_ffdot_batch_CU.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering search_ffdot_batch_CU.");
 
 #ifdef STPMSG
   printf("  %s\n", __FUNCTION__);
@@ -2888,19 +2886,19 @@ void finish_Search(cuFFdotBatch* batch)
     {
       nvtxRangePush("EventSynch");
       cuFfdotStack* cStack = &batch->stacks[ss];
-      CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "ERROR: cudaEventSynchronize.");
+      CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "Synchronising using cudaEventSynchronize.");
       nvtxRangePop();
     }
 
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "ERROR: cudaEventSynchronize.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "Synchronising using cudaEventSynchronize.");
     nvtxRangePop();
   }
 }
 
 void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft, long long* numindep, float* powers)
 {
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdot_planeCU2.");
 
   FOLD // Initialise input data  .
   {
@@ -2954,9 +2952,9 @@ int selectDevice(int device, int print)
     device = 0;
   }
 
-  CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
-  CUDA_SAFE_CALL(cudaDeviceReset(), "ERROR: cudaDeviceReset");
-  CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error At start of everything?.\n");
+  CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
+  CUDA_SAFE_CALL(cudaDeviceReset(), "Failed to set device using : cudaDeviceReset");
+  CUDA_SAFE_CALL(cudaGetLastError(), "At start of everything?.\n");
   CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
   if (currentDevvice!= device)
   {
@@ -3024,7 +3022,7 @@ int setDevice(cuFFdotBatch* batch)
 
   if ( dev != batch->device )
   {
-    CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
+    CUDA_SAFE_CALL(cudaSetDevice(batch->device), "Failed to set device using cudaSetDevice");
     CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
     if ( dev != batch->device )
     {
@@ -3071,7 +3069,7 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
 {
   gpuSpecs gpul;
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering readGPUcmd.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering readGPUcmd.");
 
   if ( cmd->gpuP ) // Determine the index and number of devices
   {
@@ -3793,7 +3791,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   searchSpecs sSpec;
   memset(&sSpec, 0, sizeof(sSpec));
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering readSrchSpecs.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering readSrchSpecs.");
 
   // Defaults for accel search
   sSpec.flags         |= FLAG_RET_STAGES  ;
@@ -3862,7 +3860,7 @@ void initCuAccel(cuSearch* sSrch )
   memset(sSrch->mInf, 0, sizeof(cuMemInfo));
 
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initCuAccel.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuAccel.");
 
   FOLD // Create the primary stack on each device, this contains the kernel  .
   {
@@ -4058,7 +4056,7 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   bool same   = true;
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initCuSearch.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuSearch.");
 
   if ( srch )
   {

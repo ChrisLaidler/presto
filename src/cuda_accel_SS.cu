@@ -638,7 +638,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &hwidth, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
   }
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error Preparing the constant memory.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the constant memory.");
 
   return 1;
 }
@@ -698,7 +698,7 @@ void SSKer(cuFFdotBatch* batch)
       fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
       exit(EXIT_FAILURE);
     }
-    CUDA_SAFE_CALL(cudaGetLastError(), "Error at SSKer kernel launch");
+    CUDA_SAFE_CALL(cudaGetLastError(), "At SSKer kernel launch");
   }
 
   FOLD // Synchronisation  .
@@ -966,7 +966,7 @@ void processSearchResults(cuFFdotBatch* batch)
 #endif
 
       nvtxRangePush("EventSynch");
-      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
       nvtxRangePop();
     }
 
@@ -1252,7 +1252,7 @@ void sumAndMax(cuFFdotBatch* batch)
 //        //        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
 //        //
 //        //        // Run message
-//        //        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
+//        //        CUDA_SAFE_CALL(cudaGetLastError(), "At add_and_searchCU31 kernel launch");
 //        //
 //        //        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
 //      }

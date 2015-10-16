@@ -624,7 +624,7 @@ __host__ void addSplit(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdot
 //    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
 //    {
 //      nvtxRangePush("EventSynch");
-//      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+//      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
 //      nvtxRangePop();
 //    }
 //
@@ -965,7 +965,7 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
       FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
       {
         nvtxRangePush("EventSynch");
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
         nvtxRangePop();
       }
 
@@ -1003,7 +1003,7 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
         dst     = buffer;
         src     = (float*)batch->d_planeFull;
 
-        CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->strmSearch ),"Error calling cudaMemcpy2DAsync after IFFT.");
+        CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->strmSearch ),"Calling cudaMemcpy2DAsync after IFFT.");
       }
     }
 
@@ -1016,7 +1016,7 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
   }
 
   nvtxRangePush("EventSynch");
-  CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+  CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
   nvtxRangePop();
 }
  */

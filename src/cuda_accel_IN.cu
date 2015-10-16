@@ -257,7 +257,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         FOLD // Blocking synchronisation, Make sure the previous thread has complete reading from page locked memory
         {
           nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: Synchronising before writing input data to page locked host memory.");
+          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "Synchronising before writing input data to page locked host memory.");
           nvtxRangePop();
         }
 
@@ -309,11 +309,11 @@ void initInput(cuFFdotBatch* batch, int norm_type )
           for (int ss = 0; ss < batch->noStacks; ss++)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
           }
 
           // Wait for batch multiplications to finish
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
 
 #ifdef TIMING
           cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
@@ -327,7 +327,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
           printf("\t\tCopy to device\n");
 #endif
           CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
-          CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the input data.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the input data.");
         }
 
         FOLD // Synchronisation  .
@@ -355,7 +355,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         {
           // Make sure the previous thread has complete reading from page locked memory
           nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "ERROR: copying data to device");
+          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "Copying data to device");
           nvtxRangePop();
         }
 
@@ -405,11 +405,11 @@ void initInput(cuFFdotBatch* batch, int norm_type )
             for (int ss = 0; ss< batch->noStacks; ss++)
             {
               cuFfdotStack* cStack = &batch->stacks[ss];
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "Waiting for GPU to be ready to copy data to device\n");
             }
 
             // Wait for batch multiplication to finish
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "Waiting for GPU to be ready to copy data to device\n");
 
 #ifdef TIMING  // Timing  .
             cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
@@ -446,7 +446,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
             FOLD // Synchronisation  .
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inptStream, batch->iDataCpyComp, 0), "ERROR: waiting for GPU to be ready to copy data to device\n");
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inptStream, batch->iDataCpyComp, 0), "Waiting for GPU to be ready to copy data to device\n");
 
 #ifdef SYNCHRONOUS
               // Wait for previous FFT to complete
@@ -499,7 +499,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         {
           cuFfdotStack* cStack = &batch->stacks[stackIdx];
 
-          CUDA_SAFE_CALL(cudaGetLastError(), "Error before input fft.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Before input fft.");
 
           FOLD // Synchronisation  .
           {
@@ -536,7 +536,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
               CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
               CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
 
-              CUDA_SAFE_CALL(cudaGetLastError(), "Error FFT'ing the input data.");
+              CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
             }
           }
 
