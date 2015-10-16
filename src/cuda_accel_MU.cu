@@ -7,12 +7,9 @@
 #if CUDA_VERSION >= 6050
 __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
 __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
 #endif
-//__device__ cufftCallbackStoreC d_storeInmemRow      = CB_PowerOutInmem_ROW;
-//__device__ cufftCallbackStoreC d_storeInmemPln      = CB_PowerOutInmem_PLN;
 #endif
 
 //======================================= Global variables  ================================================\\
@@ -20,7 +17,7 @@ __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
 
 //========================================== Functions  ====================================================\\
 
-#if CUDA_VERSION >= 6050        // CUFFT callbacks only implimented in CUDA 6.5  .
+#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5  .
 
 /** CUFFT callback kernel to multiply the complex f-∂f before the FFT  .
  */
@@ -79,7 +76,7 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
   return out;
 }
 
-/** CUFFT callback kernel to calcualte and store float powers after the FFT  .
+/** CUFFT callback kernel to calculate and store float powers after the FFT  .
  */
 __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
@@ -90,10 +87,9 @@ __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element
   ((float*)callerInfo)[offset] = power;
 }
 
-//#if CUDA_VERSION >= 7050
-#if __CUDACC_VER__ >= 70500
+#if __CUDACC_VER__ >= 70500 // Half precision CUFFT power call back
 
-/** CUFFT callback kernel to calcualte and store half powers after the FFT  .
+/** CUFFT callback kernel to calculate and store half powers after the FFT  .
  */
 __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
@@ -176,7 +172,6 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
   if (  (batch->flag & FLAG_SS_INMEM) && ( batch->flag & FLAG_HALF) )
   {
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
     CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "");
 #else
@@ -843,7 +838,6 @@ void copyToInMemPln(cuFFdotBatch* batch)
           {
             if ( batch->flag & FLAG_HALF )
             {
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
               copyIFFTtoPln<half,half>( batch, cStack );
 #else

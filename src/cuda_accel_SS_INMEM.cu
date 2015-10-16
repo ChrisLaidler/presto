@@ -10,11 +10,16 @@ __device__ inline float get(float* __restrict__ adress, int offset)
   return adress[offset];
 }
 
-//#if CUDA_VERSION >= 7050
-#if __CUDACC_VER__ >= 70500
+#if __CUDACC_VER__ >= 70500   // Half precision getter and setter  .
+
 __device__ inline float get(half* __restrict__ adress, int offset)
 {
   return __half2float(adress[offset]);
+}
+
+__device__ inline void set(half* adress, uint offset, float value)
+{
+  adress[offset] = __float2half(value);
 }
 #endif
 
@@ -23,13 +28,7 @@ __device__ inline void set(float* adress, uint offset, float value)
   adress[offset] = value;
 }
 
-//#if CUDA_VERSION >= 7050
-#if __CUDACC_VER__ >= 70500
-__device__ inline void set(half* adress, uint offset, float value)
-{
-  adress[offset] = __float2half(value);
-}
-#endif
+
 
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
 __global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, int firstBin, int start, int end, candPZs* d_cands)
@@ -384,7 +383,6 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     {
       if ( batch->flag & FLAG_HALF  )
       {
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
         searchINMEM_p<half>(batch);
 #else

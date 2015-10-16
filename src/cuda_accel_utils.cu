@@ -255,7 +255,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       if ( flags & FLAG_HALF )
       {
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
         plnElsSZ = sizeof(half);
 #else
@@ -1034,7 +1033,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else if (kernel->retType & CU_HALF      )
       {
-//#if CUDA_VERSION >= 7050 // Half precision
 #if __CUDACC_VER__ >= 70500
         retSZ = sizeof(half);
 #else
@@ -1155,7 +1153,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           if ( kernel->flag & FLAG_HALF )
           {
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
             kernel->pwrDataSize *= sizeof(half);
 #else
@@ -3539,9 +3536,8 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_HALF" 	  ) )
       {
-//#if CUDA_VERSION >= 7050
 #if __CUDACC_VER__ >= 70500
-        (*flags) |= FLAG_HALF;
+        (*flags) |=  FLAG_HALF;
 #else
         (*flags) &= ~FLAG_HALF;
 
