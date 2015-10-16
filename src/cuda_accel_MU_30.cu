@@ -1,10 +1,10 @@
 #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - Multiply an entire batch with convolution kernel  .
- * Each thread loops down a column of the plains and multiplies input with kernel and writes result to plain
+ * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
 template<uint FLAGS, int noSteps>
-__global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* datas, __restrict__ fcomplexcu* ffdot, int noPlains)
+__global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* datas, __restrict__ fcomplexcu* ffdot, int noPlanes)
 {
   const int ix = blockIdx.x * CNV_DIMX * CNV_DIMY + CNV_DIMX * threadIdx.y + threadIdx.x;
 
@@ -14,7 +14,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
   ffdot   += ix;
   datas   += ix;
 
-  for (int n = 0; n < noPlains; n++)                  // Loop over plains  .
+  for (int n = 0; n < noPlanes; n++)                  // Loop over planes  .
   {
     const int stride   = STRIDE_HARM[n];
     const int height   = HEIGHT_HARM[n];
@@ -23,7 +23,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
     if ( ix < stride )
     {
       // read input for each step into registers
-      for (int step = 0; step < noSteps; step++)      // Loop over plains  .
+      for (int step = 0; step < noSteps; step++)      // Loop over planes  .
       {
         input[step]      = datas[step*stride];
 
@@ -39,8 +39,8 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
       short   y0      = lDepth*blockIdx.y;
       short   y1      = MIN(y0+lDepth, height);
 
-      //for (int iy = 0; iy < height; iy++)           // Loop over individual plain  .
-      for (int iy = y0; iy < y1; iy++)              // Loop over individual plain  .
+      //for (int iy = 0; iy < height; iy++)           // Loop over individual plane  .
+      for (int iy = y0; iy < y1; iy++)              // Loop over individual plane  .
       {
         const int plnOffset = iy*stride;
         const int PlnStride = height*stride;
@@ -56,7 +56,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
           if      ( FLAGS & FLAG_ITLV_ROW )
           {
             *ffdot = val;
-            ffdot += stride;  // Stride output pointer to next plain
+            ffdot += stride;  // Stride output pointer to next plane
           }
           else
           {
@@ -68,7 +68,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
         ker += stride;
       }
 
-      if ( !(FLAGS & FLAG_ITLV_ROW) ) 	                // Stride output pointer to next plain  .
+      if ( !(FLAGS & FLAG_ITLV_ROW) ) 	                // Stride output pointer to next plane  .
       {
         ffdot += noSteps*height*stride;
       }

@@ -1,18 +1,18 @@
 #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Y - Pln - step )  .
- * Each thread loops down a column of the plain
- * Reads the input and multiplies it with the kernel and writes result to plain
+ * Each thread loops down a column of the plane
+ * Reads the input and multiplies it with the kernel and writes result to plane
  */
 template<int FLAGS, int noSteps, int noPlns>
-__global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
+__global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
 
   if ( tid < width )  // Valid thread  .
   {
-    const int   kerHeight = HEIGHT_HARM[firstPlain];              // The size of the kernel
+    const int   kerHeight = HEIGHT_HARM[firstPlane];              // The size of the kernel
     fcomplexcu  inpDat[noPlns][noSteps];                          // Set of input data for this thread/column
 
     int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
@@ -30,7 +30,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
     {
       for ( int step = 0; step < noSteps; step++ )
       {
-        for ( int pln = 0; pln < noPlns; pln++ )                  // Loop through the plains  .
+        for ( int pln = 0; pln < noPlns; pln++ )                  // Loop through the planes  .
         {
           fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
           ipd.r                 /= (float) width;
@@ -50,14 +50,14 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
         ker   = kernels[kerY*stride];
       }
 
-      for (int pln = 0; pln < noPlns; pln++)                      // Loop through the plains  .
+      for (int pln = 0; pln < noPlns; pln++)                      // Loop through the planes  .
       {
-        const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
+        const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
-        const int plainY        = kerY - kerYOffset;
+        const int planeY        = kerY - kerYOffset;
         const int ns2           = plnHeight * stride;
 
-        if( plainY >= 0 && plainY < plnHeight )
+        if( planeY >= 0 && planeY < plnHeight )
         {
           int off1;
 
@@ -65,11 +65,11 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
             {
-              off1  = pHeight + plainY*noSteps*stride;
+              off1  = pHeight + planeY*noSteps*stride;
             }
             else
             {
-              off1  = pHeight + plainY*stride;
+              off1  = pHeight + planeY*stride;
             }
           }
 
@@ -100,7 +100,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;                  // Set striding value for next plain
+        pHeight += plnHeight * noSteps * stride;                  // Set striding value for next plane
       }
     }
   }
@@ -161,7 +161,7 @@ __host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     }
     default:
     {
-      fprintf(stderr, "ERROR: mult21 has not been templated for %i plains in a stack.\n",cStack->noInStack);
+      fprintf(stderr, "ERROR: mult21 has not been templated for %i planes in a stack.\n",cStack->noInStack);
       exit(EXIT_FAILURE);
     }
   }

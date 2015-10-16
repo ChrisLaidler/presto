@@ -271,7 +271,7 @@ __device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int nu
   }
 }
 
-/** Create the convolution kernel for one f-∂f plain  .
+/** Create the convolution kernel for one f-∂f plane  .
  *
  *  This is "copied" from gen_z_response in respocen.c
  *
@@ -296,7 +296,7 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, int hal
     return;
   }
 
-  // Calculate the response x position from the plain x position
+  // Calculate the response x position from the plane x position
   if ( half_width <= 0 )
   {
     half_width    = z_resp_halfwidth((double) z);
@@ -352,12 +352,12 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, int hal
  * @param startR
  * @param zmax
  */
-__global__ void init_kernels_stack(float2* response, const int fftlen, const int stride, const int maxh, const int noPlains, iList startR, fList zmax)
+__global__ void init_kernels_stack(float2* response, const int fftlen, const int stride, const int maxh, const int noPlanes, iList startR, fList zmax)
 {
   int cx, cy;                       /// The x and y index of this thread in the array
   int rx = -1;                      /// The x index of the value in the kernel
-  int plain = -1;                   /// The f-∂f plain the thread deals with
-  float maxZ;                       /// The Z-Max of the plain this thread deals with
+  int plane = -1;                   /// The f-∂f plane the thread deals with
+  float maxZ;                       /// The Z-Max of the plane this thread deals with
 
   // Calculate the 2D index of this thread
   cx = blockDim.x * blockIdx.x + threadIdx.x;// use BLOCKSIZE rather (its constant)
@@ -369,19 +369,19 @@ __global__ void init_kernels_stack(float2* response, const int fftlen, const int
     return;
   }
 
-  // Calculate which plain in the stack we are working with
-  for ( int i = 0; i < noPlains; i++ )
+  // Calculate which plane in the stack we are working with
+  for ( int i = 0; i < noPlanes; i++ )
   {
     if ( cy >= startR.val[i] && cy < startR.val[i + 1] )
     {
-      plain = i;
+      plane = i;
       break;
     }
   }
-  maxZ = zmax.val[plain];
-  float z = -maxZ + (cy-startR.val[plain]) * ACCEL_DZ; /// The Fourier Frequency derivative
+  maxZ = zmax.val[plane];
+  float z = -maxZ + (cy-startR.val[plane]) * ACCEL_DZ; /// The Fourier Frequency derivative
 
-  // Calculate the response x position from the plain x position
+  // Calculate the response x position from the plane x position
   int kern_half_width = z_resp_halfwidth((double) z);
   int hw = ACCEL_NUMBETWEEN * kern_half_width;
   int numkern = 2 * hw;             /// The number of complex points that the kernel row will contain
@@ -415,7 +415,7 @@ __global__ void init_kernels_stack(float2* response, const int fftlen, const int
   }
 }
 
-/** Create one GPU kernel. One kernel the size of the largest plain  .
+/** Create one GPU kernel. One kernel the size of the largest plane  .
  *
  * @param kernel
  * @return
@@ -453,7 +453,7 @@ int createStackKernel(cuFfdotStack* cStack)
   return 0;
 }
 
-/** Create GPU kernels. One for each plain of the stack  .
+/** Create GPU kernels. One for each plane of the stack  .
  *
  * @param kernel
  * @return

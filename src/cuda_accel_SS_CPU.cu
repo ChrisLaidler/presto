@@ -73,7 +73,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
         {
           int stgIDX      = batch->stageIdx[harm];
 
-          //// NOTE: the indexing below assume each plain starts on a multiple of noHarms
+          //// NOTE: the indexing below assume each plane starts on a multiple of noHarms
           int   hIdx      = round( ix*batch->hInfos[stgIDX].harmFrac ) + batch->hInfos[stgIDX].halfWidth * ACCEL_NUMBETWEEN ;
           inds[harm]      = hIdx;
         }

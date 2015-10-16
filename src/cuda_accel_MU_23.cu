@@ -1,11 +1,11 @@
 #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - All multiplications for a stack - Uses registers to store sections of the kernel - Loop ( chunk (read ker) - plan - Y - step ) .
- * Each thread loops down a column of the plain
- * Reads the input and multiples it with the kernel and writes result to plain
+ * Each thread loops down a column of the plane
+ * Reads the input and multiples it with the kernel and writes result to plane
  */
 template<int FLAGS, int noSteps, int noPlns>
-__global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
+__global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
@@ -14,7 +14,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
   if ( tid < width )  // Valid thread  .
   {
-    const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
+    const int kerHeight = HEIGHT_HARM[firstPlane];       // The size of the kernel
 
     short   lDepth      = ceilf(kerHeight/(float)gridDim.y);
     short   y0          = lDepth*blockIdx.y;
@@ -52,9 +52,9 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
       register fcomplexcu k10  = kernels[(c0+10)*stride];
       register fcomplexcu k11  = kernels[(c0+11)*stride];
 
-      for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains of the stack  .
+      for (int pln = 0; pln < noPlns; pln++)                  // Loop through the planes of the stack  .
       {
-        const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
+        const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
 
         const int p0            = MAX(c0 - kerYOffset,0);
@@ -67,7 +67,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
         __restrict__ fcomplexcu inpDat[noSteps];              // Set of input data for this thread/column
         FOLD // Read all input data  .
         {
-          // NOTE: I tested reading the input for plains and steps (2 loops above) but that was slower, here uses less registers as well.
+          // NOTE: I tested reading the input for planes and steps (2 loops above) but that was slower, here uses less registers as well.
 
           for (int step = 0; step < noSteps; step++)
           {
@@ -78,9 +78,9 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
           }
         }
 
-        for (int plainY = p0; plainY < p1; plainY++)          // Loop over the individual plain  .
+        for (int planeY = p0; planeY < p1; planeY++)          // Loop over the individual plane  .
         {
-          int y = plainY - p0 + kerAddd;
+          int y = planeY - p0 + kerAddd;
           fcomplexcu ker;
 
           FOLD // Read the kernel value  .
@@ -156,11 +156,11 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
             {
-              offsetPart1  = pHeight + plainY*noSteps*stride;
+              offsetPart1  = pHeight + planeY*noSteps*stride;
             }
             else
             {
-              offsetPart1  = pHeight + plainY*stride;
+              offsetPart1  = pHeight + planeY*stride;
             }
           }
 
@@ -191,7 +191,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plain
+        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plane
       }
     }
   }
@@ -261,7 +261,7 @@ __host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     }
     default	:
     {
-      fprintf(stderr, "ERROR: mult23 has not been templated for %i plains in a stack.\n",cStack->noInStack);
+      fprintf(stderr, "ERROR: mult23 has not been templated for %i planes in a stack.\n",cStack->noInStack);
       exit(EXIT_FAILURE);
     }
   }

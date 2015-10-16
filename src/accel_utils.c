@@ -1699,11 +1699,11 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     long long memuse;
     double gb = (double)(1L<<30);
 
-    // This is the size of powers covering the full f-dot plane to search
+    // This is the size of powers covering the full f-∂f plane to search
     // Need the extra ACCEL_USELEN since we generate the plane in blocks
     memuse = sizeof(float) * (obs->highestbin + ACCEL_USELEN) \
         * obs->numbetween * obs->numz;
-    printf("Full f-fdot plane would need %.2f GB: ", (float)memuse / gb);
+    printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
     if (memuse < MAXRAMUSE || cmd->inmemP) {
       printf("using in-memory accelsearch.\n\n");
       obs->inmem = 1;

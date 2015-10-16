@@ -33,7 +33,7 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
       }
     }
 
-    for ( int harm = 0; harm < noHarms ; harm++)                // Loop over plains  .
+    for ( int harm = 0; harm < noHarms ; harm++)                // Loop over planes  .
     {
       int maxW          = ceilf(width * FRAC_HARM[harm]);
 
@@ -47,7 +47,7 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
         int   y0        = lDepth*blockIdx.y;
         int   y1        = MIN(y0+lDepth, nHeight);
 
-        FOLD // Read data from plains  .
+        FOLD // Read data from planes  .
         {
           for ( int y = y0; y < y1; y++ )
           {
@@ -88,8 +88,8 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
 template<uint FLAGS, int noBatch >
 __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, fsHarmList powersArr, cHarmList cmplxArr, const int noHarms, const int noStages, const int noSteps )
 {
-  const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;   /// Block index
-  const int tid   = blockIdx.x  * SS00BS  +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
+  const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;           /// Block index
+  const int tid   = blockIdx.x  * SS00BS  +  bidx;                  /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
@@ -99,14 +99,14 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
-        for ( int step = 0; step < noSteps; step++)               // Loop over steps
+        for ( int step = 0; step < noSteps; step++)                 // Loop over steps
         {
           d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
         }
       }
     }
 
-    for ( int harm = 0; harm < noHarms ; harm++)  // Loop over plains
+    for ( int harm = 0; harm < noHarms ; harm++)                    // Loop over planes
     {
       int maxW      = ceilf(width * FRAC_STAGE[harm]);
       int stride    = STRIDE_STAGE[harm];
@@ -177,7 +177,7 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
       }
     }
 
-    for ( int harm = 0; harm < noHarms ; harm++)                // Loop over plains  .
+    for ( int harm = 0; harm < noHarms ; harm++)                // Loop over planes  .
     {
       int maxW      = ceilf(width * FRAC_STAGE[0]);
       int stride    = STRIDE_STAGE[0];
@@ -190,7 +190,7 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
         int   y0        = lDepth*blockIdx.y;
         int   y1        = MIN(y0+lDepth, nHeight);
 
-        FOLD // Read data from plains  .
+        FOLD // Read data from planes  .
         {
           for ( int y = y0; y < y1; y++ )
           {
@@ -231,15 +231,15 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx = i;
-    powers.val[i]   = batch->plains[idx].d_planePowr;
+    powers.val[i]   = batch->planes[idx].d_planePowr;
 
     if ( batch->flag & FLAG_CUFFT_CB_OUT )
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+      cmplx.val[i]  = batch->planes[idx].d_planeMult;
     }
     else
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
     }
   }
 
@@ -256,15 +256,15 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx         = batch->stageIdx[i]; // Stage order
-    powers.val[i]   = batch->plains[idx].d_planePowr;
+    powers.val[i]   = batch->planes[idx].d_planePowr;
 
     if ( batch->flag & FLAG_CUFFT_CB_OUT )
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+      cmplx.val[i]  = batch->planes[idx].d_planeMult;
     }
     else
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
     }
   }
 
@@ -281,15 +281,15 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx         = batch->stageIdx[i]; // Stage order
-    powers.val[i]   = batch->plains[idx].d_planePowr;
+    powers.val[i]   = batch->planes[idx].d_planePowr;
 
     if ( batch->flag & FLAG_CUFFT_CB_OUT )
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+      cmplx.val[i]  = batch->planes[idx].d_planeMult;
     }
     else
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
     }
   }
 

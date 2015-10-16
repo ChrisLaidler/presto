@@ -9,8 +9,6 @@
 #include "cuda_accel_utils.h"
 
 #include <boost/math/special_functions/gamma.hpp>
-//#include <boost/math/special_functions/beta.hpp>
-//#include <boost/math/special_functions/factorials.hpp>
 #include <boost/math/special_functions/erf.hpp>
 #include <boost/math/special_functions/binomial.hpp>
 
@@ -407,7 +405,7 @@ __device__ fcomplexcu rz_interp_cu(fcomplexcu* data, int loR, int noBins, double
         ans.i           += tR * inp.i + tI*inp.r;
       }
 
-      //printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, loR+lodata+ii, inp.r, inp.i, tR, tI, POWERR(ans.r, ans.i) );
+      //printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   %12.2f \n", ii, loR+lodata+ii, inp.r, inp.i, tR, tI, POWERCU(ans.r, ans.i) );
     }
   }
   else
@@ -456,8 +454,8 @@ __global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int ha
         ans  = rz_interp_cu<T>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, hw.val[i-1] );
       }
 
-      //total_power     += POWERR(ans.r, ans.i)/norm.val[i-1];
-      total_power     += POWERR(ans.r, ans.i);
+      //total_power     += POWERCU(ans.r, ans.i)/norm.val[i-1];
+      total_power     += POWERCU(ans.r, ans.i);
     }
 
     //powers[iy*noR + ix] = total_power;
@@ -471,9 +469,9 @@ __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int 
 
   fcomplexcu ans      = rz_interp_cu<float>(fft, loR, noBins, r, z, halfwidth);
   //fcomplexcu ans      = rz_interp_cu<double>(fft, loR, noBins, r, z, halfwidth);
-  total_power         += POWERR(ans.r, ans.i)/normFactor;
+  total_power         += POWERCU(ans.r, ans.i)/normFactor;
 
-  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERR(ans.r, ans.i), ans.r, ans.i);
+  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERCU(ans.r, ans.i), ans.r, ans.i);
 }
 
 /*
@@ -490,7 +488,7 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
   const int iy        = blockIdx.y * blockDim.y + threadIdx.y;
   const int idx       = iy * noR + ix;
   const int wrpNo     = floor(idx/32.0);
-  const int sz        = 32 ; // noR * noZ - wrpNo * 32 ;
+  //const int sz        = 32 ; // noR * noZ - wrpNo * 32 ;
   //const int lane      = idx % sz;
   //const int oLane     = (lane+1) % sz;
 
@@ -534,11 +532,11 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
         //if ( idx == 1001 )
         {
           fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
-          power            += POWERR(ans.r, ans.i)/norm.val[i-1];
+          power            += POWERCU(ans.r, ans.i)/norm.val[i-1];
 
           //          if ( idx == 1001 )  // TMP
           //          {
-          //            printf(" Pow: %10.2f  %10.2f %10.2f Norm: %10.3f   Accum: %10.3f\n", POWERR(ans.r, ans.i), ans.r, ans.i, norm.val[i-1], power );
+          //            printf(" Pow: %10.2f  %10.2f %10.2f Norm: %10.3f   Accum: %10.3f\n", POWERCU(ans.r, ans.i), ans.r, ans.i, norm.val[i-1], power );
           //          }
         }
       }
@@ -596,7 +594,7 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
         for( int i = 1; i <= noHarms; i++ )
         {
           fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
-          power           += POWERR(ans.r, ans.i)/norm.val[i-1];
+          power           += POWERCU(ans.r, ans.i)/norm.val[i-1];
         }
 
         //        if ( isnan(power) ) // TMP  .
@@ -754,7 +752,7 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
           off = rOff.val[h] - loR + i;
           if (off >= 0 && off < noBins )
           {
-            normPow[noPowers++] = POWERR(fft[off].r, fft[off].i ) ;
+            normPow[noPowers++] = POWERCU(fft[off].r, fft[off].i ) ;
           }
         }
 
@@ -1118,7 +1116,7 @@ void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ
 
     for ( int i = 0; i < noInp; i++ )
     {
-      normPow[i] = POWERR(fft[rOff+i].r, fft[rOff+i].i ) ;
+      normPow[i] = POWERCU(fft[rOff+i].r, fft[rOff+i].i ) ;
     }
 
     float medianv   = median(normPow, noInp);

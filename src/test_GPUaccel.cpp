@@ -946,8 +946,8 @@ int main(int argc, char *argv[])
         bool printBadLines  = false;
         bool CSV            = false;
 
-        printf("\nRunning GPU search with %i simultaneous families of f-∂f plains spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
-        printf("\nWill check all input and plains and report ");
+        printf("\nRunning GPU search with %i simultaneous families of f-∂f planes spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
+        printf("\nWill check all input and planes and report ");
         if (printDetails)
           printf("all results");
         else
@@ -1105,7 +1105,7 @@ int main(int argc, char *argv[])
                 for (int si = 0; si < cStack->noInStack; si++)
                 {
                   cuHarmInfo* cHInfo    = &trdBatch->hInfos[harm];      // The current harmonic we are working on
-                  cuFFdot*    plan      = &cStack->plains[si];          // The current plain
+                  cuFFdot*    plan      = &cStack->planes[si];          // The current plane
 
                   for ( int step = 0; step < trdBatch->noSteps; step ++) // Loop over steps
                   {
@@ -1500,7 +1500,7 @@ int main(int argc, char *argv[])
                         {
                           memcpy(&powArr[y*width],gpuPowers[step][harz].getP(0,y), width*sizeof(float));
                         }
-                        sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
                         draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
 
@@ -1509,7 +1509,7 @@ int main(int argc, char *argv[])
                         {
                           memcpy(&powArr[y*width],cpuPowers[step][harz].getP(0,y), width*sizeof(float));
                         }
-                        sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
                         draw2DArray6(fname, powArr, width, nY, width, nY*3);
                       }
                     }
@@ -1602,12 +1602,12 @@ int main(int argc, char *argv[])
                         }
                       }
 
-                      //sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%2i_01_GPU.png", firstStep+si, harz);
+                      //sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%2i_01_GPU.png", firstStep+si, harz);
                       //drawArr(fname, &gpuPowers[si][harz], HM_G);
 
                       //int tmp = 0;
 
-                      sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
+                      sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
                       draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
 
@@ -1616,7 +1616,7 @@ int main(int argc, char *argv[])
                       {
                         memcpy(&powArr[y*width],cpuPowers[step][harz].getP(0,y), width*sizeof(float));
                       }
-                      sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
+                      sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
                       draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
 
@@ -1628,7 +1628,7 @@ int main(int argc, char *argv[])
                           powArr[y*width + x] -= cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
                         }
                       }
-                      sprintf(fname, "/home/chris/fdotplains/ffdot_S%05i_H%02i_RES.png", firstStep+step+1, harz);
+                      sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_RES.png", firstStep+step+1, harz);
                       draw2DArray6(fname, powArr, width, nY, width, nY*3);
 
                       //fundamental = subharm_ffdot_plane(1, 1, startr, lastr, &subharminfs[0][0], &obs);
@@ -1675,7 +1675,7 @@ int main(int argc, char *argv[])
               lastrs[step]  = 0;
             }
 
-            // Finish searching the plains, this is required because of the out of order asynchronous calls
+            // Finish searching the planes, this is required because of the out of order asynchronous calls
             for ( int step = 0 ; step < 2; step++ )
             {
               search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
@@ -1743,7 +1743,7 @@ int main(int argc, char *argv[])
 
     printf("\n\nDone searching.\n");
     printf("   We got %7lli bad input values.\n",             badInp  );
-    printf("   We got %7lli bad complex plains.\n",           badCplx );
+    printf("   We got %7lli bad complex planes.\n",           badCplx );
     printf("   Found  %7lli GPU values above %.2f sigma.\n",  badCands+goodCands, obs.sigma);
     printf("          %6.2f%% were similar to CPU values.\n", goodCands/double(badCands+goodCands)*100.0 );
     printf("\n");

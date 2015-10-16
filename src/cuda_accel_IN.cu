@@ -148,7 +148,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
   nvtxRangePop();
 }
 
-/** Calculate the r bin values for this batch of steps and store them in plains->rInput
+/** Calculate the r bin values for this batch of steps and store them in planes->rInput
  *
  * This calculates r-low and halfwidth
  *
@@ -167,7 +167,7 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
 
   int lobin;      /// The first bin to copy from the the input fft ( serachR scaled - halfwidth )
   int numdata;    /// The number of input fft points to read
-  int numrs;      /// The number of good bins in the plain ( expanded units )
+  int numrs;      /// The number of good bins in the plane ( expanded units )
 
   for (int harm = 0; harm < batch->noHarms; harm++)
   {
@@ -213,7 +213,7 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
 
         if  ( noEls > cHInfo->width )
         {
-          fprintf(stderr, "ERROR: Number of elements in step greater than width of the plain! harm: %i\n", harm);
+          fprintf(stderr, "ERROR: Number of elements in step greater than width of the plane! harm: %i\n", harm);
           exit(EXIT_FAILURE);
         }
       }
@@ -221,17 +221,14 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
   }
 }
 
-/** Initialise input data for a f-∂f plain(s)  ready for convolution  .
+/** Initialise input data for a f-∂f plane(s)  ready for convolution  .
  * This:
  *  Normalises the chunk of input data
  *  Spreads it (interbinning)
  *  FFT it ready for convolution
  *
- * @param plains      The plains
- * @param searchRLow  The index of the low  R bin (1 value for each step)
- * @param searchRHi   The index of the high R bin (1 value for each step)
+ * @param batch the batch to work with
  * @param norm_type   The type of normalisation to perform
- * @param fft         The fft
  */
 void initInput(cuFFdotBatch* batch, int norm_type )
 {
@@ -380,7 +377,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
             {
               cuFfdotStack* cStack = &batch->stacks[stack];
 
-              for ( int plain = 0; plain < cStack->noInStack; plain++)
+              for ( int plane = 0; plane < cStack->noInStack; plane++)
               {
                 for (int step = 0; step < batch->noSteps; step++)
                 {

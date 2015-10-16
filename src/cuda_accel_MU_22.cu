@@ -1,18 +1,18 @@
 #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
- * Each thread loops down a column of the plain
- * Reads the input and multiplies it with the kernel and writes result to plain
+ * Each thread loops down a column of the plane
+ * Reads the input and multiplies it with the kernel and writes result to plane
  */
 template<int FLAGS, int noSteps>
-__global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restrict__ fcomplexcu*  inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, int noPlns, const int firstPlain )
+__global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restrict__ fcomplexcu*  inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, int noPlns, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
 
   if ( tid < width )  // Valid thread  .
   {
-    int idx;                                      /// flat index of output plain
+    int idx;                                      /// flat index of output plane
     int pHeight = 0;                              /// Height of previous data in the stack
     fcomplexcu ker;                               /// kernel data
 
@@ -25,14 +25,14 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
 
     __restrict__ fcomplexcu inpDat[noSteps];                  // Set of input data for this thread/column
 
-    for (int pln = 0; pln < noPlns; pln++)                    // Loop through the plains  .
+    for (int pln = 0; pln < noPlns; pln++)                    // Loop through the planes  .
     {
       const int plnStrd       = pln*stride*noSteps;
-      const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
-      const int kerYOffset    = (HEIGHT_HARM[firstPlain] - plnHeight)/2;
+      const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
+      const int kerYOffset    = (HEIGHT_HARM[firstPlane] - plnHeight)/2;
       const int ns2           = plnHeight * stride;
 
-      FOLD // Read input data for this plain  .
+      FOLD // Read input data for this plane  .
       {
         for (int step = 0; step < noSteps; step++)
         {
@@ -47,11 +47,11 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
       short   y0      = lDepth*blockIdx.y;
       short   y1      = MIN(y0+lDepth, plnHeight);
 
-      for (int plainY = y0; plainY < y1; plainY++)      // Loop over the individual plain  .
+      for (int planeY = y0; planeY < y1; planeY++)      // Loop over the individual plane  .
       {
         FOLD // Read the kernel value  .
         {
-          ker   = kernels[(kerYOffset+plainY)*stride];
+          ker   = kernels[(kerYOffset+planeY)*stride];
         }
 
         int off1;
@@ -60,11 +60,11 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
         {
           if      ( FLAGS & FLAG_ITLV_ROW )
           {
-            off1  = pHeight + plainY*noSteps*stride;
+            off1  = pHeight + planeY*noSteps*stride;
           }
           else
           {
-            off1  = pHeight + plainY*stride;
+            off1  = pHeight + planeY*stride;
           }
         }
 

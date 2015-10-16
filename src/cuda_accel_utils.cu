@@ -26,9 +26,9 @@ extern "C"
 #include "log.h"
 #endif
 
-__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  height  in stage order
-__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plain  stride  in stage order
-__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];     ///< Plain  strides   in family
+__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plane  height  in stage order
+__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plane  stride  in stage order
+__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];     ///< Plane  strides   in family
 __device__ __constant__ fcomplexcu*   KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointer in stage order
 __device__ __constant__ stackInfo     STACKS[64];
 
@@ -198,7 +198,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   noInStack[0]        = 0;
   size_t batchSize    = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
   size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
-  size_t plainSize    = 0;        /// Total size (in bytes) of memory required independently of batch(es)
+  size_t planeSize    = 0;        /// Total size (in bytes) of memory required independently of batch(es)
   int flags           = sInf->sSpec->flags;
   int alignment       = 0;
   float plnElsSZ      = 0;
@@ -1174,7 +1174,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           uint noStepsP       =  ceil(kernel->SrchSz->noSteps / (float)noSteps) * noSteps;
           uint nX             = noStepsP * kernel->accelLen;
           uint nY             = kernel->hInfos->height;
-          plainSize          += nX * nY * plnElsSZ ;
+          planeSize          += nX * nY * plnElsSZ ;
         }
 
         if ( !(flags & FLAG_CUFFT_CB_OUT) )
@@ -1186,7 +1186,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       FOLD // Calculate how many batches and steps to do  .
       {
-        float possSteps = ( free - plainSize ) / (double) ( fffTotSize + batchSize * noBatches ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
+        float possSteps = ( free - planeSize ) / (double) ( fffTotSize + batchSize * noBatches ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
 
         printf("     Requested %i batches on this device.\n", noBatches);
         if ( possSteps > 1 )
@@ -1231,16 +1231,16 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           freeKernel(kernel);
           return 0;
         }
-        float  totUsed = ( kernel->kerDataSize + plainSize + ( fffTotSize + batchSize * noBatches ) * kernel->noSteps ) ;
+        float  totUsed = ( kernel->kerDataSize + planeSize + ( fffTotSize + batchSize * noBatches ) * kernel->noSteps ) ;
 
         printf("     Processing %i steps with each of the %i batch(s)\n", noSteps, noBatches );
 
         printf("    -----------------------------------------------\n" );
         printf("    Kernels      use: %5.2f GiB of device memory.\n", (kernel->kerDataSize) / 1073741824.0 );
         printf("    CUFFT       uses: %5.2f GiB of device memory.\n", (fffTotSize*kernel->noSteps) / 1073741824.0 );
-        if ( plainSize )
+        if ( planeSize )
         {
-          printf("    Plain       uses: %5.2f GiB of device memory.", (plainSize) / 1073741824.0 );
+          printf("    Plane       uses: %5.2f GiB of device memory.", (planeSize) / 1073741824.0 );
 
           if ( kernel->flag & FLAG_HALF )
           {
@@ -1300,9 +1300,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         uint nY       = kernel->hInfos->height;
         size_t stride;
 
-        CUDA_SAFE_CALL(cudaMallocPitch(&kernel->d_plainFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate device memory for getMemAlignment.");
+        CUDA_SAFE_CALL(cudaMallocPitch(&kernel->d_planeFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate device memory for getMemAlignment.");
         kernel->sInf->mInf->inmemStride = stride / plnElsSZ;
-        CUDA_SAFE_CALL(cudaMemsetAsync(kernel->d_plainFull, 0, stride*nY, 0),"Failed to initiate plane memory to zero");
+        CUDA_SAFE_CALL(cudaMemsetAsync(kernel->d_planeFull, 0, stride*nY, 0),"Failed to initiate plane memory to zero");
       }
     }
 
@@ -1412,7 +1412,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         cuFfdotStack* cStack = &kernel->stacks[i];
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-        sprintf(strBuff,"%i.0.4.%i FFT Plain", device, i);
+        sprintf(strBuff,"%i.0.4.%i FFT Plane", device, i);
         nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
         //printf("cudaStreamCreate: %s\n", strBuff);
       }
@@ -1578,7 +1578,7 @@ void freeKernel(cuFFdotBatch* kernrl)
  *
  * @param batch
  */
-void setPlainPointers(cuFFdotBatch* batch)
+void setPlanePointers(cuFFdotBatch* batch)
 {
   for (int i = 0; i < batch->noStacks; i++)
   {
@@ -1587,16 +1587,16 @@ void setPlainPointers(cuFFdotBatch* batch)
 
     for (int j = 0; j < cStack->noInStack; j++)
     {
-      cuFFdot* cPlain           = &cStack->plains[j];
+      cuFFdot* cPlane           = &cStack->planes[j];
 
-      cPlain->d_planeMult       = &cStack->d_planeMult[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+      cPlane->d_planeMult       = &cStack->d_planeMult[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
       if (cStack->d_planeIFFT)
-        cPlain->d_planeIFFT     = &cStack->d_planeIFFT[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+        cPlane->d_planeIFFT     = &cStack->d_planeIFFT[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
       if (cStack->d_planePowr)
-        cPlain->d_planePowr     = &cStack->d_planePowr[ cStack->startZ[j] * batch->noSteps * cStack->strideFloat ]; // TODO: Fix
-      cPlain->d_iData           = &cStack->d_iData[cStack->strideCmplx*j*batch->noSteps];
-      cPlain->harmInf           = &cStack->harmInf[j];
-      cPlain->kernel            = &cStack->kernels[j];
+        cPlane->d_planePowr     = &cStack->d_planePowr[ cStack->startZ[j] * batch->noSteps * cStack->strideFloat ]; // TODO: Fix
+      cPlane->d_iData           = &cStack->d_iData[cStack->strideCmplx*j*batch->noSteps];
+      cPlane->harmInf           = &cStack->harmInf[j];
+      cPlane->kernel            = &cStack->kernels[j];
     }
   }
 }
@@ -1620,7 +1620,7 @@ void setStkPointers(cuFFdotBatch* batch)
 
     cStack->d_iData       = &batch->d_iData[idSiz];
     cStack->h_iData       = &batch->h_iData[idSiz];
-    cStack->plains        = &batch->plains[harm];
+    cStack->planes        = &batch->planes[harm];
     cStack->kernels       = &batch->kernels[harm];
     cStack->d_planeMult   = &batch->d_planeMult[cmplStart];
     if (batch->d_planeIFFT)
@@ -1648,7 +1648,7 @@ void setBatchPointers(cuFFdotBatch* batch)
   setStkPointers(batch);
 
   // Now initialise the various pointers of the planes
-  setPlainPointers(batch);
+  setPlanePointers(batch);
 }
 
 /** Initialise a batch using details from the device kernel  .
@@ -1840,7 +1840,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       }
     }
 
-    FOLD // Allocate device Memory for Plains, Stacks & Input data (steps)  .
+    FOLD // Allocate device Memory for Planes, Stacks & Input data (steps)  .
     {
       size_t req = batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize;
 
@@ -1869,7 +1869,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planeMult,     batch->plnDataSize ), "Failed to allocate device memory for kernel stack.");
         free -= batch->plnDataSize;
 
-        if ( !(batch->flag & FLAG_CUFFT_CB_OUT) ) // Second comlex plane
+        if ( !(batch->flag & FLAG_CUFFT_CB_OUT) ) // Second complex plane
         {
           CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planeIFFT,   batch->plnDataSize ), "Failed to allocate device memory for kernel stack.");
           free -= batch->plnDataSize;
@@ -1930,8 +1930,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     }
     else
     {
-      batch->plains = (cuFFdot*) malloc(batch->noHarms* sizeof(cuFFdot));
-      memset(batch->plains, 0, batch->noHarms* sizeof(cuFFdot));
+      batch->planes = (cuFFdot*) malloc(batch->noHarms* sizeof(cuFFdot));
+      memset(batch->planes, 0, batch->noHarms* sizeof(cuFFdot));
     }
 
     FOLD // Create timing arrays  .
@@ -2046,8 +2046,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-            //sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
-            sprintf(strBuff,"%i.0.4.%i FFT Plain", batch->device, i);
+            //sprintf(strBuff,"%i FFT Plane %i Stack", batch->device, i);
+            sprintf(strBuff,"%i.0.4.%i FFT Plane", batch->device, i);
             nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
             kStack->fftPStream = cStack->fftPStream;
             //printf("cudaStreamCreate: %s\n", strBuff);
@@ -2220,44 +2220,44 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
-          cuFFdot* cPlain = &cStack->plains[j];
+          cuFFdot* cPlane = &cStack->planes[j];
 
           if ( batch->flag & FLAG_CUFFT_CB_OUT ) // float input
           {
             if      ( batch->flag & FLAG_ITLV_ROW )
             {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width * batch->noSteps;
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_planePowr;
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
             else
             {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width;
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height * batch->noSteps ;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_planePowr;
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
           }
           else // Implies complex numbers
           {
             if      ( batch->flag & FLAG_ITLV_ROW )
             {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width * batch->noSteps * 2;
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps * 2;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_planePowr;
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
             else
             {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width * 2;
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height * batch->noSteps ;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width * 2;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_planePowr;
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
           }
 
-          CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlain->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plane data.");
+          CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlane->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plane data.");
         }
       }
       CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
@@ -2326,12 +2326,12 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
-          cuFFdot* cPlain = &cStack->plains[j];
+          cuFFdot* cPlane = &cStack->planes[j];
 
-          if ( cPlain->datTex )
+          if ( cPlane->datTex )
           {
-            CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlain->datTex), "Creating texture from the plane data.");
-            cPlain->datTex = (fCplxTex)0;
+            CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlane->datTex), "Creating texture from the plane data.");
+            cPlane->datTex = (fCplxTex)0;
           }
         }
       }
@@ -2355,7 +2355,7 @@ void freeBatch(cuFFdotBatch* batch)
   FOLD // Free host memory
   {
     freeNull(batch->stacks);
-    freeNull(batch->plains);
+    freeNull(batch->planes);
 
 #ifdef TIMING
     freeNull(batch->copyH2DTime   );
@@ -2485,13 +2485,13 @@ int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
     stackInfo*    cInf    = &h_inf[i];
 
     cInf->noSteps         = batch->noSteps;
-    cInf->noPlains        = cStack->noInStack;
+    cInf->noPlanes        = cStack->noInStack;
     cInf->famIdx          = cStack->startIdx;
     cInf->flag            = batch->flag;
 
     cInf->d_iData         = cStack->d_iData;
-    cInf->d_plainData     = cStack->d_planeMult;
-    cInf->d_plainPowers   = cStack->d_planePowr;
+    cInf->d_planeData     = cStack->d_planeMult;
+    cInf->d_planePowers   = cStack->d_planePowr;
 
     // Set the pointer to constant memory
     cStack->stkIdx        = offset+i;
@@ -2575,12 +2575,12 @@ int setConstStkInfo(stackInfo* h_inf, int noStacks)
   return 1;
 }
 
-void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
+void drawPlaneCmplx(fcomplexcu* ffdotPlane, char* name, int stride, int height)
 {
   float *h_fArr = (float*) malloc(stride * height * sizeof(fcomplexcu));
-  //float DestS   = ffdotPlain->ffPowWidth*sizeof(float);
-  //float SourceS = ffdotPlain->ffPowStride;
-  CUDA_SAFE_CALL(cudaMemcpy2D(h_fArr, stride * sizeof(fcomplexcu), ffdotPlain, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
+  //float DestS   = ffdotPlane->ffPowWidth*sizeof(float);
+  //float SourceS = ffdotPlane->ffPowStride;
+  CUDA_SAFE_CALL(cudaMemcpy2D(h_fArr, stride * sizeof(fcomplexcu), ffdotPlane, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
 
   //draw2DArray(name, h_fArr, stride*2, height);
   free(h_fArr);
@@ -2696,7 +2696,7 @@ void timeAsynch(cuFFdotBatch* batch)
       CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
     }
 
-    FOLD // Copy to InMem Plain timing  .
+    FOLD // Copy to InMem Plane timing  .
     {
       if ( batch->flag & FLAG_SS_INMEM )
       {
@@ -2711,7 +2711,7 @@ void timeAsynch(cuFFdotBatch* batch)
             batch->copyToPlnTime[ss] += time;
           }
         }
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copy to InMem Plain timing");
+        CUDA_SAFE_CALL(cudaGetLastError(), "Copy to InMem Plane timing");
       }
     }
 
@@ -4299,9 +4299,9 @@ void accelMax(cuSearch* srch)
 
   FOLD // Free planes
   {
-    for ( int pln = 0 ; pln < nPlains; pln++ )  // Batches
+    for ( int pln = 0 ; pln < nPlanes; pln++ )  // Batches
     {
-      freeBatch(plainsj[pln]);
+      freeBatch(planesj[pln]);
     }
   }
 
@@ -4321,7 +4321,7 @@ void accelMax(cuSearch* srch)
 #endif
 }
 
-void plotPlains(cuFFdotBatch* batch)
+void plotPlanes(cuFFdotBatch* batch)
 {
 #ifdef CBL
   printf("\n Creating data sets...\n");
@@ -4373,11 +4373,11 @@ void plotPlains(cuFFdotBatch* batch)
 
           cmplxData += cHInfo->halfWidth*2;
           //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlain->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlane->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
           if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
-            //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlain->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+            //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlane->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
             CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
             /*
             for( int jj = 0; jj < plan->numrs[step]; jj++)

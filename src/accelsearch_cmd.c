@@ -28,15 +28,15 @@ static Cmdline cmd = {
   /* gpuP = */ 0,
   /* gpu = */ (int*)0,
   /* gpuC = */ 0,
-  /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   /* nbatchP = */ 1,
   /* nbatch = */ nbatchDefault,
   /* nbatchC = */ 1,
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
   /* nstepsP = */ 1,
   /* nsteps = */ nstepsDefault,
   /* nstepsC = */ 1,
-  /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
+  /***** -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   /* widthP = */ 1,
   /* width = */ 4,
   /* widthC = */ 1,
@@ -821,7 +821,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   if( !cmd.nbatchP ) {
     printf("-nbatch not found.\n");
   } else {
@@ -837,7 +837,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
   if( !cmd.nstepsP ) {
     printf("-nsteps not found.\n");
   } else {
@@ -853,7 +853,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
+  /***** -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   if( !cmd.widthP ) {
     printf("-width not found.\n");
   } else {
@@ -1078,13 +1078,13 @@ usage(void)
   fprintf(stderr,"%s","      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
   fprintf(stderr,"%s","             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
   fprintf(stderr,"%s","                   0...32 int values between 0 and 32\n");
-  fprintf(stderr,"%s","          -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
+  fprintf(stderr,"%s","          -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
   fprintf(stderr,"%s","                   0...32 int values between 1 and 5\n");
   fprintf(stderr,"%s","                   default: `2'\n");
-  fprintf(stderr,"%s","          -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
+  fprintf(stderr,"%s","          -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
   fprintf(stderr,"%s","                   0...32 int values between 1 and 8\n");
   fprintf(stderr,"%s","                   default: `4'\n");
-  fprintf(stderr,"%s","           -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
+  fprintf(stderr,"%s","           -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
   fprintf(stderr,"%s","                   1 int value between 1 and 65536\n");
   fprintf(stderr,"%s","                   default: `4'\n");
   fprintf(stderr,"%s","           -lsgpu: List all available CUDA GPU's and exit\n");
@@ -1128,7 +1128,7 @@ usage(void)
   fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 24Sep15\n");
+  fprintf(stderr,"%s","  version: 16Oct15\n");
   fprintf(stderr,"%s","  ");
   exit(EXIT_FAILURE);
 }

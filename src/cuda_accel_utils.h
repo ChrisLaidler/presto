@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cufft.h>
-//#include <cufftXt.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 
@@ -21,8 +20,6 @@
 #ifdef CBL
 #include "array.h"
 #include "arrayDsp.h"
-//#include "candTree.h"
-//#include "aTest.h"
 #endif
 
 extern "C"
@@ -31,36 +28,12 @@ extern "C"
 #include "accel.h"
 }
 
-#pragma once
-
-#define   MAXMUL        (1e3)                 /// Not sure what this is?
-
-#define   SEMFREE       2147483647            /// The value to indicate that a semaphore is free
-
-//#define   CU_MAX_BLOCK_SIZE   1024
-#define   CU_MAX_BLOCK_SIZE   2048            //  2K FFT's
-//#define   CU_MAX_BLOCK_SIZE   4096          //  4K FFT's
-//#define   CU_MAX_BLOCK_SIZE   8192          //  8K FFT's
-//#define   CU_MAX_BLOCK_SIZE   16384         // 16K FFT's
-//#define   CU_MAX_BLOCK_SIZE   32768         // 32K FFT's
-
-//#define BS_MAX          (CU_MAX_BLOCK_SIZE/2) // BITonic sort max number of elements
-//#define BS_MAX          8192                  // BITonic sort max number of elements
-
-//#define ACCEL_USELEN 7470     // This works up to zmax=300 to use 8K FFTs
-//#define ACCEL_USELEN 62500    // 64K   up to zmax=1200
-//#define ACCEL_USELEN 30000    // 32K   up to zmax=1200
-//#define ACCEL_USELEN 13500    // 16K   up to zmax=1200
-//#define ACCEL_USELEN 5300     // 8K    up to zmax=1200
-//#define ACCEL_USELEN 6000     // 8K    up to zmax=900
-//#define ACCEL_USELEN 6990     // 8K    up to zmax=500
-//#define ACCEL_USELEN 1200     // 4K    up to zmax=1200
+//#pragma once
 
 #define CNV_DIMX        16                    // X Thread Block
 #define CNV_DIMY        8                     // Y Thread Block
-#define CNV_WORK        12                    // The number of values to load into SM
 
-/** Details of the Normalise and spread kernel
+/**  Details of the Normalise and spread kernel  .
  * Should be as large as possible usually 32x32
  * NOTE: If compiled in debug mode it may be necessary to drop NAS_DIMY to 16
  *       else you may get Error "too many resources requested for launch"
@@ -71,13 +44,11 @@ extern "C"
 
 #define MAX_CANDS_PER_BLOCK 6000000
 
-#define BLOCKSIZE     16
-#define BLOCK1DSIZE   BLOCKSIZE*BLOCKSIZE
+#define BLOCKSIZE       16
+#define BLOCK1DSIZE     BLOCKSIZE*BLOCKSIZE
 
-#define BS_DIM        1024    // compute 3.x +
-//#define BS_DIM        576   // compute 2.x
-
-#define POWERR(r,i) ((r)*(r)+(i)*(i))
+#define BS_DIM          1024    // compute 3.x +
+//#define BS_DIM          576   // compute 2.x
 
 
 typedef struct iList
@@ -180,7 +151,6 @@ typedef struct int128
     int val[128];
 } int128;
 
-
 //---------- FLOAT -------- \\
 
 typedef struct float08
@@ -252,6 +222,12 @@ typedef struct ptr128
 
 //------------- Arrays that can be passed to kernels -------------------\\
 
+typedef struct vHarmList
+{
+    void* __restrict__ val[MAX_HARM_NO];
+    __host__ __device__ inline void* __restrict__ operator [](const int idx) { return val[idx]; }
+} vHarmList;
+
 typedef struct iHarmList
 {
     int val[MAX_HARM_NO];
@@ -298,7 +274,7 @@ typedef struct cuSearchList
     iHarmList   yInds;          ///
     fHarmList   frac;           ///
     iHarmList   heights;        ///
-    iHarmList   widths;         /// The width of usable r values in each plain
+    iHarmList   widths;         /// The width of usable r values in each plane
     iHarmList   strides;        ///
     iHarmList   ffdBuffre;      ///
     iHarmList   zMax;           ///
@@ -355,30 +331,33 @@ typedef struct fMax
 
 //-------------------  Details in Family order  ------------------------\\
 
-extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  heights   in family
-extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];    ///< Plain  strides   in family
-extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];     ///< Plain  strides   in family
-extern __device__ __constant__ fcomplexcu*  KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointers  in family
+extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];         ///< Plane  heights   in family
+extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];         ///< Plane  strides   in family
+extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];          ///< Plane  strides   in family
+extern __device__ __constant__ fcomplexcu*  KERNEL_HARM[MAX_HARM_NO];         ///< Kernel pointers  in family
 
 //--------------------  Details in stage order  ------------------------\\
 
-extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];            ///<
-extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];            ///<
-extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];              ///< Plain heights in stage order
-extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];              ///< Plain strides in stage order
-extern __device__ __constant__ int          HWIDTH_STAGE[MAX_HARM_NO];              ///< Plain half width in stage order
+extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];      ///<
+extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];      ///<
+extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];        ///< Plane heights in stage order
+extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];        ///< Plane strides in stage order
+extern __device__ __constant__ int          HWIDTH_STAGE[MAX_HARM_NO];        ///< Plane half width in stage order
 
 //-------------------  In-mem constant values  -------------------------\\
 
-extern __device__ __constant__ float*       PLN_START;
-extern __device__ __constant__ uint         PLN_STRIDE;
-extern __device__ __constant__ int          NO_STEPS;
-extern __device__ __constant__ int          ALEN;
+extern __device__ __constant__ void*        PLN_START;                        ///< A pointer to the start of the inmeme plane
+extern __device__ __constant__ uint         PLN_STRIDE;                       ///< The strided in units of the inmeme plane
+extern __device__ __constant__ int          NO_STEPS;                         ///< The number of steps used in the search
+extern __device__ __constant__ int          ALEN;                             ///< CUDA copy of the accelLen used in the search
 
 //-------------------  Other constant values  --------------------------\\
 
 extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
 extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
+
+
+//======================================= Constant Values =================================================\\
 
 const int   stageOrder[16]        =  { 0,         8,      4     , 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15};
 const float HARM_FRAC_FAM[16]     =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
@@ -387,6 +366,7 @@ const short CHUNKSZE_CPU[5]       =  { 4, 8, 8, 8, 8 } ;
 
 const float HARM_FRAC_STAGE[16]   =  { 1.0000f, 0.5000f, 0.7500f, 0.2500f, 0.8750f, 0.6250f, 0.3750f, 0.1250f, 0.9375f, 0.8125f, 0.6875f, 0.5625f, 0.4375f, 0.3125f, 0.1875f, 0.0625f } ;
 //const float h_FRAC_STAGE[16]      =  { 1.0000f, 0.5000f, 0.2500f, 0.7500f, 0.1250f, 0.3750f, 0.6250f, 0.8750f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
+
 
 //========================================= Global vals ===================================================\\
 
@@ -425,12 +405,8 @@ extern float  optSz16;
 
 extern int    pltOpt;
 
-//extern int    gdb = -1;
 
-//-------------------------  Prototypes  -------------------------------\\
-
-
-
+//====================================== Inline functions ================================================\\
 
 /* Calculate the 'r' you need for subharmonic  */
 /* harm_fract = harmnum / numharm if the       */
@@ -455,14 +431,14 @@ __host__ __device__ static inline int calc_required_z(float harm_fract, float zf
   return ( round(ACCEL_RDZ * zfull * harm_fract) * ACCEL_DZ );
 }
 
-/** Return the index for a given z value of a F-Fplain
+/** Calculate the index for a given z value of a f-∂f plane  .
  *  Assume a stepsize of ACCEL_DZ
  *
  *  Return an index for a Fourier Fdot given an array that
  *  has stepsize ACCEL_DZ and low freq 'lor'.
  *
  * @param z
- * @param loz the low freq 'lor' of the plain
+ * @param loz the low freq 'lor' of the plane
  * @return
  */
 __host__ __device__ static inline int index_from_z(float z, float loz)
@@ -470,19 +446,19 @@ __host__ __device__ static inline int index_from_z(float z, float loz)
   return (int) ((z - loz) * ACCEL_RDZ + 1e-6);
 }
 
-__global__ void print_YINDS(int no);
+//__global__ void print_YINDS(int no);
+//double _GammaP (double n, double x);
+//double _GammaQ (double n, double x);
 
-double _GammaP (double n, double x);
-double _GammaQ (double n, double x);
 
+//===================================== Function Prototypes ===============================================\\
 
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-
 
 template<typename T>
 __device__ void fresnl(T xxa, T* ss, T* cc);
 
-/** Set the active batch
+/** Set the active batch  .
  *
  */
 void setActiveBatch(cuFFdotBatch* batch, int rIdx = 0);
@@ -493,19 +469,17 @@ void setActiveBatch(cuFFdotBatch* batch, int rIdx = 0);
  */
 void cycleRlists(cuFFdotBatch* batch);
 
-
 /** Cycle the arrays of r-values  .
  *
  * @param batch
  */
 void cycleOutput(cuFFdotBatch* batch);
 
-
 /** Return the first value of 2^n >= x
  */
 __host__ __device__ long long next2_to_n_cu(long long x);
 
-/** Select the GPU to use
+/** Select the GPU to use  .
  * @param device The device to use
  * @param print if set to 1 will print the name and details of the device
  * @return The SMX version of the decide
@@ -516,13 +490,11 @@ int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen);
 
 void printContext();
 
-
-
-/** Write CUFFT call backs to device
+/** Write CUFFT call backs to device  .
  */
 void copyCUFFT_LD_CB(cuFFdotBatch* batch);
 
-/** Create the stacks to do the
+/** Create the stacks to do the  .
  *
  * @param numharmstages
  * @param zmax
@@ -531,7 +503,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch);
  */
 cuHarmInfo* createStacks(int numharmstages, int zmax, accelobs* obs);
 
-int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
+int ffdot_planeCU2(cuFFdotBatch* planes, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
 
 /** Initialise the pointers of the stacks data structures of a batch  .
  *
@@ -541,15 +513,15 @@ int ffdot_planeCU2(cuFFdotBatch* plains, double searchRLow, double searchRHi, in
  */
 void setStkPointers(cuFFdotBatch* batch);
 
-/** Initialise the pointers of the plains data structures of a batch  .
+/** Initialise the pointers of the planes data structures of a batch  .
  *
  * This assumes the stack pointers have already been setup
  *
  * @param batch
  */
-void setPlainPointers(cuFFdotBatch* batch);
+void setPlanePointers(cuFFdotBatch* batch);
 
-/** Initialise the pointers of the stacks and plains data structures of a batch  .
+/** Initialise the pointers of the stacks and planes data structures of a batch  .
  *
  * This assumes the various memory blocks of the batch have been created
  *
@@ -557,7 +529,7 @@ void setPlainPointers(cuFFdotBatch* batch);
  */
 void setBatchPointers(cuFFdotBatch* batch);
 
-/** Print a integer in binary
+/** Print a integer in binary  .
  *
  * @param val The value to print
  */
@@ -565,20 +537,21 @@ void printBitString(uint val);
 
 /**
  *
- * @param kernel
+ * @param kernel  .
  */
 void freeKernel(cuFFdotBatch* kernel);
 
+
 /////////////////////////////////////// Kernel prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-/** Create one GPU kernel. One kernel the size of the largest plain  .
+/** Create one GPU kernel. One kernel the size of the largest plane  .
  *
  * @param kernel
  * @return
  */
 int createStackKernel(cuFfdotStack* cStack);
 
-/** Create GPU kernels. One for each plain of the stack  .
+/** Create GPU kernels. One for each plane of the stack  .
  *
  * @param kernel
  * @return
@@ -595,13 +568,13 @@ float cuGetMedian(float *data, uint len);
 
 void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
 
-/** Initialise input data for a f-∂f plain(s)  ready for multiplication  .
+/** Initialise input data for a f-∂f plane(s)  ready for multiplication  .
  * This:
  *  Normalises the chunk of input data
  *  Spreads it (interbinning)
  *  FFT it ready for multiplication
  *
- * @param plains      The plains
+ * @param planes      The planes
  * @param searchRLow  The index of the low  R bin (1 value for each step)
  * @param searchRHi   The index of the high R bin (1 value for each step)
  * @param norm_type   The type of normalisation to perform
@@ -615,29 +588,29 @@ void initInput(cuFFdotBatch* batch, int norm_type );
 
 int setConstVals_Fam_Order( cuFFdotBatch* batch );
 
-/** Multiply and inverse FFT the complex f-∂f plain using FFT callback
- * @param plains
+/** Multiply and inverse FFT the complex f-∂f plane using FFT callback  .
+ * @param planes
  */
 void multiplyBatchCUFFT(cuFFdotBatch* batch );
 
 
-/** Multiply the complex f-∂f plain
+/** Multiply the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
- * This creates a complex f-∂f plain
+ * This creates a complex f-∂f plane
  */
 void multiplyBatch(cuFFdotBatch* batch );
 
-/** inverse FFT the complex f-∂f plain
+/** inverse FFT the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
- * This creates a complex f-∂f plain
+ * This creates a complex f-∂f plane
  */
 void IFFTBatch(cuFFdotBatch* batch );
 
 void copyToInMemPln(cuFFdotBatch* batch );
 
-/** Multiply and inverse FFT the complex f-∂f plain
+/** Multiply and inverse FFT the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
- * This creates a complex f-∂f plain
+ * This creates a complex f-∂f plane
  */
 void convolveBatch(cuFFdotBatch* batch );
 
@@ -658,10 +631,10 @@ void sumAndSearch(cuFFdotBatch* batch );
 
 void sumAndSearchOrr(cuFFdotBatch* batch);
 
-/** A function to call a kernel to harmonicall sum a plan and retunr the max of each column
+/** A function to call a kernel to harmonically sum a plan and return the max of each column  .
  *
  */
-void sumAndMax(cuFFdotBatch* plains, long long *numindep, float* powers);
+void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
 
 
 

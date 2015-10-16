@@ -12,11 +12,11 @@ __host__  void mult10(cuFFdotBatch* batch)
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  //for (int ss = plains->noStacks-1; ss >= 0; ss-- )
+  //for (int ss = planes->noStacks-1; ss >= 0; ss-- )
   for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
   {
     cuFfdotStack* cStack = &batch->stacks[stack];
-    fcomplexcu* d_plainData;    // The complex f-∂f plain data
+    fcomplexcu* d_planeData;    // The complex f-∂f plane data
     fcomplexcu* d_iData;        // The complex input array
 
     FOLD // Synchronisation  .
@@ -26,17 +26,17 @@ __host__  void mult10(cuFFdotBatch* batch)
       if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
       {
         // CFF output callback has its own data so can start once FFT is complete
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
       }
       else
       {
         // Have to wait for search to finish reading data
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
       }
 
       if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
       {
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plain
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
       }
 
 #ifdef SYNCHRONOUS
@@ -62,30 +62,30 @@ __host__  void mult10(cuFFdotBatch* batch)
 
     FOLD // call kernel(s)  .
     {
-      for (int plain = 0; plain < cStack->noInStack; plain++)         // Loop through plains in stack
+      for (int plane = 0; plane < cStack->noInStack; plane++)         // Loop through planes in stack
       {
-        cuHarmInfo* cHInfo    = &cStack->harmInf[plain];              // The current harmonic we are working on
-        cuFFdot*    cPlain    = &cStack->plains[plain];               // The current f-∂f plain
+        cuHarmInfo* cHInfo    = &cStack->harmInf[plane];              // The current harmonic we are working on
+        cuFFdot*    cPlane    = &cStack->planes[plane];               // The current f-∂f plane
 
         dimGrid.x = ceil(cHInfo->width / (float) ( CNV_DIMX * CNV_DIMY ));
         dimGrid.y = 1;
 
         for (int step = 0; step < batch->noSteps; step++)             // Loop through Steps
         {
-          d_iData         = cPlain->d_iData + cStack->strideCmplx * step;
+          d_iData         = cPlane->d_iData + cStack->strideCmplx * step;
 
           if      ( batch->flag & FLAG_ITLV_ROW )
           {
-            fprintf(stderr,"ERROR: Cannot do single plain multiplications with row-interleaved multi step stacks.\n");
+            fprintf(stderr,"ERROR: Cannot do single plane multiplications with row-interleaved multi step stacks.\n");
             exit(EXIT_FAILURE);
           }
           else
-            d_plainData   = cPlain->d_planeMult + step * cHInfo->height * cStack->strideCmplx;   // Shift by plain height
+            d_planeData   = cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;   // Shift by plane height
 
           if ( batch->flag & FLAG_TEX_MUL )
-            mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_plainData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlain->kernel->kerDatTex);
+            mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
           else
-            mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_plainData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlain->kernel->d_kerData);
+            mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->d_kerData);
 
           // Run message
           CUDA_SAFE_CALL(cudaGetLastError(), "Error at multiplication kernel launch");

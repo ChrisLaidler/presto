@@ -19,8 +19,8 @@
 #include "cuda_accel.h"
 
 
-#define   POWERCU(r,i)  ((r)*(r) + (i)*(i))   /// The sum of powers of two number
-#define   POWERC(c)     POWERCU(c.r, c.i)     /// The sum of powers of a complex number
+#define POWERCU(r,i)  ((r)*(r) + (i)*(i))     /// The sum of the powers of two number
+#define POWERC(c)     POWERCU(c.r, c.i)       /// The sum of the powers of a complex number
 
 #define BLACK     "\033[22;30m"
 #define GREEN     "\033[22;31m"
@@ -32,10 +32,19 @@
 #define cudaFreeNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFree(pointer), "Failed to free device memory."); pointer = NULL; }
 #define cudaFreeHostNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFreeHost(pointer), "Failed to free host memory."); pointer = NULL; }
 
+// Defines for GPU Architecture types (using the SM version to determine the # of cores per SM)
+typedef struct
+{
+    int SM; // 0xMm (hexadecimal notation), M = SM Major version, and m = SM minor version  ie 0x12 (18) is compute 1.2
+    int value;
+} SMVal;
 
 
-// cuFFT API errors
-#ifdef _CUFFT_H_
+//====================================== Inline functions ================================================//
+
+
+#ifdef _CUFFT_H_ // cuFFT API errors  .
+
 static const char *_cudaGetErrorEnum(cufftResult error)
 {
   switch (error)
@@ -94,17 +103,32 @@ static const char *_cudaGetErrorEnum(cufftResult error)
 
   return "<unknown>";
 }
-#endif
 
-// Defines for GPU Architecture types (using the SM version to determine the # of cores per SM)
-typedef struct
+#endif // _CUFFT_H_
+
+__device__ inline float get(float* __restrict__ adress, int offset)
 {
-    int SM; // 0xMm (hexadecimal notation), M = SM Major version, and m = SM minor version  ie 0x12 (18) is compute 1.2
-    int value;
-} SMVal;
+  return adress[offset];
+}
 
+__device__ inline void set(float* adress, uint offset, float value)
+{
+  adress[offset] = value;
+}
 
-//====================================== Inline functions ================================================//
+#if __CUDACC_VER__ >= 70500   // Half precision getter and setter  .
+
+__device__ inline float get(half* __restrict__ adress, int offset)
+{
+  return __half2float(adress[offset]);
+}
+
+__device__ inline void set(half* adress, uint offset, float value)
+{
+  adress[offset] = __float2half(value);
+}
+
+#endif  // __CUDACC_VER__ >= 70500
 
 
 //==================================== Function Prototypes ===============================================//

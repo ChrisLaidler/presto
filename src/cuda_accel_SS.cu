@@ -17,18 +17,18 @@
 
 //======================================= Constant memory =================================================\\
 
-__device__ __constant__ int       YINDS[MAX_YINDS];
-__device__ __constant__ float     POWERCUT_STAGE[MAX_HARM_NO];
-__device__ __constant__ float     NUMINDEP_STAGE[MAX_HARM_NO];
+__device__ __constant__ int       YINDS[MAX_YINDS];                   ///< The harmonic related Y index for each plane
+__device__ __constant__ float     POWERCUT_STAGE[MAX_HARM_NO];        ///<
+__device__ __constant__ float     NUMINDEP_STAGE[MAX_HARM_NO];        ///<
 
-__device__ __constant__ int       HEIGHT_STAGE[MAX_HARM_NO];         ///< Plain heights in stage order
-__device__ __constant__ int       STRIDE_STAGE[MAX_HARM_NO];         ///< Plain strides in stage order
-__device__ __constant__ int       HWIDTH_STAGE[MAX_HARM_NO];         ///< Plain half width in stage order
+__device__ __constant__ int       HEIGHT_STAGE[MAX_HARM_NO];          ///< Plane heights in stage order
+__device__ __constant__ int       STRIDE_STAGE[MAX_HARM_NO];          ///< Plane strides in stage order
+__device__ __constant__ int       HWIDTH_STAGE[MAX_HARM_NO];          ///< Plane half width in stage order
 
-__device__ __constant__ float*    PLN_START;
-__device__ __constant__ uint      PLN_STRIDE;
-__device__ __constant__ int       NO_STEPS;
-__device__ __constant__ int       ALEN;
+__device__ __constant__ void*     PLN_START;                          ///< A pointer to the start of the inmeme plane
+__device__ __constant__ uint      PLN_STRIDE;                         ///< The strided in units of the inmeme plane
+__device__ __constant__ int       NO_STEPS;                           ///< The number of steps used in the search
+__device__ __constant__ int       ALEN;                               ///< CUDA copy of the accelLen used in the search
 
 //====================================== Constant variables  ===============================================\\
 
@@ -63,16 +63,16 @@ __host__ __device__ inline int twon_to_index(int n)
 }
 
 template<uint FLAGS>
-__device__ inline int getY(int plainY, const int noSteps,  const int step, const int plainHeight = 0 )
+__device__ inline int getY(int planeY, const int noSteps,  const int step, const int planeHeight = 0 )
 {
   // Calculate y indice from interleave method
   if      ( FLAGS & FLAG_ITLV_ROW )
   {
-    return plainY * noSteps + step;
+    return planeY * noSteps + step;
   }
   else
   {
-    return plainY + plainHeight*step;
+    return planeY + planeHeight*step;
   }
 }
 
@@ -587,13 +587,13 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
   FOLD // Some other values  .
   {
-    cudaMemcpyToSymbol(NO_STEPS, &(batch->noSteps), sizeof(int));
-    cudaMemcpyToSymbol(ALEN, &(batch->accelLen), sizeof(int));
+    cudaMemcpyToSymbol(NO_STEPS,  &(batch->noSteps),  sizeof(int) );
+    cudaMemcpyToSymbol(ALEN,      &(batch->accelLen), sizeof(int) );
 
     if ( batch->flag & FLAG_SS_INMEM  )
     {
-      cudaMemcpyToSymbol(PLN_START, &(batch->d_plainFull), sizeof(float*));
-      cudaMemcpyToSymbol(PLN_STRIDE, &batch->sInf->mInf->inmemStride, sizeof(int));
+      cudaMemcpyToSymbol(PLN_START,   &(batch->d_planeFull),            sizeof(void*)  );
+      cudaMemcpyToSymbol(PLN_STRIDE,  &batch->sInf->mInf->inmemStride,  sizeof(int)     );
     }
   }
 
@@ -627,7 +627,6 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
         }
       }
     }
-
 
     cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_STAGE);
     CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
@@ -1275,7 +1274,7 @@ void sumAndMax(cuFFdotBatch* batch)
 //        //rVals* rVal = &((*batch->rInput)[step][0]);
 //        rVals* rVal = &batch->rArrays[3][step][0];
 //
-//        //int gIdx = batch->plains[0].searchRlowPrev[step] ;
+//        //int gIdx = batch->planes[0].searchRlowPrev[step] ;
 //        int gIdx = rVal->drlo;
 //
 //        if ( batch->flag & FLAG_STORE_EXP )

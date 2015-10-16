@@ -27,18 +27,18 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
 
   int fIdx        = inf->famIdx;
   int noSteps     = inf->noSteps;
-  int noPlains    = inf->noPlains;
+  int noPlanes    = inf->noPlanes;
   int stackStrd   = STRIDE_HARM[fIdx];
   int width       = WIDTH_HARM[fIdx];
 
   int strd        = stackStrd * noSteps ;                 /// Stride taking into acount steps)
   int gRow        = offset / strd;                        /// Row (ignoring steps)
   int col         = offset % stackStrd;                   /// 2D column
-  int top         = 0;                                    /// The top of the plain
+  int top         = 0;                                    /// The top of the plane
   int pHeight     = 0;
   int pln         = 0;
 
-  for ( int i = 0; i < noPlains; i++ )
+  for ( int i = 0; i < noPlanes; i++ )
   {
     top += HEIGHT_HARM[fIdx+i];
 
@@ -151,7 +151,7 @@ __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element
 //  //  int step0 = (int)callerInfo; // I know this isn't right but its faster than accessing the pointer =)
 //  //  int row   = offset  / INMEM_FFT_WIDTH;
 //  //  int step  = row /  HEIGHT_STAGE[0];
-//  //  row       = row %  HEIGHT_STAGE[0];  // Assumes plain interleaved!
+//  //  row       = row %  HEIGHT_STAGE[0];  // Assumes plane interleaved!
 //  //  int col   = offset % INMEM_FFT_WIDTH;
 //  //int plnOff = row * PLN_STRIDE + step0 + step + col;
 //
@@ -186,7 +186,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
 }
 
-/** Multiply and inverse FFT the complex f-∂f plain using FFT callback  .
+/** Multiply and inverse FFT the complex f-∂f plane using FFT callback  .
  * @param batch
  */
 void multiplyBatchCUFFT(cuFFdotBatch* batch )
@@ -210,11 +210,11 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
     FOLD // Synchronisation  .
     {
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
       if ( batch->retType & CU_STR_PLN )
       {
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plain
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
       }
 
 #ifdef SYNCHRONOUS
@@ -247,28 +247,18 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
         {
           if ( batch->flag & FLAG_CUFFT_CB_OUT )
           {
-#if CUDA_VERSION >= 6050
-            if ( batch->flag & FLAG_SS_INMEM  )
-            {
-              rVals* rVal = &batch->rValues[0][0];
-
-              CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)rVal->step ),"");
-            }
-            else
-            {
-              CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_planePowr ),"");
-            }
-#else
+  #if CUDA_VERSION >= 6050
+            CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_planePowr ),"Error assigning CUFFT store callback.");
+  #else
             fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
             exit(EXIT_FAILURE);
-#endif
-
+  #endif
           }
         }
 
         FOLD // Set load FFT callback  .
         {
-          CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"");
+          CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
         }
 
         CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
@@ -433,7 +423,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
     if ( rVal->numrs )
     {
-      dst     = ((Tout*)batch->d_plainFull)    + rVal->step * batch->accelLen;
+      dst     = ((Tout*)batch->d_planeFull)    + rVal->step * batch->accelLen;
 
       if      ( batch->flag & FLAG_ITLV_ROW )
       {
@@ -476,7 +466,7 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
         fprintf(stderr, "ERROR: Cannot use non CUFFT callbacks with half presison.\n");
         exit(EXIT_FAILURE);
       }
-      dst       = ((float*)batch->d_plainFull)        + rVal->step * batch->accelLen;
+      dst       = ((float*)batch->d_planeFull)        + rVal->step * batch->accelLen;
 
       if ( batch->flag & FLAG_ITLV_ROW )
       {
@@ -500,18 +490,18 @@ void multStack(cuFFdotBatch* batch, cuFfdotStack* cStack, int sIdx, cuFfdotStack
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,    0), "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
     // CFF output callback has its own data so can start once FFT is complete
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
     if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
     {
       // Have to wait for search to finish reading data
-      //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp,   0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-      //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the complex plain so search must be compete
+      //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp,   0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+      //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the complex plane so search must be compete
     }
 
     if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
     {
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plain
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
     }
 
 #ifdef SYNCHRONOUS
@@ -599,7 +589,7 @@ void multiplyBatch(cuFFdotBatch* batch)
         printf("\t\tMultiply\n");
 #endif
 
-        // In my testing I found multiplying each plain separately works fastest so it is the "default"
+        // In my testing I found multiplying each plane separately works fastest so it is the "default"
         if      ( batch->flag & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
         {
           FOLD // Synchronisation  .
@@ -614,20 +604,20 @@ void multiplyBatch(cuFFdotBatch* batch)
               if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
               {
                 // CFF output callback has its own data so can start once FFT is complete
-                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
               }
             }
 
             if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
             {
               // Have to wait for search to finish reading data
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
             }
 
             if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plain
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
             }
           }
 
@@ -669,7 +659,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             pStack = cStack;
           }
         }
-        else if ( batch->flag & FLAG_MUL_PLN )    // Do the multiplications one plain  at a time  .
+        else if ( batch->flag & FLAG_MUL_PLN )    // Do the multiplications one plane  at a time  .
         {
           mult10(batch);
         }
@@ -684,6 +674,7 @@ void multiplyBatch(cuFFdotBatch* batch)
   }
 }
 
+
 void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL)
 {
   FOLD // Synchronisation  .
@@ -693,20 +684,20 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
 #endif
 
     // Wait for multiplication to finish
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,      0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,       0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,      0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,       0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
     // Wait for previous search to finish
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,     0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,     0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
     if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
     {
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
     }
 
     if ( batch->flag & FLAG_SS_INMEM  )
     {
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
     }
 
 #ifdef SYNCHRONOUS
@@ -743,7 +734,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
         if ( batch->flag & FLAG_CUFFT_CB_OUT )
         {
 #if CUDA_VERSION >= 6050
-          CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_planePowr ),"");
+          CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_planePowr ),"Error assigning CUFFT store callback.");
 #else
           fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
           exit(EXIT_FAILURE);
@@ -756,9 +747,15 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
         CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
 
         if ( cStack->flag & FLAG_CUFFT_CB_OUT )
+        {
+          // CUFFT callbacks write to powers plane
           CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planeMult, CUFFT_INVERSE),"Error executing CUFFT plan.");
+        }
         else
+        {
+          // Normal CUFFT write to second complex plane
           CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planeIFFT, CUFFT_INVERSE),"Error executing CUFFT plan.");
+        }
       }
     }
   }
@@ -829,7 +826,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
         FOLD // Synchronisation  .
         {
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
         }
 
         FOLD // Copy memory on the device  .
@@ -867,9 +864,9 @@ void copyToInMemPln(cuFFdotBatch* batch)
   }
 }
 
-/** Multiply and inverse FFT the complex f-∂f plain  .
+/** Multiply and inverse FFT the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
- * This creates a complex f-∂f plain
+ * This creates a complex f-∂f plane
  */
 void convolveBatch(cuFFdotBatch* batch)
 {
@@ -902,7 +899,7 @@ void convolveBatch(cuFFdotBatch* batch)
         printf("\t\tMultiply\n");
 #endif
 
-        // In my testing I found multiplying each plain separately works fastest so it is the "default"
+        // In my testing I found multiplying each plane separately works fastest so it is the "default"
         if      ( batch->flag & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
         {
           FOLD // Synchronisation  .
@@ -917,19 +914,19 @@ void convolveBatch(cuFFdotBatch* batch)
               if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
               {
                 // CFF output callback has its own data so can start once FFT is complete
-                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
               }
             }
 
             if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
             {
               // Have to wait for search to finish reading data
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plain so search must be compete
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
             }
 
             if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plain
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
             }
           }
 
@@ -982,7 +979,7 @@ void convolveBatch(cuFFdotBatch* batch)
             pStack = cStack;
           }
         }
-        else if ( batch->flag & FLAG_MUL_PLN )    // Do the multiplications one plain  at a time  .
+        else if ( batch->flag & FLAG_MUL_PLN )    // Do the multiplications one plane  at a time  .
         {
           mult10(batch);
         }

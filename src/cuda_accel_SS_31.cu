@@ -4,6 +4,7 @@
 #define SS31_Y           8                     // Y Thread Block
 #define SS31BS           (SS31_X*SS31_Y)
 
+
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
  * @param searchList
@@ -12,27 +13,28 @@
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
+//template<typename T, uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
 template<uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
 __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList texs, fsHarmList powersArr, cHarmList cmplxArr )
 {
-  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;     /// Block index
-  const int tid   = blockIdx.x  * SS31BS  +  bidx;            /// Global thread id (ie column) 0 is the first 'good' column
+  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;           /// Block index
+  const int tid   = blockIdx.x  * SS31BS  +  bidx;                  /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
     const int zeroHeight  = HEIGHT_STAGE[0];
-    const int oStride     = STRIDE_STAGE[0];                    /// The stride of the output data
+    const int oStride     = STRIDE_STAGE[0];                        /// The stride of the output data
 
     int             inds      [noHarms];
     candPZs         candLists [noStages][noSteps];
-    float           powers    [noSteps][cunkSize];              /// registers to hold values to increase mem cache hits
+    float           powers    [noSteps][cunkSize];                  /// registers to hold values to increase mem cache hits
 
     FOLD // Prep - Initialise the x indices & set candidates to 0  .
     {
       // Calculate the x indices or create a pointer offset by the correct amount
       for ( int harm = 0; harm < noHarms; harm++ )                	// loop over harmonic  .
       {
-        //// NOTE: the indexing below assume each plain starts on a multiple of noHarms
+        //// NOTE: the indexing below assume each plane starts on a multiple of noHarms
         int   ix        = roundf( tid*FRAC_STAGE[harm] ) + HWIDTH_STAGE[harm] ;
         inds[harm]      = ix;
       }
@@ -57,7 +59,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
       short   y0      = lDepth*blockIdx.y;
       short   y1      = MIN(y0+lDepth, zeroHeight);
 
-      for( short y = y0; y < y1 ; y += cunkSize )              // loop over chunks  .
+      for( short y = y0; y < y1 ; y += cunkSize )                   // loop over chunks  .
       {
         FOLD // Initialise powers for each section column to 0  .
         {
@@ -85,18 +87,18 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
                 int     ix1   = inds[harm] ;
                 int     ix2   = ix1;
                 short   iyP   = -1;
-                float pow[noSteps];
+                float   pow[noSteps];
 
                 for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
                 {
-                  short trm     = y + yPlus ;                         ///< True Y index in plain
+                  short trm     = y + yPlus ;                       ///< True Y index in plane
                   short iy1     = YINDS[ (zeroHeight+INDS_BUFF)*harm + trm ];
                   //  OR
                   //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
                   int iy2;
 
-                  if ( (iyP != iy1) /* && (trm < zeroHeight)*/ ) // Only read power if it is not the same as the previous  .
+                  if ( (iyP != iy1) /* && (trm < zeroHeight)*/ )    // Only read power if it is not the same as the previous  .
                   {
                     for ( int step = 0; step < noSteps; step++)     // Loop over steps  .
                     {
@@ -124,7 +126,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
                         else
                         {
                           fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                          pow[step]             = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+                          pow[step]             = POWERC(cmpc);
                         }
                       }
                     }
@@ -134,7 +136,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
 
                   FOLD // // Accumulate powers  .
                   {
-                    for ( short step = 0; step < noSteps; step++)     // Loop over steps  .
+                    for ( short step = 0; step < noSteps; step++)   // Loop over steps  .
                     {
                       powers[step][yPlus] += pow[step];
                     }
@@ -185,9 +187,9 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
 
     FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
-      for ( int step = 0; step < noSteps; step++)             // Loop over steps  .
+      for ( int step = 0; step < noSteps; step++)             	    // Loop over steps  .
       {
-        for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages  .
+        for ( int stage = 0 ; stage < noStages; stage++)      	    // Loop over stages  .
         {
           if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
           {
@@ -213,16 +215,16 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   for (int i = 0; i < noHarms; i++)
   {
     int idx         = batch->stageIdx[i];
-    texs.val[i]     = batch->plains[idx].datTex;
-    powers.val[i]   = batch->plains[idx].d_planePowr;
+    texs.val[i]     = batch->planes[idx].datTex;
+    powers.val[i]   = batch->planes[idx].d_planePowr;
 
     if ( batch->flag & FLAG_CUFFT_CB_OUT )
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeMult;
+      cmplx.val[i]  = batch->planes[idx].d_planeMult;
     }
     else
     {
-      cmplx.val[i]  = batch->plains[idx].d_planeIFFT;
+      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
     }
   }
 
