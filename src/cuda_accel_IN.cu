@@ -257,7 +257,8 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         FOLD // Blocking synchronisation, Make sure the previous thread has complete reading from page locked memory
         {
           nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "Synchronising before writing input data to page locked host memory.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Before Synchronising");
+          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
           nvtxRangePop();
         }
 
@@ -355,7 +356,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         {
           // Make sure the previous thread has complete reading from page locked memory
           nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "Copying data to device");
+          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
           nvtxRangePop();
         }
 

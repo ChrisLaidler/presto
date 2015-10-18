@@ -101,15 +101,15 @@ int main(int argc, char *argv[])
 
   // Timing vars
   long long contextInit = 0, prepTime = 0, cpuKerTime = 0, gpuKerTime = 0, cupTime = 0, gpuTime = 0, cndTime = 0, optTime = 0, cpuOptTime = 0, gpuOptTime = 0;
-  float wallTime;
+  //float wallTime;
   struct timeval start, end;
   struct timeval start01, end01;
-  struct timeval wallStart, wallEnd;
+  //struct timeval wallStart, wallEnd;
 
   /* Prep the timer */
 
   tott = times(&runtimes) / (double) CLK_TCK;
-  gettimeofday(&wallStart, NULL);
+//  gettimeofday(&wallStart, NULL);
 
   /* Call usage() if we have no command line arguments */
 
@@ -145,7 +145,6 @@ int main(int argc, char *argv[])
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
   searchSpecs   sSpec;
-  char          name[1024];
   pthread_t     cntxThread = NULL;
 
   // Start the timer
@@ -164,7 +163,7 @@ int main(int argc, char *argv[])
     if ( iret1 )
     {
       fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
-      cntxThread = NULL;
+      cntxThread = 0;
 
       // Start the timer
       gettimeofday(&start, NULL);
@@ -223,6 +222,10 @@ int main(int argc, char *argv[])
   printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
   printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
+#ifdef DEBUG
+  char name[1024];
+#endif
+
 #ifdef CUDA
   char fname[1024];
   sprintf(fname,"%s_hs%02i_zmax%06.1f_sig%06.3f", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
@@ -238,7 +241,7 @@ int main(int argc, char *argv[])
   if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		  // Read candidates from previous search  . // TMP
   {
     int numcands;
-    int wst = fread( &numcands, sizeof(numcands), 1, file );
+    fread( &numcands, sizeof(numcands), 1, file );
     int nc = 0;
 
     printf("\nReading %i raw candies from \"%s\" previous search.\n", numcands, candsFile);
@@ -246,7 +249,7 @@ int main(int argc, char *argv[])
     for (nc = 0; nc < numcands; nc++)
     {
       accelcand* newCnd = (accelcand*)malloc(sizeof(accelcand));
-      wst = fread( newCnd, sizeof(accelcand), 1, file );
+      fread( newCnd, sizeof(accelcand), 1, file );
 
       cands=insert_accelcand(cands,newCnd);
     }
@@ -426,7 +429,7 @@ int main(int argc, char *argv[])
           printf("GPU loop will process %i steps\n", maxxx);
 #endif
 
-          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s) .\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
+          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
 
           gettimeofday(&end, NULL);
           gpuKerTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -437,12 +440,12 @@ int main(int argc, char *argv[])
             sprintf(srcTyp, "GPU search");
         }
 
-        FOLD // Basic timing  .
-        {
-          gettimeofday(&end, NULL);
-          long long initTimeG = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-          //printf("GPU initialisation %.3fs \n", initTimeG*1e-6);
-        }
+//        FOLD // Basic timing  .
+//        {
+//          gettimeofday(&end, NULL);
+//          long long initTimeG = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+//          printf("GPU initialisation %.3fs \n", initTimeG*1e-6);
+//        }
 
         FOLD //                                 ---===== Main Loop =====---  .
         {
@@ -870,7 +873,7 @@ int main(int argc, char *argv[])
         FOLD  	// Main GPU loop  .
         {
           accelcand *candGPUP;
-          int tid = omp_get_thread_num();
+          //int tid = omp_get_thread_num();
 
           FOLD  // Set device  .
           {
@@ -1176,8 +1179,8 @@ int main(int argc, char *argv[])
   for (ii = 0; ii < obs.numharmstages; ii++)
     printf("  %2d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
 
-  gettimeofday(&wallEnd, NULL);
-  wallTime = ((wallEnd.tv_sec - wallStart.tv_sec) * 1e6 + (wallEnd.tv_usec - wallStart.tv_usec));
+  //gettimeofday(&wallEnd, NULL);
+  //wallTime = ((wallEnd.tv_sec - wallStart.tv_sec) * 1e6 + (wallEnd.tv_usec - wallStart.tv_usec));
 
   printf("\nTiming summary:\n");
 

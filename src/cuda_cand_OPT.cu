@@ -871,7 +871,8 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->alignment);
   pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
 
-  int datStart,  datEnd, noDat;
+  int datStart,  datEnd;
+  //int noDat;
   int32   rOff;
   int32   hw;
   float32 norm;
@@ -883,7 +884,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     datStart        = floor( minR*(h+1) - pln->halfWidth );
     datEnd          = ceil(  maxR*(h+1) + pln->halfWidth );
-    noDat           = datEnd - datStart;
+    //noDat           = datEnd - datStart;
 
     if ( datStart < pln->loR[h] )
     {
@@ -931,7 +932,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     datStart          = floor( minR*(h+1) - pln->halfWidth );
     datEnd            = ceil(  maxR*(h+1) + pln->halfWidth );
-    noDat             = datEnd - datStart;
+    //noDat             = datEnd - datStart;
     hw.val[h]         = z_resp_halfwidth(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))) + 4, HIGHACC);
     rOff.val[h]       = pln->loR[h];
 
@@ -1161,7 +1162,7 @@ void generatePln(cand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "Synchronising using cudaEventSynchronize.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
   }
 
@@ -1549,7 +1550,7 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "Synchronising using cudaEventSynchronize.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
   }
 
@@ -1637,7 +1638,7 @@ void opt_candBySwrm(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doub
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "Synchronising using cudaEventSynchronize");
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
   }
 

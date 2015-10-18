@@ -42,6 +42,7 @@ extern "C"
  */
 
 
+
 extern "C"
 {
 #include "accel.h"
@@ -57,16 +58,38 @@ extern "C"
 #include <fcntl.h>
 #endif
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+//#include <cuda.h>
+//#include <cufft.h>
+//#include <cufftXt.h>
+//
+////#if __CUDACC_VER__ >= 70500   // Half precision
+//#include <cuda_fp16.h>
+////#endif
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 #ifdef CUDA
+
 #include "cuda_accel.h"
 #include "cuda_accel_utils.h"
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
 #include <cuda_profiler_api.h>
 
+#endif
+
+#ifdef __CUDACC__
+#warning using nvcc
+#else
+#warning not using nvcc
+#endif
+
 #include <sys/time.h>
 #include <time.h>
-#endif
+
 
 #ifdef WITHOMP
 #include <omp.h>
@@ -253,7 +276,6 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
 
   for (ii = 0; ii < ffdot->numzs; ii++)
   {
-
     nrs = corr_complex2(corrd,
         data, numdata, datainf,
         shi->kern[ii].data, fftlen, FFT,
@@ -766,8 +788,7 @@ int main(int argc, char *argv[])
     vect_free(bird_hibins);
   }
 
-  printf("Searching with up to %d harmonics summed:\n",
-      1 << (obs.numharmstages - 1));
+  printf("Searching with up to %d harmonics summed:\n", 1 << (obs.numharmstages - 1));
   printf("  f = %.1f to %.1f Hz\n", obs.rlo / obs.T, obs.rhi / obs.T);
   printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
   printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
@@ -825,6 +846,8 @@ int main(int argc, char *argv[])
     {
       ffdotpows *fundamental;
       double startr = obs.rlo, lastr = 0, nextr = 0;
+      int maxxx;
+      int ss = 0;
 
       int noHarms   = (1 << (obs.numharmstages - 1));
       candsGPU      = NULL;
@@ -858,6 +881,8 @@ int main(int argc, char *argv[])
 
       FOLD // Generate the GPU kernel  .
       {
+        sSpec.flags   |= CU_NORM_EQUIV;
+
         cuSrch        = initCuSearch(&sSpec, &gSpec, NULL);
 
         master        =  &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
@@ -879,7 +904,7 @@ int main(int argc, char *argv[])
         for (stage = 0; stage < obs.numharmstages; stage++)
         {
           harmtosum = 1 << stage;
-          for (harm = 1; harm <= harmtosum; harm += 2)
+          for ( harm = 1; harm <= harmtosum; harm += 2 )
           {
             nDarray<2, float> CPU_kernels;
             nDarray<2, float> GPU_kernels;
@@ -902,7 +927,7 @@ int main(int argc, char *argv[])
 
             // Copy data from device
             CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->mInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
-            //CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Synchronising using cudaEventSynchronize");
+            //CUDA_SAFE_CALL(cudaDeviceSynchronize(), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 
             for ( int row=0; row < sinf->numkern; row++  )
             {
@@ -941,12 +966,33 @@ int main(int argc, char *argv[])
 
       if ( cmd->gpuP >= 0) // -- Main Loop --  .
       {
-        int firstStep       = 0;
+        int  firstStep      = 0;
         bool printDetails   = false;
         bool printBadLines  = false;
         bool CSV            = false;
 
-        printf("\nRunning GPU search with %i simultaneous families of f-∂f planes spread across %i device(s).\n", cuSrch->mInf->noSteps, cuSrch->mInf->noDevices);
+        omp_set_num_threads(cuSrch->mInf->noBatches);
+
+        int harmtosum, harm;
+        startr = obs.rlo, lastr = 0, nextr = 0;
+
+        // Search bounds
+        startr    = 0, lastr = 0, nextr = 0;
+        maxxx     = cuSrch->SrchSz->noSteps;
+        if ( master->flag & FLAG_SS_INMEM  )
+        {
+          startr  = master->SrchSz->searchRLow ; // ie ( rlo / no harms)
+        }
+        else
+          startr  = sSpec.fftInf.rlo;
+
+        //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of planes to make
+
+        if ( maxxx < 0 )
+          maxxx = 0;
+
+        printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
+
         printf("\nWill check all input and planes and report ");
         if (printDetails)
           printf("all results");
@@ -954,20 +1000,15 @@ int main(int argc, char *argv[])
           printf("only poor or bad results");
         printf("\n\n");
 
-        omp_set_num_threads(cuSrch->mInf->noBatches);
-
-        int harmtosum, harm;
-        startr = obs.rlo, lastr = 0, nextr = 0;
-
         print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
-        int ss = 0;
-        int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
-
-        float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
-
-        if ( maxxx < 0 )
-          maxxx = 0;
+        //        int ss = 0;
+        //        int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
+        //
+        //        float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
+        //
+        //        if ( maxxx < 0 )
+        //          maxxx = 0;
 
         nDarray<2, float> plotPowers;
         //cuSrch->mInf->batches[0].hInfos[0].numrs;
@@ -1048,40 +1089,67 @@ int main(int argc, char *argv[])
           double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
           size_t   rest    = trdBatch->noSteps;
 
+          void* tmpRow = malloc(trdBatch->inpDataSize);
+
           setDevice( trdBatch ) ;
 
           int noCands = 0;
 
           while ( ss < maxxx ) // -- Main Loop --  .
           {
+            FOLD // Calculate the step(s) to handle  .
+            {
+
 #pragma omp critical
-            FOLD
-            {
-              firstStep = ss;
-              ss       += trdBatch->noSteps;
-            }
-
-            if ( firstStep >= maxxx )
-              break;
-
-            if ( firstStep + trdBatch->noSteps >= maxxx )
-            {
-              int tmp = 0;
-              rest    = maxxx - firstStep;
-            }
-
-            // Set start r-vals for all steps in this batch
-            for ( int step = 0; step < trdBatch->noSteps ; step ++)
-            {
-              if ( step < rest )
+              FOLD // Calculate the step  .
               {
-                startrs[step] = obs.rlo + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
-                lastrs[step]  = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+                firstStep = ss;
+                ss       += trdBatch->noSteps;
+                cuSrch->noSteps++;
+#ifdef STPMSG
+                printf("\nStep %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, trdBatch->noSteps);
+#endif
               }
-              else
+
+              if ( firstStep >= maxxx )
+                break;
+
+              if ( firstStep + (int)trdBatch->noSteps >= maxxx ) // End case (there is some overflow)  .
               {
-                startrs[step] = 0 ;
-                lastrs[step]  = 0 ;
+                // TODO: There are a number of families we don't need to run see if we can use 'setplanePointers(trdBatch)'
+                // To see if we can do less work on the last step
+                rest = maxxx - firstStep;
+              }
+            }
+
+            FOLD // Set start r-vals for all steps in this batch  .
+            {
+              trdBatch->rValues = trdBatch->rArrays[0];
+
+              for ( int step = 0; step < (int)trdBatch->noSteps ; step ++)
+              {
+                rVals* rVal = &trdBatch->rValues[step][0];
+
+                if ( step < rest )
+                {
+                  startrs[step]   = startr        + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+                  lastrs[step]    = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+
+                  rVal->drlo      = startrs[step];
+                  rVal->drhi      = lastrs[step];
+
+                  int harm;
+                  for (harm = 0; harm < trdBatch->noHarms; harm++)
+                  {
+                    rVal          = &trdBatch->rValues[step][harm];
+                    rVal->step    = firstStep + step;
+                  }
+                }
+                else
+                {
+                  startrs[step]   = 0 ;
+                  lastrs[step]    = 0 ;
+                }
               }
             }
 
@@ -1096,64 +1164,101 @@ int main(int argc, char *argv[])
               harm      = 0;
 
               // Write data to page locked memory
-              for (int ss = 0; ss < trdBatch->noStacks; ss++)
+              for ( int stackNo = 0; stackNo < trdBatch->noStacks; stackNo++ )
               {
-                cuFfdotStack* cStack = &trdBatch->stacks[ss];
+                cuFfdotStack* cStack = &trdBatch->stacks[stackNo];
 
                 // Synchronise
                 //cudaStreamWaitEvent(cStack->fftPStream, cStack->plnComp, 0);
-                for (int si = 0; si < cStack->noInStack; si++)
+                for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
                 {
                   cuHarmInfo* cHInfo    = &trdBatch->hInfos[harm];      // The current harmonic we are working on
-                  cuFFdot*    plan      = &cStack->planes[si];          // The current plane
+                  cuFFdot*    plan      = &cStack->planes[plainNo];          // The current plane
 
                   for ( int step = 0; step < trdBatch->noSteps; step ++) // Loop over steps
                   {
-                    rVals* rVal = &((*trdBatch->rConvld)[step][harm]);
+                    rVals* rVal = &((trdBatch->rValues)[step][harm]);
 
-                    if (rVal->numdata)
+                    if ( rVal->numdata )
                     {
-                      //int diff = plan->numrs[step] - cHInfo->numrs;
-                      //int diff = plan->numrs[step] - cHInfo->numrs;
-
                       // Copy input data from GPU
                       fcomplexcu *data = &trdBatch->d_iData[sz];
-                      CUDA_SAFE_CALL(cudaMemcpyAsync(gpuInput[step][harm].elems, data, cStack->strideCmplx*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
+                      CUDA_SAFE_CALL(cudaMemcpy(gpuInput[step][harm].elems, data, cStack->strideCmplx*2*sizeof(float), cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
 
                       // Copy pain from GPU
                       for( int y = 0; y < cHInfo->height; y++ )
                       {
                         fcomplexcu *cmplxData;
-                        float *powers;
+                        //float *powers;
+                        void *powers;
+                        int offset;
+                        int elsz;
+
                         if      ( trdBatch->flag & FLAG_ITLV_ROW )
                         {
-                          cmplxData = &plan->d_planeMult[(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          powers    = &plan->d_planePowr[(y*trdBatch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
+                          offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+                          //cmplxData = &plan->d_planeMult          [(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+                          //powers    = &((float*)plan->d_planePowr)[(y*trdBatch->noSteps + step)*cStack->stridePower + cHInfo->halfWidth * 2 ];
                         }
                         else
                         {
-                          cmplxData = &plan->d_planeMult[(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          powers    = &plan->d_planePowr[(y + step*cHInfo->height)*cStack->strideFloat + cHInfo->halfWidth * 2 ];
+                          offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+                          //cmplxData = &plan->d_planeMult          [(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+                          //powers    = &((float*)plan->d_planePowr)[(y + step*cHInfo->height)*cStack->stridePower + cHInfo->halfWidth * 2 ];
                         }
 
-                        if      ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
+                        cmplxData = &plan->d_planeMult[offset];
+                        CUDA_SAFE_CALL(cudaMemcpy(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+
+                        float* outVals = gpuPowers[step][harm].getP(0,y);
+
+                        if      ( trdBatch->flag & FLAG_HALF )
                         {
-                          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                          /*
-                                               for( int jj = 0; jj < plan->numrs[step]; jj++)
-                                               {
-                                                 float *add = gpuPowers[step][harm].getP(jj*2+1,y);
-                                                 gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
-                                               }
-                           */
+                          powers =  &((half*)      plan->d_planePowr)[offset];
+                          elsz   = sizeof(half);
+                          CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+
+                          for ( int i = 0; i < rVal->numrs; i++)
+                          {
+                            outVals[i] = half2float(((ushort*)tmpRow)[i]);
+                          }
+                        }
+                        else if ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
+                        {
+                          powers =  &((float*)     plan->d_planePowr)[offset];
+                          elsz   = sizeof(float);
+                          CUDA_SAFE_CALL(cudaMemcpyAsync(outVals, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
                         }
                         else
                         {
-                          //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
-                          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                          powers =  &((fcomplexcu*) plan->d_planePowr)[offset];
+                          elsz   = sizeof(cmplxData);
+                          CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+
+                          for ( int i = 0; i < rVal->numrs; i++)
+                          {
+                            outVals[i] = POWERC(((fcomplexcu*)tmpRow)[i]);
+                          }
                         }
+                        //
+                        //                        if      ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
+                        //                        {
+                        //                          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        //                          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        //                          /*
+                        //                                               for( int jj = 0; jj < plan->numrs[step]; jj++)
+                        //                                               {
+                        //                                                 float *add = gpuPowers[step][harm].getP(jj*2+1,y);
+                        //                                                 gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
+                        //                                               }
+                        //                           */
+                        //                        }
+                        //                        else
+                        //                        {
+                        //                          //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
+                        //                          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        //                          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+                        //                        }
                       }
                     }
 
@@ -1174,15 +1279,18 @@ int main(int argc, char *argv[])
               {
                 double poww, sig, rr, zz;
 
-                startr  = startrs[step];
-                lastr   = lastrs[step];
+                double startr  = startrs[step];
+                double lastr   = lastrs[step];
 
-                rVals* rVal;
-#ifdef SYNCHRONOUS
-                rVal = &((*trdBatch->rConvld)[step][0]);
-#else
-                rVal = &((*trdBatch->rSearch)[step][0]);
-#endif
+                //                rVals* rVal;
+                //#ifdef SYNCHRONOUS
+                //                rVal = &((*trdBatch->rConvld)[step][0]);
+                //#else
+                //                rVal = &((*trdBatch->rSearch)[step][0]);
+                //#endif
+                rVals* rVal = &((trdBatch->rValues)[step][0]);
+
+                double rLow = trdBatch->rValues[0][0].drlo;
 
                 FOLD // ????  .
                 {
@@ -1241,78 +1349,87 @@ int main(int argc, char *argv[])
                             printf("%03i %15.3f  %04i %04i \n", y, vall, 0, 0 );
                           }
                         }
-
-                        int tmp = 0;
                       }
                     }
 
                     FOLD // Compare candidates
                     {
-                      for ( int x = 0; x < trdBatch->accelLen; x++ )
+                      for ( int y = 0; y < trdBatch->ssSlices; y++ )
                       {
-                        int idx   = step*obs.numharmstages*trdBatch->hInfos->width + stage*trdBatch->hInfos->width + x ;
+                        int x0 = step*rVal->numrs;
+                        int x1 = (step+1)*rVal->numrs;
 
-                        int iz    = 0;
-                        poww      = 0;
-                        sig       = 0;
-                        zz        = 0;
+//                        for ( int lstep = 0; lstep < trdBatch->noSteps; lstep++) // Loop over steps  .
+//                        {
+//                          rVals* rVal         = &trdBatch->rValues[step][0];
+//                          x1                 += rVal->numrs;
+//                        }
 
-                        if      ( trdBatch->retType & CU_CANDMIN  )
+                        for ( int x = x0; x < x1; x++ )
                         {
-                          candMin candM         = ((candMin*)trdBatch->h_retData1)[idx];
-                          sig                   = candM.power;
-                          poww                  = candM.power;
-                          iz                    = candM.z;
-                        }
-                        else if ( trdBatch->retType & CU_POWERZ_S   )
-                        {
-                          candPZs candM          = ((candPZs*)trdBatch->h_retData1)[idx];
-                          sig                   = candM.value;
-                          poww                  = candM.value;
-                          iz                    = candM.z;
-                        }
-                        else if ( trdBatch->retType & CU_CANDBASC )
-                        {
-                          accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData1)[idx];
-                          poww                  = candB.sigma;
-                          sig                   = candB.sigma;
-                          iz                    = candB.z;
-                        }
-                        else
-                        {
-                          fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-                          exit(EXIT_FAILURE);
-                        }
+                          //int idx   = step*obs.numharmstages*trdBatch->hInfos->width + stage*trdBatch->hInfos->width + x ;
+                          int idx     = stage*trdBatch->strideRes*trdBatch->noSteps*trdBatch->ssSlices + y*trdBatch->strideRes*trdBatch->noSteps + x ;
 
-                        if ( poww > 0 )
-                        {
-                          rr      = ( rVal->drlo + x *  ACCEL_DR )                            / (double)harmtosum ;
-                          zz      = ( iz * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)harmtosum ;
+                          int iz    = 0;
+                          poww      = 0;
+                          sig       = 0;
+                          zz        = 0;
 
-                          float cPow;
-                          float *row;
-
-                          row   = fundamental->powers[iz];
-                          cPow  = row[x];
-
-                          float p1 = poww;
-                          float p2 = cPow;
-
-                          float err = fabs(1-p2/p1);
-
-                          if ( err > 0.001 )
+                          if      ( trdBatch->retType & CU_CANDMIN  )
                           {
-                            printf("Candidate r: %9.4f z: %5.2f  CPU pow: %6.2f  GPU pow: %6.2f   %8.6f \n", rr, zz, p2, p1, fabs(1-p2/p1) );
-                            badCands++;
+                            candMin candM         = ((candMin*)trdBatch->h_retData1)[idx];
+                            sig                   = candM.power;
+                            poww                  = candM.power;
+                            iz                    = candM.z;
+                          }
+                          else if ( trdBatch->retType & CU_POWERZ_S )
+                          {
+                            candPZs candM          = ((candPZs*)trdBatch->h_retData1)[idx];
+                            sig                   = candM.value;
+                            poww                  = candM.value;
+                            iz                    = candM.z;
+                          }
+                          else if ( trdBatch->retType & CU_CANDBASC )
+                          {
+                            accelcandBasic candB  = ((accelcandBasic*)trdBatch->h_retData1)[idx];
+                            poww                  = candB.sigma;
+                            sig                   = candB.sigma;
+                            iz                    = candB.z;
                           }
                           else
                           {
-                            goodCands++;
+                            fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
+                            exit(EXIT_FAILURE);
                           }
 
-                          int tmp = 0 ;
-                        }
+                          if ( poww > 0 )
+                          {
+                            rr      = ( rLow + x *  ACCEL_DR )                                  / (double)harmtosum ;
+                            zz      = ( iz * ACCEL_DZ - trdBatch->hInfos[0].zmax )              / (double)harmtosum ;
 
+                            float cPow;
+                            float *row;
+
+                            row   = fundamental->powers[iz];
+                            cPow  = row[x-x0];
+
+                            float p1 = poww;
+                            float p2 = cPow;
+
+                            float err = fabs(1-p2/p1);
+
+                            if ( err > 0.001 )
+                            {
+                              printf("Candidate r: %9.4f z: %5.2f  CPU pow: %6.2f  GPU pow: %6.2f   %8.6f \n", rr, zz, p2, p1, fabs(1-p2/p1) );
+                              badCands++;
+                            }
+                            else
+                            {
+                              goodCands++;
+                            }
+                          }
+
+                        }
                       }
                     }
 
@@ -1361,8 +1478,6 @@ int main(int argc, char *argv[])
               }
             }
 
-
-
             FOLD // Print MSE  .
             {
               for ( int step = 0; (step < trdBatch->noSteps) && ( firstStep+step < maxxx) ; step ++) // Loop over steps
@@ -1370,78 +1485,209 @@ int main(int argc, char *argv[])
                 bool good = true;
                 bool bad  = false;
 
-                if (printDetails)
-                  printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
-
-                for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
+                FOLD // Input  .
                 {
-                  basicStats stat = gpuInput[step][harz].getStats(true);
-                  double MSE = gpuInput[step][harz].MSE(cpuInput[step][harz]);
-                  double ERR = MSE / stat.sigma ;
+                  if (printDetails)
+                    printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
 
-                  if ( ERR > 1e-10  )
-                  {
-                    if ( good && !printDetails )
-                      printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
-
-                    good = false;
-                  }
-                  if ( ERR > 1e-6   )
-                  {
-                    badInp++;
-                    bad = true;
-                  }
-
-                  if ( !good || printDetails )
-                  {
-                    printf("   Input: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
-
-                    if      ( ERR > 1e1   )
-                      printf("  BAD!    Not even in the same realm.\n");
-                    else if ( ERR > 1e0   )
-                      printf("  Bad.  \n" );
-                    else if ( ERR > 1e-4  )
-                      printf("  Bad.   But not that bad.\n");
-                    else if ( ERR > 1e-6  )
-                      printf("  Close  But not great. \n");
-                    else if ( ERR > 1e-10 )
-                      printf("  GOOD  But a bit high.\n");
-                    else if ( ERR > 1e-15 )
-                      printf("  GOOD \n"  );
-                    else if ( ERR > 1e-19 )
-                      printf("  GOOD  Very good.\n"  );
-                    else
-                      printf("  Great \n");
-                  }
-
-                }
-                if ( bad )
-                {
                   for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
                   {
-                    int y = trdBatch->hInfos[harz].height - 1;
+                    basicStats stat = gpuInput[step][harz].getStats(true);
 
-                    printf("Harm: %02i\n", harz );
-                    printf("CPU: ");
-                    for ( int x = 0; x < 15; x++ )
-                    {
-                      printf(" %9.6f ", cpuInput[step][harz].get(x,y));
-                    }
-                    printf("\n");
+                    double MSE = gpuInput[step][harz].MSE(cpuInput[step][harz]);
+                    double ERR = MSE / stat.sigma ;
 
-                    printf("GPU: ");
-                    for ( int x = 0; x < 15; x++ )
+                    if ( ERR > 1e-10  )
                     {
-                      printf(" %9.6f ", gpuInput[step][harz].get(x,y));
+                      if ( good && !printDetails )
+                        printf("\n           ---- Step %03i of %03i ----\n", firstStep + step+1, maxxx);
+
+                      good = false;
                     }
-                    printf("\n");
+                    if ( ERR > 1e-6   )
+                    {
+                      badInp++;
+                      bad = true;
+                    }
+
+                    if ( !good || printDetails )
+                    {
+                      printf("   Input: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
+
+                      if      ( ERR > 1e1   )
+                        printf("  BAD!    Not even in the same realm.\n");
+                      else if ( ERR > 1e0   )
+                        printf("  Bad.  \n" );
+                      else if ( ERR > 1e-4  )
+                        printf("  Bad.   But not that bad.\n");
+                      else if ( ERR > 1e-6  )
+                        printf("  Close  But not great. \n");
+                      else if ( ERR > 1e-10 )
+                        printf("  GOOD  But a bit high.\n");
+                      else if ( ERR > 1e-15 )
+                        printf("  GOOD \n"  );
+                      else if ( ERR > 1e-19 )
+                        printf("  GOOD  Very good.\n"  );
+                      else
+                        printf("  Great \n");
+                    }
+
+                  }
+                  if ( bad )
+                  {
+                    for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
+                    {
+                      int y = trdBatch->hInfos[harz].height - 1;
+
+                      printf("Harm: %02i\n", harz );
+                      printf("CPU: ");
+                      for ( int x = 0; x < 15; x++ )
+                      {
+                        printf(" %9.6f ", cpuInput[step][harz].get(x,y));
+                      }
+                      printf("\n");
+
+                      printf("GPU: ");
+                      for ( int x = 0; x < 15; x++ )
+                      {
+                        printf(" %9.6f ", gpuInput[step][harz].get(x,y));
+                      }
+                      printf("\n");
+                    }
                   }
                 }
 
                 good = true;
                 bad  = false;
 
-                if ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
+                FOLD // Complex values  .
+                {
+                  if ( !(trdBatch->flag & FLAG_CUFFT_CB_OUT) )
+                  {
+                    if( printDetails )
+                      printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
+
+                    for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
+                    {
+                      basicStats stat = gpuCmplx[step][harz].getStats(true);
+                      double MSE = gpuCmplx[step][harz].MSE(cpuCmplx[step][harz]);
+                      double ERR = MSE / stat.sigma ;
+
+                      if ( ERR > 1e-12  )
+                      {
+                        if ( good && !printDetails )
+                          printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
+
+                        good = false;
+                      }
+                      if ( ERR > 1e-6   )
+                      {
+                        bad = true;
+                        badCplx++;
+                      }
+
+                      if ( !good || printDetails )
+                      {
+                        printf("   Cmplx: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
+
+                        if      ( ERR > 1e1   )
+                          printf("  BAD!    Not even in the same realm.\n");
+                        else if ( ERR > 1e0   )
+                          printf("  Bad.  \n" );
+                        else if ( ERR > 1e-4  )
+                          printf("  Bad.   But not that bad.\n");
+                        else if ( ERR > 1e-6  )
+                          printf("  Close  But not great. \n");
+                        else if ( ERR > 1e-10 )
+                          printf("  GOOD  But a bit high.\n");
+                        else if ( ERR > 1e-15 )
+                          printf("  GOOD \n"  );
+                        else if ( ERR > 1e-19 )
+                          printf("  GOOD  Very good.\n"  );
+                        else
+                          printf("  Great \n");
+
+                      }
+
+                      if ( !good && 0 )
+                      {
+                        fcomplex* cmplx   = (fcomplex*)gpuCmplx[step][harz].getP(0,0);
+                        float *powArr     = (float*)plotPowers.getP(0,0);
+
+                        int nX = gpuPowers[step][harz].ax(0)->noEls() ;
+                        int nY = gpuPowers[step][harz].ax(1)->noEls() ;
+
+                        int width         = trdBatch->accelLen;
+
+                        // Calculate GPU powers
+                        for(int y = 0; y < nY; y++ )
+                        {
+                          for(int x = 0; x < width; x++ )
+                          {
+                            powArr[y*width + x] = cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
+                          }
+                        }
+
+                        //sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%2i_01_GPU.png", firstStep+si, harz);
+                        //drawArr(fname, &gpuPowers[si][harz], HM_G);
+
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
+                        draw2DArray6(fname, powArr, width, nY, width, nY*3);
+
+
+                        // Copy CPU powers
+                        for(int y = 0; y < nY; y++ )
+                        {
+                          memcpy(&powArr[y*width],cpuPowers[step][harz].getP(0,y), width*sizeof(float));
+                        }
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
+                        draw2DArray6(fname, powArr, width, nY, width, nY*3);
+
+
+                        // Copy CPU powers
+                        for(int y = 0; y < nY; y++ )
+                        {
+                          for(int x = 0; x < width; x++ )
+                          {
+                            powArr[y*width + x] -= cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
+                          }
+                        }
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_RES.png", firstStep+step+1, harz);
+                        draw2DArray6(fname, powArr, width, nY, width, nY*3);
+
+                        //fundamental = subharm_ffdot_plane(1, 1, startr, lastr, &subharminfs[0][0], &obs);
+                        //draw2DArray6(fname, fundamental->powers[0], fundamental->numrs, fundamental->numzs, 4096, 1602);
+                        //cands = search_ffdotpows(fundamental, 1, &obs, cands);
+                      }
+                    }
+
+                    if ( bad )
+                    {
+                      for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
+                      {
+                        printf("Harm: %02i\n", harz );
+                        printf("CPU: ");
+                        for ( int x = 0; x < 15; x++ )
+                        {
+                          printf(" %9.6f ", cpuCmplx[step][harz].get(x,1));
+                        }
+                        printf("\n");
+
+                        printf("GPU: ");
+                        for ( int x = 0; x < 15; x++ )
+                        {
+                          printf(" %9.6f ", gpuCmplx[step][harz].get(x,1));
+                        }
+                        printf("\n");
+                      }
+                    }
+                  }
+                }
+
+                good = true;
+                bad  = false;
+
+                FOLD // Powers  .
                 {
                   if ( printDetails )
                     printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
@@ -1536,131 +1782,7 @@ int main(int argc, char *argv[])
                     }
                   }
                 }
-                else
-                {
-                  if( printDetails )
-                    printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
-
-                  for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
-                  {
-                    basicStats stat = gpuCmplx[step][harz].getStats(true);
-                    double MSE = gpuCmplx[step][harz].MSE(cpuCmplx[step][harz]);
-                    double ERR = MSE / stat.sigma ;
-
-                    if ( ERR > 1e-12  )
-                    {
-                      if ( good && !printDetails )
-                        printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
-
-                      good = false;
-                    }
-                    if ( ERR > 1e-6   )
-                    {
-                      bad = true;
-                      badCplx++;
-                    }
-
-                    if ( !good || printDetails )
-                    {
-                      printf("   Cmplx: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
-
-                      if      ( ERR > 1e1   )
-                        printf("  BAD!    Not even in the same realm.\n");
-                      else if ( ERR > 1e0   )
-                        printf("  Bad.  \n" );
-                      else if ( ERR > 1e-4  )
-                        printf("  Bad.   But not that bad.\n");
-                      else if ( ERR > 1e-6  )
-                        printf("  Close  But not great. \n");
-                      else if ( ERR > 1e-10 )
-                        printf("  GOOD  But a bit high.\n");
-                      else if ( ERR > 1e-15 )
-                        printf("  GOOD \n"  );
-                      else if ( ERR > 1e-19 )
-                        printf("  GOOD  Very good.\n"  );
-                      else
-                        printf("  Great \n");
-
-                    }
-
-                    if ( !good && 0 )
-                    {
-                      fcomplex* cmplx   = (fcomplex*)gpuCmplx[step][harz].getP(0,0);
-                      float *powArr     = (float*)plotPowers.getP(0,0);
-
-                      int nX = gpuPowers[step][harz].ax(0)->noEls() ;
-                      int nY = gpuPowers[step][harz].ax(1)->noEls() ;
-
-                      int width         = trdBatch->accelLen;
-
-                      // Calculate GPU powers
-                      for(int y = 0; y < nY; y++ )
-                      {
-                        for(int x = 0; x < width; x++ )
-                        {
-                          powArr[y*width + x] = cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
-                        }
-                      }
-
-                      //sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%2i_01_GPU.png", firstStep+si, harz);
-                      //drawArr(fname, &gpuPowers[si][harz], HM_G);
-
-                      //int tmp = 0;
-
-                      sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
-                      draw2DArray6(fname, powArr, width, nY, width, nY*3);
-
-
-                      // Copy CPU powers
-                      for(int y = 0; y < nY; y++ )
-                      {
-                        memcpy(&powArr[y*width],cpuPowers[step][harz].getP(0,y), width*sizeof(float));
-                      }
-                      sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
-                      draw2DArray6(fname, powArr, width, nY, width, nY*3);
-
-
-                      // Copy CPU powers
-                      for(int y = 0; y < nY; y++ )
-                      {
-                        for(int x = 0; x < width; x++ )
-                        {
-                          powArr[y*width + x] -= cmplx[y*nX + x].i*cmplx[y*nX + x].i + cmplx[y*nX + x].r*cmplx[y*nX + x].r ;
-                        }
-                      }
-                      sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_RES.png", firstStep+step+1, harz);
-                      draw2DArray6(fname, powArr, width, nY, width, nY*3);
-
-                      //fundamental = subharm_ffdot_plane(1, 1, startr, lastr, &subharminfs[0][0], &obs);
-                      //draw2DArray6(fname, fundamental->powers[0], fundamental->numrs, fundamental->numzs, 4096, 1602);
-                      //cands = search_ffdotpows(fundamental, 1, &obs, cands);
-                    }
-                  }
-
-                  if ( bad )
-                  {
-                    for ( int harz = 0; harz < trdBatch->noHarms; harz++ )
-                    {
-                      printf("Harm: %02i\n", harz );
-                      printf("CPU: ");
-                      for ( int x = 0; x < 15; x++ )
-                      {
-                        printf(" %9.6f ", cpuCmplx[step][harz].get(x,1));
-                      }
-                      printf("\n");
-
-                      printf("GPU: ");
-                      for ( int x = 0; x < 15; x++ )
-                      {
-                        printf(" %9.6f ", gpuCmplx[step][harz].get(x,1));
-                      }
-                      printf("\n");
-                    }
-                  }
-                }
               }
-
-              int tmp = 0;
             }
 
             print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
@@ -1681,6 +1803,8 @@ int main(int argc, char *argv[])
               search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
             }
           }
+
+          free(tmpRow);
         }
 
         print_percent_complete(obs.highestbin - obs.rlo, obs.highestbin - obs.rlo, "search", 0);

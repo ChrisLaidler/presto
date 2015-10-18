@@ -12,14 +12,22 @@
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
-template<uint FLAGS, int noBatch >
-__global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, fsHarmList powersArr, cHarmList cmplxArr, const int noHarms, const int noStages, const int noSteps )
+template<typename T, int noBatch >
+__global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
 {
   const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * SS00BS  +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
+    T* array[MAX_HARM_NO];                                          ///< A pointer array
+
+    // Set the values of the pointer array
+    for ( int i = 0; i < noHarms; i++)
+    {
+      array[i] = (T*)powersArr[i];
+    }
+
     FOLD  // Set the local and return candidate powers to zero  .
     {
       int oStride    = STRIDE_HARM[0];
@@ -28,7 +36,7 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
       {
         for ( int step = 0; step < noSteps; step++)               // Loop over steps
         {
-          d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+          d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
         }
       }
     }
@@ -39,7 +47,7 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
 
       if ( tid < maxW )
       {
-        float*  t       = powersArr[harm];
+        //float*  t       = powersArr[harm];
         float tSum      = 0;
         uint  nHeight   = HEIGHT_HARM[harm] * noSteps;
         int   stride    = STRIDE_HARM[harm];
@@ -55,22 +63,14 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
 
             FOLD // Read  .
             {
-              if      ( FLAGS & FLAG_CUFFT_CB_OUT )
-              {
-                tSum                  += t[ tid + idx ];
-              }
-              else
-              {
-                fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-                tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
-              }
+              tSum += getPower(array[harm], tid + idx );
             }
           }
         }
 
-        if (tSum < 0 )
+        if ( tSum < 0 )
         {
-          printf("add_and_searchCU00_k");
+	        printf("add_and_searchCU00_k tSum < 0 tid: %04i ???\n", tid);
         }
       }
     }
@@ -85,14 +85,22 @@ __global__ void add_and_searchCU00_k(const uint width, accelcandBasic* d_cands, 
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
-template<uint FLAGS, int noBatch >
-__global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, fsHarmList powersArr, cHarmList cmplxArr, const int noHarms, const int noStages, const int noSteps )
+template<typename T, int noBatch >
+__global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
 {
   const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;           /// Block index
   const int tid   = blockIdx.x  * SS00BS  +  bidx;                  /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
+    T* array[MAX_HARM_NO];                                          ///< A pointer array
+
+    // Set the values of the pointer array
+    for ( int i = 0; i < noHarms; i++)
+    {
+      array[i] = (T*)powersArr[i];
+    }
+
     FOLD  // Set the local and return candidate powers to zero
     {
       int oStride    = STRIDE_STAGE[0];
@@ -101,7 +109,7 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
       {
         for ( int step = 0; step < noSteps; step++)                 // Loop over steps
         {
-          d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+          d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
         }
       }
     }
@@ -125,17 +133,7 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
 
           FOLD // Read  .
           {
-            if      ( FLAGS & FLAG_CUFFT_CB_OUT )
-            {
-              float cmpf            = powersArr[harm][ tid + idx ];
-              tSum                  += cmpf;
-            }
-            else
-            {
-              fcomplexcu cmpc       = cmplxArr[harm][ tid + idx ];
-              tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
-            }
-
+            tSum += getPower(array[harm], tid + idx );
           }
         }
 
@@ -156,14 +154,16 @@ __global__ void add_and_searchCU01_k(const uint width, accelcandBasic* d_cands, 
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
-template<uint FLAGS, int noBatch >
-__global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, fsHarmList powersArr, cHarmList cmplxArr, const int noHarms, const int noStages, const int noSteps )
+template<typename T, int noBatch >
+__global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
 {
   const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * SS00BS  +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
+    T* array = (T*)powersArr[0];                                       ///< A pointer array
+
     FOLD  // Set the local and return candidate powers to zero  .
     {
       int oStride    = STRIDE_STAGE[0];
@@ -172,7 +172,7 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
       {
         for ( int step = 0; step < noSteps; step++)             // Loop over steps
         {
-          d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].sigma = 0;
+          d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
         }
       }
     }
@@ -198,16 +198,7 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
 
             FOLD // Read  .
             {
-              if      ( FLAGS & FLAG_CUFFT_CB_OUT )
-              {
-                float cmpf            = powersArr[0][ tid + idx ];
-                tSum                  += cmpf;
-              }
-              else
-              {
-                fcomplexcu cmpc       = cmplxArr[0][ tid + idx ];
-                tSum                  += cmpc.r * cmpc.r + cmpc.i * cmpc.i ;
-              }
+              tSum += getPower(array, tid + idx );
             }
           }
         }
@@ -221,173 +212,100 @@ __global__ void add_and_searchCU02_k(const uint width, accelcandBasic* d_cands, 
   }
 }
 
-template<uint FLAGS>
 __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int   noStages  = log2((double)batch->noHarms) + 1 ;
-  fsHarmList  powers;
-  cHarmList   cmplx;
+  vHarmList  powers;
 
   for (int i = 0; i < batch->noHarms; i++)
   {
-    int idx = i;
+    int idx         = i; // Family order
     powers.val[i]   = batch->planes[idx].d_planePowr;
-
-    if ( batch->flag & FLAG_CUFFT_CB_OUT )
-    {
-      cmplx.val[i]  = batch->planes[idx].d_planeMult;
-    }
-    else
-    {
-      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
-    }
   }
 
-  add_and_searchCU00_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData1, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  if      ( batch->flag & FLAG_HALF         )
+  {
+#if __CUDACC_VER__ >= 70500
+    add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+#else
+    fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+  }
+  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  {
+    add_and_searchCU00_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+  }
+  else
+  {
+    add_and_searchCU00_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+  }
 }
 
-template<uint FLAGS>
 __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int   noStages  = log2((double)batch->noHarms) + 1 ;
-  fsHarmList  powers;
-  cHarmList   cmplx;
+  vHarmList  powers;
 
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx         = batch->stageIdx[i]; // Stage order
     powers.val[i]   = batch->planes[idx].d_planePowr;
-
-    if ( batch->flag & FLAG_CUFFT_CB_OUT )
-    {
-      cmplx.val[i]  = batch->planes[idx].d_planeMult;
-    }
-    else
-    {
-      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
-    }
   }
 
-  add_and_searchCU01_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData1, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
+  if      ( batch->flag & FLAG_HALF         )
+  {
+#if __CUDACC_VER__ >= 70500
+    add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+#else
+    fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+  }
+  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  {
+    add_and_searchCU01_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+  }
+  else
+  {
+    add_and_searchCU01_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+  }
 }
 
-template<uint FLAGS>
 __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int   noStages  = log2((double)batch->noHarms) + 1 ;
-  fsHarmList  powers;
-  cHarmList   cmplx;
+  vHarmList   powers;
 
   for (int i = 0; i < batch->noHarms; i++)
   {
     int idx         = batch->stageIdx[i]; // Stage order
     powers.val[i]   = batch->planes[idx].d_planePowr;
-
-    if ( batch->flag & FLAG_CUFFT_CB_OUT )
-    {
-      cmplx.val[i]  = batch->planes[idx].d_planeMult;
-    }
-    else
-    {
-      cmplx.val[i]  = batch->planes[idx].d_planeIFFT;
-    }
   }
 
-  //  switch (batch->ssChunk)
-  //  {
-  //    case 1:
-  //    {
-  //      add_and_searchCU01_k<FLAGS, 1> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 2:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,2> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    //    case 3:
-  //    //    {
-  //    //      add_and_searchCU01_k<FLAGS,3> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //    //      break;
-  //    //    }
-  //    case 4:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,4> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    //    case 5:
-  //    //    {
-  //    //      add_and_searchCU01_k<FLAGS,5> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //    //      break;
-  //    //    }
-  //    case 6:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,6> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    //    case 7:
-  //    //    {
-  //    //      add_and_searchCU01_k<FLAGS,7> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //    //      break;
-  //    //    }
-  //    case 8:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,8> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    //    case 9:
-  //    //    {
-  //    //      add_and_searchCU01_k<FLAGS,9> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //    //      break;
-  //    //    }
-  //    case 10:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,10> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 12:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,12> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 14:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,14> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 16:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,16> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 18:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,18> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 20:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,20> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    case 24:
-  //    {
-  //      add_and_searchCU01_k<FLAGS,24> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
-  //      break;
-  //    }
-  //    default:
-  //      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
-  //      exit(EXIT_FAILURE);
-  //  }
+  if      ( batch->flag & FLAG_HALF         )
+  {
+#if __CUDACC_VER__ >= 70500
+    add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+#else
+    fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+  }
+  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  {
+    add_and_searchCU02_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+  }
+  else
+  {
+    add_and_searchCU02_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+  }
 
-  add_and_searchCU02_k<FLAGS,0> <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (accelcandBasic*)batch->d_retData1, powers, cmplx, batch->noHarms, noStages, batch->noSteps  );
 }
 
 __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
 {
   dim3 dimBlock, dimGrid;
-
-  const uint FLAGS    = batch->flag;
 
   dimBlock.x  = SS00_X;
   dimBlock.y  = SS00_Y;
@@ -400,25 +318,11 @@ __host__ void add_and_searchCU00(cudaStream_t stream, cuFFdotBatch* batch )
 
   if ( 0 )  // Stage order  .
   {
-    if        ( FLAGS & FLAG_CUFFT_CB_OUT )
-    {
-      add_and_searchCU01_c<FLAG_CUFFT_CB_OUT>(dimGrid,dimBlock,stream, batch );
-    }
-    else
-    {
-      add_and_searchCU01_c<0>(dimGrid,dimBlock,stream, batch );
-    }
+    add_and_searchCU01_c(dimGrid,dimBlock,stream, batch );
   }
   else
   {
-    if        ( FLAGS & FLAG_CUFFT_CB_OUT )
-    {
-      add_and_searchCU00_c<FLAG_CUFFT_CB_OUT>(dimGrid,dimBlock,stream, batch );
-    }
-    else
-    {
-      add_and_searchCU00_c<0>(dimGrid,dimBlock,stream, batch );
-    }
+    add_and_searchCU00_c(dimGrid,dimBlock,stream, batch );
   }
 
 }

@@ -257,7 +257,8 @@ accelcand *duplicate_accelcand(accelcand *cand)
 void free_accelcand(gpointer data, gpointer user_data)
 {
   user_data = NULL;
-  if (((accelcand *) data)->pows) {
+  if (((accelcand *) data)->pows)
+  {
     vect_free(((accelcand *) data)->pows);
     vect_free(((accelcand *) data)->hirs);
     vect_free(((accelcand *) data)->hizs);
@@ -625,14 +626,14 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
 static void center_string(char *outstring, char *instring, int width)
 {
   int len;
-  char *tmp;
+  //char *tmp;
 
   len = strlen(instring);
   if (width < len)
   {
     //printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n", len, instring, width);
   }
-  tmp = memset(outstring, ' ', width);
+  //tmp = memset(outstring, ' ', width);
   outstring[width] = '\0';
   if (len >= width) {
     strncpy(outstring, instring, width);

@@ -624,7 +624,7 @@ __host__ void addSplit(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdot
 //    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
 //    {
 //      nvtxRangePush("EventSynch");
-//      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
+//      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 //      nvtxRangePop();
 //    }
 //
@@ -965,7 +965,7 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
       FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
       {
         nvtxRangePush("EventSynch");
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
         nvtxRangePop();
       }
 
@@ -1016,7 +1016,7 @@ __host__ void add_and_search_IMMEM_all(cuFFdotBatch* batch )
   }
 
   nvtxRangePush("EventSynch");
-  CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
+  CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
   nvtxRangePop();
 }
  */

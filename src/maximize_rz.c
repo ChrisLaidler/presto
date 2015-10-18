@@ -487,8 +487,13 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
     time_t t;
     FILE *file;
+    struct tm* ptm;
     time(&t);
-    sprintf(dirname,"/home/chris/accel/Nelder_Mead/swrm_%i", t);
+    ptm = localtime ( &t );
+    char timeMsg[1024];
+    sprintf ( timeMsg, "%04i%02i%02i%02i%02i%02i", 1900 + ptm->tm_year, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
+
+    sprintf(dirname,"/home/chris/accel/Nelder_Mead/swrm_%s", timeMsg);
 
     if ( (file = fopen("/home/chris/accel/swrm_stats.csv", "r")) )
     {

@@ -170,7 +170,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
   CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
 
-  if (  (batch->flag & FLAG_SS_INMEM) && ( batch->flag & FLAG_HALF) )
+  if ( batch->flag & FLAG_HALF )
   {
 #if __CUDACC_VER__ >= 70500
     CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
@@ -415,7 +415,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   dpitch  = batch->sInf->mInf->inmemStride * outSz;
   width   = batch->accelLen * outSz;
   height  = cStack->height;
-  spitch  = cStack->strideFloat * inSz;
+  spitch  = cStack->stridePower * inSz;
 
   for ( int step = 0; step < batch->noSteps; step++ )
   {
@@ -427,12 +427,12 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
       if      ( batch->flag & FLAG_ITLV_ROW )
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->strideFloat*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
-        spitch  = cStack->strideFloat*batch->noSteps*inSz;
+        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
+        spitch  = cStack->stridePower*batch->noSteps*inSz;
       }
       else
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->strideFloat*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
+        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
       }
 
       CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
@@ -470,12 +470,12 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
       if ( batch->flag & FLAG_ITLV_ROW )
       {
-        src     = ((fcomplexcu*)cStack->d_planeIFFT)  + cStack->strideCmplx*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
+        src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
         spitch  = cStack->strideCmplx*batch->noSteps;
       }
       else
       {
-        src     = ((fcomplexcu*)cStack->d_planeIFFT)  + cStack->strideCmplx*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
+        src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
       }
 
       cpyCmplx(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
@@ -674,7 +674,6 @@ void multiplyBatch(cuFFdotBatch* batch)
   }
 }
 
-
 void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL)
 {
   FOLD // Synchronisation  .
@@ -745,17 +744,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
       FOLD // Call the FFT  .
       {
         CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-
-        if ( cStack->flag & FLAG_CUFFT_CB_OUT )
-        {
-          // CUFFT callbacks write to powers plane
-          CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planeMult, CUFFT_INVERSE),"Error executing CUFFT plan.");
-        }
-        else
-        {
-          // Normal CUFFT write to second complex plane
-          CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planeIFFT, CUFFT_INVERSE),"Error executing CUFFT plan.");
-        }
+        CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planePowr, CUFFT_INVERSE),"Error executing CUFFT plan.");
       }
     }
   }

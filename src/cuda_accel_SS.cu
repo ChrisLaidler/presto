@@ -106,43 +106,6 @@ __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t
 //    return 1.0-gcf(a,x);          //  Use the continued fraction representation.
 //}
 
-inline float half2float(const ushort h)
-{
-  unsigned int sign = ((h >> 15) & 1);
-  unsigned int exponent = ((h >> 10) & 0x1f);
-  unsigned int mantissa = ((h & 0x3ff) << 13);
-
-  if (exponent == 0x1f)   	// NaN or Inf
-  {
-    mantissa = (mantissa ? (sign = 0, 0x7fffff) : 0);
-    exponent = 0xff;
-  }
-  else if (!exponent)       // Denorm or Zero
-  {
-    if (mantissa)
-    {
-      unsigned int msb;
-      exponent = 0x71;
-      do
-      {
-        msb = (mantissa & 0x400000);
-        mantissa <<= 1;  /* normalize */
-        --exponent;
-      }
-      while (!msb);
-
-      mantissa &= 0x7fffff;  /* 1.mantissa is implicit */
-    }
-  }
-  else
-  {
-    exponent += 0x70;
-  }
-
-  uint res = ((sign << 31) | (exponent << 23) | mantissa);
-  return  *((float*)(&res));
-}
-
 /** Calculate the CDF of a gamma distribution
  */
 __host__ __device__ void cdfgam_d(double x, int n, double *p, double* q)
@@ -815,7 +778,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
   return 0;
 }
 
-/** Process the results of the search
+/** Process the results of the search this is usually run in a separate CPU thread  .
  *
  * This function is meant to be the entry of a separate thread
  *
@@ -951,6 +914,9 @@ void* processSearchResults(void* ptr)
   return NULL;
 }
 
+/** Process the search results for the batch  .
+ * This usually spawns a separate CPU thread to do the sigma calculations
+ */
 void processSearchResults(cuFFdotBatch* batch)
 {
   if ( batch->rValues[0][0].numrs )
@@ -966,7 +932,7 @@ void processSearchResults(cuFFdotBatch* batch)
 #endif
 
       nvtxRangePush("EventSynch");
-      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "Copying result from device to host.");
+      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
       nvtxRangePop();
     }
 
@@ -1084,10 +1050,7 @@ void getResults(cuFFdotBatch* batch)
 
       if      ( batch->retType & CU_STR_PLN )
       {
-        if ( batch->flag & FLAG_CUFFT_CB_OUT )
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData1, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
-        else
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData1, batch->d_planeIFFT, batch->plnDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
+        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData1, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
       else
       {
@@ -1263,7 +1226,7 @@ void sumAndMax(cuFFdotBatch* batch)
 //      FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
 //      {
 //        nvtxRangePush("EventSynch");
-//        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
+//        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 //        nvtxRangePop();
 //      }
 //

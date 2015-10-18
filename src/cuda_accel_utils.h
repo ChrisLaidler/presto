@@ -17,6 +17,7 @@
 #include "cuda_utils.h"
 #include "candTree.h"
 
+
 #ifdef CBL
 #include "array.h"
 #include "arrayDsp.h"
@@ -450,10 +451,68 @@ __host__ __device__ static inline int index_from_z(float z, float loz)
 //double _GammaP (double n, double x);
 //double _GammaQ (double n, double x);
 
+//////////////////////////////////////// Getter & setters \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+__device__ inline float get(float* __restrict__ adress, int offset)
+{
+  return adress[offset];
+}
+
+__device__ inline void set(float* adress, uint offset, float value)
+{
+  adress[offset] = value;
+}
+
+__device__ inline float getPower(float* adress, uint offset)
+{
+  return adress[offset];
+}
+
+__device__ inline fcomplexcu get(fcomplexcu* __restrict__ adress, int offset)
+{
+  return adress[offset];
+}
+
+__device__ inline void set(fcomplexcu* adress, uint offset, fcomplexcu value)
+{
+  adress[offset] = value;
+}
+
+__device__ inline float getPower(fcomplexcu* adress, uint offset)
+{
+  return POWERC(adress[offset]);
+}
+
+#if __CUDACC_VER__ >= 70500   // Half precision getter and setter  .
+
+#ifdef __CUDACC__
+
+__device__ inline float get(half* __restrict__ adress, int offset)
+{
+  return __half2float(adress[offset]);
+  //return 0;
+}
+
+__device__ inline void set(half* adress, uint offset, float value)
+{
+  adress[offset] = __float2half(value);
+}
+
+__device__ inline float getPower(half* adress, uint offset)
+{
+  return __half2float(adress[offset]);
+  //return 0;
+}
+#endif
+
+#endif  // __CUDACC_VER__ >= 70500
+
 
 //===================================== Function Prototypes ===============================================\\
 
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+float half2float(const ushort h);
 
 template<typename T>
 __device__ void fresnl(T xxa, T* ss, T* cc);

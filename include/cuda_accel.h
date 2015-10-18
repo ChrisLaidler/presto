@@ -39,10 +39,10 @@ extern "C"
 #define CBL               // TMP
 
 #undef TIMING
-//#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
+#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
 
 #undef SYNCHRONOUS
-//#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
+#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
 
 #undef STPMSG
 //#define STPMSG            // Uncomment to set to print out debug step
@@ -63,7 +63,7 @@ extern "C"
 #define     FLAG_ITLV_ROW       (1<<0)      ///< Multi-step Row   interleaved        - This seams to be best in most cases
 
 #define     CU_NORM_CPU         (1<<1)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_NORM_EQUIV       (1<<2)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define     CU_NORM_EQUIV       (1<<2)      ///< Do the normalisation the CPU way
 
 #define     CU_INPT_FFT_CPU     (1<<4)      ///< Do the FFT on the CPU
 
@@ -81,6 +81,7 @@ extern "C"
 #define     FLAG_TEX_MUL        (1<<11)     ///< Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
 #define     FLAG_CUFFT_CB_IN    (1<<12)     ///< Use an input  callback to do the multiplication      - I found this to be very slow
 #define     FLAG_CUFFT_CB_OUT   (1<<13)     ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
+#define     FLAG_CUFFT_ALL      ( FLAG_CUFFT_CB_IN | FLAG_CUFFT_CB_OUT  )
 
 #define     FLAG_SAS_TEX        (1<<14)     ///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
 #define     FLAG_TEX_INTERP     (1<<15)     ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
@@ -227,7 +228,7 @@ typedef struct stackInfo
     uint            flag;               ///<  Bit flag
 
     fcomplexcu*     d_planeData;        ///<  Plane data for this stack
-    float*          d_planePowers;      ///<  Powers for this stack
+    void*           d_planePowers;      ///<  Powers for this stack
     fcomplexcu*     d_iData;            ///<  Input data for this stack
 } stackInfo;
 
@@ -359,8 +360,7 @@ typedef struct cuFFdot
 
     // pointers to device data
     fcomplexcu*     d_planeMult;        ///< A pointer to the first element of the complex f-∂f plane (Width, Stride and height determined by harmInf)
-    fcomplexcu*     d_planeIFFT;        ///< A pointer to the first element of the complex f-∂f plane (Width, Stride and height determined by harmInf)
-    float*          d_planePowr;        ///< A pointer to the powers for this stack
+    void*           d_planePowr;        ///< A pointer to the powers for this stack
     fcomplexcu*     d_iData;            ///< A pointer to the input data for this plane this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
     // Texture objects
@@ -378,7 +378,7 @@ typedef struct cuFfdotStack
     size_t          height;             ///< The height of the entire stack, for one step
     size_t          kerHeigth;          ///< The height of the multiplication kernel for this stack (this is equivalent to the height of the largest plane in the stack)
     size_t          strideCmplx;        ///< The stride of the block of memory  [ in complex numbers! ]
-    size_t          strideFloat;        ///< The stride of the powers
+    size_t          stridePower;        ///< The stride of the powers
     uint            flag;               ///< CUDA accel search bit flags
 
     int             mulSlices;          ///< The number of slices to do multiplication with
@@ -401,8 +401,7 @@ typedef struct cuFfdotStack
     // Pointers to device memory
     fcomplexcu*     d_kerData;          ///< Kernel data for this stack
     fcomplexcu*     d_planeMult;        ///< Plane of complex data for multiplication
-    fcomplexcu*     d_planeIFFT;        ///< Plane of complex data for output of the iFFT
-    float*          d_planePowr;        ///< Plane of float data for the search
+    void*           d_planePowr;        ///< Plane of float data for the search
     fcomplexcu*     d_iData;            ///< Input data for this stack
 
     stackInfo*      d_sInf;             ///< Stack info structure on the device (usually in constant memory)
@@ -488,8 +487,7 @@ typedef struct cuFFdotBatch
 
     fcomplexcu*     d_kerData;          ///< Kernel data for all the stacks, generally this is only allocated once per device
     fcomplexcu*     d_planeMult;        ///< Plane of complex data for multiplication
-    fcomplexcu*     d_planeIFFT;        ///< Plane of complex data for output of the iFFT
-    float*          d_planePowr;        ///< Plane of float data for the search
+    void*           d_planePowr;        ///< Plane of float data for the search
 
     int             retType;            ///< The type of output
     int             cndType;            ///< The type of output

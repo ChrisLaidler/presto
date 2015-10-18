@@ -61,7 +61,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
         pwerPlnF[stgIDX] = &((float*)batch->h_retData1)[bace];
         pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_retData1)[bace];
 
-        bace += batch->hInfos[harm].height * batch->stacks[batch->hInfos[harm].stackNo].strideFloat * noSteps;
+        bace += batch->hInfos[harm].height * batch->stacks[batch->hInfos[harm].stackNo].stridePower * noSteps;
       }
     }
 
