@@ -2857,7 +2857,6 @@ void timeAsynch(cuFFdotBatch* batch)
 
 #endif
   }
-
 }
 
 /** Cycle the arrays of r-values  .

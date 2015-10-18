@@ -1,14 +1,7 @@
-/*
 extern "C"
 {
 #include "accel.h"
 }
-
-//#ifdef CBL
-#include "array.h"
-#include "arrayDsp.h"
-#include "util.h"
-//#endif
 
 #ifdef USEMMAP
 #include <unistd.h>
@@ -20,76 +13,14 @@ extern "C"
 
 #ifdef CUDA
 #include "cuda_accel.h"
-#include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
 #include <cuda_profiler_api.h>
-
-#include <sys/time.h>
-#include <time.h>
-#endif
-
-
-//#include "utilstats.h"
-#ifdef WITHOMP
-#include <omp.h>
-#endif
-
-#ifdef USEDMALLOC
-#include "dmalloc.h"
-#endif
- */
-
-
-
-extern "C"
-{
-#include "accel.h"
-}
-
-/*#undef USEMMAP*/
-
-#ifdef USEMMAP
-#include <unistd.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#endif
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-//#include <cuda.h>
-//#include <cufft.h>
-//#include <cufftXt.h>
-//
-////#if __CUDACC_VER__ >= 70500   // Half precision
-//#include <cuda_fp16.h>
-////#endif
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-#ifdef CUDA
-
-#include "cuda_accel.h"
-#include "cuda_accel_utils.h"
-#include <nvToolsExt.h>
-#include <nvToolsExtCuda.h>
-#include <cuda_profiler_api.h>
-
-#endif
-
-#ifdef __CUDACC__
-#warning using nvcc
-#else
-#warning not using nvcc
 #endif
 
 #include <sys/time.h>
 #include <time.h>
-
 
 #ifdef WITHOMP
 #include <omp.h>
@@ -108,7 +39,6 @@ extern "C"
 int     pltOpt    = 0;
 
 extern float calc_median_powers(fcomplex * amplitudes, int numamps);
-//extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
 
 static void print_percent_complete(int current, int number, const char *what, int reset)
 {
@@ -537,53 +467,13 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
       }
       else if  ( minr < ratio )
       {
-        // Close reation
+        // Close relation
         silar++;
       }
       else if  ( super )
       {
         // There is a better GPU candidate
         superseede++;
-
-        /*
-        if ( r1 < r2 )
-        {
-          if ( rr1 < ratio)
-          {
-            silar++;
-          }
-          else
-          {
-            gpuBetterThanCPU++;
-
-            printf("\n");
-            printf("↑ %5.3f GPU candidate has a higher sigma by %.3f \n", rr1, gpu1->sigma - cpu1R->sigma);
-            printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu1R->r, cpu1R->z, cpu1R->sigma, cpu1R->power );
-            printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu1->r, gpu1->z, gpu1->sigma, gpu1->power );
-          }
-        }
-        else if (r2 < r1 )
-        {
-          if ( rr2 < ratio)
-          {
-            silar++;
-          }
-          else
-          {
-            gpuBetterThanCPU++;
-
-            printf("\n");
-            printf("↑ %5.3f GPU candidate has a higher sigma by %.3f \n", rr2, gpu2->sigma - cpu2R->sigma);
-            printf("         CPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", cpu2R->r, cpu2R->z, cpu2R->sigma, cpu2R->power );
-            printf("         GPU: r: %10.1f   z: %6.1f  h: %02i   Sigma: %8.2f   Power: %10.2f\n", gpu2->r, gpu2->z, gpu2->sigma, gpu2->power );
-          }
-        }
-        else
-        {
-          printf("I'm not sure what to do here \n");
-        }
-         */
-
       }
       else
       {
@@ -986,8 +876,6 @@ int main(int argc, char *argv[])
         else
           startr  = sSpec.fftInf.rlo;
 
-        //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of planes to make
-
         if ( maxxx < 0 )
           maxxx = 0;
 
@@ -1002,16 +890,7 @@ int main(int argc, char *argv[])
 
         print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
 
-        //        int ss = 0;
-        //        int maxxx = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
-        //
-        //        float ns = ( obs.highestbin - obs.rlo ) / (float)( master->accelLen * ACCEL_DR ) ;
-        //
-        //        if ( maxxx < 0 )
-        //          maxxx = 0;
-
         nDarray<2, float> plotPowers;
-        //cuSrch->mInf->batches[0].hInfos[0].numrs;
 
         plotPowers.addDim(master->accelLen,  0, master->accelLen  );
         plotPowers.addDim(master->hInfos[0].height, 0, master->hInfos[0].height );
@@ -1197,14 +1076,10 @@ int main(int argc, char *argv[])
                         if      ( trdBatch->flag & FLAG_ITLV_ROW )
                         {
                           offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
-                          //cmplxData = &plan->d_planeMult          [(y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          //powers    = &((float*)plan->d_planePowr)[(y*trdBatch->noSteps + step)*cStack->stridePower + cHInfo->halfWidth * 2 ];
                         }
                         else
                         {
                           offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
-                          //cmplxData = &plan->d_planeMult          [(y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
-                          //powers    = &((float*)plan->d_planePowr)[(y + step*cHInfo->height)*cStack->stridePower + cHInfo->halfWidth * 2 ];
                         }
 
                         cmplxData = &plan->d_planeMult[offset];
@@ -1240,25 +1115,6 @@ int main(int argc, char *argv[])
                             outVals[i] = POWERC(((fcomplexcu*)tmpRow)[i]);
                           }
                         }
-                        //
-                        //                        if      ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
-                        //                        {
-                        //                          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                        //                          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                        //                          /*
-                        //                                               for( int jj = 0; jj < plan->numrs[step]; jj++)
-                        //                                               {
-                        //                                                 float *add = gpuPowers[step][harm].getP(jj*2+1,y);
-                        //                                                 gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
-                        //                                               }
-                        //                           */
-                        //                        }
-                        //                        else
-                        //                        {
-                        //                          //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
-                        //                          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                        //                          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-                        //                        }
                       }
                     }
 
@@ -1282,12 +1138,6 @@ int main(int argc, char *argv[])
                 double startr  = startrs[step];
                 double lastr   = lastrs[step];
 
-                //                rVals* rVal;
-                //#ifdef SYNCHRONOUS
-                //                rVal = &((*trdBatch->rConvld)[step][0]);
-                //#else
-                //                rVal = &((*trdBatch->rSearch)[step][0]);
-                //#endif
                 rVals* rVal = &((trdBatch->rValues)[step][0]);
 
                 double rLow = trdBatch->rValues[0][0].drlo;
@@ -1359,16 +1209,9 @@ int main(int argc, char *argv[])
                         int x0 = step*rVal->numrs;
                         int x1 = (step+1)*rVal->numrs;
 
-//                        for ( int lstep = 0; lstep < trdBatch->noSteps; lstep++) // Loop over steps  .
-//                        {
-//                          rVals* rVal         = &trdBatch->rValues[step][0];
-//                          x1                 += rVal->numrs;
-//                        }
-
                         for ( int x = x0; x < x1; x++ )
                         {
-                          //int idx   = step*obs.numharmstages*trdBatch->hInfos->width + stage*trdBatch->hInfos->width + x ;
-                          int idx     = stage*trdBatch->strideRes*trdBatch->noSteps*trdBatch->ssSlices + y*trdBatch->strideRes*trdBatch->noSteps + x ;
+                          int idx   = stage*trdBatch->strideRes*trdBatch->noSteps*trdBatch->ssSlices + y*trdBatch->strideRes*trdBatch->noSteps + x ;
 
                           int iz    = 0;
                           poww      = 0;

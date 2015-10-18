@@ -35,14 +35,11 @@ extern "C"
 }
 #endif
 
-#undef CBL                // TMP
-#define CBL               // TMP
-
 #undef TIMING
-#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
+//#define TIMING            // Uncomment to enable timing (NB requires clean GPU build!)
 
 #undef SYNCHRONOUS
-#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
+//#define SYNCHRONOUS       // Uncomment to set to synchronous execution (NB requires clean GPU build!)
 
 #undef STPMSG
 //#define STPMSG            // Uncomment to set to print out debug step

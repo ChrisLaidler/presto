@@ -54,7 +54,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
           for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
           {
             candLists[stage][step].value = 0 ;
-            //d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid ].value = 0;
             d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
           }
         }
@@ -127,17 +126,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
                       FOLD // Read powers  .
                       {
                         pow[step] = getPower(array[harm], iy2 + ix2 );
-
-                        //                        if      ( FLAGS & FLAG_CUFFT_CB_OUT )
-                        //                        {
-                        //                          //pow[step]             = powersArr[harm][ iy2 + ix2 ];
-                        //                          pow[step]             = t[ iy2 + ix2 ];
-                        //                        }
-                        //                        else
-                        //                        {
-                        //                          fcomplexcu cmpc       = cmplxArr[harm][ iy2 + ix2 ];
-                        //                          pow[step]             = POWERC(cmpc);
-                        //                        }
                       }
                     }
 
@@ -206,7 +194,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
           if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
           {
             // Write to DRAM
-            //d_cands[blockIdx.y*noSteps*noStages*oStride + step*noStages*oStride + stage*oStride + tid] = candLists[stage][step];
             d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + tid) ] = candLists[stage][step];
           }
         }
