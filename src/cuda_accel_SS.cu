@@ -556,7 +556,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     if ( batch->flag & FLAG_SS_INMEM  )
     {
       cudaMemcpyToSymbol(PLN_START,   &(batch->d_planeFull),            sizeof(void*)  );
-      cudaMemcpyToSymbol(PLN_STRIDE,  &batch->sInf->mInf->inmemStride,  sizeof(int)     );
+      cudaMemcpyToSymbol(PLN_STRIDE,  &batch->sInf->pInf->inmemStride,  sizeof(int)     );
     }
   }
 
@@ -787,8 +787,8 @@ void* processSearchResults(void* ptr)
 {
   resultData* res = (resultData*)ptr;
 
-  // Decrease the count number of running threads
-  sem_post(&res->threasdInfo->running_threads);
+  //// Decrease the count number of running threads
+  //sem_post(&res->threasdInfo->running_threads);
 
 //  FILE * myfile;                                    // TMPS
 //  myfile = fopen ( "/home/chris/src.cvs", "a+" );   // TMPS
@@ -1007,6 +1007,10 @@ void processSearchResults(cuFFdotBatch* batch)
         exit(EXIT_FAILURE);
       }
 
+      // Increase the count number of running threads
+      sem_post(&batch->sInf->threasdInfo->running_threads);
+
+#ifndef SYNCHRONOUS
       if ( batch->flag & FLAG_THREAD ) 	// Create thread  .
       {
         pthread_t thread;
@@ -1019,6 +1023,7 @@ void processSearchResults(cuFFdotBatch* batch)
         }
       }
       else                              // Just call the function  .
+#endif
       {
         processSearchResults( (void*) thrdDat );
       }
@@ -1354,21 +1359,21 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
 void inmemSumAndSearch(cuSearch* cuSrch)
 {
-  cuFFdotBatch* master  = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+  cuFFdotBatch* master  = &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
   uint startBin         = master->SrchSz->searchRLow * ACCEL_RDR;
   uint endBin           = startBin + cuSrch->SrchSz->noSteps * master->accelLen;
   float totaBinsl       = endBin - startBin ;
 
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
-  omp_set_num_threads(cuSrch->mInf->noBatches);
+  omp_set_num_threads(cuSrch->pInf->noBatches);
 #pragma omp parallel
 #endif
   FOLD  //                              ---===== Main Loop =====---  .
   {
     int tid = omp_get_thread_num();
-    cuFFdotBatch* batch = &cuSrch->mInf->batches[tid];
+    cuFFdotBatch* batch = &cuSrch->pInf->batches[tid];
 
-    setDevice(batch) ;
+    setDevice(batch->device) ;
 
     uint firstBin = 0;
     uint len      = 0;
@@ -1424,51 +1429,53 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   FOLD // Wait for all processing threads to terminate
   {
-    int noTrd;
-    sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+    waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
 
-    if (noTrd)
-    {
-      char msg[1024];
-      int ite = 0;
-
-      nvtxRangePush("Wait on CPU threads");
-
-      while ( noTrd > 0 )
-      {
-        nvtxRangePush("Sleep");
-
-        ite++;
-
-        if ( !(ite % 10) )
-        {
-          sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
-
-          FOLD  // Spinner  .
-          {
-            if      (ite == 1 )
-              printf("\r%s⌜   ", msg);
-            if      (ite == 2 )
-              printf("\r%s⌝   ", msg);
-            if      (ite == 3 )
-              printf("\r%s⌟   ", msg);
-            if      (ite == 4 )
-            {
-              printf("\r%s⌞   ", msg);
-              ite = 0;
-            }
-            fflush(stdout);
-          }
-        }
-
-        usleep(200);
-        sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-
-        nvtxRangePop();
-      }
-
-      printf("\n");
-      nvtxRangePop();
-    }
+//    int noTrd;
+//    sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+//
+//    if (noTrd)
+//    {
+//      char msg[1024];
+//      int ite = 0;
+//
+//      nvtxRangePush("Wait on CPU threads");
+//
+//      while ( noTrd > 0 )
+//      {
+//        nvtxRangePush("Sleep");
+//
+//        ite++;
+//
+//        if ( !(ite % 10) )
+//        {
+//          sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
+//
+//          FOLD  // Spinner  .
+//          {
+//            if      (ite == 1 )
+//              printf("\r%s⌜   ", msg);
+//            if      (ite == 2 )
+//              printf("\r%s⌝   ", msg);
+//            if      (ite == 3 )
+//              printf("\r%s⌟   ", msg);
+//            if      (ite == 4 )
+//            {
+//              printf("\r%s⌞   ", msg);
+//              ite = 0;
+//            }
+//            fflush(stdout);
+//          }
+//        }
+//
+//        usleep(200);
+//        sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+//
+//        nvtxRangePop();
+//      }
+//
+//      printf("\n");
+//      nvtxRangePop();
+//    }
   }
 }

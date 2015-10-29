@@ -167,13 +167,13 @@ static double power_call_rz_harmonics_noNorm(double rz[])
   return -total_power;
 }
 
-void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int numdata, double r, double z, rderivs derivs[], double power[], int nn)
+void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int numdata, double r, double z, rderivs derivs[], double power[])
 {
   float *locpow;
   int i;
   double x[2];
 
-  // initialisation
+  // Initialisation
   locpow             = gen_fvect(num_harmonics);
 
   for (i=1; i<=num_harmonics; i++)
@@ -241,9 +241,11 @@ void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int nu
 }
 
 /* Return the Fourier frequency and Fourier f-dot that      */
-/* maximizes the power.                                     */
-void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[], int nn)
+/* maximize the power.                                      */
+void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[])
 {
+  // TODO: Clean up this function!!!!
+
   double y[3], x[3][2], step = 0.4;
   float *locpow;
   int numeval;
@@ -343,12 +345,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
   gettimeofday(&end, NULL);       // TMP
   timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP
   //printf("%i\t%.5f\t", numeval, timev1); // TMP
-
-  if ( nn == 1  )
-  {
-//    skp   = 1 ;
-//    swrm  = 1 ;
-  }
 
   double newPower = y[0];
 
@@ -535,64 +531,6 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
     double gbV = 0;
     int havebest = 1;
 
-    if ( nn == -1 ) //25
-    {
-    }
-    /*
-       else if ( nn == 00 ) //00
-       {
-         gbX = 0.0000397862707263;
-         gbY = -0.0001075617316072;
-         gbV = 194341361.6188967823982239;
-       }
-       else if ( nn == 02 ) //02
-       {
-         gbX = 1485.0521902093944391;
-         gbY = 0.0246405830899129;
-         gbV = 216.1036675292863265;
-       }
-       else if ( nn == 6 ) //06
-       {
-         gbX = 1272.9083488429641875;
-         gbY = 0.0190627483258364;
-         gbV = 65.0487000247432263;
-       }
-       else if( nn == 11 ) //11
-       {
-         gbX = 1371.0020835782290760;
-         gbY = -0.1193450278986411;
-         gbV = 57.5486607510589465;
-       }
-       else if ( nn == 18 ) //18
-       {
-         gbX = 16331.4150267042041378;
-         gbY = 1.6163588023687263;
-         gbV = 36.9130638243663753;
-       }
-       else if ( nn == 19 ) //19
-       {
-         gbX = 1497.2090951662569296;
-         gbY = -8.1768316448560245;
-         gbV = 17.7997458681113621;
-       }
-       else if ( nn == 25 ) //25
-       {
-         gbX = 963.7680999662366048;
-         gbY = -0.9972862923470285;
-         gbV = 18.3416480425218467;
-       }
-       else if ( nn == 54 ) //54
-       {
-         gbX = 1548.2525432181880660;
-         gbY = -45.4097410118802998;
-         gbV = 3.2837074206163894;
-       }
-     */
-    else
-    {
-      havebest = 0;
-    }
-
     srand (time(NULL));
 
     //for ( a = 0.1; a <= 0.8; a += 0.1 )
@@ -626,16 +564,16 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
         ptm = localtime ( &rawtime );
         sprintf ( timeMsg, "%04i%02i%02i%02i%02i%02i", 1900 + ptm->tm_year, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
 
-        sprintf(dirname,"/home/chris/accel/Nelder_Mead/n%04i_noBtch%1i_noInBtch%02i_scale%04.2f_vel%04.2f_vleMx%04.2f_a%04.2f_b%04.2f_c%04.2f_h%02i_%s", nn, noBatches, noInBatch, scale, velocity, velocityMax, a, b, c, num_harmonics, timeMsg );
+        //sprintf(dirname,"/home/chris/accel/Nelder_Mead/n%04i_noBtch%1i_noInBtch%02i_scale%04.2f_vel%04.2f_vleMx%04.2f_a%04.2f_b%04.2f_c%04.2f_h%02i_%s", nn, noBatches, noInBatch, scale, velocity, velocityMax, a, b, c, num_harmonics, timeMsg );
 
-        if( noTet > 1.0 )
-        {
-          fprintf(stFile,"%04.2f|%04.2f\t", velocity, scale );
-          fprintf(stFile,"%i\t%04.2f\t%04.2f\t", nn, velocity, scale );
-          fprintf(stFile,"%i\t", noBatches );
-          fprintf(stFile,"%i\t", noInBatch );
-          fprintf(stFile,"%i\t", noCom );
-        }
+//        if( noTet > 1.0 )
+//        {
+//          fprintf(stFile,"%04.2f|%04.2f\t", velocity, scale );
+//          fprintf(stFile,"%i\t%04.2f\t%04.2f\t", nn, velocity, scale );
+//          fprintf(stFile,"%i\t", noBatches );
+//          fprintf(stFile,"%i\t", noInBatch );
+//          fprintf(stFile,"%i\t", noCom );
+//        }
 
         //fprintf(stFile,"%04i\t%i\t%02i\t%i\t%04.2f\t%04.2f\t%04.2f\t%04.2f\t%04.2f\t%04.2f\t%02i\t%s", nn, noBatches, noInBatch, interV, scale, velocity, velocityMax, a, b, c, num_harmonics, timeMsg );
 
@@ -832,22 +770,22 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
                   list[idx].bestPos[1] = list[idx].position[1];
                 }
 
-                if( noTet > 1.0 )
-                {
-                  if ( list[idx].value > gbV )
-                  {
-                    gbV = list[idx].value;
-                    gbX = list[idx].position[0];
-                    gbY = list[idx].position[1];
-
-                    printf("else if ( nn == %02i ) //%02i\n{\n",nn,nn);
-                    printf("  gbX = %.16f;\n",gbX);
-                    printf("  gbY = %.16f;\n",gbY);
-                    printf("  gbV = %.16f;\n}\n",gbV);
-
-                    havebest = 0;
-                  }
-                }
+//                if( noTet > 1.0 )
+//                {
+//                  if ( list[idx].value > gbV )
+//                  {
+//                    gbV = list[idx].value;
+//                    gbX = list[idx].position[0];
+//                    gbY = list[idx].position[1];
+//
+//                    printf("else if ( nn == %02i ) //%02i\n{\n",nn,nn);
+//                    printf("  gbX = %.16f;\n",gbX);
+//                    printf("  gbY = %.16f;\n",gbY);
+//                    printf("  gbV = %.16f;\n}\n",gbV);
+//
+//                    havebest = 0;
+//                  }
+//                }
 
                 // Update global maximum
                 if ( list[idx].value > batchBest[btch][2] )
@@ -1336,7 +1274,7 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
     int lobin,
     double rin, double zin,
     double *rout, double *zout, rderivs derivs[],
-    double maxpow[], int nn)
+    double maxpow[])
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power of the candidate in 'fftfile'.       */
 /* WARNING: not tested */
@@ -1363,7 +1301,7 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
       r_offset,
       filedatalen, rin_frac + filedatalen / 2,
       zin, rout, zout, derivs,
-      maxpow, nn);
+      maxpow);
 
   *rout += r_offset[0];
   for (i=1;i<=num_harmonics;i++) {

@@ -249,6 +249,17 @@ typedef struct candOpt
     double          z;
 } candOpt;
 
+/** Details of a GPU  .
+ */
+typedef struct gpuInf
+{
+    int     devid;                      ///<
+    int     alignment;                  ///<
+    float   capability;                 ///<
+    char*   name;                       ///<
+} gpuInf;
+
+
 //------------- Data structures for, planes, stacks, batches etc ----------------
 
 /** Details of the number of bins of the full search
@@ -315,6 +326,8 @@ typedef struct gpuSpecs
     int     devId[MAX_GPUS];            ///< A list noDevices long of CUDA GPU device id's
     int     noDevBatches[MAX_GPUS];     ///< A list noDevices long of the number of batches on each device
     int     noDevSteps[MAX_GPUS];       ///< A list noDevices long of the number of steps each device wants to use
+    int     noDevOpt[MAX_GPUS];         ///< A list noDevices long of the number of optimisations each device wants to do
+    gpuInf  devInfo[MAX_GPUS];          ///< A list noDevices long of basic information of the GPU
 } gpuSpecs;
 
 /** The general information of a f-∂f plane
@@ -546,7 +559,7 @@ typedef struct cuFFdotBatch
 
 /** A struct to keep info on all the kernels and batches to use with cuda accelsearch  .
  */
-typedef struct cuMemInfo
+typedef struct cuPlnInfo
 {
     int             noDevices;          ///< The number of devices (GPU's to use in the search)
     cuFFdotBatch*   kernels;            ///< A list noDevices long of multiplication kernels: These hold: basic info, the address of the multiplication kernels on the GPU, the CUFFT plan.
@@ -556,45 +569,21 @@ typedef struct cuMemInfo
 
     int             noSteps;            ///< The total steps in all batches - there are across all devices
 
-    // Details of the GPU's in use
-    int             alignment[MAX_GPUS];
-    float           capability[MAX_GPUS];
-    char*           name[MAX_GPUS];
+//    // Details of the GPU's in use
+//    int             alignment[MAX_GPUS];
+//    float           capability[MAX_GPUS];
+//    char*           name[MAX_GPUS];
 
     uint            inmemStride;        ///< The stride (in floats) of the in-memory plane data
 
     int*            devNoStacks;        ///< An array of the number of stacks on each device
     stackInfo**     h_stackInfo;        ///< An array of pointers to host memory for the stack info
 
-} cuMemInfo;
+} cuPlnInfo;
 
-/** User independent details  .
+/** Data structure to hold the GPU information for performing GPU optimisation  .
+ *
  */
-typedef struct cuSearch
-{
-    searchSpecs*    sSpec;              ///< Specifications of the search
-    gpuSpecs*       gSpec;              ///< Specifications of the GPU's to use
-
-    cuMemInfo*      mInf;               ///< The allocated Device and host memory and data structures to create planes including the kernels
-
-    // Some extra search details
-    int             noHarms;            ///< The number of harmonics in the family
-    int             noHarmStages;       ///< The number of stages of harmonic summing
-
-    int             srcType;            ///< Details on the search type
-
-    int             numZ;               ///< The number of Z values
-    int             noSteps;            ///< The number of steps to cover the entire input data
-    searchScale*    SrchSz;             ///< Details on o the size (in bins) of the search
-    int*            pIdx;               ///< The index of the planes in the Presto harmonic summing order
-
-    resThrds*       threasdInfo;        ///< Information on threads to handle returned candidates.
-
-    float*          powerCut;           ///< The power cutoff
-    long long*      numindep;           ///< The number of independent trials
-    int*            yInds;              ///< The Y indices
-} cuSearch;
-
 typedef struct cuOptCand
 {
     double          centR;
@@ -604,6 +593,8 @@ typedef struct cuOptCand
 
     int             maxNoR;
     int             maxNoZ;
+
+    int             pIdx;               ///< The index of this optimiser in the list
 
     int             noZ;
     int             noR;
@@ -616,10 +607,10 @@ typedef struct cuOptCand
     int             loR[32];
 
     int             maxHalfWidth;
-    int             inpSz;              /// The size in bytes of device input buffer
-    int             outSz;              /// The size in bytes of device output buffer
+    int             inpSz;              ///< The size in bytes of device input buffer
+    int             outSz;              ///< The size in bytes of device output buffer
 
-    int             alignment;          /// The memory alignment block size in bytes
+    int             alignment;          ///< The memory alignment block size in bytes
 
     fcomplexcu*     d_inp;
     void*           d_out;
@@ -630,7 +621,7 @@ typedef struct cuOptCand
     int             outStride;
     int             inpStride;
 
-    int             device;
+    int             device;             ///< The device ID of the device to use
     int             flags;
 
     // Streams
@@ -644,6 +635,57 @@ typedef struct cuOptCand
     cudaEvent_t     outInit;            ///< Copying input data to device
     cudaEvent_t     outCmp;             ///< Copying input data to device
 } cuOptCand;
+
+/** A struct to keep info on all the kernels and batches to use with cuda accelsearch  .
+ */
+typedef struct cuOptInfo
+{
+    int             noOpts;             ///< The total number of optimisations to do across all devices
+    cuOptCand*      opts;               ///< A list noBatches long of multiplication kernels: These hold: basic info, the address of the multiplication kernels on the GPU, the CUFFT plan.
+} cuOptInfo;
+
+
+/** Details of the GPU's  .
+ */
+typedef struct cuGpuInfo
+{
+    // Details of the GPU's in use
+    int             noDevices;          ///< The number of devices (GPU's to use in the search)
+
+    int             devid[MAX_GPUS];
+    int             alignment[MAX_GPUS];
+    float           capability[MAX_GPUS];
+    char*           name[MAX_GPUS];
+} cuGpuInfo;
+
+/** User independent details  .
+ */
+typedef struct cuSearch
+{
+    searchSpecs*    sSpec;              ///< Specifications of the search
+    gpuSpecs*       gSpec;              ///< Specifications of the GPU's to use
+
+    resThrds*       threasdInfo;        ///< Information on threads to handle returned candidates.
+    cuPlnInfo*      pInf;               ///< The allocated Device and host memory and data structures to create planes including the kernels
+    cuOptInfo*      oInf;               ///< Details of optimisations
+
+    // Some extra search details
+    int             noHarms;            ///< The number of harmonics in the family
+    int             noHarmStages;       ///< The number of stages of harmonic summing
+
+    int             srcType;            ///< Details on the search type
+
+    int             numZ;               ///< The number of Z values
+    int             noSteps;            ///< The number of steps to cover the entire input data
+    searchScale*    SrchSz;             ///< Details on o the size (in bins) of the search
+    int*            pIdx;               ///< The index of the planes in the Presto harmonic summing order
+
+
+
+    float*          powerCut;           ///< The power cutoff
+    long long*      numindep;           ///< The number of independent trials
+    int*            yInds;              ///< The Y indices
+} cuSearch;
 
 typedef struct resThrds
 {
@@ -689,6 +731,15 @@ typedef struct resultData
 
 } resultData;
 
+/** This is just a wrapper to be passed to a CPU thread  .
+ *
+ */
+typedef struct candSrch
+{
+    cuSearch*       cuSrch;             ///< Details of the search
+    accelcand*      cand;               ///< The candidate to optimise
+    int             candNo;             ///< The 0 based index of this candidate
+} candSrch;
 
 
 //===================================== Function prototypes ===============================================
@@ -707,11 +758,15 @@ ExternC gpuSpecs readGPUcmd(Cmdline *cmd);
  */
 ExternC searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs);
 
-ExternC cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+ExternC cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+
+ExternC cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+
+ExternC cuSearch* initCuOpt(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
 
 ExternC void freeCuSearch(cuSearch* srch);
 
-ExternC void freeAccelGPUMem(cuMemInfo* mInf);
+ExternC void freeAccelGPUMem(cuPlnInfo* mInf);
 
 ExternC cuOptCand* initOptPln(searchSpecs* sSpec);
 ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
@@ -762,7 +817,7 @@ ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
 
 ExternC void setContext(cuFFdotBatch* batch) ;
 
-ExternC int setDevice(cuFFdotBatch* batch);
+ExternC int setDevice(int device);
 
 ExternC void freeBatchGPUmem(cuFFdotBatch* batch);
 
@@ -795,5 +850,7 @@ ExternC double candidate_sigma_cl(double poww, int numharm, long long numindep);
 ExternC void inMem(cuFFdotBatch* batch);
 
 ExternC GSList* testTest(cuFFdotBatch* batch, GSList* candsGPU);
+
+ExternC int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS );
 
 #endif // CUDA_ACCEL_INCLUDED

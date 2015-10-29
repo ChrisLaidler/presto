@@ -135,19 +135,25 @@ ifeq ($(mode),D)
 endif
 
 # Very recent Intel CPUs might see a few percent speedup using -mavx
-CFLAGS = -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) \
-	-DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 \
-	-g -Wall -W -fPIC
+CFLAGS 				= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -g -Wall -W -fPIC
 #	 -march=native
 #       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
-CLINKFLAGS = $(CFLAGS)
+
+# Warnings
+WARN			 		= -Wno-unused-result
+# Other Warnings  
+WARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
+  
+CFLAGS			+= -Wno-implicit-function-declaration $(WARN)
+
+CLINKFLAGS 		= $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
 #        FFLAGs.  Certain compilers (i.e. on Intel Macs) will
 #        cause errors for the code in least_squares.f
-FFLAGS       = -g -fPIC
-FLINKFLAGS   = $(FFLAGS)
-LINKCOMMAND1 = $(CC) $(LIBCMD) -o
-LINKCOMMAND2 = ar rcs
+FFLAGS       	= -g -fPIC
+FLINKFLAGS   	= $(FFLAGS)
+LINKCOMMAND1 	= $(CC) $(LIBCMD) -o
+LINKCOMMAND2 	= ar rcs
 
 CFLAGS_DBG = -I/home/chris/projects/libs/build/include
 
@@ -164,7 +170,8 @@ CUDAINC    = -I$(CUDA_PATH)/include
 
 NVCCFLAGS  = $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
 NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
-NVCCFLAGS  += -Xcompiler -Wno-comment
+#NVCCFLAGS  += -Xcompiler -Wno-comment
+NVCCFLAGS	 += $(foreach root, $(WARN), -Xcompiler $(root))
 
 NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)
 NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
@@ -189,12 +196,12 @@ else
   $(info Compileing in release mode)
 
   # CPU optimisations
-  CFLAGS		+=-O3 -ffast-math
+  CFLAGS		+= -O3 -ffast-math
 
   # Additional CPU optimisations
-  CFLAGS		+=-unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
+  CFLAGS		+= -unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32
-
+  
   # vectorisation output
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
 
@@ -633,6 +640,7 @@ cleanTIMING:
 	rm -rf build/*/cuda_accel_SS_INMEM.cu.o
 	rm -rf build/*/cuda_accel_SS.cu.o
 	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_cand_OPT.cu.o
 	rm -rf build/*/test_GPUaccel*.o
 
 cleanGPU: cudaclean

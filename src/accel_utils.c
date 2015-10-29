@@ -560,7 +560,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
           &r,
           &z,
           cand->derivs,
-          cand->pows,nn);
+          cand->pows);
     }
     else
     {
@@ -572,7 +572,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
           &r,
           &z,
           cand->derivs,
-          cand->pows,nn);
+          cand->pows);
     }
 
     for( ii=0; ii<cand->numharm; ii++ )

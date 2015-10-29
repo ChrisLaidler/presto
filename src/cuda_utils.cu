@@ -203,57 +203,62 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
   return -1;
 }
 
-void* initGPU(void* ptr)
-{
-  int currentDevvice;
-  char txt[1024];
-
-  //int device = (int)ptr;
-  int device = *((int*)(&ptr));
-
-  printf("Device no is %i \n",device);
-
-  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-
-  // Check if the the current device is 'device'
-  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-  if ( currentDevvice != device)
-  {
-    fprintf(stderr, "ERROR: Device not set.\n");
-  }
-  else // call something to initialise the device
-  {
-    sprintf(txt,"Init device %02i", device );
-    nvtxRangePush(txt);
-
-    //size_t free, total;
-    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-
-    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-
-    cudaFree(0);
-
-    nvtxRangePop();
-  }
-
-  return NULL;
-}
+//void* initGPU(void* ptr)
+//{
+//  int currentDevvice;
+//  char txt[1024];
+//
+//  //int device = *((int*)(&ptr));
+//  gpuInf device = *((int*)(&ptr));
+//
+//  printf("Device no is %i \n", device);
+//
+//  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+//
+//  // Check if the the current device is 'device'
+//  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+//  if ( currentDevvice != device)
+//  {
+//    fprintf(stderr, "ERROR: Device not set.\n");
+//  }
+//  else // call something to initialise the device
+//  {
+//    sprintf(txt,"Init device %02i", device );
+//    nvtxRangePush(txt);
+//
+//    //size_t free, total;
+//    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+//
+//    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+//
+//    cudaFree(0);
+//
+//    nvtxRangePop();
+//  }
+//
+//  return NULL;
+//}
 
 void initGPUs(gpuSpecs* gSpec)
 {
   int currentDevvice, deviceCount;
   char txt[1024];
 
+  int major           = 0;
+  int minor           = 0;
+
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
 
   for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
   {
-    int device = gSpec->devId[dIdx];
+    int device    = gSpec->devId[dIdx];
+    gpuInf* gInf  = &gSpec->devInfo[dIdx];
 
     CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
 
     // Check if the the current device is 'device'
     CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+
     if ( currentDevvice != device)
     {
       fprintf(stderr, "ERROR: Device not set.\n");
@@ -263,12 +268,19 @@ void initGPUs(gpuSpecs* gSpec)
       sprintf(txt,"Init device %02i", device );
       nvtxRangePush(txt);
 
-      //size_t free, total;
-      //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+      cudaDeviceProp deviceProp;
+      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
 
-      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+      major                           = deviceProp.major;
+      minor                           = deviceProp.minor;
+      gInf->capability                = major + minor/10.0f;
+      gInf->alignment                 = getMemAlignment();
+      gInf->name                      = (char*)malloc(256*sizeof(char));
+//      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
 
-      cudaFree(0);
+      sprintf(gInf->name, "%s", deviceProp.name );
+
+      //cudaFree(0);    // Is this still nessesary?
 
       nvtxRangePop();
     }

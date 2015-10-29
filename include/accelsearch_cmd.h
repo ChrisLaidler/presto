@@ -21,6 +21,10 @@ typedef struct s_Cmdline {
   char nstepsP;
   int *nsteps;
   int nstepsC;
+  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  char numoptP;
+  int *numopt;
+  int numoptC;
   /***** -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   char widthP;
   int width;

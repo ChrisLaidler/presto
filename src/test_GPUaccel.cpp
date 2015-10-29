@@ -588,6 +588,26 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
   printf("\n");
 }
 
+void* contextInitTrd(void* ptr)
+{
+  long long* contextInit = (long long*)malloc(sizeof(long long));
+  struct timeval start, end;
+  *contextInit = 0;
+  gpuSpecs* gSpec = (gpuSpecs*)ptr;
+
+  // Start the timer
+  gettimeofday(&start, NULL);
+
+  nvtxRangePush("Context");
+  initGPUs(gSpec);
+  nvtxRangePop();
+
+  gettimeofday(&end, NULL);
+  *contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+  pthread_exit(contextInit);
+}
+
 int main(int argc, char *argv[])
 {
   int ii;
@@ -602,7 +622,7 @@ int main(int argc, char *argv[])
   Cmdline *cmd;
 
   // Timing vars
-  long long prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0;
+  long long contextInit = 0, prepTime = 0, cupTime = 0, gpuTime = 0, optTime = 0;
   struct timeval start, end, timeval;
 
   /* Prep the timer */
@@ -684,17 +704,38 @@ int main(int argc, char *argv[])
   printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
 #ifdef CUDA     // Profiling  .
+  int  iret1 = 1;
+
   nvtxRangePop();
   gettimeofday(&end, NULL);
   prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
-  cuSearch*     cuSrch;
+  cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
   searchSpecs   sSpec;
+  pthread_t     cntxThread = NULL;
 
   gSpec         = readGPUcmd(cmd);
   sSpec         = readSrchSpecs(cmd, &obs);
   sSpec.pWidth  = ACCEL_USELEN; // NB: must have same accellen for tests!
+
+  iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
+  if ( iret1 )
+  {
+    fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
+    cntxThread = 0;
+
+    // Start the timer
+    gettimeofday(&start, NULL);
+
+    nvtxRangePush("Context");
+    printf("Initializing CUDA context's\n");
+    initGPUs(&gSpec);
+    nvtxRangePop();
+
+    gettimeofday(&end, NULL);
+    contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  }
 #endif
 
   char fname[1024];
@@ -749,6 +790,8 @@ int main(int argc, char *argv[])
 
       subharminfo **subharminfs;
 
+      float buckets[7] = {1e0, 1e0, 1e-4, 1e-6, 1e10, 1e15, 1e19};
+
 #ifdef CUDA
       nvtxRangePush("CPU");
       gettimeofday(&start, NULL); // Note could start the timer after kernel init
@@ -765,17 +808,31 @@ int main(int argc, char *argv[])
 
       nDarray<2, float> DFF_kernels;
 
+      if (cntxThread) // Wait for context thread to finish  .
+      {
+        void *status;
+        if ( !pthread_join(cntxThread, &status) )
+        {
+          contextInit = *(long long *)(status);
+        }
+        else
+        {
+          fprintf(stderr,"ERROR: Failed to join context thread.\n");
+        }
+      }
+
       //cudaDeviceSynchronize();          // This is only necessary for timing
       gettimeofday(&start, NULL);       // Profiling
       //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
 
       FOLD // Generate the GPU kernel  .
       {
+
         sSpec.flags   |= CU_NORM_EQUIV;
 
-        cuSrch        = initCuSearch(&sSpec, &gSpec, NULL);
+        cuSrch        = initCuKernels(&sSpec, &gSpec, NULL);
 
-        master        =  &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+        master        =  &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
 
         if ( master->accelLen != ACCEL_USELEN )
         {
@@ -802,7 +859,7 @@ int main(int argc, char *argv[])
             float frac  = (float)(harm)/(float)harmtosum;
             int idx     = noHarms - frac * noHarms;
 
-            cuHarmInfo  *hinf   = &cuSrch->mInf->kernels[0].hInfos[idx];
+            cuHarmInfo  *hinf   = &cuSrch->pInf->kernels[0].hInfos[idx];
             subharminfo *sinf0  = subharminfs[0];
             subharminfo *sinf1  = subharminfs[1];
             subharminfo *sinf   = &subharminfs[stage][harm - 1];
@@ -816,7 +873,7 @@ int main(int argc, char *argv[])
             GPU_kernels.allocate();
 
             // Copy data from device
-            CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->mInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
+            CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->pInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
             //CUDA_SAFE_CALL(cudaDeviceSynchronize(), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 
             for ( int row=0; row < sinf->numkern; row++  )
@@ -832,19 +889,21 @@ int main(int argc, char *argv[])
             double ERR =  MSE / statG.sigma ;
             printf("   Cmplx: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", idx, frac, MSE, statG.mean, statG.sigma, ERR );
 
-            if      ( ERR > 1e1   )
+
+
+            if      ( ERR > buckets[0]   )
               printf("  BAD!    Not even in the same realm.\n");
-            else if ( ERR > 1e0   )
+            else if ( ERR > buckets[1]   )
               printf("  Bad.  \n" );
-            else if ( ERR > 1e-4  )
+            else if ( ERR > buckets[2]  )
               printf("  Bad.   But not that bad.\n");
-            else if ( ERR > 1e-6  )
+            else if ( ERR > buckets[3]  )
               printf("  Close  But not great. \n");
-            else if ( ERR > 1e-10 )
+            else if ( ERR > buckets[4] )
               printf("  GOOD  But a bit high.\n");
-            else if ( ERR > 1e-15 )
+            else if ( ERR > buckets[5] )
               printf("  GOOD \n"  );
-            else if ( ERR > 1e-19 )
+            else if ( ERR > buckets[6] )
               printf("  GOOD  Very good.\n"  );
             else
               printf("  Great \n");
@@ -861,7 +920,7 @@ int main(int argc, char *argv[])
         bool printBadLines  = false;
         bool CSV            = false;
 
-        omp_set_num_threads(cuSrch->mInf->noBatches);
+        omp_set_num_threads(cuSrch->pInf->noBatches);
 
         int harmtosum, harm;
         startr = obs.rlo, lastr = 0, nextr = 0;
@@ -879,7 +938,7 @@ int main(int argc, char *argv[])
         if ( maxxx < 0 )
           maxxx = 0;
 
-        printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
+        printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n", maxxx, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
 
         printf("\nWill check all input and planes and report ");
         if (printDetails)
@@ -896,16 +955,18 @@ int main(int argc, char *argv[])
         plotPowers.addDim(master->hInfos[0].height, 0, master->hInfos[0].height );
         plotPowers.allocate();
 
+
+
         //#pragma omp parallel // Note the CPU version is not set up to be thread capable so can't really test multi-threading
         FOLD // -- Main Loop --  .
         {
           int tid = 0;  //omp_get_thread_num();
-          cuFFdotBatch* trdBatch = &cuSrch->mInf->batches[tid];
+          cuFFdotBatch* trdBatch = &cuSrch->pInf->batches[tid];
 
-          nDarray<1, float> **cpuInput = new nDarray<1, float>*[trdBatch->noSteps];
-          nDarray<2, float> **cpuCmplx = new nDarray<2, float>*[trdBatch->noSteps];
-          nDarray<1, float> **gpuInput = new nDarray<1, float>*[trdBatch->noSteps];
-          nDarray<2, float> **gpuCmplx = new nDarray<2, float>*[trdBatch->noSteps];
+          nDarray<1, float> **cpuInput  = new nDarray<1, float>*[trdBatch->noSteps];
+          nDarray<2, float> **cpuCmplx  = new nDarray<2, float>*[trdBatch->noSteps];
+          nDarray<1, float> **gpuInput  = new nDarray<1, float>*[trdBatch->noSteps];
+          nDarray<2, float> **gpuCmplx  = new nDarray<2, float>*[trdBatch->noSteps];
 
           nDarray<2, float> **cpuPowers = new nDarray<2, float>*[trdBatch->noSteps];
           nDarray<2, float> **gpuPowers = new nDarray<2, float>*[trdBatch->noSteps];
@@ -936,7 +997,7 @@ int main(int argc, char *argv[])
                   //int idx = noHarms - frac * noHarms;
                   int idx = trdBatch->stageIdx[harm];
 
-                  cuHarmInfo *hinf  = &cuSrch->mInf->kernels[0].hInfos[idx];
+                  cuHarmInfo *hinf  = &cuSrch->pInf->kernels[0].hInfos[idx];
 
                   cpuInput[step][idx].addDim(hinf->width*2, 0, hinf->width);
                   cpuInput[step][idx].allocate();
@@ -970,9 +1031,19 @@ int main(int argc, char *argv[])
 
           void* tmpRow = malloc(trdBatch->inpDataSize);
 
-          setDevice( trdBatch ) ;
+          setDevice( trdBatch->device ) ;
 
           int noCands = 0;
+
+          if ( trdBatch->flag & FLAG_HALF )
+          {
+            //buckets[7] = {1e0, 1e0, 1e-4, 1e-6, 1e10, 1e15, 1e19};
+
+            buckets[3] = 1e-5 ;  // Close But not great.
+            buckets[4] = 1e-7 ;  // GOOD  But a bit high.
+            buckets[5] = 1e-11 ; // GOOD
+            buckets[6] = 1e-15 ; // GOOD  Very good
+          }
 
           while ( ss < maxxx ) // -- Main Loop --  .
           {
@@ -1263,7 +1334,7 @@ int main(int argc, char *argv[])
 
                             if ( err > 0.001 )
                             {
-                              printf("Candidate r: %9.4f z: %5.2f  CPU pow: %6.2f  GPU pow: %6.2f   %8.6f \n", rr, zz, p2, p1, fabs(1-p2/p1) );
+                              printf("Candidate r: %9.4f z: %7.2f  CPU pow: %6.2f  GPU pow: %6.2f   %8.6f \n", rr, zz, p2, p1, fabs(1-p2/p1) );
                               badCands++;
                             }
                             else
@@ -1340,14 +1411,14 @@ int main(int argc, char *argv[])
                     double MSE = gpuInput[step][harz].MSE(cpuInput[step][harz]);
                     double ERR = MSE / stat.sigma ;
 
-                    if ( ERR > 1e-10  )
+                    if ( ERR > buckets[4]  )
                     {
                       if ( good && !printDetails )
                         printf("\n           ---- Step %03i of %03i ----\n", firstStep + step+1, maxxx);
 
                       good = false;
                     }
-                    if ( ERR > 1e-6   )
+                    if ( ERR > buckets[3]   )
                     {
                       badInp++;
                       bad = true;
@@ -1357,19 +1428,19 @@ int main(int argc, char *argv[])
                     {
                       printf("   Input: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
-                      if      ( ERR > 1e1   )
+                      if      ( ERR > buckets[0]   )
                         printf("  BAD!    Not even in the same realm.\n");
-                      else if ( ERR > 1e0   )
+                      else if ( ERR > buckets[1]   )
                         printf("  Bad.  \n" );
-                      else if ( ERR > 1e-4  )
+                      else if ( ERR > buckets[2]  )
                         printf("  Bad.   But not that bad.\n");
-                      else if ( ERR > 1e-6  )
+                      else if ( ERR > buckets[3]  )
                         printf("  Close  But not great. \n");
-                      else if ( ERR > 1e-10 )
+                      else if ( ERR > buckets[4] )
                         printf("  GOOD  But a bit high.\n");
-                      else if ( ERR > 1e-15 )
+                      else if ( ERR > buckets[5] )
                         printf("  GOOD \n"  );
-                      else if ( ERR > 1e-19 )
+                      else if ( ERR > buckets[6] )
                         printf("  GOOD  Very good.\n"  );
                       else
                         printf("  Great \n");
@@ -1416,14 +1487,14 @@ int main(int argc, char *argv[])
                       double MSE = gpuCmplx[step][harz].MSE(cpuCmplx[step][harz]);
                       double ERR = MSE / stat.sigma ;
 
-                      if ( ERR > 1e-12  )
+                      if ( ERR > buckets[4]  )
                       {
                         if ( good && !printDetails )
                           printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
 
                         good = false;
                       }
-                      if ( ERR > 1e-6   )
+                      if ( ERR > buckets[3]   )
                       {
                         bad = true;
                         badCplx++;
@@ -1433,19 +1504,19 @@ int main(int argc, char *argv[])
                       {
                         printf("   Cmplx: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
-                        if      ( ERR > 1e1   )
+                        if      ( ERR > buckets[0]   )
                           printf("  BAD!    Not even in the same realm.\n");
-                        else if ( ERR > 1e0   )
+                        else if ( ERR > buckets[1]   )
                           printf("  Bad.  \n" );
-                        else if ( ERR > 1e-4  )
+                        else if ( ERR > buckets[2]  )
                           printf("  Bad.   But not that bad.\n");
-                        else if ( ERR > 1e-6  )
+                        else if ( ERR > buckets[3]  )
                           printf("  Close  But not great. \n");
-                        else if ( ERR > 1e-10 )
+                        else if ( ERR > buckets[4] )
                           printf("  GOOD  But a bit high.\n");
-                        else if ( ERR > 1e-15 )
+                        else if ( ERR > buckets[5] )
                           printf("  GOOD \n"  );
-                        else if ( ERR > 1e-19 )
+                        else if ( ERR > buckets[6] )
                           printf("  GOOD  Very good.\n"  );
                         else
                           printf("  Great \n");
@@ -1541,14 +1612,14 @@ int main(int argc, char *argv[])
                     double MSE = gpuPowers[step][harz].MSE(cpuPowers[step][harz]);
                     double ERR = MSE / stat.sigma ;
 
-                    if ( ERR > 1e-12 )
+                    if ( ERR > buckets[4] )
                     {
                       if ( good && !printDetails )
                         printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);
 
                       good = false;
                     }
-                    if ( ERR > 1e-6  )
+                    if ( ERR > buckets[3]  )
                     {
                       badCplx++;
                       bad = true;
@@ -1558,19 +1629,19 @@ int main(int argc, char *argv[])
                     {
                       printf("  Powers: %02i (%.2f)  MSE: %10.3e    μ: %10.3e    σ: %10.3e    MSE/σ: %9.2e ", harz, trdBatch->hInfos[harz].harmFrac, MSE, stat.mean, stat.sigma, ERR );
 
-                      if      ( ERR > 1e1   )
+                      if      ( ERR > buckets[0]   )
                         printf("  BAD!    Not even in the same realm.\n");
-                      else if ( ERR > 1e0   )
+                      else if ( ERR > buckets[1]   )
                         printf("  Bad.  \n" );
-                      else if ( ERR > 1e-4  )
+                      else if ( ERR > buckets[2]  )
                         printf("  Bad.   But not that bad.\n");
-                      else if ( ERR > 1e-6  )
+                      else if ( ERR > buckets[3]  )
                         printf("  Close  But not great. \n");
-                      else if ( ERR > 1e-10 )
+                      else if ( ERR > buckets[4] )
                         printf("  GOOD  But a bit high.\n");
-                      else if ( ERR > 1e-15 )
+                      else if ( ERR > buckets[5] )
                         printf("  GOOD \n"  );
-                      else if ( ERR > 1e-19 )
+                      else if ( ERR > buckets[6] )
                         printf("  GOOD  Very good.\n"  );
                       else
                         printf("  Great \n");
@@ -1795,27 +1866,35 @@ int main(int argc, char *argv[])
 
         listptr = cands;
 
-        cuOptCand* oPlnPln;
+        //cuOptCand* oPlnPln;
 
-        FOLD  // Set device  .
+        FOLD // Initialise optimisation details!
         {
-          int device = gSpec.devId[0];
-          if ( device >= getGPUCount() )
-          {
-            fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
-            exit(EXIT_FAILURE);
-          }
-          int currentDevvice;
-          CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
-          CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
-          if (currentDevvice != device)
-          {
-            fprintf(stderr, "ERROR: CUDA Device not set.\n");
-            exit(EXIT_FAILURE);
-          }
+          cuSrch = initCuOpt(&sSpec, &gSpec, cuSrch);
         }
 
-        oPlnPln   = initOptPln(&sSpec);
+//        FOLD  // Set device  .
+//        {
+//          int device = gSpec.devId[0];
+//          if ( device >= getGPUCount() )
+//          {
+//            fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
+//            exit(EXIT_FAILURE);
+//          }
+//          int currentDevvice;
+//          CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
+//          CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+//          if (currentDevvice != device)
+//          {
+//            fprintf(stderr, "ERROR: CUDA Device not set.\n");
+//            exit(EXIT_FAILURE);
+//          }
+//        }
+
+        //oPlnPln   = initOptPln(&sSpec);
+
+        cuOptCand* oPlnPln = &(cuSrch->oInf->opts[0]);
+        setDevice(oPlnPln->device);
 
         accelcand *candCPU;
         accelcand *candGPU;
@@ -1859,7 +1938,7 @@ int main(int argc, char *argv[])
             {
               nvtxRangePush("Pln opt");
               gettimeofday(&startL, NULL);       // Profiling
-              opt_candPlns(candGPU, &obs, ii+1, oPlnPln);
+              opt_candPlns(candGPU, cuSrch, &obs, ii+1, oPlnPln);
               gettimeofday(&endL, NULL);
               gTime = ((endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec));
               gSum += gTime;

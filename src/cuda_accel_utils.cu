@@ -221,7 +221,8 @@ uint calcAccellen(float width, float zmax)
  * @param outData
  * @return
  */
-int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int device, int noBatches, int noSteps )
+//int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int device, int noBatches, int noSteps, int devID )
+int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int devID )
 {
   nvtxRangePush("initKernel");
   std::cout.flush();
@@ -229,16 +230,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   size_t free, total;             /// GPU memory
   int noInStack[MAX_HARM_NO];
   int noHarms         = (1 << (sInf->noHarmStages - 1) );
-  int major           = 0;
-  int minor           = 0;
   noInStack[0]        = 0;
   size_t batchSize    = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
   size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
   size_t planeSize    = 0;        /// Total size (in bytes) of memory required independently of batch(es)
   int flags           = sInf->sSpec->flags;
-  int alignment       = 0;
   float plnElsSZ      = 0;
   float powElsSZ      = 0;
+
+  gpuInf* gInf        = &sInf->gSpec->devInfo[devID];
+  int device          = gInf->devid;
+  int noBatches       = sInf->gSpec->noDevBatches[devID];
+  int noSteps         = sInf->gSpec->noDevSteps[devID];
+  int alignment       = gInf->alignment;
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initKernel.");
 
@@ -248,7 +252,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     if ( device >= getGPUCount() )
     {
-      fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
+      fprintf(stderr, "ERROR: There is no CUDA device %i.\n", device);
       return 0;
     }
     int currentDevvice;
@@ -261,21 +265,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     }
     else
     {
-      cudaDeviceProp deviceProp;
-      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+      kernel->capability = gInf->capability;
 
-      major                           = deviceProp.major;
-      minor                           = deviceProp.minor;
-      float ver                       = major + minor/10.0f;
-      kernel->capability              = ver;
+      //cudaDeviceProp deviceProp;
+      //CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
 
-      alignment                       = getMemAlignment();
 
-      sInf->mInf->alignment[device]   = alignment;
-      sInf->mInf->capability[device]  = ver;
-      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
-      sprintf(sInf->mInf->name[device], "%s", deviceProp.name );
+      //major                           = deviceProp.major;
+      //minor                           = deviceProp.minor;
+      //float ver                       = major + minor/10.0f;
+      //kernel->capability              = ver;
+
+      //alignment                       = getMemAlignment();
+
+//      sInf->mInf->alignment[device]   = alignment;
+//      sInf->mInf->capability[device]  = ver;
+//      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
+//      sprintf(sInf->mInf->name[device], "%s", deviceProp.name );
     }
 
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
@@ -382,7 +389,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     }
   }
 
-  FOLD // Do a sanity check on CUDA version
+  FOLD // Do a sanity check on CUDA version  .
   {
     if ( master == NULL ) // For the moment lets try this on only the first card!
     {
@@ -671,7 +678,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             halfWidth                     = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
 
             // Maximise and align halfwidth
-            int sWidth                    = (int) ( ceil(kernel->accelLen * kernel->hInfos[idx].harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;
+            int   sWidth                  = (int) ( ceil(kernel->accelLen * kernel->hInfos[idx].harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;
             float hw                      = (kernel->hInfos[idx].width  - sWidth)/2.0/(float)ACCEL_NUMBETWEEN;
             float noAlg                   = alignment / float(sizeof(fcomplex)) / (float)ACCEL_NUMBETWEEN ;     // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
             float hw4                     = floor(hw/noAlg) * noAlg ;
@@ -877,8 +884,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         // Call the CUDA kernels
         // Only need one kernel per stack
-
         createStackKernel(cStack);
+
         printf("    ► Created kernel %i  Size: %7.1f MB  Height %4i   Contamination: %5.2f %% \n", i+1, cStack->harmInf->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0, cStack->harmInf->zmax, (cStack->harmInf->halfWidth*2*ACCEL_NUMBETWEEN)/(float)cStack->width*100);
 
         for (int j = 0; j < cStack->noInStack; j++)
@@ -951,7 +958,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   {
     nvtxRangePush("data");
 
-    printf("\nInitializing GPU %i (%s)\n", device, sInf->mInf->name[device] );
+    printf("\nInitializing GPU %i (%s)\n", device, sInf->gSpec->devInfo[devID].name );
 
     if ( master != NULL )     // Create the kernels  .
     {
@@ -1404,7 +1411,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         size_t stride;
 
         CUDA_SAFE_CALL(cudaMallocPitch(&kernel->d_planeFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate device memory for getMemAlignment.");
-        kernel->sInf->mInf->inmemStride = stride / plnElsSZ;
+        kernel->sInf->pInf->inmemStride = stride / plnElsSZ;
         CUDA_SAFE_CALL(cudaMemsetAsync(kernel->d_planeFull, 0, stride*nY, 0),"Failed to initiate plane memory to zero");
       }
     }
@@ -1583,7 +1590,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     setConstVals( kernel,  sInf->noHarmStages, sInf->powerCut, sInf->numindep );
     setConstVals_Fam_Order( kernel );                            // Constant values for multiply
 
-#if CUDA_VERSION >= 6050        // CUFFT callbacks only implimented in CUDA 6.5
+#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
     copyCUFFT_LD_CB(kernel);
 #endif
 
@@ -1798,7 +1805,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // See if we can use the cuda device  .
   {
-    setDevice(kernel) ;
+    setDevice(kernel->device) ;
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
   }
@@ -2384,7 +2391,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 {
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering freeBatchGPUmem.");
 
-  setDevice(batch) ;
+  setDevice(batch->device) ;
 
   FOLD // Free host memory
   {
@@ -2480,107 +2487,186 @@ void freeBatch(cuFFdotBatch* batch)
 
 }
 
-cuOptCand* initOptCand(searchSpecs* sSpec)
+/** Initiate a optimisation plane
+ * If oPln has not been pre initialised and is NULL it will create a new data structure.
+ * If oPln has been pre initialised the device ID and Idx are used!
+ *
+ */
+cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0 )
 {
-  cuOptCand* oPln;
+  searchSpecs* sSpec = sSrch->sSpec;
 
-  oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
-  memset(oPln, 0, sizeof(cuOptCand));
+  if ( !oPln )
+  {
+    oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
+    memset(oPln,0,sizeof(cuOptCand));
 
-  int       noHarms   = (1<<(sSpec->noHarmStages-1));
+    if ( devLstId < MAX_GPUS )
+    {
+      oPln->device = sSrch->gSpec->devId[devLstId];
+    }
+    else
+    {
+      fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+  }
+  else
+  {
+    if ( oPln->device != sSrch->gSpec->devId[devLstId] )
+    {
+      bool found = false;
 
-  oPln->maxNoR        = 512;
-  oPln->maxNoZ        = 512;
-  oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;   // This needs to be multiplied by the size of the output element
-  oPln->alignment     = getMemAlignment();
-  float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
-  zMax                = MAX(zMax, 60 * noHarms );
-  zMax                = MAX(zMax, sSpec->zMax * 34 + 50 ); // TMP
-  oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
+      for ( int lIdx = 0; lIdx < MAX_GPUS; lIdx++ )
+      {
+        if ( sSrch->gSpec->devId[lIdx] == oPln->device )
+        {
+          devLstId = lIdx;
+          found = true;
+          break;
+        }
+      }
 
-  // Create streams
-  CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
-  nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
+      if (!found)
+      {
+        if (devLstId < MAX_GPUS )
+        {
+          oPln->device = sSrch->gSpec->devId[devLstId];
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
+          exit(EXIT_FAILURE);
+        }
 
-  // Events
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
+      }
+    }
+  }
 
+  FOLD // Create stuff  .
+  {
+    setDevice(oPln->device) ;
+
+    int   noHarms       = (1<<(sSpec->noHarmStages-1));
+    float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
+    zMax                = MAX(zMax, 60 * noHarms );
+    zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  // TMP: This may be a bit high!
+
+    oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
+    oPln->maxNoR        = 512;
+    oPln->maxNoZ        = 512;
+    oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;       // This needs to be multiplied by the size of the output element
+    oPln->alignment     = sSrch->gSpec->devInfo[devLstId].alignment; //getMemAlignment();
+
+    // Create streams
+    CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
+    char nmStr[1024];
+    sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
+    nvtxNameCudaStreamA(oPln->stream, nmStr);
+
+    // Events
+    CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
+    CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
+    CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
+    CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
+    CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
+    CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
+
+    size_t freeMem, totalMem;
+
+    oPln->outSz        *= sizeof(float);
+    oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
+
+    CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+
+    if ( (oPln->inpSz + oPln->outSz) > freeMem )
+    {
+      printf("Not enough GPU memory to create any more stacks.\n");
+      free(oPln);
+      return NULL;
+    }
+    else
+    {
+      // Allocate device memory
+      CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+      CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+
+      // Allocate host memory
+      CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+      CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+    }
+  }
   return oPln;
 }
 
-cuOptCand* initOptPln(searchSpecs* sSpec)
-{
-  nvtxRangePush("Init plane");
-  size_t freeMem, totalMem;
+//cuOptCand* initOptPln(searchSpecs* sSpec)
+//{
+//  nvtxRangePush("Init plane");
+//  size_t freeMem, totalMem;
+//
+//  int       noHarms   = (1<<(sSpec->noHarmStages-1));
+//
+//  cuOptCand* oPln     = initOptCand(sSpec);
+//
+//  oPln->outSz        *= sizeof(float);
+//  oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
+//
+//  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+//
+//  if ( (oPln->inpSz + oPln->outSz) > freeMem )
+//  {
+//    printf("Not enough GPU memory to create any more stacks.\n");
+//    free(oPln);
+//    return NULL;
+//  }
+//  else
+//  {
+//    // Allocate device memory
+//    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+//    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+//
+//    // Allocate host memory
+//    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+//    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+//  }
+//
+//  nvtxRangePop();
+//
+//  return(oPln);
+//}
 
-  int       noHarms   = (1<<(sSpec->noHarmStages-1));
-
-  cuOptCand* oPln     = initOptCand(sSpec);
-
-  oPln->outSz        *= sizeof(float);
-  oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
-
-  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-
-  if ( (oPln->inpSz + oPln->outSz) > freeMem )
-  {
-    printf("Not enough GPU memory to create any more stacks.\n");
-    free(oPln);
-    return NULL;
-  }
-  else
-  {
-    // Allocate device memory
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
-
-    // Allocate host memory
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
-  }
-
-  nvtxRangePop();
-
-  return(oPln);
-}
-
-cuOptCand* initOptSwrm(searchSpecs* sSpec)
-{
-  size_t freeMem, totalMem;
-
-  cuOptCand* oPln     = initOptCand(sSpec);
-
-  oPln->outSz         *= sizeof(candOpt);
-  oPln->inpSz         = sSpec->fftInf.nor * sizeof(fcomplex) ;
-
-  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-
-  if ( (oPln->inpSz + oPln->outSz) > freeMem )
-  {
-    printf("Not enough GPU memory to create any more stacks.\n");
-    free(oPln);
-    return NULL;
-  }
-  else
-  {
-    // Allocate device memory
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),    "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),    "Failed to allocate device memory for kernel stack.");
-
-    // Allocate host memory
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out, oPln->outSz), "Failed to allocate device memory for kernel stack.");
-
-    // Copy FFT to device memory
-    CUDA_SAFE_CALL(cudaMemcpy(oPln->d_inp, sSpec->fftInf.fft, oPln->inpSz, cudaMemcpyHostToDevice),      "Copying FFT to device");
-  }
-
-  return(oPln);
-}
+//cuOptCand* initOptSwrm(searchSpecs* sSpec)
+//{
+//  size_t freeMem, totalMem;
+//
+//  cuOptCand* oPln     = initOptCand(sSpec);
+//
+//  oPln->outSz         *= sizeof(candOpt);
+//  oPln->inpSz         = sSpec->fftInf.nor * sizeof(fcomplex) ;
+//
+//  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+//
+//  if ( (oPln->inpSz + oPln->outSz) > freeMem )
+//  {
+//    printf("Not enough GPU memory to create any more stacks.\n");
+//    free(oPln);
+//    return NULL;
+//  }
+//  else
+//  {
+//    // Allocate device memory
+//    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),    "Failed to allocate device memory for kernel stack.");
+//    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),    "Failed to allocate device memory for kernel stack.");
+//
+//    // Allocate host memory
+//    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out, oPln->outSz), "Failed to allocate device memory for kernel stack.");
+//
+//    // Copy FFT to device memory
+//    CUDA_SAFE_CALL(cudaMemcpy(oPln->d_inp, sSpec->fftInf.fft, oPln->inpSz, cudaMemcpyHostToDevice),      "Copying FFT to device");
+//  }
+//
+//  return(oPln);
+//}
 
 int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
 {
@@ -3123,17 +3209,17 @@ void printContext()
   printf("Thread %02i  currentDevvice: %i Context %p \n", trd, currentDevvice, pctx);
 }
 
-int setDevice(cuFFdotBatch* batch)
+int setDevice(int device)
 {
   int dev;
 
   CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
 
-  if ( dev != batch->device )
+  if ( dev != device )
   {
-    CUDA_SAFE_CALL(cudaSetDevice(batch->device), "Failed to set device using cudaSetDevice");
+    CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
     CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
-    if ( dev != batch->device )
+    if ( dev != device )
     {
       fprintf(stderr, "ERROR: CUDA Device not set.\n");
       exit(EXIT_FAILURE);
@@ -3151,6 +3237,7 @@ gpuSpecs gSpec(int devID = -1 )
   if (devID < 0 )
   {
     gSpec.noDevices      = getGPUCount();
+
     for ( int i = 0; i < gSpec.noDevices; i++)
       gSpec.devId[i]        = i;
   }
@@ -3166,6 +3253,7 @@ gpuSpecs gSpec(int devID = -1 )
     gSpec.noDevBatches[i] = 2;
     gSpec.noDevSteps[i]   = 4;
   }
+
   return gSpec;
 }
 
@@ -3217,6 +3305,12 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
       gpul.noDevSteps[dev] = cmd->nsteps[cmd->nbatchC-1];
     else
       gpul.noDevSteps[dev] = cmd->nsteps[dev];
+
+    if ( dev >= cmd->numoptC )
+      gpul.noDevOpt[dev] = cmd->numopt[cmd->nbatchC-1];
+    else
+      gpul.noDevOpt[dev] = cmd->numopt[dev];
+
   }
 
   return gpul;
@@ -3959,18 +4053,14 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
  *
  * Create the kernels on the first device and then copy it to all others
  *
- * @param gSpec
- * @param sSpec
- * @param powcut
- * @param numindep
+ * @param sSrch     A pointer to the search structure
+ *
  * @return
  */
-void initCuAccel(cuSearch* sSrch )
+void initPlanes(cuSearch* sSrch )
 {
-  //cuMemInfo* aInf = new cuMemInfo;
-  sSrch->mInf = new cuMemInfo;
-  memset(sSrch->mInf, 0, sizeof(cuMemInfo));
-
+  sSrch->pInf = new cuPlnInfo;
+  memset(sSrch->pInf, 0, sizeof(cuPlnInfo));
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuAccel.");
 
@@ -3978,24 +4068,24 @@ void initCuAccel(cuSearch* sSrch )
   {
     nvtxRangePush("Initialise Kernels");
 
-    sSrch->mInf->kernels = (cuFFdotBatch*)malloc(sSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
+    sSrch->pInf->kernels = (cuFFdotBatch*)malloc(sSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
 
     int added;
     cuFFdotBatch* master = NULL;
 
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
     {
-      added = initKernel(&sSrch->mInf->kernels[sSrch->mInf->noDevices], master, sSrch, sSrch->gSpec->devId[dev], sSrch->gSpec->noDevBatches[dev], sSrch->gSpec->noDevSteps[dev] );
+      added = initKernel(&sSrch->pInf->kernels[sSrch->pInf->noDevices], master, sSrch, dev );
 
       if ( added && !master ) // This was the first batch so it is the master
       {
-        master = &sSrch->mInf->kernels[0];
+        master = &sSrch->pInf->kernels[0];
       }
 
       if ( added )
       {
-        sSrch->mInf->noBatches += added;
-        sSrch->mInf->noDevices++;
+        sSrch->pInf->noBatches += added;
+        sSrch->pInf->noDevices++;
       }
       else
       {
@@ -4006,7 +4096,7 @@ void initCuAccel(cuSearch* sSrch )
 
     nvtxRangePop();
 
-    if ( sSrch->mInf->noDevices <= 0 ) // Check if we got any devices  .
+    if ( sSrch->pInf->noDevices <= 0 ) // Check if we got any devices  .
     {
       fprintf(stderr, "ERROR: Failed to set up a kernel on any device. Try -lsgpu to see what devices there are.\n");
       exit (EXIT_FAILURE);
@@ -4018,12 +4108,12 @@ void initCuAccel(cuSearch* sSrch )
   {
     nvtxRangePush("Initialise Batches");
 
-    sSrch->mInf->noSteps       = 0;
-    sSrch->mInf->batches       = (cuFFdotBatch*)malloc(sSrch->mInf->noBatches*sizeof(cuFFdotBatch));
-    sSrch->mInf->devNoStacks   = (int*)malloc(sSrch->gSpec->noDevices*sizeof(int));
-    sSrch->mInf->h_stackInfo   = (stackInfo**)malloc(sSrch->gSpec->noDevices*sizeof(stackInfo*));
+    sSrch->pInf->noSteps       = 0;
+    sSrch->pInf->batches       = (cuFFdotBatch*)malloc(sSrch->pInf->noBatches*sizeof(cuFFdotBatch));
+    sSrch->pInf->devNoStacks   = (int*)malloc(sSrch->gSpec->noDevices*sizeof(int));
+    sSrch->pInf->h_stackInfo   = (stackInfo**)malloc(sSrch->gSpec->noDevices*sizeof(stackInfo*));
 
-    memset(sSrch->mInf->devNoStacks,0,sSrch->gSpec->noDevices*sizeof(int));
+    memset(sSrch->pInf->devNoStacks,0,sSrch->gSpec->noDevices*sizeof(int));
 
     int bNo = 0;
     int ker = 0;
@@ -4037,34 +4127,34 @@ void initCuAccel(cuSearch* sSrch )
 
         for ( int batch = 0 ; batch < sSrch->gSpec->noDevBatches[dev]; batch++ )
         {
-          noSteps = initBatch(&sSrch->mInf->batches[bNo], &sSrch->mInf->kernels[ker], batch, sSrch->gSpec->noDevBatches[dev]-1);
+          noSteps = initBatch(&sSrch->pInf->batches[bNo], &sSrch->pInf->kernels[ker], batch, sSrch->gSpec->noDevBatches[dev]-1);
 
           if ( noSteps == 0 )
           {
             if ( batch == 0 )
             {
-              fprintf(stderr, "ERROR: Failed to create at least one batch on device %i.\n", sSrch->mInf->kernels[dev].device);
+              fprintf(stderr, "ERROR: Failed to create at least one batch on device %i.\n", sSrch->pInf->kernels[dev].device);
             }
             break;
           }
           else
           {
-            sSrch->mInf->noSteps           += noSteps;
-            sSrch->mInf->devNoStacks[dev]  += sSrch->mInf->batches[bNo].noStacks;
+            sSrch->pInf->noSteps           += noSteps;
+            sSrch->pInf->devNoStacks[dev]  += sSrch->pInf->batches[bNo].noStacks;
             bNo++;
           }
         }
 
-        int noStacks = sSrch->mInf->devNoStacks[dev] ;
+        int noStacks = sSrch->pInf->devNoStacks[dev] ;
         if ( noStacks )
         {
-          sSrch->mInf->h_stackInfo[dev] = (stackInfo*)malloc(noStacks*sizeof(stackInfo));
+          sSrch->pInf->h_stackInfo[dev] = (stackInfo*)malloc(noStacks*sizeof(stackInfo));
           int idx = 0;
 
           // Set the values of the host data structures
           for (int batch = firstBatch; batch < bNo; batch++)
           {
-            idx += setStackInfo(&sSrch->mInf->batches[batch], sSrch->mInf->h_stackInfo[dev], idx);
+            idx += setStackInfo(&sSrch->pInf->batches[batch], sSrch->pInf->h_stackInfo[dev], idx);
           }
 
           if ( idx != noStacks )
@@ -4073,7 +4163,7 @@ void initCuAccel(cuSearch* sSrch )
           }
           else
           {
-            setConstStkInfo(sSrch->mInf->h_stackInfo[dev], idx);
+            setConstStkInfo(sSrch->pInf->h_stackInfo[dev], idx);
           }
         }
 
@@ -4081,17 +4171,67 @@ void initCuAccel(cuSearch* sSrch )
       }
     }
 
-    if ( bNo != sSrch->mInf->noBatches )
+    if ( bNo != sSrch->pInf->noBatches )
     {
       fprintf(stderr, "WARNING: Number of batches created does not match the number anticipated.\n");
-      sSrch->mInf->noBatches = bNo;
+      sSrch->pInf->noBatches = bNo;
     }
 
     nvtxRangePop();
   }
 }
 
-void freeAccelGPUMem(cuMemInfo* aInf)
+/** Create multiplication kernel and allocate memory for planes on all devices  .
+ *
+ * Create the kernels on the first device and then copy it to all others
+ *
+ * @param sSrch     A pointer to the search structure
+ *
+ * @return
+ */
+void initOptimisers(cuSearch* sSrch )
+{
+  sSrch->oInf = new cuOptInfo;
+  memset(sSrch->oInf, 0, sizeof(cuOptInfo));
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initOptimisers.");
+
+  FOLD // Create the primary stack on each device, this contains the kernel  .
+  {
+    nvtxRangePush("Initialise Optimisers");
+
+    sSrch->oInf->noOpts = 0;
+
+    for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
+    {
+      if ( sSrch->gSpec->noDevOpt[dev] > 0 )
+      {
+        sSrch->oInf->noOpts+=sSrch->gSpec->noDevOpt[dev];
+      }
+    }
+
+    sSrch->oInf->opts = (cuOptCand*)malloc(sSrch->oInf->noOpts*sizeof(cuOptCand));
+    memset(sSrch->oInf->opts, 0, sSrch->oInf->noOpts*sizeof(cuOptCand));
+
+    int idx = 0;
+    for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
+    {
+      for ( int oo = 0 ; oo < sSrch->gSpec->noDevOpt[dev]; oo++ )
+      {
+        // Setup some basic info
+        sSrch->oInf->opts[idx].pIdx     = idx;
+        sSrch->oInf->opts[idx].device   = sSrch->gSpec->devId[dev];
+
+        initOptCand(sSrch, &sSrch->oInf->opts[idx], dev );
+        idx++;
+      }
+    }
+
+    nvtxRangePop();
+  }
+}
+
+void freeAccelGPUMem(cuPlnInfo* aInf)
 {
 #ifdef STPMSG
   printf("freeAccelGPUMem\n");
@@ -4124,7 +4264,7 @@ void freeAccelGPUMem(cuMemInfo* aInf)
 #endif
 }
 
-void freeCuAccel(cuMemInfo* mInf)
+void freeCuAccel(cuPlnInfo* mInf)
 {
   if ( mInf )
   {
@@ -4147,8 +4287,8 @@ void freeCuAccel(cuMemInfo* mInf)
     freeNull(mInf->batches);
     freeNull(mInf->kernels);
 
-    for ( int i = 0; i < MAX_GPUS; i++ )
-      freeNull(mInf->name[i]);
+//    for ( int i = 0; i < MAX_GPUS; i++ )
+//      freeNull(mInf->name[i]);
 
     freeNull(mInf->devNoStacks);
 
@@ -4164,13 +4304,41 @@ void freeCuAccel(cuMemInfo* mInf)
   }
 }
 
-cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+void intSrchThrd(cuSearch* srch)
+{
+  //if ( srch->sSpec->flags & FLAG_THREAD )
+  {
+    resThrds* tInf = srch->threasdInfo;
+
+    if ( !tInf )
+    {
+      tInf     = new resThrds;
+      memset(tInf, 0, sizeof(cuSearch));
+    }
+
+    if (pthread_mutex_init(&tInf->candAdd_mutex, NULL))
+    {
+      printf("Unable to initialise a mutex.\n");
+      exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&tInf->running_threads, 0, 0))
+    {
+      printf("Could not initialise a semaphore\n");
+      exit(EXIT_FAILURE);
+    }
+
+    srch->threasdInfo = tInf;
+  }
+}
+
+cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   bool same   = true;
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuSearch.");
 
-  if ( srch )
+  if ( srch ) 	                    // Check if the search values have been pre-initialised  .
   {
     if ( srch->noHarmStages != sSpec->noHarmStages )
     {
@@ -4178,14 +4346,14 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
       // ERROR recreate everything
     }
 
-    if ( srch->mInf )
+    if ( srch->pInf )
     {
-      if ( srch->mInf->kernels->hInfos->zmax != sSpec->zMax )
+      if ( srch->pInf->kernels->hInfos->zmax != sSpec->zMax )
       {
         same = false;
         // Have to recreate
       }
-      if ( srch->mInf->kernels->accelLen != optAccellen(sSpec->pWidth,sSpec->zMax) )
+      if ( srch->pInf->kernels->accelLen != optAccellen(sSpec->pWidth,sSpec->zMax) )
       {
         same = false;
         // Have to recreate
@@ -4202,19 +4370,16 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     }
   }
 
-  if ( !srch || same == false)
+  if ( !srch || same == false)      // Create a new search data structure
   {
     srch = new cuSearch;
     memset(srch, 0, sizeof(cuSearch));
 
     srch->noHarmStages    = sSpec->noHarmStages;
     srch->noHarms         = ( 1<<(srch->noHarmStages-1) );
-
     srch->pIdx            = (int*)malloc(srch->noHarms * sizeof(int));
     srch->powerCut        = (float*)malloc(srch->noHarmStages * sizeof(float));
     srch->numindep        = (long long*)malloc(srch->noHarmStages * sizeof(long long));
-
-    srch->threasdInfo     = new resThrds;
   }
 
   srch->sSpec             = sSpec;
@@ -4222,12 +4387,13 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
   FOLD // Calculate power cutoff and number of independent values  .
   {
-    if (sSpec->zMax % ACCEL_DZ)
+    // Calculate appropriate z-max
+    if ( sSpec->zMax % ACCEL_DZ )
       sSpec->zMax = (sSpec->zMax / ACCEL_DZ + 1) * ACCEL_DZ;
 
     int numz = (sSpec->zMax / ACCEL_DZ) * 2 + 1;
 
-    FOLD //
+    FOLD // Calculate power cutoff and number of independent values  .
     {
       for (int ii = 0; ii < srch->noHarmStages; ii++)
       {
@@ -4240,6 +4406,8 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
           srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * ( ACCEL_DZ / 6.95) / (double)(1<<ii);
         }
 
+        // Power cutoff
+        // TODO: Check if using half precision may affect this
         srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
       }
     }
@@ -4247,47 +4415,45 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
   FOLD // Set up the threading  .
   {
-    if (pthread_mutex_init(&srch->threasdInfo->candAdd_mutex, NULL))
-    {
-      printf("Unable to initialise a mutex.\n");
-      exit(EXIT_FAILURE);
-    }
-
-    if (sem_init(&srch->threasdInfo->running_threads, 0, 0))
-    {
-      printf("Could not initialise a semaphore\n");
-      exit(EXIT_FAILURE);
-    }
-    else
-    {
-      //sem_post(&srch->threasdInfo->running_threads); // Set to 1
-      int noTrd;
-      sem_getvalue(&srch->threasdInfo->running_threads, &noTrd );
-    }
-
-
-    //    if (pthread_mutex_init(&srch->threasdInfo->running_mutex, NULL))
-    //    {
-    //      printf("Unable to initialise a mutex.\n");
-    //      exit(EXIT_FAILURE);
-    //    }
+    intSrchThrd(srch);
   }
 
-  //  if ( sSpec->cndType & CU_STR_QUAD )
-  //  {
-  //    // If we are using the quadtree method we can do a 1 stage search
-  //    srch->noHarmStages  = 1;
-  //    srch->noHarms       = 1;
-  //  }
+  return srch;
+}
 
-  if ( !srch->mInf )
+cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+{
+  if ( !srch )
+    srch = initSearchInf(sSpec, gSpec, srch);
+
+  if ( !srch->pInf )
   {
-    //srch->mInf = initCuAccel(gSpec, sSpec, srch->powerCut, srch->numindep );
-    initCuAccel( srch );
+    initPlanes( srch ); // This initialises the plane info
   }
   else
   {
-    // TODO do a whole bunch of checks here!
+    // TODO: Do a whole bunch of checks here!
+    fprintf(stderr, "ERROR: %s has not been set up to handle a pre-initialised memory info data structure.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+
+  return srch;
+}
+
+cuSearch* initCuOpt(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+{
+  if ( !srch )
+    srch = initSearchInf(sSpec, gSpec, srch);
+
+  if ( !srch->oInf )
+  {
+    initOptimisers( srch );
+  }
+  else
+  {
+    // TODO: Do a whole bunch of checks here!
+    fprintf(stderr, "ERROR: %s has not been set up to handle a pre-initialised memory info data structure.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
   }
 
   return srch;
@@ -4297,8 +4463,8 @@ void freeCuSearch(cuSearch* srch)
 {
   if (srch)
   {
-    if ( srch->mInf )
-      freeCuAccel(srch->mInf);
+    if ( srch->pInf )
+      freeCuAccel(srch->pInf);
 
     freeNull(srch->pIdx);
     freeNull(srch->powerCut);
@@ -4324,10 +4490,10 @@ void accelMax(cuSearch* srch)
    */
 
   cuFFdotBatch* master   = NULL;    // The first kernel stack created
-  master = srch->mInf->kernels;
+  master = srch->pInf->kernels;
 
 #ifdef WITHOMP
-  omp_set_num_threads(srch->mInf->noBatches);
+  omp_set_num_threads(srch->pInf->noBatches);
 #endif
 
   int ss = 0;
@@ -4349,13 +4515,13 @@ void accelMax(cuSearch* srch)
     int tid = 0;
 #endif
 
-    cuFFdotBatch* trdBatch = &srch->mInf->batches[tid];
+    cuFFdotBatch* trdBatch = &srch->pInf->batches[tid];
 
     double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
     double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
     size_t rest = trdBatch->noSteps;
 
-    setDevice(trdBatch) ;
+    setDevice(trdBatch->device) ;
 
     while ( ss < maxxx )
     {
@@ -4534,13 +4700,18 @@ void printCommandLine(int argc, char *argv[])
 void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
 {
 #ifdef CBL
-  searchSpecs* sSpec;  ///< Specifications of the search
-  cuMemInfo* mInf;  ///< The allocated Device and host memory and data structures to create planes including the kernels
+  searchSpecs* sSpec;         ///< Specifications of the search
+  cuPlnInfo* mInf;            ///< The allocated Device and host memory and data structures to create planes including the kernels
   cuFFdotBatch* batch;
-  sSpec = cuSrch->sSpec;
-  mInf = cuSrch->mInf;
-  batch = cuSrch->mInf->batches;
-  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
+
+  sSpec         = cuSrch->sSpec;
+  mInf          = cuSrch->pInf;
+
+  if ( !cuSrch || !sSpec || !mInf  )
+    return;
+
+  batch         = cuSrch->pInf->batches;
+  double noRR   = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
 
   char hostname[1024];
   gethostname(hostname, 1024);
@@ -4548,7 +4719,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
   Logger* cvsLog = new Logger(fname, 1);
   cvsLog->sedCsvDeliminator('\t');
 
-  // get the current time
+  // Get the current time
   time_t rawtime;
   tm* ptm;
   time(&rawtime);
@@ -4718,7 +4889,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
     float resultT   = 0;
     float copyD2HT  = 0;
 #ifdef TIMING
-    for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
+    for (int batch = 0; batch < cuSrch->pInf->noBatches; batch++)
     {
       float l_copyH2DT  = 0;
       float l_InpNorm   = 0;
@@ -4730,9 +4901,9 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
       float l_resultT   = 0;
       float l_copyD2HT  = 0;
 
-      for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
+      for (int stack = 0; stack < cuSrch->pInf->batches[batch].noStacks; stack++)
       {
-        cuFFdotBatch* batches = &cuSrch->mInf->batches[batch];
+        cuFFdotBatch* batches = &cuSrch->pInf->batches[batch];
         l_copyH2DT  += batches->copyH2DTime[stack];
         l_InpNorm   += batches->normTime[stack];
         l_InpFFT    += batches->InpFFTTime[stack];
@@ -4901,92 +5072,93 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
   return numremoved;
 }
 
-GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
-{
-  candTree optemised;
+//GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
+//{
+//  candTree optemised;
+//
+//  candTree trees[batch->noHarmStages];
+//
+//  candTree* qt =(candTree*)batch->h_candidates;
+//
+//  hilClimb(qt, 5);
+//  eliminate_harmonics(qt);
+//
+//  cuOptCand* oPlnPln;
+//  oPlnPln   = initOptPln(batch->sInf->sSpec);
+//
+//  container* cont = qt->getLargest();
+//
+//  int i = 0;
+//
+//  while ( cont )
+//  {
+//    i++;
+//    printf("\n");
+//    //if ( i == 12 )
+//    {
+//      cand*   candidate = (cand*)cont->data;
+//      cont->flag &= ~OPTIMISED_CONTAINER;
+//
+//      printf("Candidate %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+//
+//      //
+//      //    numharm   = candidate->numharm;
+//      //    sig       = candidate->sig;
+//      //    rr        = candidate->r;
+//      //    zz        = candidate->z;
+//      //    poww      = candidate->power;
+//      //
+//      //    candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+//
+//      //accelcand *cand = new accelcand;
+//      //memset(cand, 0, sizeof(accelcand));
+//      //cand->power   = candidate->power;
+//      //cand->r       = candidate->r;
+//      //cand->sigma   = candidate->sig;
+//      //cand->z       = candidate->z;
+//      //cand->numharm = candidate->numharm;
+//
+//      //accelcand* cand = create_accelcand(candidate->power, candidate->sig, candidate->numharm, candidate->r, candidate->z);
+//
+//      //candsGPU = insert_accelcand(candsGPU, cand),
+//
+//      int stg = log2((float)candidate->numharm);
+//      candTree* ret = opt_cont(&trees[stg], oPlnPln, cont, &batch->sInf->sSpec->fftInf, i);
+//
+//      trees[stg].add(ret);
+//
+//      delete(ret);
+//
+//      if ( cont->flag & OPTIMISED_CONTAINER )
+//      {
+//        candidate->sig = candidate_sigma_cl(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
+//        container* cont = optemised.insert(candidate, 0.1);
+//
+//        if ( cont )
+//        {
+//          printf("          %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+//        }
+//        else
+//        {
+//          printf("          NO\n");
+//        }
+//      }
+//      else
+//      {
+//        printf("          Already Done\n");
+//      }
+//    }
+//
+//    cont = cont->smaller;
+//  }
+//
+//  printf("Optimisation Removed %6i - %6i remain \n", qt->noVals() - optemised.noVals(), optemised.noVals() );
+//
+//  eliminate_harmonics(&optemised);
+//
+//  return candsGPU;
+//}
 
-  candTree trees[batch->noHarmStages];
-
-  candTree* qt =(candTree*)batch->h_candidates;
-
-  hilClimb(qt, 5);
-  eliminate_harmonics(qt);
-
-  cuOptCand* oPlnPln;
-  oPlnPln   = initOptPln(batch->sInf->sSpec);
-
-  container* cont = qt->getLargest();
-
-  int i = 0;
-
-  while ( cont )
-  {
-    i++;
-    printf("\n");
-    //if ( i == 12 )
-    {
-      cand*   candidate = (cand*)cont->data;
-      cont->flag &= ~OPTIMISED_CONTAINER;
-
-      printf("Candidate %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
-
-      //
-      //    numharm   = candidate->numharm;
-      //    sig       = candidate->sig;
-      //    rr        = candidate->r;
-      //    zz        = candidate->z;
-      //    poww      = candidate->power;
-      //
-      //    candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
-
-      //accelcand *cand = new accelcand;
-      //memset(cand, 0, sizeof(accelcand));
-      //cand->power   = candidate->power;
-      //cand->r       = candidate->r;
-      //cand->sigma   = candidate->sig;
-      //cand->z       = candidate->z;
-      //cand->numharm = candidate->numharm;
-
-      //accelcand* cand = create_accelcand(candidate->power, candidate->sig, candidate->numharm, candidate->r, candidate->z);
-
-      //candsGPU = insert_accelcand(candsGPU, cand),
-
-      int stg = log2((float)candidate->numharm);
-      candTree* ret = opt_cont(&trees[stg], oPlnPln, cont, &batch->sInf->sSpec->fftInf, i);
-
-      trees[stg].add(ret);
-
-      delete(ret);
-
-      if ( cont->flag & OPTIMISED_CONTAINER )
-      {
-        candidate->sig = candidate_sigma_cl(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
-        container* cont = optemised.insert(candidate, 0.1);
-
-        if ( cont )
-        {
-          printf("          %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
-        }
-        else
-        {
-          printf("          NO\n");
-        }
-      }
-      else
-      {
-        printf("          Already Done\n");
-      }
-    }
-
-    cont = cont->smaller;
-  }
-
-  printf("Optimisation Removed %6i - %6i remain \n", qt->noVals() - optemised.noVals(), optemised.noVals() );
-
-  eliminate_harmonics(&optemised);
-
-  return candsGPU;
-}
 //
 //uint getOffset(int height, int stride, int harmNo, int stepNo, int rowNo, void* data = NULL)
 //{
@@ -5129,3 +5301,62 @@ GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
 //
 //  free(out);
 //}
+
+/**  Wait for CPU threads to complete  .
+ *
+ */
+int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
+{
+  int noTrd;
+  sem_getvalue(running_threads, &noTrd );
+
+  if (noTrd)
+  {
+    char waitMsg[1024];
+    int ite = 0;
+
+    nvtxRangePush("Wait on CPU threads");
+
+    while ( noTrd > 0 )
+    {
+      nvtxRangePush("Sleep");
+
+      ite++;
+
+      if ( noTrd >= 1 && !(ite % 10) )
+      {
+        sprintf(waitMsg,"%s  %3i thread still active.", msg, noTrd);
+
+        FOLD  // Spinner  .
+        {
+          if      (ite == 1 )
+            printf("\r%s⌜   ", waitMsg);
+          if      (ite == 2 )
+            printf("\r%s⌝   ", waitMsg);
+          if      (ite == 3 )
+            printf("\r%s⌟   ", waitMsg);
+          if      (ite == 4 )
+          {
+            printf("\r%s⌞   ", waitMsg);
+            ite = 0;
+          }
+          fflush(stdout);
+        }
+      }
+
+      usleep(sleepMS);
+      sem_getvalue(running_threads, &noTrd );
+
+      nvtxRangePop();
+    }
+
+    if (ite >= 10 )
+      printf("\n\n");
+
+    nvtxRangePop();
+
+    return ite;
+  }
+  return 0;
+}
+

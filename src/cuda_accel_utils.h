@@ -517,6 +517,11 @@ float half2float(const ushort h);
 template<typename T>
 __device__ void fresnl(T xxa, T* ss, T* cc);
 
+/** Set up the threading  .
+ *
+ */
+void intSrchThrd(cuSearch* srch);
+
 /** Set the active batch  .
  *
  */

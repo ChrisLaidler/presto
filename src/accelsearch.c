@@ -2,10 +2,6 @@
 
 /*#undef USEMMAP*/
 
-#undef CUDA   // TMP
-#define CUDA  // TMP
-
-
 #ifdef USEMMAP
 #include <unistd.h>
 #include <sys/mman.h>
@@ -101,19 +97,17 @@ int main(int argc, char *argv[])
 
   // Timing vars
   long long contextInit = 0, prepTime = 0, cpuKerTime = 0, gpuKerTime = 0, cupTime = 0, gpuTime = 0, cndTime = 0, optTime = 0, cpuOptTime = 0, gpuOptTime = 0;
-  //float wallTime;
   struct timeval start, end;
   struct timeval start01, end01;
-  //struct timeval wallStart, wallEnd;
 
   /* Prep the timer */
 
   tott = times(&runtimes) / (double) CLK_TCK;
-//  gettimeofday(&wallStart, NULL);
 
   /* Call usage() if we have no command line arguments */
 
-  if (argc == 1) {
+  if (argc == 1)
+  {
     Program = argv[0];
     printf("\n");
     usage();
@@ -126,6 +120,7 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG
   showOptionValues();
+  char name[1024];
 #endif
 
 #ifdef CUDA // List GPU's  .
@@ -152,14 +147,15 @@ int main(int argc, char *argv[])
 
   if ( cmd->gpuP ) // Initialises CUDA context(s)  .
   {
+    int  iret1 = 1;
+
     printf("      with GPU additions by Chris Laidler\n\n");
     printf("      The GPU version is still under development.\n");
     printf("      If you find any bugs pleas report to:\n");
     printf("            chris.laidler@gmail.com\n\n");
 
-    gSpec        = readGPUcmd(cmd);
-
-    int  iret1 = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
+    gSpec         = readGPUcmd(cmd);
+    iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
     if ( iret1 )
     {
       fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
@@ -187,7 +183,8 @@ int main(int argc, char *argv[])
 #ifdef CUDA
   if ( cmd->gpuP ) // Read CUDA search specifications  .
   {
-    sSpec        = readSrchSpecs(cmd, &obs);
+    sSpec       = readSrchSpecs(cmd, &obs);
+    cuSrch      = initSearchInf(&sSpec, &gSpec, cuSrch);
     printf("\n");
   }
 #endif
@@ -222,10 +219,6 @@ int main(int argc, char *argv[])
   printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
   printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
-#ifdef DEBUG
-  char name[1024];
-#endif
-
 #ifdef CUDA
   char fname[1024];
   sprintf(fname,"%s_hs%02i_zmax%06.1f_sig%06.3f", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
@@ -235,6 +228,8 @@ int main(int argc, char *argv[])
   nvtxRangePop();
   gettimeofday(&end, NULL);
   prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+
 #endif
 
   FILE *file;
@@ -374,6 +369,7 @@ int main(int argc, char *argv[])
       {
 #ifdef CUDA
 
+        // Wait for the context thread to complete
         if (cntxThread)
         {
           void *status;
@@ -405,8 +401,8 @@ int main(int argc, char *argv[])
 
         FOLD // init GPU kernels and planes  .
         {
-          cuSrch    = initCuSearch(&sSpec, &gSpec, NULL);
-          master    = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
+          cuSrch    = initCuKernels(&sSpec, &gSpec, cuSrch);
+          master    = &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
 
           // Search bounds
           startr    = 0, lastr = 0, nextr = 0;
@@ -418,7 +414,7 @@ int main(int argc, char *argv[])
           else
             startr  = sSpec.fftInf.rlo;
 
-          //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->mInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of planes to make
+          //( sSpec.fftInf.rhi - sSpec.fftInf.rlo ) / (float)( cuSrch->pInf->kernels[0].accelLen * ACCEL_DR ) ; // The number of planes to make
 
           if ( maxxx < 0 )
             maxxx = 0;
@@ -429,7 +425,7 @@ int main(int argc, char *argv[])
           printf("GPU loop will process %i steps\n", maxxx);
 #endif
 
-          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", maxxx, cuSrch->mInf->noSteps, cuSrch->mInf->noDevices );
+          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", maxxx, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
 
           gettimeofday(&end, NULL);
           gpuKerTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -440,31 +436,24 @@ int main(int argc, char *argv[])
             sprintf(srcTyp, "GPU search");
         }
 
-//        FOLD // Basic timing  .
-//        {
-//          gettimeofday(&end, NULL);
-//          long long initTimeG = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-//          printf("GPU initialisation %.3fs \n", initTimeG*1e-6);
-//        }
-
         FOLD //                                 ---===== Main Loop =====---  .
         {
 
 #ifndef DEBUG 	// Parallel if we are not in debug mode  .
-          omp_set_num_threads(cuSrch->mInf->noBatches);
+          omp_set_num_threads(cuSrch->pInf->noBatches);
 #pragma omp parallel
 #endif
           FOLD  //                              ---===== Main Loop =====---  .
           {
             int tid = omp_get_thread_num();
 
-            cuFFdotBatch* trdBatch = &cuSrch->mInf->batches[tid];
+            cuFFdotBatch* trdBatch = &cuSrch->pInf->batches[tid];
 
             double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
             double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
             int      rest    = trdBatch->noSteps;
 
-            setDevice(trdBatch) ;
+            setDevice(trdBatch->device) ;
 
             int firstStep    = 0;
             int step;
@@ -572,54 +561,56 @@ int main(int argc, char *argv[])
 
           FOLD // Wait for CPU threads to complete  .
           {
-            int noTrd;
-            sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+            waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
 
-            if (noTrd)
-            {
-              char msg[1024];
-              int ite = 0;
-
-              nvtxRangePush("Wait on CPU threads");
-
-              while ( noTrd > 0 )
-              {
-                nvtxRangePush("Sleep");
-
-                ite++;
-
-                if ( noTrd >= 1 && !(ite % 10) )
-                {
-                  sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
-
-                  FOLD  // Spinner  .
-                  {
-                    if      (ite == 1 )
-                      printf("\r%s⌜   ", msg);
-                    if      (ite == 2 )
-                      printf("\r%s⌝   ", msg);
-                    if      (ite == 3 )
-                      printf("\r%s⌟   ", msg);
-                    if      (ite == 4 )
-                    {
-                      printf("\r%s⌞   ", msg);
-                      ite = 0;
-                    }
-                    fflush(stdout);
-                  }
-                }
-
-                usleep(200);
-                sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-
-                nvtxRangePop();
-              }
-
-              if (ite >= 10 )
-                printf("\n\n");
-
-              nvtxRangePop();
-            }
+//            int noTrd;
+//            sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+//
+//            if (noTrd)
+//            {
+//              char msg[1024];
+//              int ite = 0;
+//
+//              nvtxRangePush("Wait on CPU threads");
+//
+//              while ( noTrd > 0 )
+//              {
+//                nvtxRangePush("Sleep");
+//
+//                ite++;
+//
+//                if ( noTrd >= 1 && !(ite % 10) )
+//                {
+//                  sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
+//
+//                  FOLD  // Spinner  .
+//                  {
+//                    if      (ite == 1 )
+//                      printf("\r%s⌜   ", msg);
+//                    if      (ite == 2 )
+//                      printf("\r%s⌝   ", msg);
+//                    if      (ite == 3 )
+//                      printf("\r%s⌟   ", msg);
+//                    if      (ite == 4 )
+//                    {
+//                      printf("\r%s⌞   ", msg);
+//                      ite = 0;
+//                    }
+//                    fflush(stdout);
+//                  }
+//                }
+//
+//                usleep(200);
+//                sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+//
+//                nvtxRangePop();
+//              }
+//
+//              if (ite >= 10 )
+//                printf("\n\n");
+//
+//              nvtxRangePop();
+//            }
           }
 
           FOLD // finish off in-mem search  .
@@ -682,9 +673,11 @@ int main(int argc, char *argv[])
 
               nvtxRangePop();
             }
-            else if ( master->cndType & CU_STR_QUAD    ) // Copying candidates from array to list for optimisation  .
+            else if ( master->cndType & CU_STR_QUAD   ) // Copying candidates from array to list for optimisation  .
             {
-              candsGPU = testTest(master, candsGPU);
+              // TODO: put an error message here or write the code!
+
+              //candsGPU = testTest(master, candsGPU);
             }
 
             cands = candsGPU;
@@ -698,7 +691,7 @@ int main(int argc, char *argv[])
         }
 
         // Free GPU memory
-        freeAccelGPUMem(cuSrch->mInf);
+        freeAccelGPUMem(cuSrch->pInf);
 
         FOLD // Basic timing  .
         {
@@ -749,7 +742,6 @@ int main(int argc, char *argv[])
         }
       }
     }
-
   }
 
   FOLD  // optimization  .
@@ -765,7 +757,7 @@ int main(int argc, char *argv[])
     fourierprops *props;
     numcands = g_slist_length(cands);
 
-#ifdef CUDA
+#ifdef CUDA  // Timing and debug stuff
     char timeMsg[1024], dirname[1024], scmd[1024];
     time_t rawtime;
     struct tm* ptm;
@@ -862,42 +854,32 @@ int main(int argc, char *argv[])
         nvtxRangePush("GPU Optimisation");
         gettimeofday(&start01, NULL);       // Profiling
 
+        FOLD // Initialise optimisation details!
+        {
+          cuSrch = initCuOpt(&sSpec, &gSpec, cuSrch);
+        }
+
         print_percent_complete(0, 0, NULL, 1);
         listptr = cands;
         ii      = 0;
 
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
-//        omp_set_num_threads(4);
-//#pragma omp parallel
+#ifndef SYNCHRONOUS
+        omp_set_num_threads(cuSrch->oInf->noOpts);
+#pragma omp parallel
+#endif
 #endif
         FOLD  	// Main GPU loop  .
         {
           accelcand *candGPUP;
-          //int tid = omp_get_thread_num();
 
-          FOLD  // Set device  .
-          {
-            int device = gSpec.devId[0];
-            if ( device >= getGPUCount() )
-            {
-              fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
-              exit(EXIT_FAILURE);
-            }
-            int currentDevvice;
-            CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
-            CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
-            if (currentDevvice != device)
-            {
-              fprintf(stderr, "ERROR: CUDA Device not set.\n");
-              exit(EXIT_FAILURE);
-            }
-          }
+          int tid    = omp_get_thread_num();
+          int ti     = 0; // tread specific index
 
-          int       ti = 0; // tread specific index
+          cuOptCand* oPlnPln = &(cuSrch->oInf->opts[tid]);
+          setDevice(oPlnPln->device) ;
 
-          cuOptCand* oPlnPln;
-
-          oPlnPln   = initOptPln(&sSpec);
+          //oPlnPln   = initOptPln(&sSpec);
 
           while (listptr)  // Main Loop  .
           {
@@ -919,7 +901,7 @@ int main(int argc, char *argv[])
 
             if ( candGPUP ) // Optimise  .
             {
-              opt_candPlns(candGPUP, &obs, ti, oPlnPln);
+              opt_candPlns(candGPUP, cuSrch, &obs, ti, oPlnPln);
               print_percent_complete(ti, numcands, "optimization", 0);
             }
           }
@@ -928,6 +910,9 @@ int main(int argc, char *argv[])
         print_percent_complete(numcands, numcands, "optimization", 0);
 
         nvtxRangePop();
+
+        waitForThreads(&cuSrch->threasdInfo->running_threads, "Waiting for CPU threads to complete.", 200 );
+
         gettimeofday(&end01, NULL);
         gpuOptTime += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
 #else
@@ -982,11 +967,27 @@ int main(int argc, char *argv[])
 
       /* Write the fundamentals to the output text file */
 
+#ifdef CUDA
+      nvtxRangePush("Fundamentals");
+#endif
+
       output_fundamentals(props, cands, &obs, &idata);
+
+#ifdef CUDA
+      nvtxRangePop();
+#endif
 
       /* Write the harmonics to the output text file */
 
+#ifdef CUDA
+      nvtxRangePush("Harmonics");
+#endif
+
       output_harmonics(cands, &obs, &idata);
+
+#ifdef CUDA
+      nvtxRangePop();
+#endif
 
       /* Write the fundamental fourierprops to the cand file */
 
@@ -1051,12 +1052,12 @@ int main(int argc, char *argv[])
       printf("\n===========================================================================================================================================\n");
       printf("\nAdvanced timing, all times are in ms\n");
 
-      for (batch = 0; batch < cuSrch->mInf->noBatches; batch++)
+      for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
       {
-        if ( cuSrch->mInf->noBatches > 1 )
+        if ( cuSrch->pInf->noBatches > 1 )
           printf("Batch %02i\n",batch);
 
-        cuFFdotBatch*   batches = &cuSrch->mInf->batches[batch];
+        cuFFdotBatch*   batches = &cuSrch->pInf->batches[batch];
 
         float l_copyH2DT  = 0;
         float l_InpNorm   = 0;
@@ -1104,7 +1105,7 @@ int main(int argc, char *argv[])
           printf("\n");
         }
 
-        for (stack = 0; stack < (int)cuSrch->mInf->batches[batch].noStacks; stack++)
+        for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
         {
           printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
           if ( batches->flag & FLAG_SS_INMEM )
@@ -1124,7 +1125,7 @@ int main(int argc, char *argv[])
           l_copyD2HT  += batches->copyD2HTime[stack];
         }
 
-        if ( cuSrch->mInf->noBatches > 1 )
+        if ( cuSrch->pInf->noBatches > 1 )
         {
           printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------");
           if ( batches->flag & FLAG_SS_INMEM )
@@ -1153,14 +1154,14 @@ int main(int argc, char *argv[])
         copyD2HT  += l_copyD2HT;
       }
       printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------");
-      if ( cuSrch->mInf->batches->flag & FLAG_SS_INMEM )
+      if ( cuSrch->pInf->batches->flag & FLAG_SS_INMEM )
       {
         printf("\t---------");
       }
       printf("\n");
 
       printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
-      if ( cuSrch->mInf->batches->flag & FLAG_SS_INMEM )
+      if ( cuSrch->pInf->batches->flag & FLAG_SS_INMEM )
       {
         printf("\t%9.04f",plnCpy);
       }
@@ -1178,9 +1179,6 @@ int main(int argc, char *argv[])
   printf("Searched the following approx numbers of independent points:\n");
   for (ii = 0; ii < obs.numharmstages; ii++)
     printf("  %2d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
-
-  //gettimeofday(&wallEnd, NULL);
-  //wallTime = ((wallEnd.tv_sec - wallStart.tv_sec) * 1e6 + (wallEnd.tv_usec - wallStart.tv_usec));
 
   printf("\nTiming summary:\n");
 
@@ -1200,7 +1198,6 @@ int main(int argc, char *argv[])
   ttim = utim + stim;
   printf("      CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n", ttim, utim, stim);
   printf("    Total time: %.3f sec\n\n", tott);
-  //printf("    Wall time: %.3f sec\n\n", wallTime*1e-6);
 
   printf("Final candidates in binary format are in '%s'.\n",    obs.candnm);
   printf("Final Candidates in a text format are in '%s'.\n\n",  obs.accelnm);

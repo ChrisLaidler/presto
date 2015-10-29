@@ -412,7 +412,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   inSz  = sizeof(Tin);
   outSz = sizeof(Tout);
 
-  dpitch  = batch->sInf->mInf->inmemStride * outSz;
+  dpitch  = batch->sInf->pInf->inmemStride * outSz;
   width   = batch->accelLen * outSz;
   height  = cStack->height;
   spitch  = cStack->stridePower * inSz;
@@ -450,7 +450,7 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   size_t        width;
   size_t        height;
 
-  dpitch  = batch->sInf->mInf->inmemStride;
+  dpitch  = batch->sInf->pInf->inmemStride;
   width   = batch->accelLen;
   height  = cStack->height;
   spitch  = cStack->strideCmplx;
@@ -550,7 +550,7 @@ void multStack(cuFFdotBatch* batch, cuFfdotStack* cStack, int sIdx, cuFfdotStack
     }
 
     // Run message
-    CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch (mult7)");
+    CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch.");
   }
 
   FOLD // Synchronisation  .

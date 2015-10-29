@@ -86,7 +86,7 @@
 		    ((phstmp=RADTODEG*atan2(phsargi,phsargr)) > 0.0) ? \
 		    phstmp : phstmp+360.0)
 #endif
-  
+
 #ifndef RADIAN_PHASE
 /* Returns Fourier phase (radians)  */
 /*   Requires the following variables in calling function */
@@ -343,7 +343,7 @@ int w_resp_halfwidth(double z, double w, presto_interp_acc accuracy);
   /*    The result must be multiplied by 2*'numbetween' to get the     */
   /*    length of the array required to hold such a kernel.            */
 
-void binary_velocity(double T, orbitparams * orbit, 
+void binary_velocity(double T, orbitparams * orbit,
 		     double *minv, double *maxv);
   /*  Return the minimum and maximum orbital velocities of a pulsar    */
   /*  during an observation as a fraction of the speed of light.       */
@@ -460,7 +460,7 @@ void get_derivs3d(fcomplex *data, int numdata, double r, \
 		  rderivs *result);
   /* Return an rderives structure that contains the power,      */
   /* phase, and their first and second derivatives at a point   */
-  /* in the F/F-dot/F-dortdot volume.                           */  
+  /* in the F/F-dot/F-dortdot volume.                           */
   /* Arguments:                                                 */
   /*   'data' is a pointer to a complex FFT.                    */
   /*   'numdata' is the number of complex points in 'data'.     */
@@ -477,8 +477,8 @@ void get_derivs3d(fcomplex *data, int numdata, double r, \
 void calc_props(rderivs data, double r, double z, double w, \
 		fourierprops * result);
   /* Return a fourierprops structure that contains the various  */
-  /* properties of a signal described by Middleditch, Deich,    */ 
-  /* and Kulkarni in _Isolated_Pulsars_, 1993, p372.            */  
+  /* properties of a signal described by Middleditch, Deich,    */
+  /* and Kulkarni in _Isolated_Pulsars_, 1993, p372.            */
   /* Arguments:                                                 */
   /*   'data' is a pointer to an rderivs structure containing   */
   /*       derivative information about the peak in question.   */
@@ -569,7 +569,7 @@ double dm_from_delay(double delay, double freq_emitted);
 /* cause a pulse emitted at frequency 'freq_emitted' to be  */
 /* delayed by 'delay' seconds.                              */
 
-double *dedisp_delays(int numchan, double dm, double lofreq, 
+double *dedisp_delays(int numchan, double dm, double lofreq,
 		      double chanwidth, double voverc);
 /* Return an array of delays (sec) for dedispersing 'numchan'    */
 /* channels at a DM of 'dm'.  'lofreq' is the center frequency   */
@@ -586,10 +586,10 @@ void dedisp(unsigned char *data, unsigned char *lastdata, int numpts,
 /* The result is returned in result.  The input data and       */
 /* dispdelays are always in ascending frequency order.         */
 /* Input data are ordered in time, with the channels stored    */
-/* together at each time point.                                */ 
+/* together at each time point.                                */
 
-double *subband_delays(int numchan, int numsubbands, double dm, 
-		       double lofreq, double chanwidth, 
+double *subband_delays(int numchan, int numsubbands, double dm,
+		       double lofreq, double chanwidth,
 		       double voverc);
 /* Return an array of delays (sec) for the highest frequency  */
 /* channels of each subband used in a subband de-dispersion.  */
@@ -597,8 +597,8 @@ double *subband_delays(int numchan, int numsubbands, double dm,
 /* description of subband_search_delays().  See the comments  */
 /* for dedisp_delays() for more info.                         */
 
-double *subband_search_delays(int numchan, int numsubbands, double dm, 
-			      double lofreq, double chanwidth, 
+double *subband_search_delays(int numchan, int numsubbands, double dm,
+			      double lofreq, double chanwidth,
 			      double voverc);
 /* Return an array of delays (sec) for a subband DM search.  The      */
 /* delays are calculated normally for each of the 'numchan' channels  */
@@ -618,7 +618,7 @@ double *subband_search_delays(int numchan, int numsubbands, double dm,
 /*   channel in each subband, _not_ the center subband frequency.     */
 
 void dedisp_subbands(float *data, float *lastdata,
-                     int numpts, int numchan, 
+                     int numpts, int numchan,
                      int *delays, int numsubbands, float *result);
 // De-disperse a stretch of data with numpts * numchan points into
 // numsubbands subbands.  Each time point for each subband is a float
@@ -638,9 +638,9 @@ void float_dedisp(float *data, float *lastdata,
 // ascending frequency order.  Input data are ordered in time, with
 // the channels stored together at each time point.
 
-void combine_subbands(double *inprofs, foldstats *stats, 
-		      int numparts, int numsubbands, int proflen, 
-		      int *delays, double *outprofs, 
+void combine_subbands(double *inprofs, foldstats *stats,
+		      int numparts, int numsubbands, int proflen,
+		      int *delays, double *outprofs,
 		      foldstats *outprofstats);
 /* Combine 'nparts' sets of 'numsubbands' profiles, each of length     */
 /* 'proflen' into a 'nparts' de-dispersed profiles.  The de-dispersion */
@@ -682,7 +682,7 @@ void print_bin_candidate(binaryprops * cand, int numerrdigits);
 /* Outputs a 2 column summary of all the properties or a fourier peak  */
 
 void file_reg_candidates(fourierprops cand[], char *notes, int numcands, \
-			 double dt, long N, double nph, 
+			 double dt, long N, double nph,
 			 char name[], char longname[]);
 /* Outputs a .ps file describing all the candidates from a search.  */
 
@@ -1157,32 +1157,32 @@ void rzw_interp(fcomplex *data, int numdata, double r, double z, \
 
 /* In maximize_r.c and maximize_rw.c */
 
-double max_r_arr(fcomplex *data, int numdata, double rin, 
+double max_r_arr(fcomplex *data, int numdata, double rin,
 		 double *rout, rderivs *derivs);
   /* Return the Fourier frequency that maximizes the power.  */
 
 
 double max_rz_arr(fcomplex *data, int numdata, double rin, double zin, \
 		  double *rout, double *zout, rderivs * derivs);
-  /* Return the Fourier frequency and Fourier f-dot that      */ 
+  /* Return the Fourier frequency and Fourier f-dot that      */
   /* maximizes the power.                                     */
 
 double max_rz_file(FILE *fftfile, double rin, double zin, \
 		   double *rout, double *zout, rderivs * derivs);
-  /* Return the Fourier frequency and Fourier f-dot that      */ 
+  /* Return the Fourier frequency and Fourier f-dot that      */
   /* maximizes the power of the candidate in 'fftfile'.       */
 
 
 void optemiseDerivs(fcomplex * data[], int num_harmonics,
                             int r_offset[],
                             int numdata, double r, double z,
-                            rderivs derivs[], double power[], int nn);
+                            rderivs derivs[], double power[]);
 
 void max_rz_arr_harmonics(fcomplex * data[], int num_harmonics,
                             int r_offset[],
                             int numdata, double rin, double zin,
                             double *rout, double *zout, rderivs derivs[],
-                            double power[], int nn);
+                            double power[]);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
 
@@ -1190,7 +1190,7 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
                              int lobin,
                              double rin, double zin,
                              double *rout, double *zout, rderivs derivs[],
-                             double maxpow[], int nn);
+                             double maxpow[]);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power of the candidate in 'fftfile'.       */
 
@@ -1198,19 +1198,19 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
 double max_rzw_arr(fcomplex *data, int numdata, double rin, double zin, \
 		   double win, double *rout, double *zout, \
 		   double *wout, rderivs * derivs);
-  /* Return the Fourier frequency, f-dot, and fdotdot that    */ 
+  /* Return the Fourier frequency, f-dot, and fdotdot that    */
   /* maximizes the power.                                     */
 
 double max_rz_file(FILE *fftfile, double rin, double zin, \
 		   double *rout, double *zout, rderivs * derivs);
-  /* Return the Fourier frequency and Fourier f-dot that      */ 
+  /* Return the Fourier frequency and Fourier f-dot that      */
   /* maximizes the power of the candidate in 'fftfile'.       */
 
 
 /* In fold.c */
 
-void fold_errors(double *prof, int proflen, double dt, double N, 
-		 double datavar, double p, double pd, double pdd, 
+void fold_errors(double *prof, int proflen, double dt, double N,
+		 double datavar, double p, double pd, double pdd,
 		 double *perr, double *pderr, double *pdderr);
 /* Calculate estimates for the errors in period p-dot and   */
 /* p-dotdot using Middleditch's error formula.  The routine */
@@ -1231,10 +1231,10 @@ void fold_errors(double *prof, int proflen, double dt, double N,
 /*      'pderr' is the returned p-dot error                 */
 /*      'pdderr' is the returned p-dotdot error             */
 
-double foldfile(FILE *datafile, double dt, double tlo, 
-		double *prof, int numprof, double startphs, 
-		double fo, double fdot, double fdotdot, int flags, 
-		double *delays, double *delaytimes, int numdelays, 
+double foldfile(FILE *datafile, double dt, double tlo,
+		double *prof, int numprof, double startphs,
+		double fo, double fdot, double fdotdot, int flags,
+		double *delays, double *delaytimes, int numdelays,
 		double *onoffpairs, foldstats *stats, float *chiarr);
 /* This routine is a general pulsar folding algorithm.  It will fold  */
 /* data for a pulsar with single and double frequency derivatives and */
@@ -1276,7 +1276,7 @@ double foldfile(FILE *datafile, double dt, double tlo,
 
 
 double simplefold(float *data, int numdata, double dt, double tlo,
-		  double *prof, int numprof, double startphase, 
+		  double *prof, int numprof, double startphase,
 		  double fo, double fdot, double fdotdot);
 /* This routine is a simplified pulsar folding algorithm.  It    */
 /* folds data for a pulsar with single and double frequency      */
@@ -1297,11 +1297,11 @@ double simplefold(float *data, int numdata, double dt, double tlo,
 /* Notes:  fo, fdot, and fdotdot correspon to 'tlo' = 0.0        */
 /*    (i.e. to the beginning of the first data point)            */
 
-double fold(float *data, int numdata, double dt, double tlo, 
-	    double *prof, int numprof, double startphs, 
-	    double *buffer, double *phaseadded, 
-	    double fo, double fdot, double fdotdot, int flags, 
-	    double *delays, double *delaytimes, int numdelays, 
+double fold(float *data, int numdata, double dt, double tlo,
+	    double *prof, int numprof, double startphs,
+	    double *buffer, double *phaseadded,
+	    double fo, double fdot, double fdotdot, int flags,
+	    double *delays, double *delaytimes, int numdelays,
 	    int *onoffpairs, foldstats *stats);
 /* This routine is a general pulsar folding algorithm.  It will fold  */
 /* data for a pulsar with single and double frequency derivatives and */
@@ -1351,10 +1351,10 @@ double fold(float *data, int numdata, double dt, double tlo,
 
 void shift_prof(double *prof, int proflen, int shift, double *outprof);
 /* Rotates a profile 'prof' by an integer 'shift' places.    */
-/* If 'shift' < 0 then shift left, 'shift' > 0, shift right. */ 
+/* If 'shift' < 0 then shift left, 'shift' > 0, shift right. */
 /* Place the shifted  profile in 'outprof'.                  */
 
-void combine_profs(double *profs, foldstats *instats, int numprofs, 
+void combine_profs(double *profs, foldstats *instats, int numprofs,
 		   int proflen, double *delays, double *outprof,
 		   foldstats *outstats);
 /* Combine a series of 'numprofs' profiles, each of length 'proflen',   */
@@ -1392,10 +1392,10 @@ void barycenter(double *topotimes, double *barytimes, \
   /* found in obsys.dat (in the TEMPO paths).  The ephemeris  */
   /* is either "DE200" or "DE400".                            */
 
-fftcand *search_fft(fcomplex *fft, int numfft, int lobin, int hibin, 
-		    int numharmsum, int numbetween, 
+fftcand *search_fft(fcomplex *fft, int numfft, int lobin, int hibin,
+		    int numharmsum, int numbetween,
 		    presto_interptype interptype,
-		    float norm, float sigmacutoff, int *numcands, 
+		    float norm, float sigmacutoff, int *numcands,
 		    float *powavg, float *powvar, float *powmax);
 /* This routine searches a short FFT of 'numfft' complex freqs      */
 /* and returns a candidate vector of fftcand structures containing  */
@@ -1428,7 +1428,7 @@ fftcand *search_fft(fcomplex *fft, int numfft, int lobin, int hibin,
 /*   'powvar' is a return value giving the power level variance     */
 /*   'powmax' is a return value giving the maximum power            */
 
-void search_minifft(fcomplex *minifft, int numminifft, 
+void search_minifft(fcomplex *minifft, int numminifft,
 		    double min_orb_p, double max_orb_p,
 		    rawbincand *cands, int numcands, int numharmsum,
 		    int numbetween, double numfullfft, double timefullfft,
@@ -1490,7 +1490,7 @@ int get_std_birds(char *zapfilenm, double T, double avg_vel,
 /* base Fourier freq and the number of harmonics to check.  The    */
 /* base freqs are adjusted based on avg_vel.                       */
 
-int check_to_zap(double candbin, double *lobins, double *hibins, 
+int check_to_zap(double candbin, double *lobins, double *hibins,
 		 int numzap);
 /* Look at the closest birdies from the zapfile to see if our  */
 /* candidate matches one of them.  If it does, return '1' for  */
@@ -1499,33 +1499,33 @@ int check_to_zap(double candbin, double *lobins, double *hibins,
 /* since this routine keeps track of its place in the file.    */
 /* Also, numzap _must be >= 2.                                 */
 
-short transpose_float(float *a, int nx, int ny, unsigned char *move, 
+short transpose_float(float *a, int nx, int ny, unsigned char *move,
 		      int move_size);
 /*
  * TOMS Transpose.  Revised version of algorithm 380.
- * 
+ *
  * These routines do in-place transposes of arrays.
- * 
- * [ Cate, E.G. and Twigg, D.W., ACM Transactions on Mathematical Software, 
+ *
+ * [ Cate, E.G. and Twigg, D.W., ACM Transactions on Mathematical Software,
  *   vol. 3, no. 1, 104-110 (1977) ]
- * 
+ *
  * C version by Steven G. Johnson. February 1997.
  *
  * "a" is a 1D array of length ny*nx which contains the nx x ny matrix to be
  * transposed.  "a" is stored in C order (last index varies fastest).  move
  * is a 1D array of length move_size used to store information to speed up
  * the process.  The value move_size=(ny+nx)/2 is recommended.
- * 
+ *
  * The return value indicates the success or failure of the routine. Returns 0
  * if okay, -1 if ny or nx < 0, and -2 if move_size < 1. The return value
  * should never be positive, but it it is, it is set to the final position in
  * a when the search is completed but some elements have not been moved.
- * 
+ *
  * Note: move[i] will stay zero for fixed points.
  */
 
 /* NEW Clipping Routine (uses channel running averages) */
-int new_clip_times(float *rawdata, int ptsperblk, int numchan, 
+int new_clip_times(float *rawdata, int ptsperblk, int numchan,
                    float clip_sigma, float *good_chan_levels);
 // Perform time-domain clipping of rawdata.  This is a 2D array with
 // ptsperblk*numchan points, each of which is a float.  The clipping
@@ -1534,7 +1534,7 @@ int new_clip_times(float *rawdata, int ptsperblk, int numchan,
 // good_chan_levels (which must be pre-allocated).
 
 /* Old Clipping Routine (uses channel medians) */
-int clip_times(float *rawdata, int ptsperblk, int numchan, 
+int clip_times(float *rawdata, int ptsperblk, int numchan,
                float clip_sigma, float *good_chan_levels);
 // Perform time-domain clipping of rawdata.  This is a 2D array with
 // ptsperblk*numchan points, each of which is a float.  The clipping
@@ -1542,14 +1542,14 @@ int clip_times(float *rawdata, int ptsperblk, int numchan,
 // up-to-date running averages of the channels are returned in
 // good_chan_levels (which must be pre-allocated).
 
-double *events_fdot_correct(double *events, int Nevents, 
+double *events_fdot_correct(double *events, int Nevents,
                             double freq, double fdot);
 /* Correct a set of sorted events (in sec) for a specific */
 /* 'fdot' at the frequency 'freq' as per Chandler et al., */
 /* 2001.  tnew_i = t_i + 0.5*fdot/freq*t_i^2.  Return a   */
 /* new array of events.                                   */
 
-fcomplex *atwood_search(double *events, double *weights, 
+fcomplex *atwood_search(double *events, double *weights,
                         int Nevents, int Nwin, double dt);
 /* Perform the time-differencing, incoherent, autocorrelation-like */
 /* search for sparse event data described in                       */
