@@ -221,22 +221,21 @@ uint calcAccellen(float width, float zmax)
  * @param outData
  * @return
  */
-//int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int device, int noBatches, int noSteps, int devID )
 int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int devID )
 {
   nvtxRangePush("initKernel");
   std::cout.flush();
 
-  size_t free, total;             /// GPU memory
+  size_t free, total;                           //< GPU memory
   int noInStack[MAX_HARM_NO];
   int noHarms         = (1 << (sInf->noHarmStages - 1) );
   noInStack[0]        = 0;
-  size_t batchSize    = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
-  size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
-  size_t planeSize    = 0;        /// Total size (in bytes) of memory required independently of batch(es)
+  size_t batchSize    = 0;                      //< Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
+  size_t fffTotSize   = 0;                      //< Total size (in bytes) of FFT temporary memory
+  size_t planeSize    = 0;                      //< Total size (in bytes) of memory required independently of batch(es)
   int flags           = sInf->sSpec->flags;
-  float plnElsSZ      = 0;
-  float powElsSZ      = 0;
+  float plnElsSZ      = 0;                      ///< The size of elements of the ff plane (generally the size of float complex)
+  float powElsSZ      = 0;                      ///< The size of elements of the powers plane
 
   gpuInf* gInf        = &sInf->gSpec->devInfo[devID];
   int device          = gInf->devid;
@@ -267,25 +266,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
       kernel->capability = gInf->capability;
-
-      //cudaDeviceProp deviceProp;
-      //CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
-
-
-      //major                           = deviceProp.major;
-      //minor                           = deviceProp.minor;
-      //float ver                       = major + minor/10.0f;
-      //kernel->capability              = ver;
-
-      //alignment                       = getMemAlignment();
-
-//      sInf->mInf->alignment[device]   = alignment;
-//      sInf->mInf->capability[device]  = ver;
-//      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
-//      sprintf(sInf->mInf->name[device], "%s", deviceProp.name );
     }
-
-    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
     nvtxRangePop();
   }
