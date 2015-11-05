@@ -274,13 +274,11 @@ void initGPUs(gpuSpecs* gSpec)
       major                           = deviceProp.major;
       minor                           = deviceProp.minor;
       gInf->capability                = major + minor/10.0f;
-      gInf->alignment                 = getMemAlignment();
+      gInf->alignment                 = getMemAlignment();                  // This action will initalise the CUDA context
       gInf->name                      = (char*)malloc(256*sizeof(char));
-//      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
+      gInf->devid                     = device;
 
       sprintf(gInf->name, "%s", deviceProp.name );
-
-      //cudaFree(0);    // Is this still nessesary?
 
       nvtxRangePop();
     }
