@@ -435,10 +435,14 @@ int createStackKernel(cuFfdotStack* cStack)
 
   if ( cStack->flag & FLAG_KER_ACC )
   {
+    // Use one halfwidth for the entire kernel
     halfWidth = cStack->harmInf->halfWidth;
   }
   else
+  {
+    // Columns closer to a z value of 0 will have smaller halfwidths (dynamically calculated)
     halfWidth = 0;
+  }
 
 
   FOLD // call the CUDA kernels  .

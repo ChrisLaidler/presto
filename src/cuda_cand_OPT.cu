@@ -2469,6 +2469,10 @@ void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptC
   searchSpecs*  sSpec   = srch->sSpec;
   fftInfo*      fft     = &sSpec->fftInf;
 
+  char Txt[1024];
+  sprintf(Txt, "Opt Cand %03i", nn);
+  nvtxRangePush(Txt);
+
   // Number of harmonics to check, I think this could go up to 32!
   // TODO: Make this a flag
   int maxHarms  = 16;
@@ -2717,6 +2721,8 @@ void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptC
   //
   //    nvtxRangePop();
   //  }
+
+  nvtxRangePop();
 }
 
 void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln)

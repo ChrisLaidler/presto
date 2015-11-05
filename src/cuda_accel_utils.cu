@@ -691,7 +691,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
           if ( kernel->flag & FLAG_KER_ACC )
           {
-            kernel->hInfos[idx].halfWidth = halfWidth; // Use maximum halfwidth for all planes in a stack this gives higher accuracy at small Z at no extra cost!
+            // Use maximum halfwidth for all planes in a stack this should give higher accuracy at small Z at no extra cost!
+            kernel->hInfos[idx].halfWidth = halfWidth;
           }
           else
           {
