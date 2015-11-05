@@ -7,7 +7,7 @@
 #if CUDA_VERSION >= 6050
 __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
 __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
 #endif
 #endif
@@ -87,7 +87,7 @@ __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element
   ((float*)callerInfo)[offset] = power;
 }
 
-#if __CUDACC_VER__ >= 70500 // Half precision CUFFT power call back
+#if CUDA_VERSION >= 7050 // Half precision CUFFT power call back
 
 /** CUFFT callback kernel to calculate and store half powers after the FFT  .
  */
@@ -172,7 +172,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
   if ( batch->flag & FLAG_HALF )
   {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
     CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -824,7 +824,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
           {
             if ( batch->flag & FLAG_HALF )
             {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
               copyIFFTtoPln<half,half>( batch, cStack );
 #else
               fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");

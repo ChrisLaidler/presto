@@ -299,7 +299,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       if ( flags & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         plnElsSZ = sizeof(half);
 #else
         plnElsSZ = sizeof(float);
@@ -348,7 +348,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           flags &= ~FLAG_CUFFT_CB_OUT;
 #endif
 
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
           if ( !(flags & FLAG_HALF) )
             fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
 #else
@@ -399,7 +399,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 #endif
       if ( (flags & FLAG_HALF) && !(flags & FLAG_SS_INMEM) && !(flags & FLAG_CUFFT_CB_OUT) )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         fprintf(stderr, "WARNING: Can't use half precision with out of memory search and no CUFFT callbacks. Reverting to single precision!\n");
 #endif
         flags &= ~FLAG_HALF;
@@ -408,7 +408,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       // Half precision?
       if ( flags & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         plnElsSZ = sizeof(half);
 #else
         plnElsSZ = sizeof(float);
@@ -1167,7 +1167,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else if (kernel->retType & CU_HALF      )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         retSZ = sizeof(half);
 #else
         fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -1704,7 +1704,7 @@ void setPlanePointers(cuFFdotBatch* batch)
       {
         if ( batch->flag & FLAG_HALF )
         {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
           cPlane->d_planePowr     = &((half*)         cStack->d_planePowr)[ cStack->startZ[j] * batch->noSteps * cStack->stridePower ];
 #else
           fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -1752,7 +1752,7 @@ void setStkPointers(cuFFdotBatch* batch)
     {
       if ( batch->flag & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         cStack->d_planePowr     = &((half*)       batch->d_planePowr)[ pwrStart ];
 #else
         fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -3743,7 +3743,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_HALF" 	  ) )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         (*flags) |=  FLAG_HALF;
 #else
         (*flags) &= ~FLAG_HALF;
@@ -4014,7 +4014,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_CUFFT_CB_OUT;
 #endif
 
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
   sSpec.flags         |= FLAG_HALF;
 #endif
 

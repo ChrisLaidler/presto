@@ -225,7 +225,7 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   if      ( batch->flag & FLAG_HALF         )
   {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
     add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -255,7 +255,7 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   if      ( batch->flag & FLAG_HALF         )
   {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
     add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -285,7 +285,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   if      ( batch->flag & FLAG_HALF         )
   {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
     add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");

@@ -8,7 +8,7 @@
 #include <cufft.h>
 #include <cufftXt.h>
 
-#if __CUDACC_VER__ >= 70500   // Half precision
+#if CUDA_VERSION >= 7050   // Half precision
 #include <cuda_fp16.h>
 #endif
 
