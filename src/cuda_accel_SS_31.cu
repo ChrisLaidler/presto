@@ -436,7 +436,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 
   if      ( batch->flag & FLAG_HALF         )
   {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
     add_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, batch );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");

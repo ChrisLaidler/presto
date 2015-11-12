@@ -1430,52 +1430,5 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   FOLD // Wait for all processing threads to terminate
   {
     waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
-
-//    int noTrd;
-//    sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-//
-//    if (noTrd)
-//    {
-//      char msg[1024];
-//      int ite = 0;
-//
-//      nvtxRangePush("Wait on CPU threads");
-//
-//      while ( noTrd > 0 )
-//      {
-//        nvtxRangePush("Sleep");
-//
-//        ite++;
-//
-//        if ( !(ite % 10) )
-//        {
-//          sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
-//
-//          FOLD  // Spinner  .
-//          {
-//            if      (ite == 1 )
-//              printf("\r%s⌜   ", msg);
-//            if      (ite == 2 )
-//              printf("\r%s⌝   ", msg);
-//            if      (ite == 3 )
-//              printf("\r%s⌟   ", msg);
-//            if      (ite == 4 )
-//            {
-//              printf("\r%s⌞   ", msg);
-//              ite = 0;
-//            }
-//            fflush(stdout);
-//          }
-//        }
-//
-//        usleep(200);
-//        sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-//
-//        nvtxRangePop();
-//      }
-//
-//      printf("\n");
-//      nvtxRangePop();
-//    }
   }
 }

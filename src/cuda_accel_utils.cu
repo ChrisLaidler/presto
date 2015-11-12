@@ -221,22 +221,21 @@ uint calcAccellen(float width, float zmax)
  * @param outData
  * @return
  */
-//int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int device, int noBatches, int noSteps, int devID )
 int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int devID )
 {
   nvtxRangePush("initKernel");
   std::cout.flush();
 
-  size_t free, total;             /// GPU memory
+  size_t free, total;                           //< GPU memory
   int noInStack[MAX_HARM_NO];
   int noHarms         = (1 << (sInf->noHarmStages - 1) );
   noInStack[0]        = 0;
-  size_t batchSize    = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
-  size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
-  size_t planeSize    = 0;        /// Total size (in bytes) of memory required independently of batch(es)
+  size_t batchSize    = 0;                      //< Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
+  size_t fffTotSize   = 0;                      //< Total size (in bytes) of FFT temporary memory
+  size_t planeSize    = 0;                      //< Total size (in bytes) of memory required independently of batch(es)
   int flags           = sInf->sSpec->flags;
-  float plnElsSZ      = 0;
-  float powElsSZ      = 0;
+  float plnElsSZ      = 0;                      ///< The size of elements of the ff plane (generally the size of float complex)
+  float powElsSZ      = 0;                      ///< The size of elements of the powers plane
 
   gpuInf* gInf        = &sInf->gSpec->devInfo[devID];
   int device          = gInf->devid;
@@ -267,25 +266,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
       kernel->capability = gInf->capability;
-
-      //cudaDeviceProp deviceProp;
-      //CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
-
-
-      //major                           = deviceProp.major;
-      //minor                           = deviceProp.minor;
-      //float ver                       = major + minor/10.0f;
-      //kernel->capability              = ver;
-
-      //alignment                       = getMemAlignment();
-
-//      sInf->mInf->alignment[device]   = alignment;
-//      sInf->mInf->capability[device]  = ver;
-//      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
-//      sprintf(sInf->mInf->name[device], "%s", deviceProp.name );
     }
-
-    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
     nvtxRangePop();
   }
@@ -299,7 +280,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       if ( flags & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         plnElsSZ = sizeof(half);
 #else
         plnElsSZ = sizeof(float);
@@ -348,7 +329,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           flags &= ~FLAG_CUFFT_CB_OUT;
 #endif
 
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
           if ( !(flags & FLAG_HALF) )
             fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
 #else
@@ -399,7 +380,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 #endif
       if ( (flags & FLAG_HALF) && !(flags & FLAG_SS_INMEM) && !(flags & FLAG_CUFFT_CB_OUT) )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         fprintf(stderr, "WARNING: Can't use half precision with out of memory search and no CUFFT callbacks. Reverting to single precision!\n");
 #endif
         flags &= ~FLAG_HALF;
@@ -408,7 +389,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       // Half precision?
       if ( flags & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         plnElsSZ = sizeof(half);
 #else
         plnElsSZ = sizeof(float);
@@ -1167,7 +1148,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else if (kernel->retType & CU_HALF      )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         retSZ = sizeof(half);
 #else
         fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -1704,7 +1685,7 @@ void setPlanePointers(cuFFdotBatch* batch)
       {
         if ( batch->flag & FLAG_HALF )
         {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
           cPlane->d_planePowr     = &((half*)         cStack->d_planePowr)[ cStack->startZ[j] * batch->noSteps * cStack->stridePower ];
 #else
           fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -1752,7 +1733,7 @@ void setStkPointers(cuFFdotBatch* batch)
     {
       if ( batch->flag & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         cStack->d_planePowr     = &((half*)       batch->d_planePowr)[ pwrStart ];
 #else
         fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -3743,7 +3724,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_HALF" 	  ) )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         (*flags) |=  FLAG_HALF;
 #else
         (*flags) &= ~FLAG_HALF;
@@ -4014,7 +3995,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.flags         |= FLAG_CUFFT_CB_OUT;
 #endif
 
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
   sSpec.flags         |= FLAG_HALF;
 #endif
 

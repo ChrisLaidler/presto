@@ -535,7 +535,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
     double r            = firstR + ix*blkWidth/(double)(noR) ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
 
-    double      total_power[noBlk];
+    float       total_power[noBlk];
     fcomplexcu  ans[noBlk];
 
     for( int blk = 0; blk <= noBlk; blk++ )
@@ -557,7 +557,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
       // Calculate complex value, using direct application of the convolution
       if( absz < DLIM && absz > FTLIM )
       {
-        rz_interp_cu<double, noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
+      	rz_interp_cu<double, noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
       }
       else
       {

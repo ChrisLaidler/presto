@@ -362,7 +362,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     {
       if ( batch->flag & FLAG_HALF  )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         searchINMEM_p<half>(batch);
 #else
         fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
