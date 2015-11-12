@@ -8,7 +8,7 @@ IL_ROW
 ######### Kernel #########
 
 # Higher accuracy for z values closer to 0
-#FLAG_KER_ACC
+FLAG_KER_ACC
 
 ########## Input #########
 
@@ -24,7 +24,7 @@ FFT_CPU
 
 # Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
-FLAG_MUL_AA
+MUL_AA
 
 # Other Convolve options
 # FLAG_TEX_MUL
@@ -47,13 +47,13 @@ FLAG_STK_DOWN
 # FLAG_CUFFT_CB_IN 	# In my testing this is very slow, like 7 times slower (FFT only)!
 FLAG_CUFFT_CB_OUT       # Almost always a good option!
 
-# FLAG_NO_CB
+#FLAG_NO_CB
 
 
 ######## Return ##########
 
 # FLAG_RET_ARR  FLAG_RET_PLN
-FLAG_RET_ARR
+# FLAG_RET_ARR
 
 
 ######## Search ##########
@@ -74,8 +74,7 @@ FLAG_HALF
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
-SS_INMEM
-
+SS_AA
 
 SS_SLICES	3
 
@@ -120,4 +119,11 @@ optpln06 0
 
 #PLT_OPT
 #UNOPT
+
+#globalInt01 1
+
+
+
+
+
 
