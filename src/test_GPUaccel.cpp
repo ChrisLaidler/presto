@@ -713,7 +713,7 @@ int main(int argc, char *argv[])
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
   searchSpecs   sSpec;
-  pthread_t     cntxThread = NULL;
+  pthread_t     cntxThread = 0;
 
   gSpec         = readGPUcmd(cmd);
   sSpec         = readSrchSpecs(cmd, &obs);
@@ -808,7 +808,7 @@ int main(int argc, char *argv[])
 
       nDarray<2, float> DFF_kernels;
 
-      if (cntxThread) // Wait for context thread to finish  .
+      if ( cntxThread ) // Wait for context thread to finish  .
       {
         void *status;
         if ( !pthread_join(cntxThread, &status) )
@@ -928,7 +928,7 @@ int main(int argc, char *argv[])
         // Search bounds
         startr    = 0, lastr = 0, nextr = 0;
         maxxx     = cuSrch->SrchSz->noSteps;
-        if ( master->flag & FLAG_SS_INMEM  )
+        if ( master->flags & FLAG_SS_INMEM  )
         {
           startr  = master->SrchSz->searchRLow ; // ie ( rlo / no harms)
         }
@@ -1035,7 +1035,7 @@ int main(int argc, char *argv[])
 
           int noCands = 0;
 
-          if ( trdBatch->flag & FLAG_HALF )
+          if ( trdBatch->flags & FLAG_HALF )
           {
             //buckets[7] = {1e0, 1e0, 1e-4, 1e-6, 1e10, 1e15, 1e19};
 
@@ -1144,13 +1144,15 @@ int main(int argc, char *argv[])
                         int offset;
                         int elsz;
 
-                        if      ( trdBatch->flag & FLAG_ITLV_ROW )
+                        if      ( trdBatch->flags & FLAG_ITLV_ROW )
                         {
-                          offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+                          //offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+                          offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + plan->kerStart ;
                         }
                         else
                         {
-                          offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+                          //offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+                          offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + plan->kerStart ;
                         }
 
                         cmplxData = &plan->d_planeMult[offset];
@@ -1158,7 +1160,7 @@ int main(int argc, char *argv[])
 
                         float* outVals = gpuPowers[step][harm].getP(0,y);
 
-                        if      ( trdBatch->flag & FLAG_HALF )
+                        if      ( trdBatch->flags & FLAG_HALF )
                         {
                           powers =  &((half*)      plan->d_planePowr)[offset];
                           elsz   = sizeof(half);
@@ -1169,7 +1171,7 @@ int main(int argc, char *argv[])
                             outVals[i] = half2float(((ushort*)tmpRow)[i]);
                           }
                         }
-                        else if ( trdBatch->flag & FLAG_CUFFT_CB_OUT )
+                        else if ( trdBatch->flags & FLAG_CUFFT_CB_POW )
                         {
                           powers =  &((float*)     plan->d_planePowr)[offset];
                           elsz   = sizeof(float);
@@ -1476,7 +1478,7 @@ int main(int argc, char *argv[])
 
                 FOLD // Complex values  .
                 {
-                  if ( !(trdBatch->flag & FLAG_CUFFT_CB_OUT) )
+                  if ( !(trdBatch->flags & FLAG_CUFFT_CB_POW) )
                   {
                     if( printDetails )
                       printf("\n           ---- Step %03i of %03i ----\n",firstStep + step+1, maxxx);

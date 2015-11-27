@@ -223,7 +223,7 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[idx].d_planePowr;
   }
 
-  if      ( batch->flag & FLAG_HALF         )
+  if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
@@ -232,7 +232,7 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     exit(EXIT_FAILURE);
 #endif
   }
-  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
     add_and_searchCU00_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
   }
@@ -253,7 +253,7 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[idx].d_planePowr;
   }
 
-  if      ( batch->flag & FLAG_HALF         )
+  if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
@@ -262,7 +262,7 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     exit(EXIT_FAILURE);
 #endif
   }
-  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
     add_and_searchCU01_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
   }
@@ -283,7 +283,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[idx].d_planePowr;
   }
 
-  if      ( batch->flag & FLAG_HALF         )
+  if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
@@ -292,7 +292,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     exit(EXIT_FAILURE);
 #endif
   }
-  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
     add_and_searchCU02_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
   }

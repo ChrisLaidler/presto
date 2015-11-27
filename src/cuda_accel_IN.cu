@@ -58,7 +58,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               FOLD // Calculate normalisation factor from median  .
               {
                 nvtxRangePush("Median");
-                if ( batch->flag & CU_NORM_EQUIV )
+                if ( batch->flags & CU_NORM_EQUIV )
                 {
                   norm = 1.0 / sqrt(median(batch->normPowers, (rVal->numdata)) / log(2.0));        /// NOTE: This is the same method as CPU version
                 }
@@ -162,7 +162,8 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
   printf("\tSet Stack R-Vals\n");
 #endif
 
-  int       hibin, binoffset;
+  int       hibin;
+  int       binoffset;  // The extra bins to add onto the start of the data
   double    drlo, drhi;
 
   int lobin;      /// The first bin to copy from the the input fft ( serachR scaled - halfwidth )
@@ -172,7 +173,7 @@ void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
   for (int harm = 0; harm < batch->noHarms; harm++)
   {
     cuHarmInfo* cHInfo      = &batch->hInfos[harm];       // The current harmonic we are working on
-    binoffset               = cHInfo->halfWidth;          //
+    binoffset               = batch->planes[harm].kerStart / ACCEL_NUMBETWEEN; // This aligns all the planes so the all the "usable" parts start at the same offset in the stack
 
     for (int step = 0; step < batch->noSteps; step++)
     {
@@ -248,7 +249,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
     FOLD  // Normalise and spread and copy to device memory  .
     {
-      if ( batch->flag & CU_NORM_CPU  ) // Copy chunks of FFT data and normalise and spread using the CPU  .
+      if ( batch->flags & CU_NORM_CPU  ) // Copy chunks of FFT data and normalise and spread using the CPU  .
       {
 #ifdef STPMSG
         printf("\t\tCPU normalisation\n");
@@ -271,7 +272,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
         CPU_Norm_Spread(batch, norm_type, fft);
 
-        if ( batch->flag & CU_INPT_FFT_CPU ) // CPU FFT  .
+        if ( batch->flags & CU_INPT_FFT_CPU ) // CPU FFT  .
         {
 #ifdef STPMSG
           printf("\t\tCPU FFT Input\n");
@@ -336,7 +337,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
           cudaEventRecord(batch->normComp,      batch->inpStream);
           cudaEventRecord(batch->iDataCpyComp,  batch->inpStream);
 
-          if ( batch->flag & CU_INPT_FFT_CPU )
+          if ( batch->flags & CU_INPT_FFT_CPU )
           {
             for (int ss = 0; ss < batch->noStacks; ss++)
             {
@@ -486,7 +487,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
     FOLD  // FFT the input on the GPU data  .
     {
-      if ( !(batch->flag & CU_INPT_FFT_CPU) )
+      if ( !(batch->flags & CU_INPT_FFT_CPU) )
       {
 #ifdef STPMSG
         printf("\t\tGPU FFT\n");

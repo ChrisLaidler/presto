@@ -433,7 +433,7 @@ int createStackKernel(cuFfdotStack* cStack)
 
   int halfWidth;
 
-  if ( cStack->flag & FLAG_KER_ACC )
+  if ( cStack->flags & FLAG_KER_ACC )
   {
     // Use one halfwidth for the entire kernel
     halfWidth = cStack->harmInf->halfWidth;

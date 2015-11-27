@@ -2325,7 +2325,6 @@ void* optCandDerivs(void* ptr)
   searchSpecs*  sSpec = srch->sSpec;
   fftInfo*      fft   = &sSpec->fftInf;
 
-
 #ifdef TIMING // Timing  .
   struct timeval start, end;
   gettimeofday(&start, NULL);
@@ -2412,11 +2411,11 @@ void* optCandDerivs(void* ptr)
   //nvtxRangePop();
 
 #ifdef TIMING // Timing  .
-  pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
+  pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
   gettimeofday(&end, NULL);
   float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-  res->resultTime[0] += v1;
-  pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
+  res->cuSrch->pInf->batches->resultTime[0] += v1;
+  pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
 #endif
 
   // Decrease the count number of running threads

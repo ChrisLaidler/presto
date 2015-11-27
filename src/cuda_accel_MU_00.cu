@@ -154,7 +154,7 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
  * Each thread loops down a column of the plane
  * Reads the input and multiplies it with the kernel and writes result to plane
  */
-template<int FLAGS, int noSteps>
+template<int64_t FLAGS, int noSteps>
 __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, int noPlns, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
@@ -249,7 +249,7 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
   }
 }
 
-template<int FLAGS>
+template<int64_t FLAGS>
 __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
 {
   cuFfdotStack* cStack  = &batch->stacks[stack];
@@ -317,7 +317,7 @@ __host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = 1;
 
-  if      ( batch->flag & FLAG_ITLV_ROW )
+  if      ( batch->flags & FLAG_ITLV_ROW )
     mult02_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
   else
     mult02_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);

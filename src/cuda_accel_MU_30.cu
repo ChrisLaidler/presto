@@ -3,7 +3,7 @@
 /** Multiplication kernel - Multiply an entire batch with convolution kernel  .
  * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
-template<uint FLAGS, int noSteps>
+template<int64_t FLAGS, int noSteps>
 __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* datas, __restrict__ fcomplexcu* ffdot, int noPlanes)
 {
   const int ix = blockIdx.x * CNV_DIMX * CNV_DIMY + CNV_DIMX * threadIdx.y + threadIdx.x;
@@ -77,7 +77,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
   }
 }
 
-template<int FLAGS>
+template<int64_t FLAGS>
 __host__  void mult30_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch)
 {
   switch (batch->noSteps)
@@ -140,7 +140,7 @@ __host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch)
   dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = batch->mulSlices;
 
-  if      ( batch->flag & FLAG_ITLV_ROW )
+  if      ( batch->flags & FLAG_ITLV_ROW )
     mult30_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);
   else
     mult30_s<0>(dimGrid, dimBlock, 0, multStream, batch);

@@ -28,7 +28,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   const int noStages    = batch->noHarmStages;
   const int noHarms     = batch->noHarms;
   const int noSteps     = batch->noSteps;
-  const int FLAGS       = batch->flag;
+  const int64_t FLAGS   = batch->flags;
   const int zeroHeight  = batch->hInfos->height;
 
   float*      pwerPlnF[noHarms];
@@ -74,7 +74,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
           int stgIDX      = batch->stageIdx[harm];
 
           //// NOTE: the indexing below assume each plane starts on a multiple of noHarms
-          int   hIdx      = round( ix*batch->hInfos[stgIDX].harmFrac ) + batch->hInfos[stgIDX].halfWidth * ACCEL_NUMBETWEEN ;
+          int   hIdx      = round( ix*batch->hInfos[stgIDX].harmFrac ) + batch->planes[stgIDX].kerStart;
           inds[harm]      = hIdx;
         }
       }
@@ -143,7 +143,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 
                   FOLD // Read powers  .
                   {
-                    if      ( FLAGS & FLAG_CUFFT_CB_OUT )
+                    if      ( FLAGS & FLAG_CUFFT_CB_POW )
                     {
                       pow[harm][step]         = pwerPlnF[harm][ iy2 + ix2 ];
                     }

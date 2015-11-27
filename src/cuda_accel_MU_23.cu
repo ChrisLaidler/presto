@@ -4,7 +4,7 @@
  * Each thread loops down a column of the plane
  * Reads the input and multiples it with the kernel and writes result to plane
  */
-template<int FLAGS, int noSteps, int noPlns>
+template<int64_t FLAGS, int noSteps, int noPlns>
 __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
@@ -197,7 +197,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
   }
 }
 
-template<int FLAGS, int noSteps>
+template<int64_t FLAGS, int noSteps>
 __host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
 {
   cuFfdotStack* cStack  = &batch->stacks[stack];
@@ -267,7 +267,7 @@ __host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
-template<int FLAGS>
+template<int64_t FLAGS>
 __host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
 {
   switch (batch->noSteps)
@@ -333,7 +333,7 @@ __host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.y = cStack->mulSlices ;
 
 
-  if      ( batch->flag & FLAG_ITLV_ROW )
+  if      ( batch->flags & FLAG_ITLV_ROW )
     mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
   else
     mult23_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);

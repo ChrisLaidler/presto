@@ -59,8 +59,10 @@ extern "C"
 
 #define     FLAG_ITLV_ROW       (1<<0)      ///< Multi-step Row   interleaved        - This seams to be best in most cases
 
-#define     CU_NORM_CPU         (1<<1)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_NORM_EQUIV       (1<<2)      ///< Do the normalisation the CPU way
+#define     FLAG_KER_ACC        (1<<1)     	///< Use increased accuracy convolution kernels at low Z close to zero
+
+#define     CU_NORM_CPU         (1<<2)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define     CU_NORM_EQUIV       (1<<3)      ///< Do the normalisation the CPU way
 
 #define     CU_INPT_FFT_CPU     (1<<4)      ///< Do the FFT on the CPU
 
@@ -77,35 +79,34 @@ extern "C"
 
 #define     FLAG_TEX_MUL        (1<<11)     ///< Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
 #define     FLAG_CUFFT_CB_IN    (1<<12)     ///< Use an input  callback to do the multiplication      - I found this to be very slow
-#define     FLAG_CUFFT_CB_OUT   (1<<13)     ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
-#define     FLAG_CUFFT_ALL      ( FLAG_CUFFT_CB_IN | FLAG_CUFFT_CB_OUT  )
+#define     FLAG_CUFFT_CB_POW   (1<<13)     ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
+#define     FLAG_CUFFT_CB_INMEM (1<<14)     ///< Random Flag 2
+#define     FLAG_CUFFT_CB_OUT   ( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM ) // All output callbacks
+#define     FLAG_CUFFT_ALL      ( FLAG_CUFFT_CB_OUT | FLAG_CUFFT_CB_IN )    // All callbacks
 
-#define     FLAG_SAS_TEX        (1<<14)     ///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     (1<<15)     ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
-#define     FLAG_SIG_GPU        (1<<16)     ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define     FLAG_SAS_TEX        (1<<15)     ///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_INTERP     (1<<16)     ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
+#define     FLAG_SIG_GPU        (1<<17)     ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     FLAG_SS_CPU         (1<<17)     ///< Do the sum and searching on the CPU
-#define     FLAG_SS_00          (1<<18)     ///<
-#define     FLAG_SS_10          (1<<19)     ///<
-//#define     FLAG_SS_20          (1<<20)     ///<
-//#define     FLAG_SS_30          (1<<21)     ///<
-#define     FLAG_SS_INMEM       (1<<20)     ///< Do an in memory GPU search
+#define     FLAG_SS_CPU         (1<<18)     ///< Do the sum and searching on the CPU
+#define     FLAG_SS_00          (1<<19)     ///<
+#define     FLAG_SS_10          (1<<20)     ///<
+#define     FLAG_SS_INMEM       (1<<21)     ///< Do an in memory GPU search
 #define     FLAG_SS_STG         ( FLAG_SS_00  | FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
 #define     FLAG_SS_KERS        ( FLAG_SS_STG | FLAG_SS_INMEM  )
 #define     FLAG_SS_ALL         ( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define     FLAG_HALF           (1<<21)     ///< Use half precision when doing a INMEM search
-#define     FLAG_RET_STAGES     (1<<22)     ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      (1<<23)     ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1<<24)     ///< Store expanded candidates
-#define     FLAG_THREAD         (1<<25)     ///< Use separate CPU threads to search for candidates in returned data
+#define     FLAG_HALF           (1<<22)     ///< Use half precision when doing a INMEM search
+#define     FLAG_RET_STAGES     (1<<23)     ///< Return results for all stages of summing, default is only the final result
+#define     FLAG_STORE_ALL      (1<<24)     ///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1<<25)     ///< Store expanded candidates
+#define     FLAG_THREAD         (1<<26)     ///< Use separate CPU threads to search for candidates in returned data
 
-#define     FLAG_STK_UP         (1<<26)     ///< Process stack in increasing size order
-#define     FLAG_CONV           (1<<27)     ///< Multiply and FFT each stack "together"
+#define     FLAG_STK_UP         (1<<27)     ///< Process stack in increasing size order
+#define     FLAG_CONV           (1<<28)     ///< Multiply and FFT each stack "together"
 
-#define     FLAG_RAND_1         (1<<28)     ///< Random Flag 1
-#define     FLAG_RAND_2         (1<<29)     ///< Random Flag 2
-#define     FLAG_KER_ACC        (1<<30)     ///< Random Flag 4
+#define     FLAG_RAND_1         (1<<29)     ///< Random Flag 1
+
 
 // ----------- This is a list of the data types that and storage structures
 
@@ -222,7 +223,7 @@ typedef struct stackInfo
     int             noSteps;            ///<  The Number of steps in the stack
     int             noPlanes;           ///<  The number of planes in the stack
     int             famIdx;             ///<  The stage order of the first plane in the stack
-    uint            flag;               ///<  Bit flag
+    int64_t         flags;              ///<  CUDA accel search bit flags
 
     fcomplexcu*     d_planeData;        ///<  Plane data for this stack
     void*           d_planePowers;      ///<  Powers for this stack
@@ -303,7 +304,7 @@ typedef struct searchSpecs
     float           sigma;              ///< The cut off sigma
     fftInfo         fftInf;             ///< The details of the input fft - location size and area to search
 
-    uint            flags;              ///< The search bit flags
+    int64_t         flags;              ///< The search bit flags
     int             normType;           ///< The type of normalisation to do
 
     int             mulSlices;          ///< The number of multiplication slices
@@ -368,6 +369,8 @@ typedef struct cuFFdot
     cuHarmInfo*     harmInf;            ///< A pointer to the harmonic information for this planes
     cuKernel*       kernel;             ///< A pointer to the kernel for this plane
 
+    int             kerStart;           ///< The starting point for data in the various planes, this is essentially the largest halfwidth in the stack
+
     // pointers to device data
     fcomplexcu*     d_planeMult;        ///< A pointer to the first element of the complex f-∂f plane (Width, Stride and height determined by harmInf)
     void*           d_planePowr;        ///< A pointer to the powers for this stack
@@ -389,7 +392,8 @@ typedef struct cuFfdotStack
     size_t          kerHeigth;          ///< The height of the multiplication kernel for this stack (this is equivalent to the height of the largest plane in the stack)
     size_t          strideCmplx;        ///< The stride of the block of memory  [ in complex numbers! ]
     size_t          stridePower;        ///< The stride of the powers
-    uint            flag;               ///< CUDA accel search bit flags
+    size_t          kerStart;           ///< The number of contaminated "bins" in the largest plane and thus kernel
+    int64_t         flags;              ///< CUDA accel search bit flags
 
     int             mulSlices;          ///< The number of slices to do multiplication with
     int             mulChunk;           ///< The Sum and search chunk size
@@ -464,7 +468,7 @@ typedef struct cuFFdotBatch
     int             ssChunk;            ///< The multiplication chunk size
     int             mulChunk;           ///< The Sum and search chunk size
 
-    uint            flag;               ///< CUDA accel search bit flags
+    int64_t         flags;              ///< CUDA accel search bit flags
     uint            accelLen;           ///< The size to step through the input fft
     uint            strideRes;          ///< The stride of the candidate data
 
@@ -622,7 +626,7 @@ typedef struct cuOptCand
     int             inpStride;
 
     int             device;             ///< The device ID of the device to use
-    int             flags;
+    int64_t         flags;              ///< CUDA accel search bit flags
 
     // Streams
     cudaStream_t    stream;             ///< CUDA stream for work
@@ -680,8 +684,6 @@ typedef struct cuSearch
     searchScale*    SrchSz;             ///< Details on o the size (in bins) of the search
     int*            pIdx;               ///< The index of the planes in the Presto harmonic summing order
 
-
-
     float*          powerCut;           ///< The power cutoff
     long long*      numindep;           ///< The number of independent trials
     int*            yInds;              ///< The Y indices
@@ -704,7 +706,7 @@ typedef struct resultData
 
     uint            retType;
     uint            cndType;
-    uint            flag;
+    int64_t         flag;                 ///< CUDA accel search bit flags
 
     uint            x0;
     uint            x1;

@@ -54,6 +54,18 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
  */
 __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
 
+/** CUFFT callback kernel to calculate and store float powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *
+ */
+__device__ void CB_InmemOutRow_f( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to calculate and store float powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *
+ */
+__device__ void CB_InmemOutPln_f( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
 /** CFFT Callback function to calculate power and save value after main IFFT  .
  *
  * @param dataIn
@@ -63,6 +75,20 @@ __device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element
  * @return
  */
 __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *  Assumes row interleaved data
+ *
+ */
+__device__ void CB_InmemOutRow_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *  Assumes plane interleaved data
+ *
+ */
+__device__ void CB_InmemOutPln_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
 
 /** CFFT Callback function to calculate power and save value to device in memory plane after main IFFT  .
  *
@@ -85,6 +111,16 @@ __device__ void CB_PowerOutInmem_ROW( void *dataIn, size_t offset, cufftComplex 
 __device__ void CB_PowerOutInmem_PLN( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr);
 
 #endif
+
+/** Get a pointer to the location of the first element of the output of the CUFFT
+ *
+ */
+void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack);
+
+/** Set CUFFT store FFT callback  .
+ *
+ */
+void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack);
 
 /** Multiplication kernel - Just write 0 to all locations
  */

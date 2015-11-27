@@ -62,7 +62,7 @@ __host__ __device__ inline int twon_to_index(int n)
   return x;
 }
 
-template<uint FLAGS>
+template<int64_t FLAGS>
 __device__ inline int getY(int planeY, const int noSteps,  const int step, const int planeHeight = 0 )
 {
   // Calculate y indice from interleave method
@@ -76,7 +76,7 @@ __device__ inline int getY(int planeY, const int noSteps,  const int step, const
   }
 }
 
-template<uint FLAGS>
+template<int64_t FLAGS>
 __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t tex, fcomplexcu* base, const int stride)
 {
   if  ( (FLAGS & FLAG_SAS_TEX ) )
@@ -405,9 +405,9 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
  */
 __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const uint FLAGS = batch->flag ;
+  const int64_t FLAGS = batch->flags ;
 
-  if            ( (FLAGS & FLAG_CUFFT_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if            ( (FLAGS & FLAG_CUFFT_CB_POW) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
     fprintf(stderr,"ERROR: Invalid sum and search kernel. Line %i in %s\n", __LINE__, __FILE__ );
     exit(EXIT_FAILURE);
@@ -474,7 +474,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
         float harmFrac  = HARM_FRAC_STAGE[ii];
         int sZmax;
 
-        if ( batch->flag & FLAG_SS_INMEM )
+        if ( batch->flags & FLAG_SS_INMEM )
         {
           sZmax = zmax;
         }
@@ -553,7 +553,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     cudaMemcpyToSymbol(NO_STEPS,  &(batch->noSteps),  sizeof(int) );
     cudaMemcpyToSymbol(ALEN,      &(batch->accelLen), sizeof(int) );
 
-    if ( batch->flag & FLAG_SS_INMEM  )
+    if ( batch->flags & FLAG_SS_INMEM  )
     {
       cudaMemcpyToSymbol(PLN_START,   &(batch->d_planeFull),            sizeof(void*)  );
       cudaMemcpyToSymbol(PLN_STRIDE,  &batch->sInf->pInf->inmemStride,  sizeof(int)     );
@@ -573,7 +573,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
         int pidx  = batch->stageIdx[i];
         height[i] = batch->hInfos[pidx].height;
         stride[i] = batch->hInfos[pidx].width;
-        hwidth[i] = batch->hInfos[pidx].halfWidth*ACCEL_NUMBETWEEN;
+        hwidth[i] = batch->stacks[batch->hInfos[pidx].stackNo].kerStart;
       }
 
       FOLD // The rest  .
@@ -616,7 +616,7 @@ void SSKer(cuFFdotBatch* batch)
     {
       cuFfdotStack* cStack = &batch->stacks[ss];
 
-      if ( batch->flag & FLAG_SS_INMEM )
+      if ( batch->flags & FLAG_SS_INMEM )
       {
         cudaStreamWaitEvent(batch->srchStream, cStack->ifftMemComp, 0);
       }
@@ -642,11 +642,11 @@ void SSKer(cuFFdotBatch* batch)
   {
     if ( batch->retType & CU_POWERZ_S )
     {
-      if      ( batch->flag & FLAG_SS_STG )
+      if      ( batch->flags & FLAG_SS_STG )
       {
         add_and_searchCU3(batch->srchStream, batch );
       }
-      else if ( batch->flag & FLAG_SS_INMEM )
+      else if ( batch->flags & FLAG_SS_INMEM )
       {
         add_and_search_IMMEM(batch);
       }
@@ -956,7 +956,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
       // Copy data
       nvtxRangePush("memcpy");
-      if ( batch->flag & FLAG_SS_INMEM )
+      if ( batch->flags & FLAG_SS_INMEM )
         memcpy(thrdDat->retData, batch->h_retData2, batch->retDataSize);
       else
         memcpy(thrdDat->retData, batch->h_retData1, batch->retDataSize);
@@ -977,7 +977,7 @@ void processSearchResults(cuFFdotBatch* batch)
       thrdDat->rLow         = rVal->drlo;
       thrdDat->retType      = batch->retType;
       thrdDat->threasdInfo  = batch->sInf->threasdInfo;
-      thrdDat->flag         = batch->flag;
+      thrdDat->flag         = batch->flags;
       thrdDat->zMax         = batch->hInfos->zmax;
       thrdDat->resultTime   = batch->resultTime;
       thrdDat->noResults    = &batch->noResults;
@@ -990,7 +990,7 @@ void processSearchResults(cuFFdotBatch* batch)
       thrdDat->xStride      = batch->strideRes;
       thrdDat->yStride      = batch->ssSlices;
 
-      if ( !(batch->flag & FLAG_SS_INMEM) )
+      if ( !(batch->flags & FLAG_SS_INMEM) )
       {
         thrdDat->xStride   *= batch->noSteps;
       }
@@ -1011,7 +1011,7 @@ void processSearchResults(cuFFdotBatch* batch)
       sem_post(&batch->sInf->threasdInfo->running_threads);
 
 #ifndef SYNCHRONOUS
-      if ( batch->flag & FLAG_THREAD ) 	// Create thread  .
+      if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
       {
         pthread_t thread;
         int  iret1 = pthread_create( &thread, NULL, processSearchResults, (void*) thrdDat);
@@ -1022,7 +1022,7 @@ void processSearchResults(cuFFdotBatch* batch)
           exit(EXIT_FAILURE);
         }
       }
-      else                              // Just call the function  .
+      else                              	// Just call the function  .
 #endif
       {
         processSearchResults( (void*) thrdDat );
@@ -1085,11 +1085,11 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
     {
       // Nothing!
     }
-    else if ( batch->flag & FLAG_SS_INMEM )
+    else if ( batch->flags & FLAG_SS_INMEM )
     {
       // NOTHING
     }
-    else if ( batch->flag & FLAG_SS_CPU )
+    else if ( batch->flags & FLAG_SS_CPU )
     {
       // NOTHING
     }
@@ -1112,11 +1112,11 @@ void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and proc
     {
       // Nothing!
     }
-    else if ( batch->flag & FLAG_SS_INMEM )
+    else if ( batch->flags & FLAG_SS_INMEM )
     {
       // NOTHING
     }
-    else if ( batch->flag & FLAG_SS_CPU )
+    else if ( batch->flags & FLAG_SS_CPU )
     {
       // NOTHING
     }
@@ -1130,7 +1130,7 @@ void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and proc
 
   FOLD // Copy results from device to host  .
   {
-    if  ( batch->flag & FLAG_SS_INMEM )
+    if  ( batch->flags & FLAG_SS_INMEM )
     {
       // Nothing
     }
@@ -1142,7 +1142,7 @@ void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and proc
 
   FOLD // Process previous results  .
   {
-    if  ( batch->flag & FLAG_SS_INMEM )
+    if  ( batch->flags & FLAG_SS_INMEM )
     {
       // Nothing
     }
@@ -1156,7 +1156,7 @@ void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and proc
 
   FOLD // Process previous results  .
   {
-    if  ( batch->flag & FLAG_SS_INMEM )
+    if  ( batch->flags & FLAG_SS_INMEM )
     {
       // Nothing
     }
@@ -1168,7 +1168,7 @@ void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and proc
 
   FOLD // Copy results from device to host  .
   {
-    if  ( batch->flag & FLAG_SS_INMEM )
+    if  ( batch->flags & FLAG_SS_INMEM )
     {
       // Nothing
     }
@@ -1364,6 +1364,8 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   uint endBin           = startBin + cuSrch->SrchSz->noSteps * master->accelLen;
   float totaBinsl       = endBin - startBin ;
 
+  nvtxRangePush("Inmem Search");
+
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
   omp_set_num_threads(cuSrch->pInf->noBatches);
 #pragma omp parallel
@@ -1431,4 +1433,6 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   {
     waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
   }
+
+  nvtxRangePop();
 }

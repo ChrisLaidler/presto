@@ -23,18 +23,22 @@ __host__  void mult10(cuFFdotBatch* batch)
     {
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,0),     "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
-      if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
-      {
-        // CFF output callback has its own data so can start once FFT is complete
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-      }
-      else
-      {
-        // Have to wait for search to finish reading data
-        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-      }
+      // CFF output callback has its own data so can start once FFT is complete
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
-      if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
+//      // Now always using a powers plane
+//      if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
+//      {
+//        // CFF output callback has its own data so can start once FFT is complete
+//        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+//      }
+//      else
+//      {
+//        // Have to wait for search to finish reading data
+//        CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+//      }
+
+      if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
       {
         CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
       }
@@ -74,7 +78,7 @@ __host__  void mult10(cuFFdotBatch* batch)
         {
           d_iData         = cPlane->d_iData + cStack->strideCmplx * step;
 
-          if      ( batch->flag & FLAG_ITLV_ROW )
+          if      ( batch->flags & FLAG_ITLV_ROW )
           {
             fprintf(stderr,"ERROR: Cannot do single plane multiplications with row-interleaved multi step stacks.\n");
             exit(EXIT_FAILURE);
@@ -82,10 +86,11 @@ __host__  void mult10(cuFFdotBatch* batch)
           else
             d_planeData   = cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;   // Shift by plane height
 
-          if ( batch->flag & FLAG_TEX_MUL )
-            mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
-          else
-            mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->d_kerData);
+					// Texture memory in multiplication is now beprecated
+          //if ( batch->flag & FLAG_TEX_MUL )
+          //  mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
+          //else
+          mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->d_kerData);
 
           // Run message
           CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");

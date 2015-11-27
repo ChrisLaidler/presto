@@ -13,20 +13,20 @@
  * @param base          Used in CU_OUTP_DEVICE
  * @param noSteps
  */
-template<typename T, uint FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
+template<typename T, int64_t FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
 __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList texs, vHarmList powersArr )
 {
-  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;           /// Block index
-  const int tid   = blockIdx.x  * SS31BS  +  bidx;                  /// Global thread id (ie column) 0 is the first 'good' column
+  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;           ///< Block index
+  const int tid   = blockIdx.x  * SS31BS  +  bidx;                  ///< Global thread id (ie column) 0 is the first 'good' column
 
   if ( tid < width )
   {
     const int zeroHeight  = HEIGHT_STAGE[0];
-    const int oStride     = STRIDE_STAGE[0];                        /// The stride of the output data
+    const int oStride     = STRIDE_STAGE[0];                        ///< The stride of the output data
 
     int             inds      [noHarms];
     candPZs         candLists [noStages][noSteps];
-    float           powers    [noSteps][cunkSize];                  /// registers to hold values to increase mem cache hits
+    float           powers    [noSteps][cunkSize];                  ///< registers to hold values to increase mem cache hits
     T*              array     [noHarms];                            ///< A pointer array
 
     FOLD // Set the values of the pointer array
@@ -202,7 +202,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, tHarmList
   }
 }
 
-template< typename T, uint FLAGS, int noStages, const int noHarms, const int cunkSize>
+template< typename T, int64_t FLAGS, int noStages, const int noHarms, const int cunkSize>
 __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int noSteps = batch->noSteps ;
@@ -273,7 +273,7 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
 }
 
-template< typename T, uint FLAGS, int noStages, const int noHarms>
+template< typename T, int64_t FLAGS, int noStages, const int noHarms>
 __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   switch ( batch->ssChunk )
@@ -365,7 +365,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
 }
 
-template<typename T, uint FLAGS >
+template<typename T, int64_t FLAGS >
 __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int noStages = batch->noHarmStages;
@@ -406,7 +406,7 @@ __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 template<typename T>
 __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const uint FLAGS = batch->flag;
+  const int64_t FLAGS = batch->flags;
 
   FOLD // Call flag template  .
   {
@@ -434,7 +434,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   dimGrid.x   = ceil(ww);
   dimGrid.y   = batch->ssSlices;
 
-  if      ( batch->flag & FLAG_HALF         )
+  if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, batch );
@@ -443,7 +443,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     exit(EXIT_FAILURE);
 #endif
   }
-  else if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
     add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
   }

@@ -7,8 +7,12 @@
 #if CUDA_VERSION >= 6050
 __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 __device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
+__device__ cufftCallbackStoreC d_inmemRow_f         = CB_InmemOutRow_f;
+__device__ cufftCallbackStoreC d_inmemPln_f         = CB_InmemOutPln_f;
 #if CUDA_VERSION >= 7050
 __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
+__device__ cufftCallbackStoreC d_inmemRow_h         = CB_InmemOutRow_h;
+__device__ cufftCallbackStoreC d_inmemPln_h         = CB_InmemOutPln_h;
 #endif
 #endif
 
@@ -16,6 +20,48 @@ __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
 
 
 //========================================== Functions  ====================================================\\
+
+__device__ int calcInMemIdx_ROW( size_t offset )
+{
+  const int hw  = HWIDTH_STAGE[0];
+  const int st  = STRIDE_STAGE[0];
+  const int al  = ALEN ;
+  int col       = ( offset % st ) - hw * ACCEL_NUMBETWEEN ;
+
+  if ( col < 0 || col >= al )
+    return -1;
+
+  const int ns  = NO_STEPS;
+
+  int row       =   offset  / ( st * ns ) ;
+  int step      = ( offset  % ( st * ns ) ) / st;
+
+  size_t plnOff = row * PLN_STRIDE + step * al + col;
+
+  return plnOff;
+}
+
+__device__ int calcInMemIdx_PLN( size_t offset )
+{
+  const int hw  = HWIDTH_STAGE[0];
+  const int st  = STRIDE_STAGE[0];
+  const int al  = ALEN ;
+  int col       = ( offset % st ) - hw * ACCEL_NUMBETWEEN ;
+
+  if ( col < 0 || col >= al )
+    return -1;
+
+  const int ht  = HEIGHT_STAGE[0];
+
+  int row       = offset  /   st;
+  int step      = row     /   ht;
+  row           = row     %   ht;  // Plane interleaved!
+
+  size_t plnOff = row * PLN_STRIDE + step * al + col;
+
+  return plnOff;
+}
+
 
 #if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5  .
 
@@ -54,7 +100,7 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
   int plnHeight   = HEIGHT_HARM[pIdx];
   int step;
 
-  if ( inf->flag & FLAG_ITLV_ROW )
+  if ( inf->flags & FLAG_ITLV_ROW )
   {
     step  = row % noSteps;
     row   = row / noSteps;
@@ -78,27 +124,115 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
 
 /** CUFFT callback kernel to calculate and store float powers after the FFT  .
  */
-__device__ void CB_PowerOut_f( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+__device__ void CB_PowerOut_f( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
   // Calculate power
   float power = element.x*element.x + element.y*element.y ;
 
   // Write result (offsets are the same)
-  ((float*)callerInfo)[offset] = power;
+  ((float*)dataOut)[offset] = power;
 }
+
+/** CUFFT callback kernel to calculate and store float powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *
+ */
+__device__ void CB_InmemOutRow_f( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  int plnOff = calcInMemIdx_ROW(offset);
+
+  if ( plnOff == -1 )
+  {
+    // This element is in the contaminated ends
+    return;
+  }
+
+  // Calculate power
+  float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
+  ((float*)dataOut)[ plnOff ] = power;
+}
+
+/** CUFFT callback kernel to calculate and store float powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *
+ */
+__device__ void CB_InmemOutPln_f( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  int plnOff = calcInMemIdx_PLN(offset);
+
+  if ( plnOff == -1 )
+  {
+    // This element is in the contaminated ends
+    return;
+  }
+
+  // Calculate power
+  float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
+  ((float*)dataOut)[ plnOff ] = power;
+}
+
 
 #if CUDA_VERSION >= 7050 // Half precision CUFFT power call back
 
 /** CUFFT callback kernel to calculate and store half powers after the FFT  .
  */
-__device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+__device__ void CB_PowerOut_h( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
 {
   // Calculate power
   float power = element.x*element.x + element.y*element.y ;
 
   // Write result (offsets are the same)
-  ((half*)callerInfo)[offset] = __float2half(power);
+  ((half*)dataOut)[offset] = __float2half(power);
 }
+
+/** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *  Assumes row interleaved data
+ *
+ */
+__device__ void CB_InmemOutRow_h( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  int plnOff = calcInMemIdx_ROW(offset);
+
+  if ( plnOff == -1 )
+  {
+    // This element is in the contaminated ends
+    return;
+  }
+
+  // Calculate power
+  float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
+  ((half*)dataOut)[plnOff] = __float2half(power);
+}
+
+/** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
+ *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
+ *  Assumes plane interleaved data
+ *
+ */
+__device__ void CB_InmemOutPln_h( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  int plnOff = calcInMemIdx_PLN(offset);
+
+  if ( plnOff == -1 )
+  {
+    // This element is in the contaminated ends
+    return;
+  }
+
+  // Calculate power
+  float power = element.x*element.x + element.y*element.y ;
+
+  // Write result (offsets are the same)
+  ((half*)dataOut)[plnOff] = __float2half(power);
+}
+
 
 #endif  // CUDA_VERSION >= 7050
 
@@ -168,20 +302,58 @@ __device__ void CB_PowerOut_h( void *dataIn, size_t offset, cufftComplex element
  */
 void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
-  CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-
-  if ( batch->flag & FLAG_HALF )
+  if ( batch->flags & FLAG_CUFFT_CB_IN )
   {
-#if CUDA_VERSION >= 7050
-    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
-#else
-    fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-    exit(EXIT_FAILURE);
-#endif
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
   }
-  else
+
+  if ( batch->flags & FLAG_CUFFT_CB_OUT )
   {
-    CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+    if ( batch->flags & FLAG_HALF )
+    {
+#if CUDA_VERSION >= 7050
+      if ( batch->flags & FLAG_CUFFT_CB_INMEM )
+      {
+        // Store powers to inmem plane
+        if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
+        {
+          CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+        }
+        else                                  // Plane interleaved
+        {
+          CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+        }
+      }
+      else
+      {
+        // Calculate powers and write to powers half precision plane
+        CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+      }
+#else
+      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+      exit(EXIT_FAILURE);
+#endif
+    }
+    else
+    {
+      if ( batch->flags & FLAG_CUFFT_CB_INMEM )
+      {
+        // Store powers to inmem plane
+        if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
+        {
+          CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+        }
+        else                                  // Plane interleaved
+        {
+          CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemPln_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+        }
+      }
+      else
+      {
+        // Calculate powers and write to powers half single plane
+        CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+      }
+    }
   }
 
 }
@@ -200,7 +372,7 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
   {
     int sIdx;
 
-    if ( batch->flag & FLAG_STK_UP )
+    if ( batch->flags & FLAG_STK_UP )
       sIdx = batch->noStacks - 1 - ss;
     else
       sIdx = ss;
@@ -243,26 +415,21 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 #endif
         }
 
-        FOLD // Set store FFT callback  .
-        {
-          if ( batch->flag & FLAG_CUFFT_CB_OUT )
-          {
-  #if CUDA_VERSION >= 6050
-            CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_planePowr ),"Error assigning CUFFT store callback.");
-  #else
-            fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
-            exit(EXIT_FAILURE);
-  #endif
-          }
-        }
+        // Set store FFT callback
+        setCB(batch, cStack);
 
         FOLD // Set load FFT callback  .
         {
           CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
         }
 
-        CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-        CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planeMult, CUFFT_INVERSE),"Error executing CUFFT plan.");
+        FOLD // Call the FFT  .
+        {
+          void* dst = getCBwriteLocation(batch, cStack);
+
+          CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
+          CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+        }
       }
     }
 
@@ -279,6 +446,83 @@ void multiplyBatchCUFFT(cuFFdotBatch* batch )
 
 #endif  // CUDA_VERSION >= 6050
 
+void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack)
+{
+  void* dst = cStack->d_planePowr;
+
+  if ( batch->flags &    FLAG_CUFFT_CB_INMEM )
+  {
+#if CUDA_VERSION >= 6050
+    rVals* rVal   = &batch->rValues[0][0];
+
+    if ( batch->flags &  FLAG_HALF )
+    {
+#if CUDA_VERSION >= 7050
+      dst    = ((half*)batch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the inmeme plane
+#else
+      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+      exit(EXIT_FAILURE);
+#endif
+    }
+    else
+    {
+      dst    = ((float*)batch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the inmeme plane
+    }
+#else
+    fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+  }
+
+  return dst;
+}
+
+void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
+{
+  if ( batch->flags & FLAG_CUFFT_CB_OUT )
+  {
+
+#if CUDA_VERSION >= 6050
+
+    void* dst;
+
+    if ( batch->flags &    FLAG_CUFFT_CB_INMEM )
+    {
+      rVals* rVal   = &batch->rValues[0][0];
+
+      if ( batch->flags &  FLAG_HALF )
+      {
+#if CUDA_VERSION >= 7050
+        dst    = ((half*)batch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the inmeme plane
+#else
+        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+        exit(EXIT_FAILURE);
+#endif
+      }
+      else
+      {
+        dst    = ((float*)batch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the inmeme plane
+      }
+    }
+    else
+    {
+      dst = cStack->d_planePowr;
+
+			// Testing passing values in the actual pointer
+      //uint width  = cStack->strideCmplx ;
+      //uint skip   = cStack->kerStart ;
+      //uint pass   = (width << 16) | skip ;
+      //dst = (void*)pass;
+    }
+
+    CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&dst ),"Error assigning CUFFT store callback.");
+#else
+    fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+  }
+}
+
 /** Kernel to copy powers from complex plane to inmeme plane  .
  *
  */
@@ -286,7 +530,6 @@ template<typename T>
 __global__ void cpyPowers_ker( T* dst, size_t  dpitch, T*  src, size_t  spitch, size_t  width, size_t  height)
 {
   int ix = blockIdx.x * CPY_WIDTH + threadIdx.x ;
-  //int iy = blockIdx.y * 16 + threadIdx.y ;
 
   for ( int iy = 0 ; iy < height; iy++)
   {
@@ -300,10 +543,10 @@ __global__ void cpyPowers_ker( T* dst, size_t  dpitch, T*  src, size_t  spitch, 
 /** Kernel to copy powers from complex plane to inmeme plane  .
  *
  */
-__global__ void cpyCmplx_ker( float* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height)
+template<typename T>
+__global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height)
 {
   int ix = blockIdx.x * CPY_WIDTH + threadIdx.x ;
-  //int iy = blockIdx.y * 16 + threadIdx.y ;
 
   const int buffLen = 4;
 
@@ -311,19 +554,37 @@ __global__ void cpyCmplx_ker( float* dst, size_t  dpitch, fcomplexcu* src, size_
 
   if ( ix < width )
   {
-    //for ( int iy = 0 ; iy < height; iy++)
     int iy;
 
-    for ( iy = 0 ; iy < height - buffLen ; iy+=buffLen)
+    FOLD // All iterations with no height check
+    {
+      for ( iy = 0 ; iy < height - buffLen ; iy+=buffLen)
+      {
+        for ( int by = 0 ; by < buffLen; by++)
+        {
+          int gy = iy + by;
+
+          buff[by]          = getPower(src, gy*spitch + ix);
+        }
+
+        for ( int by = 0 ; by < buffLen; by++)
+        {
+          int gy = iy + by;
+
+          set(dst, gy*dpitch + ix, buff[by]);
+        }
+      }
+    }
+
+    FOLD // One last iteration with height checks
     {
       for ( int by = 0 ; by < buffLen; by++)
       {
         int gy = iy + by;
 
-        //if ( gy < height)
+        if ( gy < height)
         {
-          fcomplexcu cmplx  = src[gy*spitch + ix];
-          buff[by]          = cmplx.i*cmplx.i + cmplx.r*cmplx.r;
+          buff[by]          = getPower(src, gy*spitch + ix);
         }
       }
 
@@ -331,31 +592,10 @@ __global__ void cpyCmplx_ker( float* dst, size_t  dpitch, fcomplexcu* src, size_
       {
         int gy = iy + by;
 
-        //if ( gy < height)
+        if ( gy < height)
         {
-          dst[gy*dpitch + ix] = buff[by];
+          set(dst, gy*dpitch + ix, buff[by]);
         }
-      }
-    }
-
-    for ( int by = 0 ; by < buffLen; by++)
-    {
-      int gy = iy + by;
-
-      if ( gy < height)
-      {
-        fcomplexcu cmplx  = src[gy*spitch + ix];
-        buff[by]          = cmplx.i*cmplx.i + cmplx.r*cmplx.r;
-      }
-    }
-
-    for ( int by = 0 ; by < buffLen; by++)
-    {
-      int gy = iy + by;
-
-      if ( gy < height)
-      {
-        dst[gy*dpitch + ix] = buff[by];
       }
     }
   }
@@ -381,7 +621,8 @@ void cpyPowers( T* dst, size_t  dpitch, T* src, size_t  spitch, size_t  width, s
 
 /** Function to call the kernel to copy powers from powers plane to inmeme plane  .
  */
-void cpyCmplx( float* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
+template<typename T>
+void cpyCmplx( T* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
 {
   dim3 dimBlock, dimGrid;
 
@@ -393,9 +634,14 @@ void cpyCmplx( float* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size
   dimGrid.x   = ceil(ww);
   dimGrid.y   = 1 ;
 
-  cpyCmplx_ker<<<dimGrid,  dimBlock, 0, stream >>>(dst, dpitch, src, spitch, width, height);
+  cpyCmplx_ker<T><<<dimGrid,  dimBlock, 0, stream >>>(dst, dpitch, src, spitch, width, height);
 }
 
+/** Copy results of iFFT from powers plane to the inmem plane using 2D async memory copy
+ *
+ * This is done using one appropriately strided 2d memory copy for each step of a stack
+ *
+ */
 template<typename Tin, typename Tout>
 void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
@@ -417,6 +663,19 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   height  = cStack->height;
   spitch  = cStack->stridePower * inSz;
 
+  // Error check
+  if (cStack->noInStack > 1 )
+  {
+    fprintf(stderr,"ERROR: %s cannot handle stacks with more than one plane.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+
+  if ( batch->flags & FLAG_CUFFT_CB_INMEM )
+  {
+    // Copying was done by the callback directly
+    return;
+  }
+
   for ( int step = 0; step < batch->noSteps; step++ )
   {
     rVals* rVal = &batch->rValues[step][0];
@@ -425,14 +684,14 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
     {
       dst     = ((Tout*)batch->d_planeFull)    + rVal->step * batch->accelLen;
 
-      if      ( batch->flag & FLAG_ITLV_ROW )
+      if      ( batch->flags & FLAG_ITLV_ROW )
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
+        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->kerStart;
         spitch  = cStack->stridePower*batch->noSteps*inSz;
       }
       else
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
+        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->kerStart;
       }
 
       CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
@@ -440,9 +699,11 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   }
 }
 
+/** Copy results of the iFFT from powers plane to the inmem plane using a kernel  .
+ *
+ */
 void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  float*        dst;
   fcomplexcu*   src;
 
   size_t        dpitch;
@@ -455,30 +716,61 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   height  = cStack->height;
   spitch  = cStack->strideCmplx;
 
+  // Error check
+  if (cStack->noInStack > 1 )
+  {
+    fprintf(stderr,"ERROR: %s cannot handle stacks with more than one plane.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+
+  if ( batch->flags & FLAG_CUFFT_CB_INMEM )
+  {
+    // Copying was done by the callback directly
+    return;
+  }
+
   for ( int step = 0; step < batch->noSteps; step++ )
   {
     rVals* rVal = &batch->rValues[step][0];
 
-    if ( rVal->numrs )
+    if ( rVal->numrs ) // Valid step
     {
-      if ( batch->flag & FLAG_HALF )
+      FOLD // Calculate striding info
       {
-        fprintf(stderr, "ERROR: Cannot use non CUFFT callbacks with half presison.\n");
-        exit(EXIT_FAILURE);
+        // Source data location
+        if ( batch->flags & FLAG_ITLV_ROW )
+        {
+          src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->kerStart;
+          spitch  = cStack->strideCmplx*batch->noSteps;
+        }
+        else
+        {
+          src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->kerStart;
+        }
       }
-      dst       = ((float*)batch->d_planeFull)        + rVal->step * batch->accelLen;
 
-      if ( batch->flag & FLAG_ITLV_ROW )
+      if ( batch->flags & FLAG_HALF )
       {
-        src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN;
-        spitch  = cStack->strideCmplx*batch->noSteps;
+#if CUDA_VERSION >= 7050
+        // Each Step has its own start location in the inmem plane
+        half *dst = ((half*)batch->d_planeFull)        + rVal->step * batch->accelLen;
+
+        // Call kernel
+        cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+#else
+        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+        exit(EXIT_FAILURE);
+#endif
       }
       else
       {
-        src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + batch->hInfos->halfWidth * ACCEL_NUMBETWEEN ;
+        // Each Step has its own start location in the inmem plane
+        float *dst  = ((float*)batch->d_planeFull)        + rVal->step * batch->accelLen;
+
+        // Call kernel
+        cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
       }
 
-      cpyCmplx(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
     }
   }
 }
@@ -489,17 +781,10 @@ void multStack(cuFFdotBatch* batch, cuFfdotStack* cStack, int sIdx, cuFfdotStack
   {
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,    0), "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
-    // CFF output callback has its own data so can start once FFT is complete
+    // iFFT has its own data so can start once iFFT is complete
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
-    if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
-    {
-      // Have to wait for search to finish reading data
-      //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->searchComp,   0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-      //CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the complex plane so search must be compete
-    }
-
-    if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
+    if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
     {
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
     }
@@ -527,19 +812,19 @@ void multStack(cuFFdotBatch* batch, cuFfdotStack* cStack, int sIdx, cuFfdotStack
 
   FOLD // Call kernel(s)  .
   {
-    if      ( cStack->flag & FLAG_MUL_00 )
+    if      ( cStack->flags & FLAG_MUL_00 )
     {
       mult00(cStack->multStream, batch, sIdx);
     }
-    else if ( cStack->flag & FLAG_MUL_21 )
+    else if ( cStack->flags & FLAG_MUL_21 )
     {
       mult21_f(cStack->multStream, batch, sIdx);
     }
-    else if ( cStack->flag & FLAG_MUL_22 )
+    else if ( cStack->flags & FLAG_MUL_22 )
     {
       mult22_f(cStack->multStream, batch, sIdx);
     }
-    else if ( cStack->flag & FLAG_MUL_23 )
+    else if ( cStack->flags & FLAG_MUL_23 )
     {
       mult23_f(cStack->multStream, batch, sIdx);
     }
@@ -568,7 +853,7 @@ void multiplyBatch(cuFFdotBatch* batch)
     printf("\tMultiply & FFT\n");
 #endif
 
-    if ( batch->flag & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback  .
+    if ( batch->flags & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback  .
     {
 #ifdef STPMSG
       printf("\t\tMultiply with CUFFT\n");
@@ -590,7 +875,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 #endif
 
         // In my testing I found multiplying each plane separately works fastest so it is the "default"
-        if      ( batch->flag & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
+        if      ( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
         {
           FOLD // Synchronisation  .
           {
@@ -599,23 +884,19 @@ void multiplyBatch(cuFFdotBatch* batch)
             {
               cuFfdotStack* cStack = &batch->stacks[synchIdx];
 
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),      "Waiting for GPU to be ready to copy data to device.");    // Need input data
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp, 0),     "Waiting for GPU to be ready to copy data to device.");    // Need input data
 
-              if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
-              {
-                // CFF output callback has its own data so can start once FFT is complete
-                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-              }
+              // iFFT has its own data so can start once iFFT is complete
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),     "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
             }
 
-            if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
+            if ( !(batch->flags & FLAG_CUFFT_CB_OUT) )
             {
               // Have to wait for search to finish reading data
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
             }
 
-            if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
+            if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
             {
               CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
             }
@@ -638,7 +919,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             CUDA_SAFE_CALL(cudaEventRecord(batch->multComp, batch->multStream),"Recording event: multComp");
           }
         }
-        else if ( batch->flag & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
+        else if ( batch->flags & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
         {
           cuFfdotStack* pStack = NULL;  // Previous stack
 
@@ -647,7 +928,7 @@ void multiplyBatch(cuFFdotBatch* batch)
           {
             int sIdx;
 
-            if ( batch->flag & FLAG_STK_UP )
+            if ( batch->flags & FLAG_STK_UP )
               sIdx = batch->noStacks - 1 - ss;
             else
               sIdx = ss;
@@ -659,7 +940,7 @@ void multiplyBatch(cuFFdotBatch* batch)
             pStack = cStack;
           }
         }
-        else if ( batch->flag & FLAG_MUL_PLN )    // Do the multiplications one plane  at a time  .
+        else if ( batch->flags & FLAG_MUL_PLN )    // Do the multiplications one plane  at a time  .
         {
           mult10(batch);
         }
@@ -686,18 +967,22 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,      0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,       0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
+    // Wait for previous iFFT to finish
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftComp,      0), "Waiting for GPU to be ready to copy data to device.");
+    if ( batch->flags & FLAG_SS_INMEM  )
+    {
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+    }
+
     // Wait for previous search to finish
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,     0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
-    if ( (batch->retType & CU_STR_PLN) && (batch->flag & FLAG_CUFFT_CB_OUT) )
+    if ( (batch->retType & CU_STR_PLN) && (batch->flags & FLAG_CUFFT_CB_OUT) )
     {
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
     }
 
-    if ( batch->flag & FLAG_SS_INMEM  )
-    {
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-    }
+
 
 #ifdef SYNCHRONOUS
     // Wait for all the multiplications to complete
@@ -728,23 +1013,14 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
 #endif
       }
 
-      FOLD // Set store FFT callback  .
-      {
-        if ( batch->flag & FLAG_CUFFT_CB_OUT )
-        {
-#if CUDA_VERSION >= 6050
-          CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&cStack->d_planePowr ),"Error assigning CUFFT store callback.");
-#else
-          fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
-          exit(EXIT_FAILURE);
-#endif
-        }
-      }
+      setCB(batch, cStack);
 
       FOLD // Call the FFT  .
       {
+        void* dst = getCBwriteLocation(batch, cStack);
+
         CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-        CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) cStack->d_planePowr, CUFFT_INVERSE),"Error executing CUFFT plan.");
+        CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
       }
     }
   }
@@ -752,6 +1028,14 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack =
   FOLD // Synchronisation  .
   {
     cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
+
+    // If using power calculate call back with the inmem plane
+    if ( batch->flags & FLAG_CUFFT_CB_INMEM )
+    {
+#if CUDA_VERSION >= 6050
+      cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream);
+    }
+#endif
   }
 }
 
@@ -771,7 +1055,7 @@ void IFFTBatch(cuFFdotBatch* batch)
     {
       int sIdx;
 
-      if ( batch->flag & FLAG_STK_UP )
+      if ( batch->flags & FLAG_STK_UP )
         sIdx = batch->noStacks - 1 - ss;
       else
         sIdx = ss;
@@ -795,23 +1079,31 @@ void IFFTBatch(cuFFdotBatch* batch)
   }
 }
 
+/**
+ *
+ */
 void copyToInMemPln(cuFFdotBatch* batch)
 {
   if ( batch->rValues[0][0].numrs )
   {
-    if ( batch->flag & FLAG_SS_INMEM )
+    if ( batch->flags & FLAG_SS_INMEM )
     {
-      // Copy back data
-      for (int ss = 0; ss < batch->noStacks; ss++) // Note: This is probally unnessecary as there should be only 1 stack for FLAG_SS_INMEM
+      if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
-        int sIdx;
+        // Copying was done by the callback directly
+        return;
+      }
 
-        if ( batch->flag & FLAG_STK_UP )
-          sIdx = batch->noStacks - 1 - ss;
-        else
-          sIdx = ss;
+      // Error check
+      if (batch->noStacks > 1 )
+      {
+        fprintf(stderr,"ERROR: %s cannot handle a family with more than one plane.\n", __FUNCTION__);
+        exit(EXIT_FAILURE);
+      }
 
-        cuFfdotStack* cStack = &batch->stacks[sIdx];
+      FOLD // Copy back data  .
+      {
+        cuFfdotStack* cStack = &batch->stacks[0];
 
         FOLD // Synchronisation  .
         {
@@ -820,9 +1112,10 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
         FOLD // Copy memory on the device  .
         {
-          if ( batch->flag & FLAG_CUFFT_CB_OUT )
+          if ( batch->flags & FLAG_CUFFT_CB_POW )
           {
-            if ( batch->flag & FLAG_HALF )
+            // Copy memory using a 2D async memory copy
+            if ( batch->flags & FLAG_HALF )
             {
 #if CUDA_VERSION >= 7050
               copyIFFTtoPln<half,half>( batch, cStack );
@@ -838,6 +1131,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
           }
           else
           {
+            // Use kernel to copy powers from powers plane to the inmem plane
             cmplxToPln( batch, cStack );
           }
 
@@ -867,7 +1161,7 @@ void convolveBatch(cuFFdotBatch* batch)
     printf("\tMultiply & FFT\n");
 #endif
 
-    if ( batch->flag & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback (in my testing this is VERY slow!)  .
+    if ( batch->flags & FLAG_CUFFT_CB_IN )   // Do the multiplication using a CUFFT callback (in my testing this is VERY slow!)  .
     {
 #ifdef STPMSG
       printf("\t\tMultiply with CUFFT\n");
@@ -889,7 +1183,7 @@ void convolveBatch(cuFFdotBatch* batch)
 #endif
 
         // In my testing I found multiplying each plane separately works fastest so it is the "default"
-        if      ( batch->flag & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
+        if      ( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
         {
           FOLD // Synchronisation  .
           {
@@ -898,24 +1192,21 @@ void convolveBatch(cuFFdotBatch* batch)
             {
               cuFfdotStack* cStack = &batch->stacks[synchIdx];
 
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),      "Waiting for GPU to be ready to copy data to device.");    // Need input data
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");    // Need input data
 
-              if ( (batch->flag & FLAG_CUFFT_CB_OUT) )
-              {
-                // CFF output callback has its own data so can start once FFT is complete
-                CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-              }
+              // iFFT has its own data so can start once iFFT is complete
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),  "Waiting for GPU to be ready to copy data to device.");
             }
 
-            if ( !(batch->flag & FLAG_CUFFT_CB_OUT) )
+            if ( !(batch->flags & FLAG_CUFFT_CB_OUT) )
             {
               // Have to wait for search to finish reading data
               CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
             }
 
-            if ( (batch->retType & CU_STR_PLN) && !(batch->flag & FLAG_CUFFT_CB_OUT) )
+            if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
             {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
+              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0), "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
             }
           }
 
@@ -936,7 +1227,7 @@ void convolveBatch(cuFFdotBatch* batch)
             CUDA_SAFE_CALL(cudaEventRecord(batch->multComp, batch->multStream),"Recording event: multComp");
           }
         }
-        else if ( batch->flag & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
+        else if ( batch->flags & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
         {
           cuFfdotStack* pStack = NULL;  // Previous stack
 
@@ -945,7 +1236,7 @@ void convolveBatch(cuFFdotBatch* batch)
           {
             int sIdx;
 
-            if ( batch->flag & FLAG_STK_UP )
+            if ( batch->flags & FLAG_STK_UP )
               sIdx = batch->noStacks - 1 - ss;
             else
               sIdx = ss;
@@ -959,7 +1250,7 @@ void convolveBatch(cuFFdotBatch* batch)
 
             FOLD // IFFT  .
             {
-              if ( batch->flag & FLAG_CONV )
+              if ( batch->flags & FLAG_CONV )
               {
                 IFFTStack(batch, cStack, pStack);
               }
@@ -968,7 +1259,7 @@ void convolveBatch(cuFFdotBatch* batch)
             pStack = cStack;
           }
         }
-        else if ( batch->flag & FLAG_MUL_PLN )    // Do the multiplications one plane  at a time  .
+        else if ( batch->flags & FLAG_MUL_PLN )    // Do the multiplications one plane  at a time  .
         {
           mult10(batch);
         }
@@ -985,7 +1276,7 @@ void convolveBatch(cuFFdotBatch* batch)
   // IFFT  .
   if ( batch->rValues[0][0].numrs )
   {
-    if ( !( (batch->flag & FLAG_CONV) && (batch->flag & FLAG_MUL_STK) ) )
+    if ( !( (batch->flags & FLAG_CONV) && (batch->flags & FLAG_MUL_STK) ) )
     {
       nvtxRangePush("IFFT");
 
@@ -999,7 +1290,7 @@ void convolveBatch(cuFFdotBatch* batch)
       {
         int sIdx;
 
-        if ( batch->flag & FLAG_STK_UP )
+        if ( batch->flags & FLAG_STK_UP )
           sIdx = batch->noStacks - 1 - ss;
         else
           sIdx = ss;

@@ -1,113 +1,113 @@
+# 	This file contains the settings to controle how the GPU accel search is carried out
+#	#'s Comment out lines, blak lines are ignored
+#	Uncomments settings as you desire
+#	Generally if two flags are on one after the other in this file they are a ither ore option, the last uncommented one will be used
+#	
+#	If you have any questions pleas e-mail Chris Laidler  chris.laidler+presto@gmail.com
+
 
 ######## Memory #########
 
 # Interleaving
-#  IL_ROW   or   IL_PLN
-IL_ROW
+IL_ROW				# Interleave steps row by row
+#IL_PLN				# Interleave steps row by plane
 
 ######### Kernel #########
 
-# Higher accuracy for z values closer to 0
-FLAG_KER_ACC
+FLAG_KER_ACC			# Higher accuracy for z values closer to 0
 
 ########## Input #########
 
 # Normalise input in the CPU or the GPU
-# NORM_CPU NORM_GPU
-NORM_CPU
+#NORM_CPU			# Do the input Normalisation on the CPU
+#NORM_GPU			# Do the input Normalisation on the GPU
 
 # FFT input in the CPU or the GPU
-# FFT_CPU  FFT_GPU
-FFT_CPU
+#FFT_CPU			# Do the input FFT's on the CPU
+#FFT_GPU			# Do the input FFT's on the GPU
 
 ######## Convolve ########
 
 # Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
-# MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30 MUL_AA
+# MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30  MUL_AA
 MUL_AA
 
-# Other Convolve options
-# FLAG_TEX_MUL
+#FLAG_TEX_MUL			# [Depricated]	Use texture memory in the multiplication kernel
 
-# The number of slices to separate the multiplication kernel into
-MUL_SLICES	3
+MUL_SLICES	3		# The number of horisontal "slices" to break the multiplication kernel into
 
-# The size of chunks to use in the multiplication kernel
-MUL_CHUNK	9
+MUL_CHUNK	9		# The number of values to buffer in the multiplication kernel (this increases register use)
 
-# Multiply and IFFT
-# FLAG_SEP  FLAG_CONV
-FLAG_SEP
+# How to do convolution
+#FLAG_SEP			# Do the multiplication and iFFT "seperately"	ie all multiplications followed by all iFFT's
+#FLAG_CONV			# Do the multiplication and iFFT "together"		ie multiply and iFFT each stack one after the other
 
-#  FLAG_STK_DOWN  FLAG_STK_UP
-FLAG_STK_DOWN
+# Which order to call stacks
+FLAG_STK_DOWN			# larges to smallest
+FLAG_STK_UP			# smallest to larges
 
 ######### FFT ############
 
-# FLAG_CUFFT_CB_IN 	# In my testing this is very slow, like 7 times slower (FFT only)!
-FLAG_CUFFT_CB_OUT       # Almost always a good option!
-
-#FLAG_NO_CB
-
+# FLAG_CUFFT_CB_INPUT		# In my testing this is very slow, like 7 times slower (FFT only)!
+FLAG_CUFFT_CB_POW		# Almost always a good option!
+#FLAG_CUFFT_CB_INMEM		# In my testing this is very slow
+#FLAG_NO_CB			# Force using no CUFFT callbacks
 
 ######## Return ##########
 
-# FLAG_RET_ARR  FLAG_RET_PLN
-# FLAG_RET_ARR
-
+# FLAG_RET_ARR			# [Depricated]
+#FLAG_RET_PLN			# [Depricated]
 
 ######## Search ##########
 
 # If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
-# FLAG_HALF or FLAG_SINGLE
-FLAG_HALF
+#FLAG_SINGLE			# Forece single presision powers
+#FLAG_HALF			# Forece half presision powers (requires CUDA 7.5 or greater)
 
 
-#FLAG_SAS_TEX
-#FLAG_TEX_INTERP
-# SIG_GPU or SIG_CPU (default)
+#FLAG_SAS_TEX			# [Depricated]	Use texture memory in the sum and search kernel
+#FLAG_TEX_INTERP		# [Depricated]	Use texture memory & interpolation in the multiplication kernel
+
+#SIG_GPU			# 		Now the default
+#SIG_CPU			# [Depricated]	Do the canidate sigma calcualtons on the GPU
 
 # Use separate CPU threads to process results
-# FLAG_THREAD   OR      FLAG_SEQ               # Threading is on by default
-# FLAG_THREAD
-
+#FLAG_THREAD			# (default)	Forece CPU threadding for sigma calcuations
+#FLAG_SEQ			# 		Forece CPU seqental for sigma calcuations
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
 SS_AA
 
-SS_SLICES	3
+SS_SLICES	3		# The number of horisontal "slices" to break the Sum & Search kernel into
 
-SS_CHUNK	9
+SS_CHUNK	9		# The number of values to buffer in the Sum & Search kernel (this increases register use)
 
 
 ###### Candidates ########
 
-# FLAG_RETURN_ALL or FLAG_RETURN_FINAL
+#FLAG_STORE_ALL			# [Not yet implimented]	Dont fiddle with this this is for future use
+#FLAG_STORE_EXP			# [Not yet implimented]	Dont fiddle with this this is for future use
 
-#FLAG_STORE_ALL
-#FLAG_STORE_EXP
-
-# CU_CAND_ARR   CU_CAND_LST   CU_CAND_QUAD
-CU_CAND_ARR
+# How to store canidates
+CU_CAND_ARR			# Use an array 			(fast acces, but requires more CPU memeory)
+CU_CAND_LST			# Use a linked list		(slower but requires less CPU memeory)
+CU_CAND_QUAD			# Use a quad tree		(Better all round - But not yet properlly implimented)
 
 
 ###### Optimisation ########
 
-optpln01 40
-optpln02 30
-optpln03 20
-optpln04 10
-optpln05 0
-optpln06 0
+# The Numbers below dictae how may points and thus the size of the incomental planes used to refine the location of the maximum f-f value
+# Lager numbers will take longer to run but have a finer resolution
+optpln01 40			# The number of elements in the 1st optemisation plane
+optpln02 30			# The number of elements in the 2nd optemisation plane
+optpln03 20			# The number of elements in the 3rd optemisation plane
+optpln04 10			# The number of elements in the 4th optemisation plane
+optpln05 0			# The number of elements in the 5th optemisation plane
+optpln06 0			# The number of elements in the 6th	optemisation plane (this is a double pressioson plane)
 
-# optpln01 20
-# optpln02 0
-# optpln03 0
-# optpln04 0
-# optpln05 0
-# optpln06 0
-
+# The Numbers below dictae the size in bins of the incomental planes used to refine the location of the maximum f-fdot value
+# Lager numbers will explore the f-fdot plane faster but will reduce resolution
 #optSz01 4
 #optSz02 4
 #optSz04 4
@@ -115,15 +115,8 @@ optpln06 0
 #optSz16 4
 
 
-###### Other ########
+###### Debug ########
 
-#PLT_OPT
-#UNOPT
-
-#globalInt01 1
-
-
-
-
-
+#PLT_OPT			# [Debug]		
+#UNOPT				# [Debug]	
 

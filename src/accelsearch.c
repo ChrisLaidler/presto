@@ -437,132 +437,144 @@ int main(int argc, char *argv[])
         FOLD //                                 ---===== Main Loop =====---  .
         {
 
+          FOLD // Do the search or inmem plane creation
+          {
+            if      ( master->flag & FLAG_SS_INMEM     )
+              nvtxRangePush("In-Mem plane");
+            else
+              nvtxRangePush("GPU Search");
+
+
 #ifndef DEBUG 	// Parallel if we are not in debug mode  .
-          omp_set_num_threads(cuSrch->pInf->noBatches);
+            omp_set_num_threads(cuSrch->pInf->noBatches);
 #pragma omp parallel
 #endif
-          FOLD  //                              ---===== Main Loop =====---  .
-          {
-            int tid = omp_get_thread_num();
-
-            cuFFdotBatch* trdBatch = &cuSrch->pInf->batches[tid];
-
-            double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
-            double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
-            int      rest    = trdBatch->noSteps;
-
-            setDevice(trdBatch->device) ;
-
-            int firstStep    = 0;
-            int step;
-
-            while ( ss < maxxx )  //            ---===== Main Loop =====---  .
+            FOLD  //                              ---===== Main Loop =====---  .
             {
-              FOLD // Calculate the step(s) to handle  .
+              int tid = omp_get_thread_num();
+
+              cuFFdotBatch* trdBatch = &cuSrch->pInf->batches[tid];
+
+              double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
+              double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
+              int      rest    = trdBatch->noSteps;
+
+              setDevice(trdBatch->device) ;
+
+              int firstStep    = 0;
+              int step;
+
+              while ( ss < maxxx )  //            ---===== Main Loop =====---  .
               {
+                FOLD // Calculate the step(s) to handle  .
+                {
 
 #pragma omp critical
-                FOLD // Calculate the step  .
-                {
-                  firstStep = ss;
-                  ss       += trdBatch->noSteps;
-                  cuSrch->noSteps++;
-#ifdef STPMSG
-                  printf("\nStep %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, trdBatch->noSteps);
-#endif
-                }
-
-                if ( firstStep >= maxxx )
-                  break;
-
-                if ( firstStep + (int)trdBatch->noSteps >= maxxx ) // End case (there is some overflow)  .
-                {
-                  // TODO: There are a number of families we don't need to run see if we can use 'setplanePointers(trdBatch)'
-                  // To see if we can do less work on the last step
-                  rest = maxxx - firstStep;
-                }
-              }
-
-              FOLD // Set start r-vals for all steps in this batch  .
-              {
-                trdBatch->rValues = trdBatch->rArrays[0];
-
-                for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
-                {
-                  rVals* rVal = &trdBatch->rValues[step][0];
-
-                  if ( step < rest )
+                  FOLD // Calculate the step  .
                   {
-                    startrs[step]   = startr        + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
-                    lastrs[step]    = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+                    firstStep = ss;
+                    ss       += trdBatch->noSteps;
+                    cuSrch->noSteps++;
+#ifdef STPMSG
+                    printf("\nStep %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, trdBatch->noSteps);
+#endif
+                  }
 
-                    rVal->drlo      = startrs[step];
-                    rVal->drhi      = lastrs[step];
+                  if ( firstStep >= maxxx )
+                    break;
 
-                    int harm;
-                    for (harm = 0; harm < trdBatch->noHarms; harm++)
+                  if ( firstStep + (int)trdBatch->noSteps >= maxxx ) // End case (there is some overflow)  .
+                  {
+                    // TODO: There are a number of families we don't need to run see if we can use 'setplanePointers(trdBatch)'
+                    // To see if we can do less work on the last step
+                    rest = maxxx - firstStep;
+                  }
+                }
+
+                FOLD // Set start r-vals for all steps in this batch  .
+                {
+                  trdBatch->rValues = trdBatch->rArrays[0];
+
+                  for ( step = 0; step < (int)trdBatch->noSteps ; step ++)
+                  {
+                    rVals* rVal = &trdBatch->rValues[step][0];
+
+                    if ( step < rest )
                     {
-                      rVal          = &trdBatch->rValues[step][harm];
-                      rVal->step    = firstStep + step;
+                      startrs[step]   = startr        + (firstStep+step) * ( trdBatch->accelLen * ACCEL_DR );
+                      lastrs[step]    = startrs[step] + trdBatch->accelLen * ACCEL_DR - ACCEL_DR;
+
+                      rVal->drlo      = startrs[step];
+                      rVal->drhi      = lastrs[step];
+
+                      int harm;
+                      for (harm = 0; harm < trdBatch->noHarms; harm++)
+                      {
+                        rVal          = &trdBatch->rValues[step][harm];
+                        rVal->step    = firstStep + step;
+                      }
+                    }
+                    else
+                    {
+                      startrs[step]   = 0 ;
+                      lastrs[step]    = 0 ;
                     }
                   }
-                  else
-                  {
-                    startrs[step]   = 0 ;
-                    lastrs[step]    = 0 ;
-                  }
                 }
-              }
 
-              FOLD // Call the CUDA search  .
-              {
-                search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
-              }
+                FOLD // Call the CUDA search  .
+                {
+                  search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
+                }
 
 #ifndef STPMSG
-              if      ( master->flag & FLAG_SS_INMEM     )
-              {
-                printf("\rGenerating in-mem GPU plane  %5.1f%%", firstStep/(float)maxxx*100.0);
-              }
-              else
-              {
-                int noTrd;
-                sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-                printf("\rGPU search  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", firstStep/(float)maxxx*100.0, noTrd);
-              }
-              //printf("\r%s  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", srcTyp, firstStep/(float)maxxx*100.0, noTrd );
-              fflush(stdout);
+                if      ( master->flag & FLAG_SS_INMEM     )
+                {
+                  printf("\rGenerating in-mem GPU plane  %5.1f%%", firstStep/(float)maxxx*100.0);
+                }
+                else
+                {
+                  int noTrd;
+                  sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+                  printf("\rGPU search  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", firstStep/(float)maxxx*100.0, noTrd);
+                }
+                //printf("\r%s  %5.1f%% ( %3i Active CPU threads processing found candidates)  ", srcTyp, firstStep/(float)maxxx*100.0, noTrd );
+                fflush(stdout);
 #endif
+              }
+
+              FOLD  // Finish off CUDA search  .
+              {
+                // Set r values to 0 so as to not process details
+                for ( step = 0; step < (int)trdBatch->noSteps ; step++)
+                {
+                  startrs[step] = 0;
+                  lastrs[step]  = 0;
+                }
+
+                // Finish searching the planes, this is required because of the out of order asynchronous calls
+                for ( step = 0 ; step < trdBatch->noRArryas; step++ )
+                {
+                  search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
+                }
+
+                // Wait for asynchronous execution to complete
+                finish_Search(trdBatch);
+              }
             }
 
-            FOLD  // Finish off CUDA search  .
+            printf("\r%s. %5.1f%%                                                                                         \n", srcTyp, 100.0);
+
+            FOLD // Wait for CPU threads to complete  .
             {
-              // Set r values to 0 so as to not process details
-              for ( step = 0; step < (int)trdBatch->noSteps ; step++)
-              {
-                startrs[step] = 0;
-                lastrs[step]  = 0;
-              }
-
-              // Finish searching the planes, this is required because of the out of order asynchronous calls
-              for ( step = 0 ; step < trdBatch->noRArryas; step++ )
-              {
-                search_ffdot_batch_CU(trdBatch, startrs, lastrs, obs.norm_type);
-              }
-
-              // Wait for asynchronous execution to complete
-              finish_Search(trdBatch);
+              waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
             }
+
+            nvtxRangePop();
+
           }
 
-          printf("\r%s. %5.1f%%                                                                                         \n", srcTyp, 100.0);
-
-          FOLD // Wait for CPU threads to complete  .
-          {
-            waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
-          }
-
-          FOLD // finish off in-mem search  .
+          FOLD // Do in-mem search  .
           {
             if      ( master->flag & FLAG_SS_INMEM     )
             {

@@ -345,7 +345,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
   {
     FOLD // Synchronisation  .
     {
-      if      ( batch->flag & FLAG_SS_INMEM )
+      if      ( batch->flags & FLAG_SS_INMEM )
         cudaStreamWaitEvent(batch->srchStream, batch->searchComp, 0);
       else
         cudaStreamWaitEvent(batch->srchStream, batch->candCpyComp, 0);
@@ -360,7 +360,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
     FOLD // Call the kernel  .
     {
-      if ( batch->flag & FLAG_HALF  )
+      if ( batch->flags & FLAG_HALF  )
       {
 #if CUDA_VERSION >= 7050
         searchINMEM_p<half>(batch);
