@@ -1053,11 +1053,18 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
 
       for ( int i = 1; i <= pln->noHarms; i++ )
       {
-        pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (fft->idx+pln->centR)*i-fft->rlo, pln->centZ*i, 0.0);
+        pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
       }
 
       nvtxRangePop();
     }
+  }
+
+  if ( newInp ) // A blocking synchronisation to make sure we can write to host memory  .
+  {
+    infoMSG(3,4,"pre synchronisation [blocking]\n");
+
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->inpCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
   }
 
   // Calculate values for harmonics     and   normalise input and write data to host memory
@@ -1078,16 +1085,9 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
       double factor   = sqrt(pln->norm[h]);
       norm.val[h]     = factor;
 
-      FOLD // A blocking synchronisation to make sure we can write to host memory  .
-      {
-        infoMSG(3,4,"pre synchronisation [blocking]\n");
-
-        CUDA_SAFE_CALL(cudaEventSynchronize(pln->inpCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-      }
-
       for ( int i = 0; i < pln->inpStride; i++ ) // Normalise input  .
       {
-        off = rOff.val[h] - fft->rlo + i;
+        off = rOff.val[h] - fft->idx + i;
 
         if ( off >= 0 && off < fft->nor )
         {
@@ -2429,7 +2429,7 @@ void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptC
   pln->noHarms  = maxHarms ;
   for ( int i=1; i <= maxHarms; i++ )
   {
-    pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (fft->idx+pln->centR)*i-fft->rlo, pln->centZ*i, 0.0);
+    pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
   }
 
   FOLD // Get best candidate location using GPU planes  .

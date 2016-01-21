@@ -633,7 +633,7 @@ static void center_string(char *outstring, char *instring, int width)
   {
     //printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n", len, instring, width);
   }
-  //tmp = memset(outstring, ' ', width);
+  memset(outstring, ' ', width);
   outstring[width] = '\0';
   if (len >= width) {
     strncpy(outstring, instring, width);

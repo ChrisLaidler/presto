@@ -3526,12 +3526,12 @@ void printCands(const char* fileName, GSList *cands, double T)
     fprintf ( stderr, "ERROR: Unable to open log file %s\n", fileName );
   else
   {
-    fprintf(myfile, "#\tr\tf\tz\tfd\tsig\tpower\tharm \n");
+    fprintf(myfile, "%4s\t%14s\t%10s\t%14s\t%13s\t%9s\t%7s\t%2s \n", "#", "t", "f", "z", "fd", "sig", "power", "harm" );
     int i = 0;
 
     while ( inp_list->next )
     {
-      fprintf(myfile, "%i\t%14.5f\t%10.6f\t%14.2f\t%13.10f\t%-7.4f\t%7.2f\t%i \n", i+1, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->r / T, ((accelcand *) (inp_list->data))->z,((accelcand *) (inp_list->data))->z/T/T, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
+      fprintf(myfile, "%4i\t%14.5f\t%10.6f\t%14.2f\t%13.10f\t%9.4f\t%7.2f\t%2i\n", i+1, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->r / T, ((accelcand *) (inp_list->data))->z,((accelcand *) (inp_list->data))->z/T/T, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
       inp_list = inp_list->next;
       i++;
     }
