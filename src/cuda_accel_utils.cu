@@ -3793,7 +3793,7 @@ void readAccelDefalts(searchSpecs *sSpec)
       else if ( strCom(line, "FLAG_MUL_A"  ) || strCom(line, "MUL_A"  ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-      } 
+      }
 
       else if ( strCom(line, "FLAG_FFT_SEPERATE"  ) || strCom(line, "FLAG_FFT_SEP"  ) )
       {
@@ -4169,7 +4169,6 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_RAND_1;
       }
 
-
       else if ( strCom(line, "FLAG_DBG_SYNCH" ) )
       {
         (*flags) |= FLAG_SYNCH;
@@ -4179,11 +4178,29 @@ void readAccelDefalts(searchSpecs *sSpec)
         //(*flags) |= FLAG_SYNCH; // Timing relies on synchronous search
         (*flags) |= FLAG_TIME;
       }
-
-      else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )
+      else if ( strCom(line, "FLAG_DPG_PRNT_CAND" ) )
       {
-        line[flagLen] = 0;
-        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n", line, lineno, fName);
+        (*flags) |= FLAG_DPG_PRNT_CAND;
+      }
+      else if ( strCom(line, "FLAG_DBG_SKIP_OPT" ) || strCom(line, "SKP_OPT" ) || strCom(line, "skpOpt"  ) )
+      {
+        skpOpt  = 1;
+      }
+
+      else if ( strCom(line, "pltOpt"  ) || strCom(line, "PLT_OPT" ) )
+      {
+        pltOpt    = 1;
+      }
+
+      else if ( strCom(line, "UNOPT" ) )
+      {
+        useUnopt    = 1;
+      }
+
+      else if ( strCom(line, "DBG_LEV" ) )
+      {
+        rest      = &line[ strlen("DBG_LEV")+1];
+        msgLevel  = atoi(rest);
       }
 
       else if ( strCom(line, "cuMedianBuffSz" ) )             // The size of the sub sections to use in the cuda median selection algorithm
@@ -4308,31 +4325,15 @@ void readAccelDefalts(searchSpecs *sSpec)
         optSz16   = atof(rest);
       }
 
-      else if ( strCom(line, "pltOpt"  ) || strCom(line, "PLT_OPT" ) )
-      {
-        pltOpt    = 1;
-      }
-
-      else if ( strCom(line, "UNOPT" ) )
-      {
-        useUnopt    = 1;
-      }
-
-      else if ( strCom(line, "DBG_LEV" ) )
-      {
-        rest      = &line[ strlen("DBG_LEV")+1];
-        msgLevel  = atoi(rest);
-      }
-
-
-      else if ( strCom(line, "skpOpt"  ) || strCom(line, "SKP_OPT" ) || strCom(line, "FLAG_DBG_SKIP_OPT" ) )
-      {
-        skpOpt  = 1;
-      }
-
       else if ( strCom(line, "#" ) || ll == 1 )
       {
         // Comment line !
+      }
+
+      else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )
+      {
+        line[flagLen] = 0;
+        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n", line, lineno, fName);
       }
 
       else

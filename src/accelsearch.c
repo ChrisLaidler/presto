@@ -120,9 +120,9 @@ int main(int argc, char *argv[])
 
   cmd = parseCmdline(argc, argv);
 
+  char name[1024];
 #ifdef DEBUG
   showOptionValues();
-  char name[1024];
 #endif
 
 #ifdef CUDA // List GPU's  .
@@ -356,10 +356,11 @@ int main(int argc, char *argv[])
 
         nvtxRangePop();
 
-#ifdef DEBUG
-        sprintf(name,"%s_CPU_01_Cands.csv", fname);
-        printCands(name, candsCPU, obs.T);
-#endif
+        if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+        {
+          sprintf(name,"%s_CPU_01_Cands.csv", fname);
+          printCands(name, candsCPU, obs.T);
+        }
 
 #endif
 
@@ -373,7 +374,7 @@ int main(int argc, char *argv[])
         if ( cntxThread )
         {
           nvtxRangePush("Wait on context thread");
- 
+
           printf("Waiting for CUDA context initialisation complete ...");
           fflush(stdout);
 
@@ -417,13 +418,13 @@ int main(int argc, char *argv[])
           cuSrch    = initCuKernels(&sSpec, &gSpec, cuSrch);
           master    = &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
 
-					// Timing of device setup and kernel creation
-					gettimeofday(&end, NULL);
+          // Timing of device setup and kernel creation
+          gettimeofday(&end, NULL);
           gpuKerTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-				}
-				
-				FOLD // Set the bounds of the search
-				{
+        }
+
+        FOLD // Set the bounds of the search
+        {
           // Search bounds
           startr    = 0, lastr = 0, nextr = 0;
           maxxx     = cuSrch->SrchSz->noSteps;
@@ -438,7 +439,7 @@ int main(int argc, char *argv[])
             maxxx = 0;
 
           printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", maxxx, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
-          
+
           if ( msgLevel == 0 )
           {
             print_percent_complete(startr - startr, sSpec.fftInf.rhi - startr, "search", 1);
@@ -756,11 +757,12 @@ int main(int argc, char *argv[])
 
         printf("\nGPU found %li candidates of which %i are unique. In %.4f ms\n", noCands, g_slist_length(cands), gpuTime/1000.0 );
 
-#ifdef DEBUG
-        char name [1024];
-        sprintf(name,"%s_GPU_01_Cands.csv",fname);
-        printCands(name, candsGPU, obs.T);
-#endif
+        if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+        {
+          char name [1024];
+          sprintf(name,"%s_GPU_01_Cands.csv",fname);
+          printCands(name, candsGPU, obs.T);
+        }
 
 #else
         fprintf(stderr,"ERROR: Not compiled with CUDA.\n");
@@ -847,10 +849,11 @@ int main(int argc, char *argv[])
 
         cands = sort_accelcands(cands);
 
-#ifdef DEBUG
-        sprintf(name,"%s_GPU_02_Cands_Sorted.csv",fname);
-        printCands(name, cands, obs.T);
-#endif
+        if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+        {
+          sprintf(name,"%s_GPU_02_Cands_Sorted.csv",fname);
+          printCands(name, cands, obs.T);
+        }
 
         /* Eliminate (most of) the harmonically related candidates */
         if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
@@ -861,10 +864,11 @@ int main(int argc, char *argv[])
         // Update the number of candidates
         numcands = g_slist_length(cands);
 
-#ifdef DEBUG
-        sprintf(name,"%s_GPU_04_Cands_Thinned.csv",fname);
-        printCands(name, cands, obs.T);
-#endif
+        if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+        {
+          sprintf(name,"%s_GPU_04_Cands_Thinned.csv",fname);
+          printCands(name, cands, obs.T);
+        }
 
         /* Now optimize each candidate and its harmonics */
 
@@ -1003,10 +1007,11 @@ int main(int argc, char *argv[])
         // Re sort with new sigma values
         cands = sort_accelcands(cands);
 
-#ifdef DEBUG
-        sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
-        printCands(name, cands, obs.T);
-#endif
+        if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+        {
+          sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
+          printCands(name, cands, obs.T);
+        }
 
         /* Eliminate (most of) the harmonically related candidates */
         if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
@@ -1038,11 +1043,11 @@ int main(int argc, char *argv[])
           listptr = listptr->next;
         }
 
-#ifdef DEBUG
-        sprintf(name,"%s_GPU_06_Cands_Optemised_cleaned.csv",fname);
-        printCands(name, cands, obs.T);
-#endif
-
+        if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+        {
+          sprintf(name,"%s_GPU_06_Cands_Optemised_cleaned.csv",fname);
+          printCands(name, cands, obs.T);
+        }
         /* Write the fundamentals to the output text file */
 
 #ifdef CUDA

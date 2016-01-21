@@ -112,6 +112,7 @@ extern "C"
 #define     FLAG_SYNCH          (1ULL<<35)     ///< Run the search in synchronous mode, this is slow and should only be used for testing
 #define     FLAG_SEPSRCH        (1ULL<<36)     ///< Create a separate second output location for the search output
 #define     FLAG_SEPRVAL        (1ULL<<37)     ///< Create a separate location list
+#define     FLAG_DPG_PRNT_CAND  (1ULL<<38)     ///< Print canidates to
 
 
 // ----------- This is a list of the data types that and storage structures
