@@ -444,3 +444,104 @@ const char* _cudaGetErrorEnum(cufftResult error)
 
   return "<unknown>";
 }
+
+/**
+ * @brief printf a message for info logging
+ *
+ * @param lev     The info level of this message
+ * @param indent  The indentation level pof this message
+ * @param format  C string that contains a format string that follows the same specifications as format in <a href="http://www.cplusplus.com/printf">printf</a>
+ * @return void
+ **/
+void infoMSG ( int lev, int indent, const char* format, ... )
+{
+  if ( lev <= msgLevel )
+  {
+    char buffer[1024];
+    char *msg = buffer;
+
+    va_list ap;
+    va_start ( ap, format );
+    vsprintf ( buffer, format, ap );      // Write the line
+    va_end ( ap );
+
+    while ( *msg == 10 )
+    {
+      printf("\n");
+      msg++;
+    }
+
+    printf("Info %02i ", lev);
+
+    for ( int i = 0; i < indent;  i++ )
+      printf("  ");
+
+    printf("%s", msg);
+
+    if ( msg[strlen(msg)-1] != 10 )
+    {
+      printf("\n");
+    }
+
+    fflush(stdout);
+    fflush(stderr);
+  }
+}
+
+
+void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const char* msg )
+{
+  infoMSG(3,3,"timeEvent %s\n", msg);
+
+  // Check for previous errors
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering timing");
+
+  float time;         // Time in ms of the thing
+  cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+  ret = cudaEventQuery(end);
+  if ( ret == cudaErrorNotReady )
+  {
+    // This is not ideal!
+    infoMSG(3,4,"pre synchronisation [blocking] end\n");
+
+    char msg2[1024];
+    cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
+    sprintf(msg2, "Blocking on %s", msg);
+    nvtxRangePush(msg2);
+
+    sprintf(msg2, "At a timing blocking synchronisation \"%s\"", msg);
+    CUDA_SAFE_CALL(cudaEventSynchronize(end), msg2 );
+
+    nvtxRangePop();
+
+  }
+
+  // Do the actual timing
+  ret = cudaEventElapsedTime(&time, start, end);
+
+  if      ( ret == cudaErrorInvalidResourceHandle )
+  {
+    // This is OK the event just hasn't been called yet
+    // This shouldn't happen if the checks were done correctly!
+
+    cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
+  }
+  else if ( ret == cudaErrorNotReady )
+  {
+    infoMSG(3,4,"\nnot ready!\n");
+  }
+  else if ( ret == cudaSuccess )
+  {
+#pragma omp atomic
+    (*timeSum) += time;
+  }
+  else
+  {
+    char msg2[1024];
+    sprintf(msg2, "Timing %s", msg);
+
+    fprintf(stderr, "CUDA ERROR: %s [ %s ]\n", msg2, cudaGetErrorString(ret));
+    exit(EXIT_FAILURE);
+  }
+}

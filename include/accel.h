@@ -21,6 +21,9 @@
 #undef  ACCEL_USELEN
 #define ACCEL_USELEN	3808
 
+#undef  ACCEL_USELEN
+#define ACCEL_USELEN  16032 // TMP added 16k
+
 
 #undef FOLD
 #undef FOUT

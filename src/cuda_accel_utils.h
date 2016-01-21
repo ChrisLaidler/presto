@@ -40,7 +40,7 @@ extern "C"
  *       else you may get Error "too many resources requested for launch"
  */
 #define NAS_DIMX        32                    // Normalise and spread X dimension
-#define NAS_DIMY        16                    // Normalise and spread Y dimension
+#define NAS_DIMY        32                    // Normalise and spread Y dimension
 #define NAS_NTRD        (NAS_DIMX*NAS_DIMY)   // Normalise and spread thread per block
 
 #define MAX_CANDS_PER_BLOCK 6000000
@@ -343,19 +343,22 @@ extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];      //
 extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];      ///<
 extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];        ///< Plane heights in stage order
 extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];        ///< Plane strides in stage order
-extern __device__ __constant__ int          HWIDTH_STAGE[MAX_HARM_NO];        ///< Plane half width in stage order
+extern __device__ __constant__ int          PSTART_STAGE[MAX_HARM_NO];        ///< Plane half width in stage order
 
 //-------------------  In-mem constant values  -------------------------\\
 
-extern __device__ __constant__ void*        PLN_START;                        ///< A pointer to the start of the inmeme plane
-extern __device__ __constant__ uint         PLN_STRIDE;                       ///< The strided in units of the inmeme plane
-extern __device__ __constant__ int          NO_STEPS;                         ///< The number of steps used in the search
+extern __device__ __constant__ void*        PLN_START;                        ///< A pointer to the start of the in-mem plane
+extern __device__ __constant__ uint         PLN_STRIDE;                       ///< The strided in units of the in-mem plane
+extern __device__ __constant__ int          NO_STEPS;                         ///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
 extern __device__ __constant__ int          ALEN;                             ///< CUDA copy of the accelLen used in the search
 
 //-------------------  Other constant values  --------------------------\\
 
 extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
 extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
+
+extern __device__ __constant__ int          STK_STRD[4];                      ///< Stride of the stacks
+extern __device__ __constant__ char         STK_INP[4][4069];                 ///< input details
 
 
 //======================================= Constant Values =================================================\\
@@ -388,7 +391,6 @@ extern float  globalFloat03;
 extern float  globalFloat04;
 extern float  globalFloat05;
 
-
 extern int    optpln01;
 extern int    optpln02;
 extern int    optpln03;
@@ -405,7 +407,7 @@ extern float  optSz08;
 extern float  optSz16;
 
 extern int    pltOpt;
-
+extern int    skpOpt;
 
 //====================================== Inline functions ================================================\\
 
@@ -550,7 +552,7 @@ __host__ __device__ long long next2_to_n_cu(long long x);
  */
 int selectDevice(int device, int print);
 
-int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen);
+int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen, presto_interp_acc accuracy);
 
 void printContext();
 
@@ -630,7 +632,9 @@ int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
 float cuGetMedian(float *data, uint len);
 
-void setStackRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
+void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
+
+void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len);
 
 /** Initialise input data for a f-∂f plane(s)  ready for multiplication  .
  * This:
@@ -652,19 +656,38 @@ void initInput(cuFFdotBatch* batch, int norm_type );
 
 int setConstVals_Fam_Order( cuFFdotBatch* batch );
 
+int setStackVals( cuFFdotBatch* batch );
+
 /** Multiply and inverse FFT the complex f-∂f plane using FFT callback  .
  * @param planes
  */
 void multiplyBatchCUFFT(cuFFdotBatch* batch );
 
+/** Multiplication kernel - One plane at a time  .
+ * Each thread reads one input value and loops down over the kernels
+ */
+void multiplyPlane(cuFFdotBatch* batch);
 
 /** Multiply the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
- * This creates a complex f-∂f plane
+ * This writes to the complex f-∂f plane
+ *
+ * If FLAG_CONV flag is set and doing stack multiplications, the iFFT will be called directly after the multiplication for each stack
  */
 void multiplyBatch(cuFFdotBatch* batch );
 
-/** inverse FFT the complex f-∂f plane  .
+/**  iFFT a specific stack  .
+ *
+ * @param batch
+ * @param cStack
+ * @param pStack
+ */
+void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL);
+
+/**  iFFT all stack of a batch  .
+ *
+ * If using the FLAG_CONV flag no iFFT is done as this should have been done by the multiplication
+ *
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plane
  */
@@ -677,7 +700,6 @@ void copyToInMemPln(cuFFdotBatch* batch );
  * This creates a complex f-∂f plane
  */
 void convolveBatch(cuFFdotBatch* batch );
-
 
 
 //////////////////////////////////// Sum and search Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -708,5 +730,6 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
 
 
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
 
 #endif // CUDA_ACCEL_UTILS_INCLUDED

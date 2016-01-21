@@ -22,9 +22,9 @@ Int -nsteps nsteps      {A list of the number of f-∂f planes each batch on eac
   -c 0 32       \
   -d 4 
 Int -numopt numopt      {A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs} \
-  -r 1 5        \
+  -r 1 7        \
   -c 0 32       \
-  -d 2
+  -d 4
 Int -width width        {The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.} \
   -r 1 65536    \
   -c 1 1        \

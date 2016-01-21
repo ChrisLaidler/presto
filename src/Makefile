@@ -140,11 +140,13 @@ CFLAGS 				= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC)
 #       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
 
 # Warnings
-WARN			 		= -Wno-unused-result
+CXXWARN			 	= -Wno-unused-result
 # Other Warnings  
-WARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
-  
-CFLAGS			+= -Wno-implicit-function-declaration $(WARN)
+CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function 
+
+CWARN				  = -Wno-implicit-function-declaration
+
+CFLAGS			 += $(CWARN) $(CXXWARN)
 
 CLINKFLAGS 		= $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
@@ -168,10 +170,10 @@ CUDA_PATH  = /usr/local/cuda
 CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
 CUDAINC    = -I$(CUDA_PATH)/include
 
-NVCCFLAGS  = $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
+NVCCFLAGS  =  $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
 NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 #NVCCFLAGS  += -Xcompiler -Wno-comment
-NVCCFLAGS	 += $(foreach root, $(WARN), -Xcompiler $(root))
+NVCCFLAGS	 += $(foreach root, $(CXXWARN), -Xcompiler $(root))
 
 NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)
 NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64

@@ -31,7 +31,7 @@ __device__ inline float median(float* data, int arrayLength, int eType = 0 )
 
 __device__ inline int midpoint(int imin, int imax)
 {
-  return (imin + imax) / 2.0 ;
+  return (imin + imax) / 2.0f ;
 }
 
 __device__ int binSearch(const float* data, float key, int arrayLength)
@@ -313,15 +313,15 @@ __device__ float cuMedianOne(float *array, uint arrayLength)
 
 /** Calculate the median of up to 16*bufferSz float values  .
  *
- * This Sorts sections of the array, and then find the median by extracting and combining the
- * centre chunk(s) of these and sorting that. To find the median.
+ * This Sorts sections of the array, and then finds the median by extracting and combining the
+ * centre chunk(s) of these and sorting those. To find the median.
  *
- * Note this reorders the original array
+ * Note this is an in-place selection and reorders the original array
  *
- * @param data the value to find the median of
- * @param buffer to do the sorting in this is bufferSz long and should be in SM
- * @param arrayLength the length of the data array
- * @return The median of data
+ * @param   data the value to find the median of
+ * @param   buffer to do the sorting in this is bufferSz long and should be in SM
+ * @param   arrayLength the length of the data array
+ * @return  The median of data
  */
 template< int bufferSz >
 __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
@@ -628,6 +628,8 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
                   }
                   else                        // even  .
                   {
+                  	// TODO: make this choice a flag
+                  
                     // mean
                     //medianValue = ( smBuffer[SMIdx-1] + smBuffer[mIdx] ) / 2.0f;
 
@@ -667,8 +669,13 @@ __device__ float cuMedianBySection(float *data, float *buffer, uint arrayLength)
   return medianValue;
 }
 
+/** Kernel to calculate median of the powers of complex values and spread and normalise the complex using the calculated median value
+ *
+ * @param data    The data, initially the input is in the first half, results are written to the same location spread by 2
+ * @param lens    The lengths of the individual input sections
+ */
 template< int stride, int BS_MAX, typename stpType>
-__global__ void normAndSpread(fcomplexcu* data, stpType lens)
+__global__ void normAndSpread_k(fcomplexcu* data, stpType lens)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
@@ -705,8 +712,11 @@ __global__ void normAndSpread(fcomplexcu* data, stpType lens)
 
       medianValue = cuMedianOne(sData, width);
     }
-    else
+    else // Use device memory for powers
     {
+      // The output data is spread by two
+      // This the input is only in the first half and we can use the last half to store the powers
+
       float* powers = (float*)(&data[stride/2]); // Stride should always be a power of 2
 
       FOLD // Calculate and store powers in device memory  .
@@ -724,15 +734,9 @@ __global__ void normAndSpread(fcomplexcu* data, stpType lens)
     // Calculate normalisation factor
     factor = 1.0 / sqrt( medianValue / LN2 );
 
-//    if ( tid == 0 )
-//    {
-//      float sec = width / (float)BS_MAX ;
-//      printf("%02i  batches: %4.2f %4.2f section  median %.6f  factor: %10.10f \n", bid, width / (float) bSz, sec, medianValue, factor );
-//    }
-
     batches = ceil( stride / (float) bSz );
 
-    // Write spread by 2 and normalise
+    // Write, spread by 2 and normalised
     for ( int batch = batches-1; batch >= 0; batch--)
     {
       // Read all values into registers
@@ -771,7 +775,7 @@ __global__ void normAndSpread_writeOnly(fcomplexcu* data, int width)
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
 
-  const int idx = bid*(blockDim.x * blockDim.y) + tid;                     /// Block size
+  const int idx = bid*(blockDim.x * blockDim.y) + tid;          /// Block size
 
   if (idx < width )
   {
@@ -783,6 +787,12 @@ __global__ void normAndSpread_writeOnly(fcomplexcu* data, int width)
 
 }
 
+/** A function templated on data and buffer length, used to call the CUDA median normalisation kernel
+ *
+ * This function stores the lengths of the indevidual input sections in data structyre and
+ * calls the CUDA median normalisation kernel
+ *
+ */
 template<int width, int buffer>
 __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
@@ -801,7 +811,10 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        //rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
+        rVals* rVal = &((*batch->rAraays)[batch->rActive][step][harm]);
+
+
 
         if ( stp < noInput )
           iLen.val[stp] = rVal->numdata ;
@@ -811,7 +824,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int01><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int01><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 2   )
   {
@@ -820,7 +833,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -828,7 +841,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int02><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int02><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 4   )
   {
@@ -837,7 +850,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -845,7 +858,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int04><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int04><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 8   )
   {
@@ -854,7 +867,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -862,7 +875,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int08><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int08><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 16  )
   {
@@ -871,7 +884,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -879,7 +892,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int16><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int16><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 32  )
   {
@@ -888,7 +901,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -896,7 +909,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int32><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int32><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 64  )
   {
@@ -905,7 +918,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -913,7 +926,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int64><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int64><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else if ( noInput <= 128 )
   {
@@ -922,7 +935,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
     {
       for (int step = 0; step < batch->noSteps; step++)
       {
-        rVals* rVal = &batch->rValues[step][harm];
+        rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
 
         iLen.val[stp] = rVal->numdata ;
         stp++;
@@ -930,7 +943,7 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
       harm++;
     }
 
-    normAndSpread<width, buffer, int128><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
+    normAndSpread_k<width, buffer, int128><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, iLen);
   }
   else
   {
@@ -938,6 +951,12 @@ __host__ void normAndSpread_b(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
   }
 }
 
+/** A function in the template tree used to call the CUDA median normalisation kernel
+ *
+ * This function determines the buffer width and
+* calls the function in the template tree
+ *
+ */
 template<int width>
 __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
@@ -951,12 +970,12 @@ __host__ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t 
   else
   {
     if ( cStack->width > 8192 )
-      bufWidth          = 2048;               // Multi bitonic sort with a buffer size of 2048
+      bufWidth          = 2048;               // Multi bitonic sort with a buffer size of 2048 (2048 found to be close to optimal most of the time)
     else
       bufWidth          = cStack->width/2.0f; // Use the actual number of input elements (1 bitonic sort)
   }
 
-  bufWidth              = MAX( (cStack->width/2.0f)/32.0, bufWidth );
+  bufWidth              = MAX( (cStack->width/2.0f)/32.0f, bufWidth );
   bufWidth              = MAX( 128,  bufWidth );
   bufWidth              = MIN( 8192, bufWidth );
 
@@ -1022,7 +1041,13 @@ __host__ void normAndSpread_f2(cudaStream_t stream, cuFFdotBatch* batch, uint st
   normAndSpread_writeOnly<<<dimGrid, dimBlock, 0, stream>>>(cStack->d_iData, cStack->width*cStack->height*batch->noSteps );
 }
 
-__host__ void normAndSpread_f(cudaStream_t stream, cuFFdotBatch* batch, uint stack )
+/** A function in the template tree used to call the CUDA median normalisation kernel
+ *
+ * This function determines the data width and
+ * calls the function in the template tree
+ *
+ */
+__host__ void normAndSpread(cudaStream_t stream, cuFFdotBatch* batch, uint stack )
 {
   dim3 dimBlock, dimGrid;
   int i1 = 0;

@@ -22,17 +22,62 @@ extern "C"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
+//=========================================== Defines =====================================================\\
+
+#define CPY_WIDTH 512  // 256  512 768
+
+#if CUDA_VERSION >= 6050  // CUFFT callbacks type defines
+
+extern  __device__ cufftCallbackLoadC d_loadConst;
+extern  __device__ cufftCallbackLoadC d_loadRead;
+extern  __device__ cufftCallbackLoadC d_loadInp;
+extern  __device__ cufftCallbackLoadC d_loadInp0;
+extern  __device__ cufftCallbackLoadC d_loadInp1;
+extern  __device__ cufftCallbackLoadC d_loadInp2;
+extern  __device__ cufftCallbackLoadC d_loadInp3;
+extern  __device__ cufftCallbackLoadC d_loadCallbackPtr;
+
+extern  __device__ cufftCallbackStoreC d_storePow_f;
+extern  __device__ cufftCallbackStoreC d_storeInmemRow;
+extern  __device__ cufftCallbackStoreC d_storeInmemPln;
+
+#endif
+
 //======================================= Constant memory =================================================\\
 
 
 //======================================= CUFFT callbacks =================================================\\
 
-#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
 
-extern  __device__ cufftCallbackLoadC d_loadCallbackPtr;
-extern  __device__ cufftCallbackStoreC d_storePow_f;
-extern  __device__ cufftCallbackStoreC d_storeInmemRow;
-extern  __device__ cufftCallbackStoreC d_storeInmemPln;
+#if CUDA_VERSION >= 6050 // CUFFT callbacks, only implemented in CUDA 6.5
+
+/** CUFFT callback kernel to simply return constant value  .
+ */
+__device__ cufftComplex CB_RetConst( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to simply read data  .
+ */
+__device__ cufftComplex CB_RetValue( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to simply read data  .
+ */
+__device__ cufftComplex CB_readInp( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to simply read data  .
+ */
+__device__ cufftComplex CB_readInp0( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to simply read data  .
+ */
+__device__ cufftComplex CB_readInp1( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to simply read data  .
+ */
+__device__ cufftComplex CB_readInp2( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
+
+/** CUFFT callback kernel to simply read data  .
+ */
+__device__ cufftComplex CB_readInp3( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr);
 
 /** CFFT Callback function to multiply the input before the main IFFT  .
  *
@@ -112,7 +157,7 @@ __device__ void CB_PowerOutInmem_PLN( void *dataIn, size_t offset, cufftComplex 
 
 #endif
 
-/** Get a pointer to the location of the first element of the output of the CUFFT
+/** Get a pointer to the location of the first element of the output of the CUFFT  .
  *
  */
 void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack);
@@ -124,60 +169,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack);
 
 /** Multiplication kernel - Just write 0 to all locations
  */
-__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-//__host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-/** Multiplication kernel - One thread per f-∂f pixel in a stack  .
- */
-//__host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-/** Multiplication kernel - One thread per f-∂f pixel
- */
-//__global__ void mult1(fcomplexcu *ffdot, const int width, const int stride, const int height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-
-/** Multiplication kernel - All r and interlaced of Z
- */
-//__global__ void mult37(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-/** Multiplication kernel - Each thread handles blocks of x looping down over y
- * Each thread reads one input value and loops down over the kernels
- */
-//template <int noBatch >
-//__global__ void mult38(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-/** Multiplication kernel - Multiply a stack with a kernel - multi-step  .
- * Each thread loops down a column of the plane
- * Reads the input and multiplies it with the kernel and writes result to plane
- */
-//__host__ void mult11_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, const fcomplexcu *kernels, const fcomplexcu *datas, fcomplexcu *ffdot, const int width, const int stride, iHarmList heights, const int stackHeight, cHarmList kerDat, fCplxTex kerTex, int noSteps, int noPlns, int FLAGS );
-
-
-/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
- * Each thread loops down a column of the plane
- * Reads the input and multiplies it with the kernel and writes result to plane
- */
-__host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
- * Each thread loops down a column of the plane
- * Reads the input and multiplies it with the kernel and writes result to plane
- */
-__host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
- * Each thread loops down a column of the plane
- * Reads the input and multiplies it with the kernel and writes result to plane
- */
-__host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-__host__  void mult24(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
-/** Multiplication kernel - One plane at a time  .
- * Each thread reads one input value and loops down over the kernels
- */
-__host__  void mult10(cuFFdotBatch* batch);
+__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
 
 /** Multiplication kernel - One thread per r location (input FFT)  .
  * Each thread reads one input value and loops down over the kernels
@@ -189,18 +181,33 @@ __global__ void mult11(fcomplexcu *ffdot, uint width, uint stride, uint height, 
  */
 __global__ void mult12(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex);
 
+/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
+ * Each thread loops down a column of the plane
+ * Reads the input and multiplies it with the kernel and writes result to plane
+ */
+__host__  void mult21(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
+
+/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
+ * Each thread loops down a column of the plane
+ * Reads the input and multiplies it with the kernel and writes result to plane
+ */
+__host__  void mult22(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
+
+/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
+ * Each thread loops down a column of the plane
+ * Reads the input and multiplies it with the kernel and writes result to plane
+ */
+__host__  void mult23(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
+
+/** DEPRICTAED this is a testing multiplication function
+ *
+ * @param multStream
+ * @param batch
+ * @param stack
+ */
+__host__  void mult24(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
+
 /** Multiplication kernel - Multiply an entire batch with Multiplication kernel  .
  * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
-__host__  void mult30_f(cudaStream_t multStream, cuFFdotBatch* batch);
-
-/** Multiplication kernel - Multiply a multi-step stack - using a 1 plane Multiplication kernel  .
- * Split the stack into overlapping sections and read the shared kernel values once and multiply with all relevant values
- */
-//__host__ void mult71_f(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, const fcomplexcu *kernel, const fcomplexcu *datas, cHarmList ffdot, const int width, const uint stride, iHarmList heights, const uint stackHeight, fCplxTex kerTex, iHarmList zUp, iHarmList zDn, const uint noSteps, const uint noPlns, uint FLAGS );
-
-/** Multiplication kernel - Multiply a multi-step stack - using a 1 plane Multiplication kernel  .
- * Split the stack into overlapping sections and read the shared kernel values once and multiply with all relevant values
- */
-//__host__  void mult72_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack);
-
+__host__  void mult30(cudaStream_t multStream, cuFFdotBatch* batch);

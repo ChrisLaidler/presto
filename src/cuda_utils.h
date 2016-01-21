@@ -58,6 +58,8 @@ void debugMessage ( const char* format, ... );
 
 void errMsg ( const char* format, ... );
 
+ExternC void infoMSG ( int lev, int indent, const char* format, ... );
+
 int detect_gdb_tree(void);
 
 
@@ -95,5 +97,7 @@ ExternC int getMemAlignment();
 /** Get the stride (in number of elements) given a number of elements and the "block" size  .
  */
 ExternC int getStrie(int noEls, int elSz, int blockSz);
+
+void timeEvents( cudaEvent_t start, cudaEvent_t end, float* timeSum, const char* msg );
 
 #endif /* CUDA_UTILS_H_ */

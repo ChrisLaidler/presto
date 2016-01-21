@@ -296,16 +296,22 @@ __global__ void init_kernels(fcomplexcu* response, int maxZ, int fftlen, int hal
     return;
   }
 
-  // Calculate the response x position from the plane x position
-  if ( half_width <= 0 )
+  if      ( half_width == 0  )
   {
     half_width    = z_resp_halfwidth((double) z);
   }
+  else if ( half_width == 1  )  // Use high accuracy kernels
+  {
+    half_width    = z_resp_halfwidth_high((double) z);
+  }
   else
   {
-    int hw2       = MAX(0.6*z, 16*1);
-    half_width    = MIN( half_width, hw2 ) ;
-    half_width    = z_resp_halfwidth((double) z);
+  	// Use the actual halfwidth value for all rows
+  	
+    //int hw2       = MAX(0.6*z, 16*1);
+    //half_width    = MIN( half_width, hw2 ) ;
+    //half_width    = z_resp_halfwidth((double) z);
+    //half_width    = z_resp_halfwidth((double) z);
   }
 
   int hw          = rSteps * half_width;
@@ -433,22 +439,29 @@ int createStackKernel(cuFfdotStack* cStack)
 
   int halfWidth;
 
-  if ( cStack->flags & FLAG_KER_ACC )
+  if ( cStack->flags & FLAG_KER_MAX )
   {
     // Use one halfwidth for the entire kernel
-    halfWidth = cStack->harmInf->halfWidth;
+    halfWidth = cStack->harmInf->kerStart / 2.0;
   }
   else
   {
-    // Columns closer to a z value of 0 will have smaller halfwidths (dynamically calculated)
-    halfWidth = 0;
+    if ( cStack->flags & FLAG_KER_HIGH )
+    {
+      // high accuracy
+       halfWidth = 1;
+    }
+    else
+    {
+      // Standard "low" accuracy
+      halfWidth = 0;
+    }
   }
-
 
   FOLD // call the CUDA kernels  .
   {
     // Call kernel
-    init_kernels<<<dimGrid, dimBlock>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_RDR);
+    init_kernels<<<dimGrid, dimBlock, 0, cStack->initStream>>>(cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_RDR);
 
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
@@ -497,26 +510,3 @@ int createStackKernels(cuFfdotStack* cStack)
 
   return 0;
 }
-
-//int createOptKernel(cuOptKer* cKer)
-//{
-//  dim3 dimBlock, dimGrid;
-//
-//    dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-//    dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-//
-//    // Set up grid
-//    dimGrid.x = ceil(  cKer->width     / ( float ) dimBlock.x );
-//    dimGrid.y = ceil ( cKer->height / ( float ) dimBlock.y );
-//
-//    FOLD // call the CUDA kernels  .
-//    {
-//      // Call kernel
-//      init_kernels<<<dimGrid, dimBlock>>>(cKer->d_kerData, cKer->maxZ, cKer->width, cKer->noZ, cKer->noR );
-//
-//      // Run message
-//      CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
-//    }
-//
-//    return 0;
-//}

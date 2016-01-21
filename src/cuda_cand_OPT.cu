@@ -43,7 +43,7 @@ __device__ inline double cos_t(double x)
 {
   return cos(x);
 }
-__device__ inline float cos_t(float x)
+__device__ inline float  cos_t(float  x)
 {
   return cosf(x);
 }
@@ -52,7 +52,7 @@ __device__ inline double sin_t(double x)
 {
   return sin(x);
 }
-__device__ inline float sin_t(float x)
+__device__ inline float  sin_t(float  x)
 {
   return sinf(x);
 }
@@ -61,7 +61,7 @@ __device__ inline double sqrt_t(double x)
 {
   return sqrt(x);
 }
-__device__ inline float sqrt_t(float x)
+__device__ inline float  sqrt_t(float  x)
 {
   return sqrtf(x);
 }
@@ -70,7 +70,7 @@ __device__ inline void sincos_t(double x, double* s, double* c )
 {
   sincos(x, s, c);
 }
-__device__ inline void sincos_t(float x, float* s, float* c )
+__device__ inline void sincos_t(float  x, float*  s, float*  c )
 {
   sincosf(x, s, c);
 }
@@ -557,7 +557,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
       // Calculate complex value, using direct application of the convolution
       if( absz < DLIM && absz > FTLIM )
       {
-      	rz_interp_cu<double, noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
+        rz_interp_cu<double, noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
       }
       else
       {
@@ -740,26 +740,12 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
 
             if ( nBestP > gBestP )
             {
-              //            if ( idx == 0 ) // TMP
-              //            {
-              //              printf("Got a new best!\n");
-              //            }
               lGlo.x   = nBestR;
               lGlo.y   = nBestZ;
               gBestP   = nBestP;
             }
-            else if ( idx == 0 ) // TMP
-            {
-              //printf("Shuffle got Current r: %.5f z: %.5f   power %15.6f vs %15.6f!\n", nBestR, nBestZ, nBestP, gBestP );
-            }
           }
         }
-
-        //        if ( idx == 1001 ) // TMP
-        //        {
-        //          double gDst = len(lGlo - pos);
-        //          printf("%03i Current r: %10.5f z: %10.5f  power: %20.6f  -  Local r: %10.5f z: %10.5f  power: %20.6f  -  Best r: %10.5f z: %10.5f  power: %20.6f    Dist %9.6f\n", rep+1, pos.x, pos.y, power, lLoc.x, lLoc.y, lBestP, lGlo.x, lGlo.y, gBestP, gDst);
-        //        }
       }
     }
 
@@ -1094,6 +1080,8 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
 
       FOLD // A blocking synchronisation to make sure we can write to host memory  .
       {
+        infoMSG(3,4,"pre synchronisation [blocking]\n");
+
         CUDA_SAFE_CALL(cudaEventSynchronize(pln->inpCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
       }
 
@@ -1125,11 +1113,10 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     dim3 dimBlock, dimGrid;
 
-#ifdef SYNCHRONOUS  // Event  .
-    CUDA_SAFE_CALL(cudaEventRecord(pln->compInit, pln->stream),"Recording event: compInit");
-#endif
+    if ( pln->flags & FLAG_SYNCH )
+      CUDA_SAFE_CALL(cudaEventRecord(pln->compInit, pln->stream),"Recording event: compInit");
 
-    if ( blkKer )      // Use normal kernel
+    if ( blkKer )      	  // Use normal kernel
     {
       // Thread blocks
       dimBlock.x = noR;
@@ -1195,9 +1182,8 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
 
-#ifdef SYNCHRONOUS  // Event  .
-    CUDA_SAFE_CALL(cudaEventRecord(pln->compCmp, pln->stream),"Recording event: compCmp");
-#endif
+    if ( pln->flags & FLAG_SYNCH )
+      CUDA_SAFE_CALL(cudaEventRecord(pln->compCmp, pln->stream),"Recording event: compCmp");
 
   }
 
@@ -1281,12 +1267,6 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
 
 void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ, int halfwidth)
 {
-  FOLD // TMP: CPU equivalent  .
-  {
-    fcomplex ans;
-    rz_interp((fcomplex*)fft, noBins, centR, centZ, halfwidth, &ans);
-  }
-
   fcomplexcu *cuInp;
   int     rOff, lodata;
   double factor;
@@ -1367,6 +1347,8 @@ void generatePln(cand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale
 
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
+    infoMSG(3,4,"pre synchronisation [blocking]\n");
+
     nvtxRangePush("EventSynch");
     CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
@@ -1746,6 +1728,8 @@ void opt_candByPln(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doubl
 
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
+    infoMSG(3,4,"pre synchronisation [blocking]\n");
+
     nvtxRangePush("EventSynch");
     CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
@@ -1836,6 +1820,8 @@ void opt_candBySwrm(accelcand* cand, fftInfo* fft, cuOptCand* pln, int noP, doub
 
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
+    infoMSG(3,4,"pre synchronisation [blocking]\n");
+
     nvtxRangePush("EventSynch");
     CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
@@ -2130,46 +2116,6 @@ void calcNQ(double x, long long n, double* p, double* q)
     return;
   }
 
-  //  if ( trueV > 0.9 )
-  //  {
-  //    int tmp = 0;
-  //
-  //    {
-  //      double term = 1;
-  //      long long k = 0;
-  //      double sum0 = sum;
-  //      double dff ;
-  //      double coef = 1;
-  //      double fact = 1;
-  //
-  //      int sz1 = sizeof(double);
-  //      int sz2 = sizeof(coef);
-  //
-  //      do
-  //      {
-  //        sum0 = sum;
-  //        coef *= ( n - (k) );
-  //        k++;
-  //        fact *= k;
-  //        double bcoef1 = coef / fact ;
-  //        double bcoef2 = boost::math::binomial_coefficient<double>(n,k);
-  //
-  //        double t1   = pow(-x,k);
-  //        term = bcoef1*t1;
-  //        sum -= term;
-  //        dff = fabs(sum0-sum);
-  //
-  //        printf("calcNQ %03i sum: %9.4e  term: %9.6e   dff: %7.3e  bcoef1 %12.8e    bcoef2: %12.8e  \n", k-1, sum, term, dff, bcoef1, bcoef2 );
-  //      }
-  //      while ( dff > 0 && k < n && k <= 10 );
-  //    }
-  //  }
-
-  //  if ( x > 1e-8 || trueV > 0.4 )
-  //  {
-  //    return trueV;
-  //  }
-
   FOLD // Else do a series expansion  .
   {
     double term = 1;
@@ -2320,15 +2266,16 @@ void* optCandDerivs(void* ptr)
   int ii;
   int *r_offset;
   fcomplex **data;
+  struct timeval start, end;    // Timing variables
 
   accelcand*    cand  = res->cand;
   searchSpecs*  sSpec = srch->sSpec;
   fftInfo*      fft   = &sSpec->fftInf;
 
-#ifdef TIMING // Timing  .
-  struct timeval start, end;
-  gettimeofday(&start, NULL);
-#endif
+  if ( srch->sSpec->flags & FLAG_TIME ) // Timing  .
+  {
+    gettimeofday(&start, NULL);
+  }
 
   int maxHarms  = cand->numharm;
   int numdata   = sSpec->fftInf.nor;
@@ -2410,13 +2357,14 @@ void* optCandDerivs(void* ptr)
 
   //nvtxRangePop();
 
-#ifdef TIMING // Timing  .
-  pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
-  gettimeofday(&end, NULL);
-  float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-  res->cuSrch->pInf->batches->resultTime[0] += v1;
-  pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
-#endif
+  if ( srch->sSpec->flags & FLAG_TIME ) // Timing  .
+  {
+    pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
+    gettimeofday(&end, NULL);
+    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+    res->cuSrch->pInf->batches->resultTime[0] += v1;
+    pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
+  }
 
   // Decrease the count number of running threads
   sem_trywait(&srch->threasdInfo->running_threads);
@@ -2442,8 +2390,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
   // Increase the count number of running threads
   sem_post(&srch->threasdInfo->running_threads);
 
-#ifndef SYNCHRONOUS
-  if ( srch->sSpec->flags & FLAG_THREAD )  // Create thread  .
+  if ( !(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD) )  // Create thread  .
   {
     pthread_t thread;
     int  iret1 = pthread_create( &thread, NULL, optCandDerivs, (void*) thrdDat);
@@ -2455,7 +2402,6 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
     }
   }
   else                              // Just call the function  .
-#endif
   {
     optCandDerivs( (void*) thrdDat );
   }

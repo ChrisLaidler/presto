@@ -11,7 +11,7 @@
 .\" it edited by clig, remove the respective pair of cligPart-lines.
 .\"
 .\" cligPart TITLE
-.TH "accelsearch" 1 "23Oct15" "Clig-manuals" "Programmer's Manual"
+.TH "accelsearch" 1 "17Dec15" "Clig-manuals" "Programmer's Manual"
 .\" cligPart TITLE end
 
 .\" cligPart NAME
@@ -71,9 +71,9 @@ Default: `4'
 .IP -numopt
 A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs,
 .br
-0...32 Int values between 1 and 5.
+0...32 Int values between 1 and 7.
 .br
-Default: `2'
+Default: `4'
 .IP -width
 The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.,
 .br

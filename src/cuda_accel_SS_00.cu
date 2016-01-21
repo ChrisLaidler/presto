@@ -13,7 +13,7 @@
  * @param noSteps
  */
 template<typename T, int noBatch >
-__global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
+__global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, int oStride, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
 {
   const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * SS00BS  +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
@@ -30,13 +30,13 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, vHarmLi
 
     FOLD  // Set the local and return candidate powers to zero  .
     {
-      int oStride    = STRIDE_HARM[0];
+      int xStride = noSteps*oStride ;
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
         for ( int step = 0; step < noSteps; step++)               // Loop over steps
         {
-          d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
+          d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
         }
       }
     }
@@ -86,7 +86,7 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, vHarmLi
  * @param noSteps
  */
 template<typename T, int noBatch >
-__global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
+__global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, int oStride, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
 {
   const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;           /// Block index
   const int tid   = blockIdx.x  * SS00BS  +  bidx;                  /// Global thread id (ie column) 0 is the first 'good' column
@@ -103,13 +103,13 @@ __global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, vHarmLi
 
     FOLD  // Set the local and return candidate powers to zero
     {
-      int oStride    = STRIDE_STAGE[0];
+      int xStride = noSteps*oStride ;
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
         for ( int step = 0; step < noSteps; step++)                 // Loop over steps
         {
-          d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
+          d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
         }
       }
     }
@@ -155,7 +155,7 @@ __global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, vHarmLi
  * @param noSteps
  */
 template<typename T, int noBatch >
-__global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
+__global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, int oStride, vHarmList powersArr, const int noHarms, const int noStages, const int noSteps )
 {
   const int bidx  = threadIdx.y * SS00_X  +  threadIdx.x;   /// Block index
   const int tid   = blockIdx.x  * SS00BS  +  bidx;          /// Global thread id (ie column) 0 is the first 'good' column
@@ -166,13 +166,13 @@ __global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, vHarmLi
 
     FOLD  // Set the local and return candidate powers to zero  .
     {
-      int oStride    = STRIDE_STAGE[0];
+      int xStride = noSteps*oStride ;
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
         for ( int step = 0; step < noSteps; step++)             // Loop over steps
         {
-          d_cands[stage*gridDim.y*noSteps*oStride + blockIdx.y*noSteps*oStride + step*ALEN + tid].value = 0;
+          d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
         }
       }
     }
@@ -214,10 +214,10 @@ __global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, vHarmLi
 
 __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const int   noStages  = log2((double)batch->noHarms) + 1 ;
+  const int   noStages  = log2((double)batch->noGenHarms) + 1 ;
   vHarmList  powers;
 
-  for (int i = 0; i < batch->noHarms; i++)
+  for (int i = 0; i < batch->noGenHarms; i++)
   {
     int idx         = i; // Family order
     powers.val[i]   = batch->planes[idx].d_planePowr;
@@ -226,7 +226,7 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
-    add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
@@ -234,29 +234,29 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
-    add_and_searchCU00_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU00_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
   }
   else
   {
-    add_and_searchCU00_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU00_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
   }
 }
 
 __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const int   noStages  = log2((double)batch->noHarms) + 1 ;
+  const int   noStages  = log2((double)batch->noGenHarms) + 1 ;
   vHarmList  powers;
 
-  for (int i = 0; i < batch->noHarms; i++)
+  for (int i = 0; i < batch->noGenHarms; i++)
   {
-    int idx         = batch->stageIdx[i]; // Stage order
-    powers.val[i]   = batch->planes[idx].d_planePowr;
+    int sIdx        = batch->sInf->sIdx[i]; // Stage order
+    powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
   if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
-    add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
@@ -264,29 +264,29 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
-    add_and_searchCU01_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU01_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
   }
   else
   {
-    add_and_searchCU01_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU01_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
   }
 }
 
 __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const int   noStages  = log2((double)batch->noHarms) + 1 ;
+  const int   noStages  = log2((double)batch->noGenHarms) + 1 ;
   vHarmList   powers;
 
-  for (int i = 0; i < batch->noHarms; i++)
+  for (int i = 0; i < batch->noGenHarms; i++)
   {
-    int idx         = batch->stageIdx[i]; // Stage order
-    powers.val[i]   = batch->planes[idx].d_planePowr;
+    int sIdx        = batch->sInf->sIdx[i]; // Stage order
+    powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
   if      ( batch->flags & FLAG_HALF         )
   {
 #if CUDA_VERSION >= 7050
-    add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
 #else
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
@@ -294,11 +294,11 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
-    add_and_searchCU02_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU02_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
   }
   else
   {
-    add_and_searchCU02_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_retData1, powers, batch->noHarms, noStages, batch->noSteps  );
+    add_and_searchCU02_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
   }
 
 }

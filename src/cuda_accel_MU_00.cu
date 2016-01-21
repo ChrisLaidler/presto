@@ -121,11 +121,9 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
  * @param noSteps
  * @param kerHeight
  */
-__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
@@ -250,9 +248,8 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
 }
 
 template<int64_t FLAGS>
-__host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  cuFfdotStack* cStack  = &batch->stacks[stack];
   int offset            = cStack->startIdx;
 
   switch (batch->noSteps)
@@ -305,11 +302,9 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
-__host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
@@ -318,7 +313,7 @@ __host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.y = 1;
 
   if      ( batch->flags & FLAG_ITLV_ROW )
-    mult02_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult02_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
   else
-    mult02_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult02_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
 }

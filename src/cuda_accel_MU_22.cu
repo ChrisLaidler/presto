@@ -99,9 +99,8 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
 }
 
 template<int64_t FLAGS>
-__host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  cuFfdotStack* cStack  = &batch->stacks[stack];
   int offset            = cStack->startIdx;
 
   switch (batch->noSteps)
@@ -154,11 +153,9 @@ __host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
-__host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult22(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
@@ -167,7 +164,7 @@ __host__  void mult22_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.y = cStack->mulSlices;
 
   if      ( batch->flags & FLAG_ITLV_ROW )
-    mult22_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult22_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
   else
-    mult22_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult22_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
 }

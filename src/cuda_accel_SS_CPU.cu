@@ -16,17 +16,13 @@
 
 void add_and_search_CPU(cuFFdotBatch* batch )
 {
+  infoMSG(2,2,"Sum & Search CPU\n");
 
-#ifdef STPMSG
-  printf("\t\tSum & search CPU\n");
-#endif
-
-#ifdef TIMING // Timing  .
+  // Timing  variables
   struct timeval start, end;
-#endif
 
   const int noStages    = batch->noHarmStages;
-  const int noHarms     = batch->noHarms;
+  const int noHarms     = batch->noGenHarms;
   const int noSteps     = batch->noSteps;
   const int64_t FLAGS   = batch->flags;
   const int zeroHeight  = batch->hInfos->height;
@@ -47,19 +43,18 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   {
     nvtxRangePush("CPU Sum & search");
 
-#ifdef TIMING // Timing  .
-    gettimeofday(&start, NULL);
-#endif
+    if ( batch->flags & FLAG_TIME ) // Timing  .
+      gettimeofday(&start, NULL);
 
     FOLD // Prep - Initialise the x indices  .
     {
       int bace = 0;
       for ( int harm = 0; harm < noHarms; harm++ )                  // loop over harmonic  .
       {
-        int stgIDX = batch->stageIdx[harm];
+        int stgIDX = batch->sInf->sIdx[harm];
 
-        pwerPlnF[stgIDX] = &((float*)batch->h_retData1)[bace];
-        pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_retData1)[bace];
+        pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
+        pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
 
         bace += batch->hInfos[harm].height * batch->stacks[batch->hInfos[harm].stackNo].stridePower * noSteps;
       }
@@ -71,11 +66,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       {
         for ( int harm = 0; harm < noHarms; harm++ )                // loop over harmonic  .
         {
-          int stgIDX      = batch->stageIdx[harm];
+          int stgIDX        = batch->sInf->sIdx[harm];
+          cuHarmInfo* hInf  = &batch->hInfos[stgIDX];
 
           //// NOTE: the indexing below assume each plane starts on a multiple of noHarms
-          int   hIdx      = round( ix*batch->hInfos[stgIDX].harmFrac ) + batch->planes[stgIDX].kerStart;
-          inds[harm]      = hIdx;
+          int   hIdx        = round( ix*hInf->harmFrac ) + hInf->kerStart;
+          inds[harm]        = hIdx;
         }
       }
 
@@ -98,7 +94,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
         }
       }
 
-      FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
+      FOLD // Sum & Search - Ignore contaminated ends tid to start at correct spot  .
       {
         for( int y = 0, sy = 0; y < zeroHeight; y++, sy++ )         // Loop over the chunk  .
         {
@@ -115,12 +111,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 
             for ( int harm = start; harm <= end; harm++ )         	// Loop over harmonics (batch) in this stage  .
             {
-              int stgIDX        = batch->stageIdx[harm];
-              cuHarmInfo* hInf  = &batch->hInfos[stgIDX];
-
-              int     ix1       = inds[harm] ;
-              int     ix2       = ix1;
-              short   iy1       = batch->sInf->yInds[ (zeroHeight+INDS_BUFF)*harm + y ];
+              int stgIDX            = batch->sInf->sIdx[harm];
+              cuHarmInfo* hInf      = &batch->hInfos[stgIDX];
+              cuFfdotStack* cStack  = &batch->stacks[ batch->hInfos[stgIDX].stackNo ];
+              int     ix1           = inds[harm] ;
+              int     ix2           = ix1;
+              short   iy1           = batch->sInf->yInds[ (zeroHeight+INDS_BUFF)*harm + y ];
 
               if ( iyP[harm] != iy1 ) // Only read power if it is not the same as the previous  .
               {
@@ -132,12 +128,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                   {
                     if        ( FLAGS & FLAG_ITLV_ROW )
                     {
-                      ix2 = ix1 + step    * hInf->inpStride;
-                      iy2 = iy1 * noSteps * hInf->inpStride;
+                      ix2 = ix1 + step    * cStack->strideCmplx;
+                      iy2 = iy1 * noSteps * cStack->strideCmplx;
                     }
                     else
                     {
-                      iy2 = ( iy1 + step * hInf->height ) * hInf->inpStride ;
+                      iy2 = ( iy1 + step * hInf->height ) * cStack->strideCmplx ;
                     }
                   }
 
@@ -185,7 +181,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                 {
                   if ( candLists[stage][step].value > batch->sInf->powerCut[stage] )
                   {
-                    rVals* rVal = &batch->rValues[step][0];
+                    rVals* rVal = &(*batch->rAraays)[batch->rActive][step][0];
 
                     int numharm   = (1<<stage);
                     double rr     = rVal->drlo + ix *  ACCEL_DR ;
@@ -219,11 +215,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       }
     }
 
-#ifdef TIMING // Timing  .
-    gettimeofday(&end, NULL);
-    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-    batch->searchTime[0] += v1;
-#endif
+    if ( batch->flags & FLAG_TIME ) // Timing  .
+    {
+      gettimeofday(&end, NULL);
+      float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+      batch->searchTime[0] += v1;
+    }
 
     nvtxRangePop();
   }
@@ -232,9 +229,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   {
     nvtxRangePush("CPU Process results");
 
-#ifdef TIMING // Timing  .
-    gettimeofday(&start, NULL);
-#endif
+    if ( batch->flags & FLAG_TIME ) // Timing  .
+      gettimeofday(&start, NULL);
 
     for ( int c = 0; c < noCands; c++ )
     {
@@ -242,11 +238,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       //procesCanidate(batch, cnd[c].r, cnd[c].z, cnd[c].power, 0, stage, cnd[c].numharm );
     }
 
-#ifdef TIMING // Timing  .
-    gettimeofday(&end, NULL);
-    float v2 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-    batch->resultTime[0] += v2;
-#endif
+    if ( batch->flags & FLAG_TIME ) // Timing  .
+    {
+      gettimeofday(&end, NULL);
+      float v2 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+      batch->resultTime[0] += v2;
+    }
 
     nvtxRangePop();
   }

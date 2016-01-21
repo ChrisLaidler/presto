@@ -198,12 +198,11 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 }
 
 template<int64_t FLAGS, int noSteps>
-__host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  cuFfdotStack* cStack  = &batch->stacks[stack];
   int offset            = cStack->startIdx;
 
-  switch (cStack->noInStack)
+   switch (cStack->noInStack)
   {
     case 1	:
     {
@@ -261,70 +260,68 @@ __host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     }
     default	:
     {
-      fprintf(stderr, "ERROR: mult23 has not been templated for %i planes in a stack.\n",cStack->noInStack);
+      fprintf(stderr, "ERROR: mult23 has not been templated for %i planes in a stack.\n", cStack->noInStack);
       exit(EXIT_FAILURE);
     }
   }
 }
 
 template<int64_t FLAGS>
-__host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   switch (batch->noSteps)
   {
     case 1	:
     {
-      mult23_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 2	:
     {
-      mult23_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 3	:
     {
-      mult23_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 4	:
     {
-      mult23_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 5	:
     {
-      mult23_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 6	:
     {
-      mult23_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 7	:
     {
-      mult23_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 8	:
     {
-      mult23_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     default	:
     {
-      fprintf(stderr, "ERROR: convolveffdot42 has not been templated for %i steps\n", batch->noSteps);
+      fprintf(stderr, "ERROR: mult23 has not been templated for %i steps.\n", batch->noSteps);
       exit(EXIT_FAILURE);
     }
   }
 }
 
-__host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult23(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
@@ -332,9 +329,8 @@ __host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY )) ;
   dimGrid.y = cStack->mulSlices ;
 
-
   if      ( batch->flags & FLAG_ITLV_ROW )
-    mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
   else
-    mult23_s<0>(dimGrid, dimBlock, 0, multStream, batch, stack);
+    mult23_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
 }
