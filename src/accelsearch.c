@@ -26,7 +26,7 @@
 #endif
 
 int     pltOpt    = 0;
-int     skpOpt    = 0;	// Skip optemisation, this shouls only be used for debug poroses
+int     skpOpt    = 0;	// Skip optimisation, this should only be used for debug purposes
 
 
 extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
@@ -82,6 +82,8 @@ void* contextInitTrd(void* ptr)
   *contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
   pthread_exit(contextInit);
+
+  return (NULL);
 }
 
 int main(int argc, char *argv[])
@@ -545,7 +547,7 @@ int main(int argc, char *argv[])
 
                 FOLD // Set start r-vals for all steps in this batch  .
                 {
-                  for ( step = 0; step < (int)batch->noSteps ; step ++)
+                  for ( step = 0; step < (int)batch->noSteps ; step++ )
                   {
                     rVals* rVal = &(*batch->rAraays)[0][step][0];
 
@@ -964,6 +966,8 @@ int main(int argc, char *argv[])
                 }
 
                 iteration++;
+
+
               }
 
               FOLD // Calculate candidate  .
@@ -974,6 +978,16 @@ int main(int argc, char *argv[])
                   listptr   = listptr->next;
                   ii++;
                   ti = ii;
+
+                  FOLD
+                  {
+                    candGPUP->init_power    = candGPUP->power;
+                    candGPUP->init_sigma    = candGPUP->sigma;
+                    candGPUP->init_numharm  = candGPUP->numharm;
+                    candGPUP->init_r        = candGPUP->r;
+                    candGPUP->init_z        = candGPUP->z;
+                  }
+
                 }
                 else
                 {
@@ -1080,6 +1094,109 @@ int main(int argc, char *argv[])
 
         free(props);
         printf("\nDone optimizing.\n\n");
+
+        double N =   obs.N;
+
+        Fout // TMP
+        {
+          double noVals = 100 ;
+          double base = 0.9998 ;
+          double rest = 1 - base ;
+
+          double ajustP;
+          double ajustQ;
+
+          int i;
+          for ( i = 0; i < noVals; i++ )
+          {
+            double p = base + i/noVals*rest ;
+            double q = (noVals-i)/noVals*rest ;
+
+            calcNQ(q, obs.numindep[0], &ajustP, &ajustQ);
+
+            printf("%.20lf\t%.20lf\t%.20lf\t%.20lf\n", p, q, ajustP, ajustQ);
+          }
+
+          numcands = g_slist_length(cands);
+          listptr = cands;
+          accelcand* cand;
+
+          double T      = obs.T;
+
+          double pSum   = 0;
+          double pSum2  = 0;
+
+          for (ii = 0; ii < cuSrch->sSpec->fftInf.nor; ii++)
+          {
+            fcomplex bin = cuSrch->sSpec->fftInf.fft[ii];
+
+            double pow = bin.i*bin.i + bin.r*bin.r;
+            //pow = fabs(bin.i) + fabs(bin.r) ;
+
+            //pSum  += pow/N*2/sqrt(2);
+            //pSum2 += sqrt(pow)/N*2/sqrt(2);
+
+            pSum  += pow;
+            pSum2 += sqrt(pow);
+          }
+
+          //printf("\n\n pSum %.2f ss %.2f \n", pSum, pSum2);
+
+          printf("\n\nFFT\n");
+          printf("SS\t%.5f\n", pSum);
+          printf("Sum Norms\t%.5f\n", pSum2);
+
+          printf("\n\n");
+
+          pSum   = 0;
+          pSum2  = 0;
+
+          for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----  .
+          {
+            cand    = (accelcand *) (listptr->data);
+            listptr = listptr->next;
+
+            long long baseR = round(cand->init_r);
+
+            int hn;
+            for ( hn = 1; hn <= 64; hn++ )
+            {
+              // if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+
+              long long idx   = baseR * hn ;
+              float     freq  =  idx / T ;
+              if ( (idx >= 0) && ( idx <  cuSrch->sSpec->fftInf.nor ) )
+              {
+                fcomplex bin  = cuSrch->sSpec->fftInf.fft[idx - cuSrch->sSpec->fftInf.idx];
+                double norm   = get_scaleFactorZ(cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.nor - cuSrch->sSpec->fftInf.idx, idx - cuSrch->sSpec->fftInf.idx, 0, 0.0);
+
+                double ang1   = atan (bin.r/bin.i) ;
+                double ang2   = atan (bin.i/bin.r) ;
+
+                double pow    = bin.i*bin.i + bin.r*bin.r;
+
+                double factor = sqrt(norm);
+                double pow2   = pow / factor / factor ;
+                double sigma  = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+
+                if ( sigma < 0  )
+                {
+                  sigma = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+                }
+
+
+                printf("%2i\t%.4f\t%lli\t%.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );
+
+                pSum  += pow;
+                pSum2 += sqrt(pow);
+              }
+
+            }
+
+            printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
+          }
+        }
+
       }
       else
       {
@@ -1262,7 +1379,7 @@ int main(int argc, char *argv[])
 
   printf("Searched the following approx numbers of independent points:\n");
   for (ii = 0; ii < obs.numharmstages; ii++)
-    printf("  %2d harmonics:  %9lld\n", 1 << ii, obs.numindep[ii]);
+    printf("  %2d harmonics:  %9lld  cutoff of %5.2f \n", (1 << ii), obs.numindep[ii], obs.powcut[ii]);
 
   printf("\nTiming summary:\n");
 

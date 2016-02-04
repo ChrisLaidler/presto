@@ -250,9 +250,15 @@ void read_mak_file(char basefilenm[], makedata * mdata)
       mdata->pnum = 2;
    else {
       if (strcmp(mdata->ptype, "Spike") == 0) {
-         mdata->pnum = 3;
-      } else {
-         mdata->pnum = 4;
+        mdata->pnum = 3;
+      }
+      if (strcmp(mdata->ptype, "mvmd") == 0)
+      {
+        mdata->pnum = 5;
+      }
+      else
+      {
+        mdata->pnum = 4;
       }
       /* Default value for fwhm */
       if (i == 2)

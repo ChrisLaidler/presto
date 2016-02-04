@@ -1431,7 +1431,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     filelen = chkfilelen(datfile, sizeof(float));
     if (input_shorts)
       filelen *= 2;
-    if (filelen > 67108864) { /* Small since we need memory for the templates */
+    if (filelen > 671088640 ) { /* Small since we need memory for the templates */
       printf("\nThe input time series is too large.  Use 'realfft' first.\n\n");
       exit(0);
     }
@@ -1460,7 +1460,8 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     fclose(datfile);
 
     /* FFT it */
-    realfft(ftmp, filelen, -1);
+    //realfft(ftmp, filelen, -1);
+    realfftw(ftmp, filelen, -1);
     obs->fftfile = NULL;
     obs->fft = (fcomplex *) ftmp;
     obs->numbins = filelen / 2;
@@ -1587,9 +1588,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     } else {
 
       /* De-redden it */
-      //printf("Removing red-noise...");
-      //deredden(obs->fft, obs->numbins);
-      //printf("done.\n\n");
+      printf("Removing red-noise...");
+      deredden(obs->fft, obs->numbins);
+      printf("done.\n\n");
 
       obs->norm_type = 0;
       printf("Normalizing powers using median-blocks (default).\n\n");

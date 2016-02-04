@@ -31,8 +31,8 @@ __device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plane  s
 __device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];     ///< Plane  strides   in family
 __device__ __constant__ fcomplexcu*   KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointer in stage order
 __device__ __constant__ stackInfo     STACKS[64];
-__device__ __constant__ int           STK_STRD[4];                 ///< Stride of the stacks
-__device__ __constant__ char          STK_INP[4][4069];            ///< input details
+__device__ __constant__ int           STK_STRD[MAX_STACKS];                 ///< Stride of the stacks
+__device__ __constant__ char          STK_INP[MAX_STACKS][4069];            ///< input details
 
 
 int    globalInt01    = 0;
@@ -1497,9 +1497,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           kernel->strideOut = sInf->sSpec->ssStepSize;
         }
-        else if ( (kernel->retType & CU_STR_ARR) )
+        else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
         {
-          //kernel->strideOut = kernel->hInfos->width;  // NOTE: This could be accellen rather than width, but to allow greater flexibility keep it at width. CU_STR_PLN    requires width
           kernel->strideOut = getStrie(kernel->accelLen, retSZ, alignment);
         }
         else if (  kernel->retType & CU_STR_PLN  )
@@ -2307,7 +2306,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       if ( req > free ) // Not enough memory =(
       {
         printf("Not enough GPU memory to create any more batches.\n");
-        return 0;
+        return (0);
       }
       else
       {
@@ -2345,7 +2344,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           {
             // Not enough memory =(
             printf("Not enough GPU memory for return data.\n");
-            return 0;
+            return (0);
           }
           else
           {
@@ -2354,6 +2353,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             if ( batch->flags & FLAG_SS_INMEM )
             {
+              if ( batch->retDataSize > batch->plnDataSize )
+              {
+                infoMSG(4,5,"Complex plane is smaller than return data -> FLAG_SEPSRCH\n");
+
+                batch->flags |= FLAG_SEPSRCH;
+              }
+
               if ( batch->flags & FLAG_SEPSRCH )
               {
                 // Create a separate output space
@@ -2712,7 +2718,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   nvtxRangePop();
 
-  return batch->noSteps;
+  return (batch->noSteps);
 }
 
 /** Free batch data structure  .
@@ -2744,25 +2750,31 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
   {
     infoMSG(2,2,"Free device memory\n");
 
-    // Free the output memory
-    if ( batch->d_outData1 == batch->d_planeMult )
+    FOLD // Free the output memory  .
     {
-      batch->d_outData1 = NULL;
-    }
-    else if ( batch->d_outData2 == batch->d_planeMult )
-    {
-      batch->d_outData2 = NULL;
-    }
+      if ( batch->d_outData1 == batch->d_planeMult )
+      {
+        // d_outData1 is re using d_planeMult so don't free
+        batch->d_outData1 = NULL;
+      }
+      else if ( batch->d_outData2 == batch->d_planeMult )
+      {
+        // d_outData2 is re using d_planeMult so don't free
+        batch->d_outData2 = NULL;
+      }
 
-    if ( batch->d_outData1 == batch->d_outData2 )
-    {
-      cudaFreeNull(batch->d_outData1);
-      batch->d_outData2 = NULL;
-    }
-    else
-    {
-      cudaFreeNull(batch->d_outData1);
-      cudaFreeNull(batch->d_outData2);
+      if ( batch->d_outData1 == batch->d_outData2 )
+      {
+        // They are the same so only free one
+        cudaFreeNull(batch->d_outData1);
+        batch->d_outData2 = NULL;
+      }
+      else
+      {
+        // Using separate output so free both
+        cudaFreeNull(batch->d_outData1);
+        cudaFreeNull(batch->d_outData2);
+      }
     }
 
     // Free the input and planes
@@ -2896,7 +2908,7 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
     int   noHarms       = (1<<(sSpec->noHarmStages-1));
     float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
     zMax                = MAX(zMax, 60 * noHarms );
-    //zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  // This may be a bit high!
+    zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  // TMP: This may be a bit high!
 
     oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
     oPln->maxNoR        = 512;
@@ -3036,10 +3048,17 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
 int setStackVals( cuFFdotBatch* batch )
 {
   stackInfo* dcoeffs;
+
+  if ( batch->noStacks > MAX_STACKS )
+  {
+    fprintf(stderr, "ERROR: Too many stacks in family in function %s in %s.", __FUNCTION__, __FILE__);
+    exit(EXIT_FAILURE);
+  }
+
   //if ( batch->isKernel )
   {
-    int         l_STK_STRD[4];
-    char        l_STK_INP[4][4069];
+    int         l_STK_STRD[MAX_STACKS];
+    char        l_STK_INP[MAX_STACKS][4069];
 
     for (int i = 0; i < batch->noStacks; i++)
     {

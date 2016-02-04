@@ -960,7 +960,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
       double zSz = (tp-1)*res*ZSCALE ;
       gpuPows    = (float*)malloc( tp*tp*sizeof(float)*2 );
 
-      pStride = ffdotPln(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, rSz, zSz, tp, tp, max_kern_half_width, locpow);
+      // TODO: Fix this
+      //pStride = ffdotPln(gpuPows, data[0],  r_offset[0], numdata, num_harmonics, rin, zin, rSz, zSz, tp, tp, max_kern_half_width, locpow);
 
       gettimeofday(&end, NULL);       // TMP
       timev1 = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec)); // TMP

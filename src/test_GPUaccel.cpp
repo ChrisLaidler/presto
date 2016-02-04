@@ -168,15 +168,9 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
   {
     //  old-style block median normalization
     float *powers;
-    //double norm;
 
-    //powers = gen_fvect(numdata);
-    //for (ii = 0; ii < numdata; ii++)
-    //  powers[ii] = POWER(data[ii].r, data[ii].i);
-    //norm = 1.0 / sqrt(median(powers, numdata)/log(2.0));
-    //norm = 1.0; // TMP remove
-    //vect_free(powers);
-    for (ii = 0; ii < numdata; ii++) {
+   for (ii = 0; ii < numdata; ii++)
+   {
       data[ii].r *= norm;
       data[ii].i *= norm;
     }
@@ -935,10 +929,13 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP >= 0) 	                                  // -- Main Loop --  .
       {
         int  firstStep      = 0;
-        bool printDetails   = false;           //
+        bool printDetails   = true;           // Print out stats on all input and planes
+        bool plotAllPlanes  = false;          // Plot all planes
+        bool printAllValues = false;          // Print out a couple off all the values
         bool plot           = false;          // Draw bad planes
-        bool printBadLines  = false;
-        bool CSV            = false;
+        bool CSV            = false;          //
+        bool contPlotAll    = false;          //
+        bool contPlotCnd    = true;           //
 
         //omp_set_num_threads(cuSrch->pInf->noBatches);
 
@@ -1355,6 +1352,17 @@ int main(int argc, char *argv[])
 
                     FOLD // Compare candidates  .
                     {
+                      void *gpuOutput;
+
+                      if ( !(batch->flags & FLAG_SYNCH) && (batch->flags & FLAG_SS_INMEM) )
+                      {
+                        gpuOutput = batch->h_outData2;
+                      }
+                      else
+                      {
+                        gpuOutput = batch->h_outData1;
+                      }
+
                       //if ( !obs.inmem )
                       {
                         rVal              = &(((*batch->rAraays)[batch->rActive])[step][0]);
@@ -1365,10 +1373,11 @@ int main(int argc, char *argv[])
                         uint  xStride     = batch->strideOut;
                         uint  yStride     = batch->ssSlices;
 
-                        //                        if ( !(batch->flags & FLAG_SS_INMEM) )
-                        //                        {
-                        //                          xStride         = rVal->numrs;
-                        //                        }
+                        if ( !(batch->flags & FLAG_SS_INMEM) )
+                        {
+                          //xStride         = rVal->numrs;
+                          xStride         = batch->strideOut * batch->noSteps;
+                        }
 
                         for ( int y = y0; y < y1; y++ )
                         {
@@ -1387,21 +1396,21 @@ int main(int argc, char *argv[])
 
                             if      ( batch->retType & CU_CANDMIN  )
                             {
-                              candMin candM         = ((candMin*)batch->h_outData2)[idx];
+                              candMin candM         = ((candMin*)gpuOutput)[idx];
                               sig                   = candM.power;
                               poww                  = candM.power;
                               iz                    = candM.z;
                             }
                             else if ( batch->retType & CU_POWERZ_S )
                             {
-                              candPZs candM         = ((candPZs*)batch->h_outData2)[idx];
+                              candPZs candM         = ((candPZs*)gpuOutput)[idx];
                               sig                   = candM.value;
                               poww                  = candM.value;
                               iz                    = candM.z;
                             }
                             else if ( batch->retType & CU_CANDBASC )
                             {
-                              accelcandBasic candB  = ((accelcandBasic*)batch->h_outData2)[idx];
+                              accelcandBasic candB  = ((accelcandBasic*)gpuOutput)[idx];
                               poww                  = candB.sigma;
                               sig                   = candB.sigma;
                               iz                    = candB.z;
@@ -1414,28 +1423,35 @@ int main(int argc, char *argv[])
 
                             if ( poww > 0 )
                             {
-                              rr      = ( rLow + x *  ACCEL_DR )                                  / (double)harmtosum ;
-                              zz      = ( iz * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)harmtosum ;
-
-                              float cPow;
-                              float *row;
-
-                              row   = fundamental->powers[iz];
-                              cPow  = row[x-x0];
-
-                              float p1 = poww;
-                              float p2 = cPow;
-
-                              float err = fabs(1-p2/p1);
-
-                              if ( err > 0.001 )
+                              if ( isnan(poww) || isinf(poww) )
                               {
-                                printf("Candidate r: %9.4f z: %7.2f  CPU pow: %6.2f  GPU pow: %6.2f   Err: %8.6f  Harm: %i\n", rr, zz, p2, p1, fabs(1-p2/p1), harmtosum );
-                                badCands++;
+                                fprintf(stderr, "CUDA search returned an NAN power.\n");
                               }
                               else
                               {
-                                goodCands++;
+                                rr      = ( rLow + x *  ACCEL_DR )                  / (double)harmtosum ;
+                                zz      = ( iz * ACCEL_DZ - batch->hInfos[0].zmax ) / (double)harmtosum ;
+
+                                float cPow;
+                                float *row;
+
+                                row   = fundamental->powers[iz];
+                                cPow  = row[x-x0];
+
+                                float p1 = poww;
+                                float p2 = cPow;
+
+                                float err = fabs(1-p2/p1);
+
+                                if ( err > 0.001 )
+                                {
+                                  printf("Candidate r: %9.4f z: %7.2f  CPU pow: %6.2f  GPU pow: %6.2f   Err: %8.6f  Harm: %i\n", rr, zz, p2, p1, fabs(1-p2/p1), harmtosum );
+                                  badCands++;
+                                }
+                                else
+                                {
+                                  goodCands++;
+                                }
                               }
                             }
 
@@ -1444,41 +1460,47 @@ int main(int argc, char *argv[])
                       }
                     }
 
-                    if ( CSV ) // Write CVS  .
+                    if ( CSV || ( noCands != numcands && contPlotCnd) ) // Write CVS  .
                     {
                       double rr, zz;
                       char tName[1024];
-                      sprintf(tName,"/home/chris/accel/h%02i_%015.4f-%015.4f.csv", harmtosum, rVal->drlo / (double)harmtosum, (rVal->drlo + (batch->accelLen-1)*ACCEL_DR) / (double)harmtosum );
+                      sprintf(tName,"/home/chris/accel/ffplane_h%02i_%015.4f-%015.4f.csv", harmtosum, rVal->drlo / (double)harmtosum, (rVal->drlo + (batch->accelLen-1)*ACCEL_DR) / (double)harmtosum );
                       FILE *f2 = fopen(tName, "w");
 
-                      fprintf(f2,"%i",harmtosum);
+                      fprintf(f2,"%i", harmtosum);
 
-                      for ( int x = 0; x < batch->accelLen; x++ )
+                      FOLD // Print the bin values as column headers
                       {
-                        rr      = ( rVal->drlo + x *  ACCEL_DR )                            / (double)harmtosum ;
-                        fprintf(f2,"\t%.6f",rr);
+                        for ( int x = 0; x < batch->accelLen; x++ )
+                        {
+                          rr      = ( rVal->drlo + x *  ACCEL_DR )            / (double)harmtosum ;
+                          fprintf(f2,"\t%.6f",rr);
+                        }
+                        fprintf(f2,"\n");
                       }
-                      fprintf(f2,"\n");
 
                       for ( int y = 0; y < batch->hInfos->height; y++ )
                       {
-                        zz      = ( y * ACCEL_DZ - batch->hInfos[0].zmax )              / (double)harmtosum ;
+                        // First column is the r value
+                        zz      = ( y * ACCEL_DZ - batch->hInfos[0].zmax )  / (double)harmtosum ;
                         fprintf(f2,"%.6f",zz);
 
+                        // print the powers
                         for ( int x = 0; x < batch->accelLen; x++ )
                         {
                           float yy2 = fundamental->powers[y][x];
                           fprintf(f2,"\t%.6f",yy2);
                         }
+
                         fprintf(f2,"\n");
                       }
                       fclose(f2);
 
-                      if ( noCands != numcands )
+                      if ( contPlotAll || ( noCands != numcands && contPlotCnd) )
                       {
-                        //                      char cmd[1024];
-                        //                      sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
-                        //                      system(cmd);
+                        char cmd[1024];
+                        sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s", tName);
+                        system(cmd);
                       }
                     }
 
@@ -1548,7 +1570,7 @@ int main(int argc, char *argv[])
                     }
 
                   }
-                  if ( bad )
+                  if ( bad || printAllValues )
                   {
                     for ( int harz = 0; harz < batch->noGenHarms; harz++ )
                     {
@@ -1574,7 +1596,6 @@ int main(int argc, char *argv[])
 
                 FOLD // Complex values  .
                 {
-
                   good = true;
                   bad  = false;
 
@@ -1627,7 +1648,7 @@ int main(int argc, char *argv[])
 
                       }
 
-                      if ( !good && plot && 0 )
+                      if ( ( !good && plot ) || plotAllPlanes )
                       {
                         //fcomplex* cmplx   = (fcomplex*)gpuCmplx[step][harz].getP(0,0);
                         float *powArr     = (float*)plotPowers.getP(0,0);
@@ -1656,16 +1677,32 @@ int main(int argc, char *argv[])
                         //sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%2i_01_GPU.png", firstStep+si, harz);
                         //drawArr(fname, &gpuPowers[si][harz], HM_G);
 
-                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
-                        draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz+1);
+#ifndef DEBUG
+                        printf("\r  Plotting %s  ", fname);
+                        fflush(stdout);
+#endif
+                        draw2DArray6(fname, powArr, nX, nY, MAX(800,nX), MAX(800,nY*3) );
+#ifndef DEBUG
+                        printf("\r                                                                                                     \r");
+                        fflush(stdout);
+#endif
 
                         // Copy CPU powers
                         for(int y = 0; y < nY; y++ )
                         {
                           memcpy(&powArr[y*nX],cpuPowers[step][harz].getP(0,y), nX*sizeof(float));
                         }
-                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
-                        draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz+1);
+#ifndef DEBUG
+                        printf("\r  Plotting %s  ", fname);
+                        fflush(stdout);
+#endif
+                        draw2DArray6(fname, powArr, nX, nY, MAX(800,nX), MAX(800,nY*3) );
+#ifndef DEBUG
+                        printf("\r                                                                                                     \r");
+                        fflush(stdout);
+#endif
 
 
                         // Copy CPU powers
@@ -1680,7 +1717,15 @@ int main(int argc, char *argv[])
                           }
                         }
                         sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_RES.png", firstStep+step+1, harz);
-                        draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
+#ifndef DEBUG
+                        printf("\r  Plotting %s  ", fname);
+                        fflush(stdout);
+#endif
+                        draw2DArray6(fname, powArr, nX, nY, MAX(800,nX), MAX(800,nY*3) );
+#ifndef DEBUG
+                        printf("\r                                                                                                     \r");
+                        fflush(stdout);
+#endif
 
                         //fundamental = subharm_ffdot_plane(1, 1, startr, lastr, &subharminfs[0][0], &obs);
                         //draw2DArray6(fname, fundamental->powers[0], fundamental->numrs, fundamental->numzs, 4096, 1602);
@@ -1688,7 +1733,7 @@ int main(int argc, char *argv[])
                       }
                     }
 
-                    if ( bad )
+                    if ( bad || printAllValues )
                     {
                       for ( int harz = 0; harz < batch->noGenHarms; harz++ )
                       {
@@ -1761,40 +1806,49 @@ int main(int argc, char *argv[])
                       else
                         printf("  Great \n");
 
-                      if ( ( !good && plot ) || printDetails )
+                      if ( ( !good && plot ) || plotAllPlanes )
                       {
                         float *powArr     = (float*)plotPowers.getP(0,0);
 
-                        //int nX = gpuPowers[step][harz].ax(0)->noEls() ;
-                        //int nY = gpuPowers[step][harz].ax(1)->noEls() ;
-
-                        int nX = rVal->numrs;     // gpuPowers[step][harz].ax(0)->noEls() ;
-                        int nY = cHInfo->height;  // gpuPowers[step][harz].ax(1)->noEls() ;
-
-                        //int width         = trdBatch->accelLen;
-                        //int width         = rVal->numrs;
+                        int nX = rVal->numrs;
+                        int nY = cHInfo->height;
 
                         // Copy CPU powers
                         for(int y = 0; y < nY; y++ )
                         {
                           memcpy(&powArr[y*nX],gpuPowers[step][harz].getP(0,y), nX*sizeof(float));
                         }
-                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz);
-                        draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
-
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_GPU.png", firstStep+step+1, harz+1);
+#ifndef DEBUG
+                        printf("\r  Plotting %s  ", fname);
+                        fflush(stdout);
+#endif
+                        draw2DArray6(fname, powArr, nX, nY, MAX(800,nX), MAX(800,nY*3) );
+#ifndef DEBUG
+                        printf("\r                                                                                                     \r");
+                        fflush(stdout);
+#endif
 
                         // Copy CPU powers
                         for(int y = 0; y < nY; y++ )
                         {
                           memcpy(&powArr[y*nX],cpuPowers[step][harz].getP(0,y), nX*sizeof(float));
                         }
-                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz);
-                        draw2DArray6(fname, powArr, nX, nY, nX, nY*3);
+                        sprintf(fname, "/home/chris/fdotplanes/ffdot_S%05i_H%02i_CPU.png", firstStep+step+1, harz+1);
+#ifndef DEBUG
+                        printf("\r  Plotting %s  ", fname);
+                        fflush(stdout);
+#endif
+                        draw2DArray6(fname, powArr, nX, nY, MAX(800,nX), MAX(800,nY*3) );
+#ifndef DEBUG
+                        printf("\r                                                                                                     \r");
+                        fflush(stdout);
+#endif
                       }
                     }
                   }
 
-                  if ( bad || printDetails )
+                  if ( bad || printAllValues )
                   {
                     for ( int harz = 0; harz < batch->noGenHarms; harz++ )
                     {

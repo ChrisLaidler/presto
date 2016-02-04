@@ -357,8 +357,8 @@ extern __device__ __constant__ int          ALEN;                             //
 extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
 extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
 
-extern __device__ __constant__ int          STK_STRD[4];                      ///< Stride of the stacks
-extern __device__ __constant__ char         STK_INP[4][4069];                 ///< input details
+extern __device__ __constant__ int          STK_STRD[MAX_STACKS];                      ///< Stride of the stacks
+extern __device__ __constant__ char         STK_INP[MAX_STACKS][4069];                 ///< input details
 
 
 //======================================= Constant Values =================================================\\

@@ -101,7 +101,8 @@ CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 # The standard PRESTO libraries to link into executables
 PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(FFTLINK)
 
-CC = gcc
+CC 	= gcc
+CPP = g++
 FC = gfortran
 #FC = g77
 NVCC = nvcc
@@ -496,8 +497,8 @@ spigotSband2filterbank: $(OBJDIR)spigotSband2filterbank.o $(OBJDIR)spigot.o $(OB
 show_pfd: show_pfd_cmd.c $(OBJDIR)show_pfd.o $(OBJDIR)show_pfd_cmd.o $(OBJDIR)prepfold_utils.o $(OBJDIR)prepfold_plot.o $(OBJDIR)least_squares.o $(OBJDIR)range_parse.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)show_pfd.o $(OBJDIR)show_pfd_cmd.o $(OBJDIR)prepfold_utils.o $(OBJDIR)prepfold_plot.o $(OBJDIR)least_squares.o $(OBJDIR)range_parse.o $(PLOT2DOBJS) $(LAPACKLINK) $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-makedata: $(OBJDIR)com.o $(OBJDIR)randlib.o $(OBJDIR)makedata.o $(libpresto)
-	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)com.o $(OBJDIR)randlib.o $(OBJDIR)makedata.o $(PRESTOLINK) -lm
+makedata: $(OBJDIR)com.o $(OBJDIR)randlib.o $(OBJDIR)mvmd.o $(OBJDIR)makedata.o $(libpresto)
+	$(CPP) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)com.o $(OBJDIR)randlib.o $(OBJDIR)mvmd.o $(OBJDIR)makedata.o  $(PRESTOLINK) -lm
 
 makeinf: $(OBJDIR)makeinf.o $(OBJDIR)ioinf.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)makeinf.o $(OBJDIR)ioinf.o $(PRESTOLINK) -lm
@@ -606,6 +607,10 @@ $(OBJDIR)%.o: %.c
 	@mkdir -p $(OBJDIR)
 	$(CC) $(CFLAGS) -o $@ -c $<
 
+$(OBJDIR)%.o: %.cpp
+	@mkdir -p $(OBJDIR)
+	$(CPP) $(CFLAGS) -o $@ -c $<
+	
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)
 	$(FC) $(FFLAGS) -o $@ -c $<

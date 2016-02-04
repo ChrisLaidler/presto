@@ -98,6 +98,13 @@ typedef struct accelcand{
   double *hirs;        /* Optimized freqs for the harmonics */
   double *hizs;        /* Optimized fdots for the harmonics */
   rderivs *derivs;     /* An rderivs structure for each harmonic */
+
+  float   init_power;
+  float   init_sigma;
+  int     init_numharm;
+  double  init_r;
+  double  init_z;
+
 } accelcand;
 
 typedef struct kernel{

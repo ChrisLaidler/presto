@@ -580,7 +580,6 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
   }
 }
 
-
 __global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)
 {
   float total_power   = 0;
@@ -2102,28 +2101,37 @@ double logQChi2_i(int s, double x )
   return t2 + t3 ;
 }
 
-void calcNQ(double x, long long n, double* p, double* q)
+void calcNQ(double qOrr, long long n, double* p, double* q)
 {
   double qq  = 0;
   double pp  = 1;
 
-  double trueV = 1-pow((1-x),n);
+//  double trueV = 1-pow((1-qOrr),n);
+//
+//  if ( trueV > 0.95 )
+//  {
+//    *q = 1.0-pow((long double)(1.0-qOrr),(long double)n);
+//    *p =     (long double)pow((long double)(1.0-qOrr),(long double)n);
+//    return;
+//  }
+
+  double trueV = 1-pow((1-qOrr),n);
 
   if ( trueV > 0.95 )
   {
-    *q = 1.0-pow((long double)(1.0-x),(long double)n);
-    *p =     (long double)pow((long double)(1.0-x),(long double)n);
+    *q = 1.0-pow((long double)(1.0-qOrr),(long double)n);
+    *p =     (long double)pow((long double)(1.0-qOrr),(long double)n);
     return;
   }
 
   FOLD // Else do a series expansion  .
   {
-    double term = 1;
-    long long k = 0;
-    double  sum0 = qq;
+    double term   = 1;
+    long long k   = 0;
+    double  sum0  = qq;
     double  dff ;
-    double  coef = 1;
-    double  fact = 1;
+    double  coef  = 1;
+    double  fact  = 1;
 
     qq = 0;
 
@@ -2135,7 +2143,7 @@ void calcNQ(double x, long long n, double* p, double* q)
       fact *= k;
       double bcoef = coef / fact ;
 
-      double t1   = pow(-x,k);
+      double t1   = pow(-qOrr,k);
 
       if( t1 == 0 )
       {
@@ -2147,17 +2155,16 @@ void calcNQ(double x, long long n, double* p, double* q)
         }
         else
         {
-          *p = 1 - n * x;
-          *q =     n * x;
+          *p = 1 - n * qOrr;
+          *q =     n * qOrr;
           return;
         }
       }
 
-
       term = bcoef*t1;
-      qq -= term;
+      qq  -= term;
       pp  += term;
-      dff = fabs(sum0-qq);
+      dff  = fabs(sum0-qq);
 
       //      if ( trueV > 0.5 )
       //printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
@@ -2178,11 +2185,11 @@ void calcNQ(double x, long long n, double* p, double* q)
  */
 double candidate_sigma_cl(double poww, int numharm, long long numindep)
 {
-  int     k       = numharm * 2.0 ;     // Each harm is 2 powers
-  double  gamP    = poww * 2.0 ;        // A just for normalisation of powers
-
   double logQ, gpu_p, gpu_q, sigc ;
 
+
+  int     k       = numharm * 2.0 ;     // Each harm is 2 powers
+  double  gamP    = poww * 2.0 ;        // A just for normalisation of powers
   int     n       = numharm;
 
   if ( poww > 100 )
@@ -2371,7 +2378,7 @@ void* optCandDerivs(void* ptr)
 
   free(res);
 
-  return NULL;
+  return (NULL);
 }
 
 /** Process the search results for the batch  .
@@ -2594,78 +2601,10 @@ void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptC
 
   FOLD // Optimise derivatives  .
   {
+    //cand->numharm = 32; // TMP
+
     processCandDerivs(cand, srch, nn);
   }
-
-  //  FOLD // Optimise derivatives  .
-  //  {
-  //    nvtxRangePush("Opt derivs");
-  //
-  //    optemiseDerivs(data, maxHarms, r_offset, numdata, cand->r, cand->z, cand->derivs, cand->pows, nn);
-  //
-  //    for( ii=0; ii < maxHarms; ii++ )
-  //    {
-  //      cand->hirs[ii]  = cand->r*(ii+1);
-  //      cand->hizs[ii]  = cand->z*(ii+1);
-  //    }
-  //
-  //    FOLD // Update fundamental values to the optimised ones  .
-  //    {
-  //      float   maxSig      = 0;
-  //      int     bestH       = 0;
-  //      float   bestP       = 0;
-  //      double  sig         = 0; // can be a float
-  //      int     numindep;
-  //
-  //      //double sSig;
-  //      //int     numindepS   = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) ;
-  //      //float   sPower      = 0;
-  //      //int     noS         = 0;
-  //
-  //      cand->power         = 0;
-  //      for( ii=0; ii < maxHarms; ii++ )
-  //      {
-  //        if ( cand->derivs[ii].locpow > 0 )
-  //        {
-  //          float lPower    = cand->derivs[ii].pow/cand->derivs[ii].locpow;
-  //          cand->power    += lPower;
-  //          numindep        = (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (ACCEL_DZ / 6.95) / (ii+1) ;
-  //          sig             = candidate_sigma_cl(cand->power, (ii+1), numindep );
-  //
-  //          //sSig           = candidate_sigma_cl(lPower, 1, numindepS );
-  //          //if ( lPower > 3 )
-  //          //{
-  //          //  sPower      += lPower;
-  //          //  noS++;
-  //          //}
-  //          //printf("          %02i  pow: %8.3f  sig: %8.4f   Sum: pow: %8.3f  sig: %8.4f\n", ii+1, lPower, sSig, cand->power, sig );
-  //
-  //          if ( sig > maxSig )
-  //          {
-  //            maxSig        = sig;
-  //            bestP         = cand->power;
-  //            bestH         = (ii+1);
-  //          }
-  //        }
-  //      }
-  //
-  //      //numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / (maxHarms) ;
-  //      //sSig            = candidate_sigma(sPower, maxHarms, numindep );
-  //      //printf("\n" );
-  //      //printf("              pow: %8.3f  sig: %8.4f\n", sPower, sSig );
-  //      //printf("---------------------\n" );
-  //
-  //      cand->numharm = bestH;
-  //      cand->sigma   = maxSig;
-  //      cand->power   = bestP;
-  //
-  //    }
-  //
-  //    //noStages      = log2((double)cand->numharm);
-  //    //cand->sigma   = candidate_sigma(cand->power, cand->numharm, obs->numindep[noStages]);
-  //
-  //    nvtxRangePop();
-  //  }
 
   nvtxRangePop();
 }

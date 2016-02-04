@@ -18,6 +18,12 @@
 #define DEGTORAD      0.017453292519943295769236907684886127134428718885417
 #endif
 
+#ifdef __cplusplus
+#define ExternC extern "C"
+#else
+#define ExternC
+#endif
+
 #define BUFFSIZE 16384		/* Number of floats to write at a time */
 
 typedef struct MAKEDATA {
@@ -73,3 +79,7 @@ double modsin(double val);
 double crab(double val);
 double spike(double val);
 double gauss(double val);
+double mvmd(double val);
+
+ExternC double MVMD(double k, double phase, double a, double* bess );
+ExternC double calcK(double fwhm);

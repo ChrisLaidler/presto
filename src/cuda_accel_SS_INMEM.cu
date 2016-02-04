@@ -10,16 +10,17 @@ template<typename T, const int noStages, const int noHarms, const int cunkSize>
 //__global__ void searchINMEM_k(T* __restrict__ read, int iStride, int cStride, int firstBin, int start, int end, candPZs* d_cands)
 __global__ void searchINMEM_k(T* read, int iStride, int cStride, int firstBin, int start, int end, candPZs* d_cands)
 {
-  const int bidx        = threadIdx.y * SSIM_X  +  threadIdx.x;     /// Block index
-  const int tid         = blockIdx.x  * SSIMBS  +  bidx;            /// Global thread id (ie column) 0 is the first 'good' column
+  const int bidx        = threadIdx.y * SSIM_X  +  threadIdx.x;       /// Block index
+  const int tid         = blockIdx.x  * SSIMBS  +  bidx;              /// Global thread id (ie column) 0 is the first 'good' column
   const int zeroHeight  = HEIGHT_STAGE[0];
 
   int             inds      [noHarms];
   candPZs         candLists [noStages];
-  float           powers    [cunkSize];                             /// registers to hold values to increase mem cache hits
+  float           powers    [cunkSize];                               /// registers to hold values to increase mem cache hits
 
   int            idx   = start + tid ;
   int            len   = end - start;
+
 
   if ( tid < len )
   {
@@ -36,7 +37,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int cStride, int firstBin, i
     {
       FOLD 	// Calculate the x indices or create a pointer offset by the correct amount  .
       {
-        for ( int harm = 0; harm < noHarms; harm++ )         // Loop over harmonics (batch) in this stage  .
+        for ( int harm = 0; harm < noHarms; harm++ )                  // Loop over harmonics (batch) in this stage  .
         {
           int   ix        = roundf( idx*FRAC_STAGE[harm] ) - firstBin;
           //int   ix        = floorf( idx*FRAC_STAGE[harm] ) - firstBin;
@@ -52,17 +53,17 @@ __global__ void searchINMEM_k(T* read, int iStride, int cStride, int firstBin, i
       int   y1            = MIN(y0+lDepth, zeroHeight);
       int   yIndsChnksz   = zeroHeight+INDS_BUFF;
 
-      for( int y = y0; y < y1 ; y += cunkSize )                     // loop over chunks  .
+      for( int y = y0; y < y1 ; y += cunkSize )                       // loop over chunks  .
       {
         FOLD // Initialise chunk of powers to zero .
         {
-          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers  .
+          for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )            // Loop over powers  .
             powers[yPlus] = 0;
         }
 
         FOLD // Loop over other stages, sum and search  .
         {
-          for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages  .
+          for ( int stage = 0 ; stage < noStages; stage++)            // Loop over stages  .
           {
             int start = STAGE[stage][0] ;
             int end   = STAGE[stage][1] ;
@@ -78,12 +79,12 @@ __global__ void searchINMEM_k(T* read, int iStride, int cStride, int firstBin, i
 
                   if ( ix1 >= 0 ) // Valid stage
                   {
-                    int   iyP       = -1;                               // The previous y-index used
+                    int   iyP       = -1;                             // The previous y-index used
                     float pow       = 0 ;
 
-                    for( int yPlus = 0; yPlus < cunkSize; yPlus++ )     // Loop over the chunk  .
+                    for( int yPlus = 0; yPlus < cunkSize; yPlus++ )   // Loop over the chunk  .
                     {
-                      int yPln     = y + yPlus ;                         ///< True Y index in plane
+                      int yPln     = y + yPlus ;                      ///< True Y index in plane
 
                       // Don't check yPln against zeroHeight, YINDS contains a buffer at the end, only do the check later
                       int iy1     = YINDS[ yIndsChnksz*harm + yPln ];
@@ -92,13 +93,6 @@ __global__ void searchINMEM_k(T* read, int iStride, int cStride, int firstBin, i
                       {
                         int izz = iy1*iStride + ix1 ;
 
-//#ifdef DEBUG
-//                        if ( izz >= zeroHeight * iStride || izz < 0  )
-//                        {
-//                          printf("ERROR: thread %i is assessing out of bounds memory in %s!\n", tid, __FUNCTION__ );
-//                        }
-//                        else
-//#endif
                           //if ( harm < 5 )
                         pow = get(read, izz );
 
@@ -397,6 +391,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
         infoMSG(4,4,"DEBUG synchronisation blocking.\n");
 
         CUDA_SAFE_CALL(cudaEventSynchronize(batch->searchComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+        CUDA_SAFE_CALL(cudaGetLastError(), "Calling searchINMEM kernel.");
       }
 #endif
     }

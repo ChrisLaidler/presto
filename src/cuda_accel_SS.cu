@@ -763,7 +763,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
             if ( res->threasdInfo )
             {
               pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
-              if ( candidate->sig < sig )
+              if ( candidate->sig < sig ) // Check again
               {
                 if ( candidate->sig == 0 )
                   (*res->noResults)++;
@@ -924,9 +924,41 @@ void* processSearchResults(void* ptr)
 
         if ( poww > 0 )
         {
-          // This value is above the threshold
-          rr      = res->rLow + x * ACCEL_DR ;
-          procesCanidate(res, rr, zz, poww, sig, stage, numharm ) ;
+          if ( isnan(poww) )
+          {
+            rr      = res->rLow + x * ACCEL_DR / numharm ;
+            fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
+          }
+          else
+          {
+            if ( isinf(poww) )
+            {
+              if ( res->flags & FLAG_HALF )
+              {
+                poww          = 6.55e4;      // Max 16 bit float value
+                double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+                fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", poww, rPos);
+              }
+              else
+              {
+                poww          = 3.402823e38; // Max 32 bit float value
+                double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+                fprintf(stderr,"WARNING: Search return inf power at bin %.2f. This is probably an error as you are using single precision floats.\n", rPos);
+              }
+            }
+
+            if ( zz < 0 || zz >= res->zMax+1)
+            {
+              double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+              fprintf(stderr,"ERROR: invalid z value found at bin %.2f.\n", rPos);
+            }
+            else
+            {
+              // This value is above the threshold
+              rr      = res->rLow + x * ACCEL_DR ;
+              procesCanidate(res, rr, zz, poww, sig, stage, numharm ) ;
+            }
+          }
         }
       }
     }
@@ -1014,7 +1046,7 @@ void processSearchResults(cuFFdotBatch* batch)
       thrdDat->rLow         = rVal->drlo;
       thrdDat->retType      = batch->retType;
       thrdDat->threasdInfo  = batch->sInf->threasdInfo;
-      thrdDat->flags         = batch->flags;
+      thrdDat->flags        = batch->flags;
       thrdDat->zMax         = batch->hInfos->zmax;
       thrdDat->resultTime   = batch->resultTime;
       thrdDat->noResults    = &batch->noResults;

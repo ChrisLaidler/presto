@@ -197,6 +197,19 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
    free(move);
 }
 
+void realfftw(float idata[], long n, int isign)
+{
+#ifdef USEFFTW
+
+   /* Use FFTW for the small transforms if available. */
+
+   //fftwf_plan plan_l =  fftwf_plan_dft_1d(n, idata, idata, isign, FFTW_ESTIMATE);
+   fftwf_plan plan_l =  fftwf_plan_dft_r2c_1d(n, idata, idata, FFTW_ESTIMATE);
+   fftwf_execute(plan_l);
+   fftwf_destroy_plan(plan_l);
+
+#endif
+}
 
 void realfft(float idata[], long n, int isign)
 /*  This is a modified version of the NR routine with correct (-)  */

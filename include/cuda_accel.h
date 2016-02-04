@@ -42,6 +42,7 @@ extern "C"
 //=========================================== Defines ====================================================
 
 #define     MAX_IN_STACK        10          ///< NOTE: this is 1 to big to handle the init problem
+#define     MAX_STACKS          5           ///< The maximum number stacks in a family of plains
 #define     MAX_HARM_NO         16          ///< The maximum number of harmonics handled by a accel search
 #define     MAX_YINDS           8000        ///< The maximum number of y indices to store in constant memory
 #define     INDS_BUFF           20          ///< The maximum number of y indices to store in constant memory
@@ -49,6 +50,7 @@ extern "C"
 #define     MAX_STKSZ           9           ///< The maximum number of planes in a stack
 #define     MAX_GPUS            32          ///< The maximum number GPU's
 #define     INMEM_FFT_WIDTH     4096        ///< The size of FFT planes for in-mem GPU search
+
 
 //====================================== Bit flag values =================================================
 
@@ -112,7 +114,7 @@ extern "C"
 #define     FLAG_SYNCH          (1ULL<<35)     ///< Run the search in synchronous mode, this is slow and should only be used for testing
 #define     FLAG_SEPSRCH        (1ULL<<36)     ///< Create a separate second output location for the search output
 #define     FLAG_SEPRVAL        (1ULL<<37)     ///< Create a separate location list
-#define     FLAG_DPG_PRNT_CAND  (1ULL<<38)     ///< Print canidates to
+#define     FLAG_DPG_PRNT_CAND  (1ULL<<38)     ///< Print candidates to
 
 
 // ----------- This is a list of the data types that and storage structures
@@ -890,6 +892,8 @@ ExternC void printCommandLine(int argc, char *argv[]);
 ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
 
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList* cands );
+
+ExternC void calcNQ(double qOrr, long long n, double* p, double* q);
 
 ExternC double candidate_sigma_cl(double poww, int numharm, long long numindep);
 
