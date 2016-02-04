@@ -949,7 +949,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 //      res   = mx2*1.02/(float)no ;
 //    }
 
-    int pStride;
+    int pStride = 0;
 
     FOLD // GPU grid
     {

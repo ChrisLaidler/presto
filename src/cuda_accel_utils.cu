@@ -648,15 +648,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         printf("Determining GPU step size and plane width:\n");
 
+        int   oAccelLen, oAccelLen1, oAccelLen2;
+
+        oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax, accuracy);
+
         if ( kernel->noSrchHarms > 1 )
         {
           // Working with a family of planes
-
-          int   oAccelLen1, oAccelLen2;
-
-          // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-          oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax, accuracy);
-          oAccelLen2  = calcAccellen(sInf->sSpec->pWidth/2.0, sInf->sSpec->zMax/2.0, accuracy);
 
           if ( sInf->sSpec->pWidth > 100 )
           {
@@ -665,43 +663,31 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           }
           else
           {
+            oAccelLen2  = calcAccellen(sInf->sSpec->pWidth/2.0, sInf->sSpec->zMax/2.0, accuracy);
+            oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
+            oAccelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*ACCEL_RDR) ) * (kernel->noSrchHarms*ACCEL_RDR);
+
             // Use double the accellen of the half plane
-            kernel->accelLen  = MIN(oAccelLen2*2, oAccelLen1);
-          }
+            kernel->accelLen  = oAccelLen;
 
-          if ( sInf->sSpec->pWidth < 100 ) // Check  .
-          {
-            float fWidth    = floor(calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen, accuracy)/1000.0);
-
-            float ss        = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen, accuracy) ;
-            float l2        = log2( ss );
-
-            if      ( l2 == 10 )
-              fWidth = 1 ;
-            else if ( l2 == 11 )
-              fWidth = 2 ;
-            else if ( l2 == 12 )
-              fWidth = 4 ;
-            else if ( l2 == 13 )
-              fWidth = 8 ;
-            else if ( l2 == 14 )
-              fWidth = 16 ;
-            else if ( l2 == 15 )
-              fWidth = 32 ;
-            else if ( l2 == 16 )
-              fWidth = 64 ;
-
-            if ( fWidth != sInf->sSpec->pWidth )
+            FOLD // Check  .
             {
-              fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
-              exit(EXIT_FAILURE);
+              float ss        = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen, accuracy) ;
+              float l2        = log2( ss ) - 10 ;
+              float fWidth    = pow(2, l2);
+
+              if ( fWidth != sInf->sSpec->pWidth )
+              {
+                fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
+                exit(EXIT_FAILURE);
+              }
             }
           }
         }
         else
         {
           // Just a single plane
-          kernel->accelLen = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy);
+          kernel->accelLen = oAccelLen1;
         }
 
         FOLD // Now make sure that accelLen is divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
@@ -738,28 +724,32 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         if ( kernel->accelLen > 100 ) // Print output
         {
+          float ratio;
           float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen, accuracy);
-          int   oAccelLen   = optAccellen(fftLen, sInf->sSpec->zMax, accuracy);
-          float ratio       = kernel->accelLen/float(oAccelLen);
+          float l2          = log2( fftLen ) - 10 ;
+          float fWidth      = pow(2, l2);
 
-          printf(" • Using max plane width of %.0f and thus", fftLen);
+          oAccelLen1  = calcAccellen(fWidth,     sInf->sSpec->zMax, accuracy);
+          oAccelLen2  = calcAccellen(fWidth/2.0, sInf->sSpec->zMax/2.0, accuracy);
+          oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
+          oAccelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*ACCEL_RDR) ) * (kernel->noSrchHarms*ACCEL_RDR);
+          ratio       = kernel->accelLen/float(oAccelLen);
 
-          if    	( ratio < 0.90 )
+          printf(" • Using max plane width of %.0f and", fftLen);
+
+          if ( ratio < 1 )
           {
-            printf(" an non-optimal step-size of %i.\n", kernel->accelLen );
+            printf(" step-size of %i. (%.2f%% of optimal) \n",  kernel->accelLen, ratio*100 );
+            printf("   > For a zmax of %i using %iK FFTs the optimal step-size is %i.\n", sInf->sSpec->zMax, (int)fWidth, oAccelLen);
+
             if ( sInf->sSpec->pWidth > 100 )
             {
-              int K              = round(fftLen/1000.0);
-              fprintf(stderr,"    WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 46 32.\n    For a zmax of %i using %iK FFTs the optimal step-size is %i.\n", sInf->sSpec->zMax, K, oAccelLen);
+              fprintf(stderr,"     WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 46 32.\n");
             }
-          }
-          else if ( ratio < 0.95 )
-          {
-            printf(" an close to optimal step-size of %i.\n", kernel->accelLen );
           }
           else
           {
-            printf(" an optimal step-size of %i.\n", kernel->accelLen );
+            printf(" a optimal step-size of %i.\n", kernel->accelLen );
           }
         }
         else

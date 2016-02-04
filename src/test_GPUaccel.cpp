@@ -167,12 +167,30 @@ ffdotpows *subharm_ffdot_plane_DBG(int numharm, int harmnum,
   else if (obs->norm_type == 0)
   {
     //  old-style block median normalization
-    float *powers;
 
-   for (ii = 0; ii < numdata; ii++)
-   {
-      data[ii].r *= norm;
-      data[ii].i *= norm;
+    if( !norm )
+    {
+      //  old-style block median normalization
+      float *powers;
+      double norm;
+
+      powers = gen_fvect(numdata);
+      for (ii = 0; ii < numdata; ii++)
+        powers[ii] = POWER(data[ii].r, data[ii].i);
+      norm = 1.0 / sqrt(median(powers, numdata)/log(2.0));
+      vect_free(powers);
+      for (ii = 0; ii < numdata; ii++) {
+        data[ii].r *= norm;
+        data[ii].i *= norm;
+      }
+    }
+    else
+    {
+      for (ii = 0; ii < numdata; ii++)
+      {
+        data[ii].r *= norm;
+        data[ii].i *= norm;
+      }
     }
   }
   else
@@ -661,14 +679,6 @@ int main(int argc, char *argv[])
   /* Create the accelobs structure */
   create_accelobs(&obs, &idata, cmd, 1);
 
-  //  if ( obs.inmem ) // Force to standard search  .
-  //  {
-  //    printf("Reverting to standard accelsearch.\n");
-  //    obs.inmem = 0;
-  //    vect_free(obs.ffdotplane);
-  //    obs.ffdotplane = NULL;
-  //  }
-
   /* Zap birdies if requested and if in memory */
   if (cmd->zaplistP && !obs.mmap_file && obs.fft)
   {
@@ -788,14 +798,13 @@ int main(int argc, char *argv[])
       int noHarms   = (1 << (obs.numharmstages - 1));
       candsGPU      = NULL;
 
+      int noEl = 8;
+      fcomplex *tempkern;
+      char fname[1024];
+
       cuFFdotBatch* master   = NULL;    // The first kernel stack created
-      //cuSearch*     cuSrch;
-
-      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-
       subharminfo **subharminfs;
 
-      //float buckets[7] = {1e0, 1e0, 1e-4, 1e-6, 1e-10, 1e-15, 1e-19};
       float buckets[7] = {
           1e-2,      // BAD!    Not even in the same realm.
           1e-3,      // Bad.
@@ -810,17 +819,6 @@ int main(int argc, char *argv[])
       nvtxRangePush("CPU");
       gettimeofday(&start, NULL); // Note could start the timer after kernel init
 #endif
-
-      /* Generate the CPU correlation kernels */
-
-      printf("Generating CPU correlation kernels:\n");
-      subharminfs = create_subharminfos(&obs);
-      printf("Done generating kernels.\n\n");
-
-      int noEl = 8;
-      fcomplex *tempkern;
-
-      nDarray<2, float> DFF_kernels;
 
       if ( cntxThread ) // Wait for context thread to finish  .
       {
@@ -839,92 +837,127 @@ int main(int argc, char *argv[])
       gettimeofday(&start, NULL);       // Profiling
       //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
 
-      FOLD // Generate the GPU kernel  .
+      FOLD // Kernal studd  .
       {
-        cuSrch        = initCuKernels(&sSpec, &gSpec, NULL);
-        master        =  &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
-
-        if ( master->accelLen != ACCEL_USELEN )
+        FOLD // Generate the GPU kernel  .
         {
-          fprintf(stderr, "ERROR: GPU and CPU step size do not match!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
+          cuSrch        = initCuKernels(&sSpec, &gSpec, NULL);
+          master        =  &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
 
-      FOLD // Test kernels  .
-      {
-        int stage, harmtosum, harm;
-        ffdotpows *subharmonic;
-
-        printf("\nComparing GPU & CPU kernels    You can expect a RMSE ~2.00e-7 from the differences in FFTW & CUFFT.\n");
-
-        int noStages = master->noHarmStages;
-
-        if ( master->flags & FLAG_SS_INMEM )
-          noStages = 1;
-
-        for (stage = 0; stage < noStages; stage++)
-        {
-          harmtosum = 1 << stage;
-          for ( harm = 1; harm <= harmtosum; harm += 2 )
+          if ( master->accelLen != ACCEL_USELEN )
           {
-            nDarray<2, float> CPU_kernels;
-            nDarray<2, float> GPU_kernels;
+            fprintf(stderr, "ERROR: GPU and CPU step size do not match!\n");
+            exit(EXIT_FAILURE);
+          }
+        }
 
-            float frac  = (float)(harm)/(float)harmtosum;
-            int idx     = noHarms - frac * noHarms;
-
-            cuHarmInfo  *hinf   = &cuSrch->pInf->kernels[0].hInfos[idx];
-            subharminfo *sinf0  = subharminfs[0];
-            subharminfo *sinf1  = subharminfs[1];
-            subharminfo *sinf   = &subharminfs[stage][harm - 1];
-
-            CPU_kernels.addDim(hinf->width*2, 0, hinf->width);
-            CPU_kernels.addDim(hinf->height, -hinf->zmax, hinf->zmax);
-            CPU_kernels.allocate();
-
-            GPU_kernels.addDim(hinf->width*2, 0, hinf->width);
-            GPU_kernels.addDim(hinf->height, -hinf->zmax, hinf->zmax);
-            GPU_kernels.allocate();
-
-            // Copy data from device
-            CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->pInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
-            //CUDA_SAFE_CALL(cudaDeviceSynchronize(), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-
-            for ( int row=0; row < sinf->numkern; row++  )
+        FOLD //  Convert CPU to inmem .
+        {
+          if ( master->flags & FLAG_SS_INMEM  )
+          {
+            // Set the CPU search to be in-mem
+            if ( !obs.inmem ) // Force to standard search  .
             {
-              memcpy(CPU_kernels.getP(0,row), sinf->kern[row].data, hinf->width*sizeof(fcomplex));
+              long long memuse;
+              memuse = sizeof(float) * (obs.highestbin + ACCEL_USELEN) * obs.numbetween * obs.numz;
+              printf("Converting to in-mem accelsearch.\n");
+
+              obs.inmem = 1;
+              obs.ffdotplane = gen_fvect(memuse / sizeof(float));
             }
+          }
+          else
+          {
+            // Set the CPU search to be in-mem
+            if ( obs.inmem ) // Force to standard search  .
+            {
+              obs.inmem = 0;
+              vect_free(obs.ffdotplane);
+              obs.ffdotplane = NULL;
+            }
+          }
+        }
 
-            //printf("   Input: %02i (%.2f)    RMSE: %15.10f  μ: %10.5f   σ: %10.5f\n", harz, trdStack->hInfos[harz].harmFrac, RMSE, stat.mean, stat.sigma );
+        FOLD //  Generate CPU kernel  .
+        {
+          printf("Generating CPU correlation kernels:\n");
+          subharminfs = create_subharminfos(&obs);
+          printf("Done generating kernels.\n\n");
+        }
 
-            basicStats statG = GPU_kernels.getStats(true);
-            basicStats statC = CPU_kernels.getStats(true);
-            double RMSE = GPU_kernels.RMSE(CPU_kernels);
-            double ERR =  RMSE / statG.sigma ;
-            printf("   Cmplx: %02i (%.2f)  RMSE: %10.3e    μ: %10.3e    σ: %10.3e    RMSE/σ: %9.2e ", idx, frac, RMSE, statG.mean, statG.sigma, ERR );
+        FOLD // Test kernels  .
+        {
+          int stage, harmtosum, harm;
+          ffdotpows *subharmonic;
 
-            if      ( ERR > buckets[0] )
-              printf("  BAD!    Not even in the same realm.\n");
-            else if ( ERR > buckets[1] )
-              printf("  Bad.  \n" );
-            else if ( ERR > buckets[2] )
-              printf("  Bad.   But not that bad.\n");
-            else if ( ERR > buckets[3] )
-              printf("  Close  But not great. \n");
-            else if ( ERR > buckets[4] )
-              printf("  GOOD  But a bit high.\n");
-            else if ( ERR > buckets[5] )
-              printf("  GOOD \n"  );
-            else if ( ERR > buckets[6] )
-              printf("  GOOD  Very good.\n"  );
-            else
-              printf("  Great \n");
+          printf("\nComparing GPU & CPU kernels    You can expect a RMSE ~2.00e-7 from the differences in FFTW & CUFFT.\n");
+
+          int noStages = master->noHarmStages;
+
+          if ( master->flags & FLAG_SS_INMEM )
+            noStages = 1;
+
+          for (stage = 0; stage < noStages; stage++)
+          {
+            harmtosum = 1 << stage;
+            for ( harm = 1; harm <= harmtosum; harm += 2 )
+            {
+              nDarray<2, float> CPU_kernels;
+              nDarray<2, float> GPU_kernels;
+
+              float frac  = (float)(harm)/(float)harmtosum;
+              int idx     = noHarms - frac * noHarms;
+
+              cuHarmInfo  *hinf   = &cuSrch->pInf->kernels[0].hInfos[idx];
+              subharminfo *sinf0  = subharminfs[0];
+              subharminfo *sinf1  = subharminfs[1];
+              subharminfo *sinf   = &subharminfs[stage][harm - 1];
+
+              CPU_kernels.addDim(hinf->width*2, 0, hinf->width);
+              CPU_kernels.addDim(hinf->height, -hinf->zmax, hinf->zmax);
+              CPU_kernels.allocate();
+
+              GPU_kernels.addDim(hinf->width*2, 0, hinf->width);
+              GPU_kernels.addDim(hinf->height, -hinf->zmax, hinf->zmax);
+              GPU_kernels.allocate();
+
+              // Copy data from device
+              CUDA_SAFE_CALL(cudaMemcpy(GPU_kernels.elems, cuSrch->pInf->kernels[0].kernels[idx].d_kerData, GPU_kernels.getBuffSize(), cudaMemcpyDeviceToHost), "Failed to kernel copy data from.");
+              //CUDA_SAFE_CALL(cudaDeviceSynchronize(), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
+              for ( int row=0; row < sinf->numkern; row++  )
+              {
+                memcpy(CPU_kernels.getP(0,row), sinf->kern[row].data, hinf->width*sizeof(fcomplex));
+              }
+
+              //printf("   Input: %02i (%.2f)    RMSE: %15.10f  μ: %10.5f   σ: %10.5f\n", harz, trdStack->hInfos[harz].harmFrac, RMSE, stat.mean, stat.sigma );
+
+              basicStats statG = GPU_kernels.getStats(true);
+              basicStats statC = CPU_kernels.getStats(true);
+              double RMSE = GPU_kernels.RMSE(CPU_kernels);
+              double ERR =  RMSE / statG.sigma ;
+              printf("   Cmplx: %02i (%.2f)  RMSE: %10.3e    μ: %10.3e    σ: %10.3e    RMSE/σ: %9.2e ", idx, frac, RMSE, statG.mean, statG.sigma, ERR );
+
+              if      ( ERR > buckets[0] )
+                printf("  BAD!    Not even in the same realm.\n");
+              else if ( ERR > buckets[1] )
+                printf("  Bad.  \n" );
+              else if ( ERR > buckets[2] )
+                printf("  Bad.   But not that bad.\n");
+              else if ( ERR > buckets[3] )
+                printf("  Close  But not great. \n");
+              else if ( ERR > buckets[4] )
+                printf("  GOOD  But a bit high.\n");
+              else if ( ERR > buckets[5] )
+                printf("  GOOD \n"  );
+              else if ( ERR > buckets[6] )
+                printf("  GOOD  Very good.\n"  );
+              else
+                printf("  Great \n");
+            }
           }
         }
       }
-
-      char fname[1024];
 
       if ( cmd->gpuP >= 0) 	                                  // -- Main Loop --  .
       {
@@ -937,70 +970,58 @@ int main(int argc, char *argv[])
         bool contPlotAll    = false;          //
         bool contPlotCnd    = true;           //
 
-        //omp_set_num_threads(cuSrch->pInf->noBatches);
-
-        int harmtosum, harm;
+        int   harmtosum, harm;
         startr = obs.rlo, lastr = 0, nextr = 0;
 
-        // Search bounds
-        startr    = 0, lastr = 0, nextr = 0;
-        maxxx     = cuSrch->SrchSz->noSteps;
-        if ( master->flags & FLAG_SS_INMEM  )
+        FOLD // Search bounds  .
         {
-          startr  = cuSrch->SrchSz->searchRLow ; // ie ( rlo / no harms)
-
-          // Set the CPU search to be in-mem
-          if ( !obs.inmem ) // Force to standard search  .
+          startr    = 0, lastr = 0, nextr = 0;
+          maxxx     = cuSrch->SrchSz->noSteps;
+          if ( master->flags & FLAG_SS_INMEM  )
           {
-            long long memuse;
-            memuse = sizeof(float) * (obs.highestbin + ACCEL_USELEN) * obs.numbetween * obs.numz;
-            printf("Converting to in-mem accelsearch.\n");
-
-            obs.inmem = 1;
-            obs.ffdotplane = gen_fvect(memuse / sizeof(float));
+            startr  = cuSrch->SrchSz->searchRLow ; // ie ( rlo / no harms)
           }
+          else
+          {
+            startr  = sSpec.fftInf.rlo;
+          }
+
+          if ( maxxx < 0 )
+            maxxx = 0;
         }
-        else
+
+        FOLD // Output  .
         {
-          startr  = sSpec.fftInf.rlo;
+          printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n", maxxx, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
+
+          printf("\nWill check all input and planes and report ");
+          if (printDetails)
+            printf("all results");
+          else
+            printf("only poor or bad results");
+          printf("\n\n");
+
+          print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
         }
-
-        if ( maxxx < 0 )
-          maxxx = 0;
-
-        printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n", maxxx, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
-
-        printf("\nWill check all input and planes and report ");
-        if (printDetails)
-          printf("all results");
-        else
-          printf("only poor or bad results");
-        printf("\n\n");
-
-        print_percent_complete(startr - obs.rlo, obs.highestbin - obs.rlo, "search", 1);
-
-        nDarray<2, float> plotPowers;
-
-        plotPowers.addDim(master->accelLen,  0, master->accelLen  );
-        plotPowers.addDim(master->hInfos[0].height, 0, master->hInfos[0].height );
-        plotPowers.allocate();
 
         FOLD                                                  // -- Main Loop --  .
         {
-          int tid = 0;  //omp_get_thread_num();
-          cuFFdotBatch* batch = &cuSrch->pInf->batches[tid];
-
-          double*  startrs = (double*)malloc(sizeof(double)*batch->noSteps);
-          double*  lastrs  = (double*)malloc(sizeof(double)*batch->noSteps);
-          size_t   rest    = batch->noSteps;
+          int           tid         = 0;
+          cuFFdotBatch* batch       = &cuSrch->pInf->batches[tid];
+          double*       startrs     = (double*)malloc(sizeof(double)*batch->noSteps);
+          double*       lastrs      = (double*)malloc(sizeof(double)*batch->noSteps);
+          size_t        rest        = batch->noSteps;
+          void*         tmpRow      = malloc(batch->inpDataSize);
+          int           noCands     = 0;
+          int           iteration   = 0;
 
           nDarray<1, float> **cpuInput  = new nDarray<1, float>*[batch->noSteps];
           nDarray<2, float> **cpuCmplx  = new nDarray<2, float>*[batch->noSteps];
           nDarray<1, float> **gpuInput  = new nDarray<1, float>*[batch->noSteps];
           nDarray<2, float> **gpuCmplx  = new nDarray<2, float>*[batch->noSteps];
-
           nDarray<2, float> **cpuPowers = new nDarray<2, float>*[batch->noSteps];
           nDarray<2, float> **gpuPowers = new nDarray<2, float>*[batch->noSteps];
+          nDarray<2, float>   plotPowers;
 
           FOLD // Initialise data structures to hold test data for comparisons  .
           {
@@ -1018,7 +1039,7 @@ int main(int argc, char *argv[])
                 gpuPowers[step] = new nDarray<2, float>[batch->noGenHarms];
               }
 
-              FOLD
+              FOLD  //   .
               {
                 for (int harm = 0; harm < master->noGenHarms; harm++ )
                 {
@@ -1049,16 +1070,16 @@ int main(int argc, char *argv[])
                 }
               }
             }
+
+            FOLD // initalise plotPowers  .
+            {
+              plotPowers.addDim(master->accelLen,  0, master->accelLen  );
+              plotPowers.addDim(master->hInfos[0].height, 0, master->hInfos[0].height );
+              plotPowers.allocate();
+            }
           }
 
-          void* tmpRow = malloc(batch->inpDataSize);
-
-          setDevice( batch->device ) ;
-
-          int noCands     = 0;
-          int iteration   = 0;
-
-          if ( batch->flags & FLAG_HALF )
+          if ( batch->flags & FLAG_HALF ) // Set border  .
           {
             buckets[1] = 1e-1 ;   // BAD!    Not even in the same realm.
             buckets[1] = 6e-2 ;   // Bad.
@@ -1270,9 +1291,7 @@ int main(int argc, char *argv[])
 
                 double startr   = startrs[step];
                 double lastr    = lastrs[step];
-
                 rVals* rVal     = &(((*batch->rAraays)[batch->rActive])[step][0]);
-
                 double rLow     = (*batch->rAraays)[batch->rActive][0][0].drlo;
 
                 FOLD // Do CPU search to compare candidates  .
@@ -1289,6 +1308,7 @@ int main(int argc, char *argv[])
                     if ( stage == 0 )
                     {
                       rVal        = &(((*batch->rAraays)[batch->rActive])[step][0]);
+
                       fundamental = subharm_ffdot_plane_DBG(1, 1, startr, lastr, &subharminfs[0][0], &obs, rVal->norm, &cpuInput[step][0], &cpuCmplx[step][0], &cpuPowers[step][0] );
 
                       if ( obs.inmem )
@@ -1363,7 +1383,7 @@ int main(int argc, char *argv[])
                         gpuOutput = batch->h_outData1;
                       }
 
-                      //if ( !obs.inmem )
+                      FOLD
                       {
                         rVal              = &(((*batch->rAraays)[batch->rActive])[step][0]);
                         uint  x0          = step*rVal->numrs;
@@ -1570,6 +1590,7 @@ int main(int argc, char *argv[])
                     }
 
                   }
+
                   if ( bad || printAllValues )
                   {
                     for ( int harz = 0; harz < batch->noGenHarms; harz++ )
@@ -1898,14 +1919,6 @@ int main(int argc, char *argv[])
             waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
           }
 
-          //          FOLD // Do in-mem search  .
-          //          {
-          //            if      ( master->flags & FLAG_SS_INMEM     )
-          //            {
-          //              inmemSumAndSearch(cuSrch);
-          //            }
-          //          }
-
           free(tmpRow);
         }
 
@@ -1968,7 +1981,7 @@ int main(int argc, char *argv[])
             }
           }
         }
-        else if ( master->cndType & CU_STR_QUAD   ) // Copying candidates from array to list for optimisation  .
+        else if ( master->cndType & CU_STR_QUAD  ) // Copying candidates from array to list for optimisation  .
         {
           // TODO: write the code!
 
@@ -1983,7 +1996,6 @@ int main(int argc, char *argv[])
           exit(EXIT_FAILURE);
         }
 
-
         cudaProfilerStop();
 
         //cudaDeviceSynchronize();
@@ -1993,7 +2005,7 @@ int main(int argc, char *argv[])
       }
     }
 
-    //if ( !obs.inmem )
+    FOLD //  Print output  .
     {
       printf("\n\nDone searching.\n");
       printf("   We got %7lli bad input values.\n",             badInp  );

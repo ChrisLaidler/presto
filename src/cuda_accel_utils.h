@@ -626,7 +626,13 @@ int createStackKernels(cuFfdotStack* cStack);
 
 int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
-
+/** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
+ *
+ * @param width
+ * @param zmax
+ * @return
+ */
+uint calcAccellen(float width, float zmax, presto_interp_acc accuracy);
 
 ///////////////////////////////////////// Init prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
