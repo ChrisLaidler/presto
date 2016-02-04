@@ -172,7 +172,7 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   if ( numamps <= 0 )
   {
     fprintf(stderr, "WARNING: numamps <= 0 in %s in %s\n", __FUNCTION__, __FILE__ );
-    return 0 ;
+    return (0) ;
   }
 
   float *powers, medianv, norm;
