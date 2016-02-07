@@ -54,80 +54,82 @@ extern "C"
 
 //====================================== Bit flag values =================================================
 
-#define     FLAG_ITLV_ROW       (1ULL<<0)      ///< Multi-step Row   interleaved        - This seams to be best in most cases
+#define     FLAG_ITLV_ROW	(1ULL<<0)	///< Multi-step Row   interleaved        - This seams to be best in most cases
 
-#define     FLAG_KER_HIGH       (1ULL<<1)     	///< Use increased response function width for higher accuracy at Z close to zero
-#define     FLAG_KER_MAX        (1ULL<<2)      ///< Use maximum   response function width for higher accuracy at Z close to zero
-#define     FLAG_CENTER         (1ULL<<3)      ///< Centre the kernel
+#define     FLAG_KER_HIGH	(1ULL<<1)	///< Use increased response function width for higher accuracy at Z close to zero
+#define     FLAG_KER_MAX	(1ULL<<2)	///< Use maximum   response function width for higher accuracy at Z close to zero
+#define     FLAG_CENTER		(1ULL<<3)	///< Centre the kernel
+#define     FLAG_KER_DOUBGEN	(1ULL<<39)	///< Create kernel with double precision calculations
+#define     FLAG_KER_DOUBFFT	(1ULL<<40)	///< Create kernel with double precision calculations and FFT's
 
-#define     CU_NORM_CPU         (1ULL<<4)      ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_NORM_EQUIV       (1ULL<<5)      ///< Do the normalisation the CPU way
+#define     CU_NORM_CPU         (1ULL<<4)	///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define     CU_NORM_EQUIV       (1ULL<<5)	///< Do the normalisation the CPU way
 
-#define     CU_INPT_FFT_CPU     (1ULL<<6)      ///< Do the FFT on the CPU
+#define     CU_INPT_FFT_CPU     (1ULL<<6)	///< Do the FFT on the CPU
 
-#define     CU_FFT_SEP          (1ULL<<32)  ///< Use a separate FFT plan for each batch
+#define     CU_FFT_SEP          (1ULL<<32)	///< Use a separate FFT plan for each batch
 
-#define     FLAG_MUL_00         (1ULL<<7)      ///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
-#define     FLAG_MUL_11         (1ULL<<8)      ///< Multiply kernel - Do the multiplication one plane ant a time
-#define     FLAG_MUL_21         (1ULL<<9)      ///< Multiply kernel - read all input - loop over kernel - loop over planes
-#define     FLAG_MUL_22         (1ULL<<10)     ///< Multiply kernel - Loop ( Plane - Y )
-#define     FLAG_MUL_23         (1ULL<<11)     ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
-#define     FLAG_MUL_30         (1ULL<<12)     ///< Multiply kernel - Do an entire batch in one kernel
-#define     FLAG_MUL_CB         (1ULL<<14)     ///< Multiply kernel - Using a CUFFT callback
+#define     FLAG_MUL_00         (1ULL<<7)	///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
+#define     FLAG_MUL_11         (1ULL<<8)	///< Multiply kernel - Do the multiplication one plane ant a time
+#define     FLAG_MUL_21         (1ULL<<9)	///< Multiply kernel - read all input - loop over kernel - loop over planes
+#define     FLAG_MUL_22         (1ULL<<10)	///< Multiply kernel - Loop ( Plane - Y )
+#define     FLAG_MUL_23         (1ULL<<11)	///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
+#define     FLAG_MUL_30         (1ULL<<12)	///< Multiply kernel - Do an entire batch in one kernel
+#define     FLAG_MUL_CB         (1ULL<<14)	///< Multiply kernel - Using a CUFFT callback
 #define     FLAG_MUL_PLN        ( FLAG_MUL_11 )
 #define     FLAG_MUL_STK        ( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_MUL_CB )
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_TEX_MUL        (1ULL<<13)     ///< [ Deprecated ]  Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_MUL        (1ULL<<13)	///< [ Deprecated ]  Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
 
-#define     FLAG_CUFFT_CB_POW   (1ULL<<15)     ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
-#define     FLAG_CUFFT_CB_INMEM (1ULL<<16)     ///<
+#define     FLAG_CUFFT_CB_POW   (1ULL<<15)	///< Use an output callback to create powers              - This is a similar speed but speeds up SS
+#define     FLAG_CUFFT_CB_INMEM (1ULL<<16)	///<
 #define     FLAG_CUFFT_CB_OUT   ( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM )   /// All output callbacks
 #define     FLAG_CUFFT_ALL      ( FLAG_CUFFT_CB_OUT | FLAG_MUL_CB )           /// All callbacks
 
-#define     FLAG_SAS_TEX        (1ULL<<17)     ///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     (1ULL<<18)     ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
-#define     FLAG_SIG_GPU        (1ULL<<19)     ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define     FLAG_SAS_TEX        (1ULL<<17)	///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_INTERP     (1ULL<<18)	///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
+#define     FLAG_SIG_GPU        (1ULL<<19)	///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     FLAG_SS_CPU         (1ULL<<20)     ///< Do the sum and searching on the CPU
-#define     FLAG_SS_00          (1ULL<<21)     ///<
-#define     FLAG_SS_10          (1ULL<<22)     ///<
-#define     FLAG_SS_INMEM       (1ULL<<23)     ///< Do an in memory GPU search
+#define     FLAG_SS_CPU         (1ULL<<20)	///< Do the sum and searching on the CPU
+#define     FLAG_SS_00          (1ULL<<21)	///<
+#define     FLAG_SS_10          (1ULL<<22)	///<
+#define     FLAG_SS_INMEM       (1ULL<<23)	///< Do an in memory GPU search
 #define     FLAG_SS_STG         ( FLAG_SS_00  | FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
 #define     FLAG_SS_KERS        ( FLAG_SS_STG | FLAG_SS_INMEM  )
 #define     FLAG_SS_ALL         ( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define     FLAG_HALF           (1ULL<<24)     ///< Use half precision when doing a INMEM search
-#define     FLAG_RET_STAGES     (1ULL<<25)     ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      (1ULL<<26)     ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      (1ULL<<27)     ///< Store expanded candidates
+#define     FLAG_HALF           (1ULL<<24)	///< Use half precision when doing a INMEM search
+#define     FLAG_RET_STAGES     (1ULL<<25)	///< Return results for all stages of summing, default is only the final result
+#define     FLAG_STORE_ALL      (1ULL<<26)	///< Store candidates for all stages of summing, default is only the final result
+#define     FLAG_STORE_EXP      (1ULL<<27)	///< Store expanded candidates
 
-#define     FLAG_THREAD         (1ULL<<28)     ///< Use separate CPU threads to search for candidates in returned data
+#define     FLAG_THREAD         (1ULL<<28)	///< Use separate CPU threads to search for candidates in returned data
 
-#define     FLAG_STK_UP         (1ULL<<29)     ///< Process stack in increasing size order
-#define     FLAG_CONV           (1ULL<<30)     ///< Multiply and FFT each stack "together"
+#define     FLAG_STK_UP         (1ULL<<29)	///< Process stack in increasing size order
+#define     FLAG_CONV           (1ULL<<30)	///< Multiply and FFT each stack "together"
 
-#define     FLAG_RAND_1         (1ULL<<31)     ///< Random Flag 1
+#define     FLAG_RAND_1         (1ULL<<31)	///< Random Flag 1
 
-#define     FLAG_TIME           (1ULL<<34)     ///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
-#define     FLAG_SYNCH          (1ULL<<35)     ///< Run the search in synchronous mode, this is slow and should only be used for testing
-#define     FLAG_SEPSRCH        (1ULL<<36)     ///< Create a separate second output location for the search output
-#define     FLAG_SEPRVAL        (1ULL<<37)     ///< Create a separate location list
-#define     FLAG_DPG_PRNT_CAND  (1ULL<<38)     ///< Print candidates to
+#define     FLAG_TIME           (1ULL<<34)	///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
+#define     FLAG_SYNCH          (1ULL<<35)	///< Run the search in synchronous mode, this is slow and should only be used for testing
+#define     FLAG_SEPSRCH        (1ULL<<36)	///< Create a separate second output location for the search output
+#define     FLAG_SEPRVAL        (1ULL<<37)	///< Create a separate location list
+#define     FLAG_DPG_PRNT_CAND  (1ULL<<38)	///< Print candidates to
 
 
 // ----------- This is a list of the data types that and storage structures
 
-#define     CU_CMPLXF           (1<<1)      ///< Complex float
-#define     CU_INT              (1<<2)      ///< INT
-#define     CU_HALF             (1<<3)      ///< 2 byte float
-#define     CU_FLOAT            (1<<4)      ///< Float
-#define     CU_DOUBLE           (1<<5)      ///< Float
-#define     CU_POWERZ_S         (1<<6)      ///< A value and a z bin         candPZs
-#define     CU_POWERZ_I         (1<<7)      ///< A value and a z bin         candPZi
-#define     CU_CANDMIN          (1<<8)      ///< A compressed candidate      candMin
-#define     CU_CANDSMAL         (1<<9)      ///< A compressed candidate      candSml
+#define     CU_CMPLXF           (1<<1)	///< Complex float
+#define     CU_INT              (1<<2)	///< INT
+#define     CU_HALF             (1<<3)	///< 2 byte float
+#define     CU_FLOAT            (1<<4)	///< Float
+#define     CU_DOUBLE           (1<<5)	///< Float
+#define     CU_POWERZ_S         (1<<6)	///< A value and a z bin         candPZs
+#define     CU_POWERZ_I         (1<<7)	///< A value and a z bin         candPZi
+#define     CU_CANDMIN          (1<<8)	///< A compressed candidate      candMin
+#define     CU_CANDSMAL         (1<<9)	///< A compressed candidate      candSml
 #define     CU_CANDBASC         (1<<10)     ///< A compressed candidate      accelcandBasic
 #define     CU_CANDFULL         (1<<11)     ///< Full detailed candidate     cand
 #define     CU_TYPE_ALLL        (CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
@@ -142,9 +144,9 @@ extern "C"
 
 #define     HAVE_INPUT          (1<<1)
 #define     HAVE_MULT           (1<<2)
-#define     HAVE_PLN            (1<<3)      ///< The Plane data is ready to search
-#define     HAVE_SS             (1<<4)      ///< The S&S is complete and the data is read to read
-#define     HAVE_RES            (1<<5)      ///< The S&S is complete and the data is read to read
+#define     HAVE_PLN            (1<<3)	///< The Plane data is ready to search
+#define     HAVE_SS             (1<<4)	///< The S&S is complete and the data is read to read
+#define     HAVE_RES            (1<<5)	///< The S&S is complete and the data is read to read
 
 
 //========================================== Macros ======================================================

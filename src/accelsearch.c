@@ -66,7 +66,7 @@ inline int twon_to_index(int n) // TODO: fix this to be called from one place (i
 
 void* contextInitTrd(void* ptr)
 {
-  long long* contextInit = malloc(sizeof(long long));
+  long long* contextInit = (long long*)malloc(sizeof(long long));
   struct timeval start, end;
   *contextInit = 0;
   gpuSpecs* gSpec = (gpuSpecs*)ptr;

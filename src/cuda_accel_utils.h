@@ -16,6 +16,7 @@
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "candTree.h"
+#include "cuda_math.h"
 
 
 #ifdef CBL
@@ -332,33 +333,33 @@ typedef struct fMax
 
 //-------------------  Details in Family order  ------------------------\\
 
-extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];         ///< Plane  heights   in family
-extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];         ///< Plane  strides   in family
-extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];          ///< Plane  strides   in family
-extern __device__ __constant__ fcomplexcu*  KERNEL_HARM[MAX_HARM_NO];         ///< Kernel pointers  in family
+extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];		///< Plane  heights   in family
+extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+extern __device__ __constant__ fcomplexcu*  KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointers  in family
 
 //--------------------  Details in stage order  ------------------------\\
 
-extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];      ///<
-extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];      ///<
-extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];        ///< Plane heights in stage order
-extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];        ///< Plane strides in stage order
-extern __device__ __constant__ int          PSTART_STAGE[MAX_HARM_NO];        ///< Plane half width in stage order
+extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];	///<
+extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];	///<
+extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];		///< Plane heights in stage order
+extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];		///< Plane strides in stage order
+extern __device__ __constant__ int          PSTART_STAGE[MAX_HARM_NO];		///< Plane half width in stage order
 
 //-------------------  In-mem constant values  -------------------------\\
 
-extern __device__ __constant__ void*        PLN_START;                        ///< A pointer to the start of the in-mem plane
-extern __device__ __constant__ uint         PLN_STRIDE;                       ///< The strided in units of the in-mem plane
-extern __device__ __constant__ int          NO_STEPS;                         ///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
-extern __device__ __constant__ int          ALEN;                             ///< CUDA copy of the accelLen used in the search
+extern __device__ __constant__ void*        PLN_START;				///< A pointer to the start of the in-mem plane
+extern __device__ __constant__ uint         PLN_STRIDE;				///< The strided in units of the in-mem plane
+extern __device__ __constant__ int          NO_STEPS;				///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
+extern __device__ __constant__ int          ALEN;				///< CUDA copy of the accelLen used in the search
 
 //-------------------  Other constant values  --------------------------\\
 
-extern __device__ __constant__ stackInfo    STACKS[64];                       ///< Stack infos
-extern __device__ __constant__ int          YINDS[MAX_YINDS];                 ///< Z Indices in int
+extern __device__ __constant__ stackInfo    STACKS[64];				///< Stack infos
+extern __device__ __constant__ int          YINDS[MAX_YINDS];			///< Z Indices in int
 
-extern __device__ __constant__ int          STK_STRD[MAX_STACKS];                      ///< Stride of the stacks
-extern __device__ __constant__ char         STK_INP[MAX_STACKS][4069];                 ///< input details
+extern __device__ __constant__ int          STK_STRD[MAX_STACKS];		///< Stride of the stacks
+extern __device__ __constant__ char         STK_INP[MAX_STACKS][4069];		///< input details
 
 
 //======================================= Constant Values =================================================\\
@@ -492,7 +493,6 @@ __device__ inline float getPower(fcomplexcu* adress, uint offset)
 __device__ inline float get(half* __restrict__ adress, int offset)
 {
   return __half2float(adress[offset]);
-  //return 0;
 }
 
 __device__ inline void set(half* adress, uint offset, float value)
@@ -515,9 +515,6 @@ __device__ inline float getPower(half* adress, uint offset)
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 float half2float(const ushort h);
-
-template<typename T>
-__device__ void fresnl(T xxa, T* ss, T* cc);
 
 /** Set up the threading  .
  *
@@ -616,13 +613,6 @@ void freeKernel(cuFFdotBatch* kernel);
  * @return
  */
 int createStackKernel(cuFfdotStack* cStack);
-
-/** Create GPU kernels. One for each plane of the stack  .
- *
- * @param kernel
- * @return
- */
-int createStackKernels(cuFfdotStack* cStack);
 
 int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
