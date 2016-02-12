@@ -780,7 +780,7 @@ int main(int argc, char *argv[])
     }
     fclose(file);
   }
-  else                                                        // Run Search  .
+  else                                                             // Run Search  .
   {
     long long badInp  = 0;
     long long badCplx = 0;
@@ -844,7 +844,7 @@ int main(int argc, char *argv[])
 	FOLD // TMP testing stuff response  .
 	{
 	  float r 	= 100.0;
-	  float z 	= 0.9;
+	  float z 	= 0.0000001;
 	  float hm 	= 10;
 
 	  double2*  gpuker = (double2*)malloc(sizeof(double2*)*hm*2);
@@ -869,7 +869,7 @@ int main(int argc, char *argv[])
 	  float step = 0.01;
 
 	  int 	hw = sSpec.fftInf.nor*2;
-	  hw = 1000;
+	  //hw = 9000;
 
 	  //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, 97.99, 0, hw, &realD, &imagD );
 
@@ -877,9 +877,9 @@ int main(int argc, char *argv[])
 
 	  //printf("r\t%s\t%s z %.4f\t%s\t\t\t%s\t%s\n","Fourier Bins", "Correlation", z, "Power", "Fourier Interpolation", "Power");
 	  printf("   r\t%s\t", "Fourier Bins");
-	  printf("%s z %.2f Float \t%s",  "Correlation", z, "Power");
+	  printf("%s z %.2f Float \t%s\t\t\t", "Correlation", z, "Power");
 	  printf("%s z %.2f Double\t%s\t\t\t", "Correlation", z, "Power");
-	  //printf("%s z %.4f Float \t%s\n",  "Fourier Interpolation", "Power");
+	  //printf("%s Float \t%s\t\t",  "Fourier Interpolation", "Power");
 	  printf("\n");
 
 	  for ( int ix = 0; ix <= nofbin; ix++ )
@@ -906,6 +906,9 @@ int main(int argc, char *argv[])
 
 	    //rz_interp_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &real, &imag );
 	    //printf("\t%.6f\t%.6f\t%.6f", real, imag, sqrt(POWERCU(real, imag)));
+
+	    //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &realD, &imagD );
+	    //printf("\t%.6f\t%.6f\t%.6f\t", realD, imagD, sqrt(POWERCU(realD, imagD)) );
 
 	    printf("\n");
 	  }

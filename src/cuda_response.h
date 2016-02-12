@@ -16,7 +16,7 @@ template<typename T>
 __host__ __device__ void fresnl(T xxa, T* ss, T* cc);
 
 template<typename T, uint flags>
-__host__ __device__ void calc_z_response(T Qk, T z, double sq2overAbsZ, T PIoverZ, T overSq2AbsZ, int sighnZ, T* real, T* imag);
+__host__ __device__ void calc_z_response(long iPart, T Qk, T z, T sq2overAbsZ, T PIoverZ, T overSq2AbsZ, int sighnZ, T* real, T* imag);
 
 template<typename T>
 __host__ __device__ void calc_r_response(T dist, T sinsin, T sincos, T* real, T* imag);
