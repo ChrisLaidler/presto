@@ -65,6 +65,7 @@ typedef fcomplex rawtype;
 
 long long good_factor(long long nn);
 void tablesixstepfft(fcomplex *indata, long nn, int isign);
+void cmplxfftw(fcomplex* indata, long n, int isign);
 void realfftw(float data[], long n, int isign);
 void realfft(float data[], long n, int isign);
 void twopassfft_scratch(multifile* infile, multifile* scratch,

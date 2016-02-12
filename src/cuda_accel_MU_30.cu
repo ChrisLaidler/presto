@@ -18,7 +18,7 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
   {
     const int stride   = STRIDE_HARM[n];
     const int height   = HEIGHT_HARM[n];
-    fcomplexcu* ker    = KERNEL_HARM[n] + ix;
+    fcomplexcu* ker    = (fcomplexcu*)KERNEL_HARM[n] + ix;
 
     if ( ix < stride )
     {
@@ -50,8 +50,14 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
         {
           // Multiply
           fcomplexcu val;
+
+#if CORRECT_MULT
+          val.r = (input[step].r * ker->r - input[step].i * ker->i);
+          val.i = (input[step].r * ker->i + input[step].i * ker->r);
+#else
           val.r = (input[step].r * ker->r + input[step].i * ker->i);
           val.i = (input[step].i * ker->r - input[step].r * ker->i);
+#endif
 
           if      ( FLAGS & FLAG_ITLV_ROW )
           {
@@ -84,42 +90,42 @@ __host__  void mult30_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult30_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 2:
     {
-      mult30_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 3:
     {
-      mult30_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 4:
     {
-      mult30_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 5:
     {
-      mult30_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 6:
     {
-      mult30_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 7:
     {
-      mult30_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     case 8:
     {
-      mult30_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>(batch->d_kerData , batch->d_iData, batch->d_planeMult, batch->noGenHarms);
+      mult30_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
     default:

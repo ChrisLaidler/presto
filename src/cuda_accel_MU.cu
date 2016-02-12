@@ -18,7 +18,7 @@ void multiplyPlane(cuFFdotBatch* batch)
   for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
   {
     cuFfdotStack* cStack = &batch->stacks[stack];
-    fcomplexcu* d_planeData;    // The complex f-∂f plane data
+    void*       d_planeData;    // The complex f-∂f plane data
     fcomplexcu* d_iData;        // The complex input array
 
     FOLD // Synchronisation  .
@@ -78,14 +78,17 @@ void multiplyPlane(cuFFdotBatch* batch)
           else
           {
             // Shift by plane height
-            d_planeData   = cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;
+            if ( batch->flags & FLAG_DOUBLE )
+              d_planeData   = (double2*)cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;
+            else
+              d_planeData   = (float2*) cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;
           }
 
           // Texture memory in multiplication is now deprecated
           //if ( batch->flag & FLAG_TEX_MUL )
           //  mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
           //else
-          mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->d_kerData);
+          mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
 
           // Run message
           CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");
@@ -404,7 +407,11 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
           void* dst = getCBwriteLocation(batch, cStack);
 
           CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-          CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+
+          if ( batch->flags & FLAG_DOUBLE )
+            CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+          else
+            CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
         }
       }
     }
@@ -430,7 +437,11 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
           void* dst = getCBwriteLocation(batch, cStack);
 
           CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-          CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+
+          if ( batch->flags & FLAG_DOUBLE )
+            CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+          else
+            CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
         }
       }
     }

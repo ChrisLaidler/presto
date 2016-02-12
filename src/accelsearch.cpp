@@ -1,4 +1,7 @@
+extern "C"
+{
 #include "accel.h"
+}
 
 /*#undef USEMMAP*/
 
@@ -12,6 +15,12 @@
 
 #ifdef CUDA
 #include "cuda_accel.h"
+#include "cuda_accel_utils.h"
+#include "cuda_response.h"
+
+//#include <nvToolsExt.h>
+//#include <nvToolsExtCuda.h>
+#include <cuda_profiler_api.h>
 
 #include <sys/time.h>
 #include <time.h>
@@ -29,9 +38,9 @@ int     pltOpt    = 0;
 int     skpOpt    = 0;	// Skip optimisation, this should only be used for debug purposes
 
 
-extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
+//extern void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
 
-static void print_percent_complete(int current, int number, char *what, int reset)
+static void print_percent_complete(int current, int number, const char *what, int reset)
 {
   static int newper = 0, oldper = -1;
 
@@ -144,7 +153,7 @@ int main(int argc, char *argv[])
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
   searchSpecs   sSpec;
-  pthread_t     cntxThread = NULL;
+  pthread_t     cntxThread = 0;
 
   // Start the timer
   gettimeofday(&start, NULL);
@@ -706,7 +715,7 @@ int main(int argc, char *argv[])
             }
             else if ( master->cndType & CU_STR_LST   )
             {
-              candsGPU  = cuSrch->h_candidates;
+              candsGPU  = (GSList*)cuSrch->h_candidates;
 
               int bIdx;
               for ( bIdx = 0; bIdx < cuSrch->pInf->noBatches; bIdx++ )
@@ -786,7 +795,7 @@ int main(int argc, char *argv[])
           int nc = 0;
           while (candLst)
           {
-            accelcand* newCnd = candLst->data;
+            accelcand* newCnd = (accelcand*)candLst->data;
 
             fwrite( newCnd, sizeof(accelcand), 1, file );
             candLst = candLst->next;
@@ -1097,28 +1106,31 @@ int main(int argc, char *argv[])
 
         double N =   obs.N;
 
-        Fout // TMP
+        FOLD // TMP
         {
-          double noVals = 100 ;
-          double base = 0.9998 ;
-          double rest = 1 - base ;
-
-          double ajustP;
-          double ajustQ;
-
-          int i;
-          for ( i = 0; i < noVals; i++ )
+          Fout // Test sigma calculations  .
           {
-            double p = base + i/noVals*rest ;
-            double q = (noVals-i)/noVals*rest ;
+            double noVals = 100 ;
+            double base = 0.9998 ;
+            double rest = 1 - base ;
 
-            calcNQ(q, obs.numindep[0], &ajustP, &ajustQ);
+            double ajustP;
+            double ajustQ;
 
-            printf("%.20lf\t%.20lf\t%.20lf\t%.20lf\n", p, q, ajustP, ajustQ);
+            int i;
+            for ( i = 0; i < noVals; i++ )
+            {
+              double p = base + i/noVals*rest ;
+              double q = (noVals-i)/noVals*rest ;
+
+              calcNQ(q, obs.numindep[0], &ajustP, &ajustQ);
+
+              printf("%.20lf\t%.20lf\t%.20lf\t%.20lf\n", p, q, ajustP, ajustQ);
+            }
           }
 
-          numcands = g_slist_length(cands);
-          listptr = cands;
+          numcands 	= g_slist_length(cands);
+          listptr 	= cands;
           accelcand* cand;
 
           double T      = obs.T;
@@ -1151,7 +1163,7 @@ int main(int argc, char *argv[])
           pSum   = 0;
           pSum2  = 0;
 
-          for (ii = 0; ii < numcands; ii++)       //       ----==== Main Loop ====----  .
+          for (ii = 0; ii < numcands; ii++)
           {
             cand    = (accelcand *) (listptr->data);
             listptr = listptr->next;
@@ -1159,12 +1171,13 @@ int main(int argc, char *argv[])
             long long baseR = round(cand->init_r);
 
             int hn;
-            for ( hn = 1; hn <= 64; hn++ )
+            for ( hn = 1; hn <= cand->numharm; hn++ )
             {
               // if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
 
               long long idx   = baseR * hn ;
               float     freq  =  idx / T ;
+              double 	hr = cand->init_r * hn;
               if ( (idx >= 0) && ( idx <  cuSrch->sSpec->fftInf.nor ) )
               {
                 fcomplex bin  = cuSrch->sSpec->fftInf.fft[idx - cuSrch->sSpec->fftInf.idx];
@@ -1184,8 +1197,14 @@ int main(int argc, char *argv[])
                   sigma = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
                 }
 
+                //printf("%2i\t%.4f\t%lli\t%10.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );
 
-                printf("%2i\t%.4f\t%lli\t%.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );
+                printf("%2i\t%.4f\t%.4f\n", hn, cand->r * hn / T, cand->z * hn );
+                printf("\n");
+                double real, imag;
+                rz_interp_cu_inc<double, float2>((float2*)cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.idx, cuSrch->sSpec->fftInf.nor, cand->r * hn, cand->z * hn, cand->z * hn * 2 + 4, &real, &imag);
+
+                printf("\n\n\n");
 
                 pSum  += pow;
                 pSum2 += sqrt(pow);
@@ -1407,7 +1426,7 @@ int main(int argc, char *argv[])
   freeCuSearch(cuSrch);
 
 #ifdef NVVP // Stop profiler
-  cuProfilerStop();
+  cudaProfilerStop();
 #endif
 #endif
 

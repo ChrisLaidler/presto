@@ -58,8 +58,6 @@ ExternC void infoMSG ( int lev, int indent, const char* format, ... );
 
 int detect_gdb_tree(void);
 
-
-
 /**
  * @brief get free ram in bytes
  *

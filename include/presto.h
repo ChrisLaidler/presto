@@ -1560,5 +1560,7 @@ fcomplex *atwood_search(double *events, double *weights,
 /*    Nwin:  number of bins that make up a "window" (the FFT len)  */
 /*    dt:  the time duration to use for the binning                */
 
+void zapbirds(double lobin, double hibin, FILE * fftfile, fcomplex * fft);
+
 #endif // _PRESTO_H
 

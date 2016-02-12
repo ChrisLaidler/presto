@@ -24,12 +24,12 @@ FLAG_CENTER			# Centre the kernels
 ########## Input #########
 
 # Normalise input in the CPU or the GPU
-#NORM_CPU			# Do the input Normalisation on the CPU
+NORM_CPU			# Do the input Normalisation on the CPU
 #NORM_GPU			# Do the input Normalisation on the GPU
 
 # FFT input in the CPU or the GPU
-#FFT_CPU  			# Do the input FFT's on the CPU
-FFT_GPU  			# Do the input FFT's on the GPU
+FFT_CPU  			# Do the input FFT's on the CPU
+#FFT_GPU  			# Do the input FFT's on the GPU
 
 # cuMedianBuffSz		# This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
 
@@ -38,7 +38,7 @@ FFT_GPU  			# Do the input FFT's on the GPU
 # Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
 # In my testing MUL_CB is very slow, like 7 times slower (FFT only)!
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30  MUL_CB  MUL_AA
-MUL_AA
+MUL_23
 
 #FLAG_TEX_MUL			# [Deprecated]	Use texture memory in the multiplication kernel
 
@@ -70,7 +70,7 @@ FLAG_CUFFT_CB_POW		# Almost always a good option!
 ######## Search ##########
 
 # If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
-#FLAG_SINGLE			# Force single precision powers
+FLAG_SINGLE			# Force single precision powers
 #FLAG_HALF			# Force half precision powers (requires CUDA 7.5 or greater)
 
 #FLAG_SAS_TEX			# [Deprecated]	Use texture memory in the sum and search kernel
@@ -80,12 +80,12 @@ FLAG_CUFFT_CB_POW		# Almost always a good option!
 #SIG_CPU			# [Deprecated]	Do the candidate sigma calculations on the GPU
 
 # Use separate CPU threads to process results
-FLAG_THREAD			# (default)	Force CPU threading for sigma calculations
-#FLAG_SEQ			# 		Force CPU sequential for sigma calculations
+#FLAG_THREAD			# (default)	Force CPU threading for sigma calculations
+FLAG_SEQ			# 		Force CPU sequential for sigma calculations
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
-SS_AA
+SS_10
 
 SS_SLICES	5		# The number of horizontal "slices" to break the Sum & Search kernel into
 
@@ -140,7 +140,7 @@ DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with i
 
 #FLAG_DBG_SYNCH			# [ Debug ] Perform a synchronous search
 #FLAG_DBG_TIMING   		# [ Debug ] Perform advanced timing the search
-#FLAG_DPG_PRNT_CAND		# [ Debug ] Print CSV of candidates at various stages
+FLAG_DPG_PRNT_CAND		# [ Debug ] Print CSV of candidates at various stages
 
 
 

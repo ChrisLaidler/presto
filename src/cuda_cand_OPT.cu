@@ -7,13 +7,12 @@
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
+#include "cuda_response.h"
+
 
 #include <boost/math/special_functions/gamma.hpp>
 #include <boost/math/special_functions/erf.hpp>
 #include <boost/math/special_functions/binomial.hpp>
-
-#define FTLIM 1e-6
-#define DLIM  0.0               // 0.4
 
 #define OPT_INP_BUF   10
 
@@ -38,494 +37,37 @@ float   optSz04   = 12;
 float   optSz08   = 10;
 float   optSz16   = 8;
 
-
-__device__ inline double cos_t(double x)
-{
-  return cos(x);
-}
-__device__ inline float  cos_t(float  x)
-{
-  return cosf(x);
-}
-
-__device__ inline double sin_t(double x)
-{
-  return sin(x);
-}
-__device__ inline float  sin_t(float  x)
-{
-  return sinf(x);
-}
-
-__device__ inline double sqrt_t(double x)
-{
-  return sqrt(x);
-}
-__device__ inline float  sqrt_t(float  x)
-{
-  return sqrtf(x);
-}
-
-__device__ inline void sincos_t(double x, double* s, double* c )
-{
-  sincos(x, s, c);
-}
-__device__ inline void sincos_t(float  x, float*  s, float*  c )
-{
-  sincosf(x, s, c);
-}
-
-template<typename T>
-__device__ void fresnl(T xxa, T* ss, T* cc)
-{
-  T f, g, c, s, t, u;
-  T x, x2;
-
-  x       = fabs(xxa);
-  x2      = x * x;
-
-  if      ( x2 < 2.5625   )    	// Small so use a polynomial approximation  .
-  {
-    t     = x2 * x2;
-
-    T t01 = t;
-    T t02 = t01*t;
-    T t03 = t02*t;
-    T t04 = t03*t;
-    T t05 = t04*t;
-    T t06 = t05*t;
-    T sn  = (T)3.18016297876567817986e11 + (T)-4.42979518059697779103e10*t01 + (T)2.54890880573376359104e9*t02  + (T)-6.29741486205862506537e7*t03  + (T)7.08840045257738576863e5 *t04 - (T)2.99181919401019853726e3  *t05;
-    T sd  = (T)6.07366389490084639049e11 + (T) 2.24411795645340920940e10*t01 + (T)4.19320245898111231129e8*t02  + (T) 5.17343888770096400730e6*t03  + (T)4.55847810806532581675e4 *t04 + (T)2.81376268889994315696e2  *t05 + t06 ;
-    T cn  = (T)9.99999999999999998822e-1 + (T)-2.05525900955013891793e-1*t01 + (T)1.88843319396703850064e-2*t02 + (T)-6.45191435683965050962e-4*t03 + (T)9.50428062829859605134e-6*t04 - (T)4.98843114573573548651e-8 *t05;
-    T cd  = (T)1.00000000000000000118e0  + (T) 4.12142090722199792936e-2*t01 + (T)8.68029542941784300606e-4*t02 + (T) 1.22262789024179030997e-5*t03 + (T)1.25001862479598821474e-7*t04 + (T)9.15439215774657478799e-10*t05 + (T)3.99982968972495980367e-12*t06 ;
-
-    *ss   = x * x2 * sn / sd;
-    *cc   = x * cn / cd;
-  }
-  else if ( x  > 36974.0  )     // Asymptotic behaviour  .
-  {
-    *cc   = 0.5;
-    *ss   = 0.5;
-  }
-  else                          // Auxiliary functions for large argument  .
-  {
-    x2    = x * x;
-    t     = (T)PI * x2;
-    u     = 1.0 / (t * t);
-    t     = 1.0 / t;
-
-    //    T fn  = (T)3.76329711269987889006e-20+((T)1.34283276233062758925e-16+((T)1.72010743268161828879e-13+((T)1.02304514164907233465e-10+((T)3.05568983790257605827e-8 +((T)4.63613749287867322088e-6+((T)3.45017939782574027900e-4+((T)1.15220955073585758835e-2+((T)1.43407919780758885261e-1+ (T)4.21543555043677546506e-1*u)*u)*u)*u)*u)*u)*u)*u)*u;
-    //    T fd  = (T)1.25443237090011264384e-20+((T)4.52001434074129701496e-17+((T)5.88754533621578410010e-14+((T)3.60140029589371370404e-11+((T)1.12699224763999035261e-8 +((T)1.84627567348930545870e-6+((T)1.55934409164153020873e-4+((T)6.44051526508858611005e-3+((T)1.16888925859191382142e-1+((T)7.51586398353378947175e-1+u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-    //    T gn  = (T)1.86958710162783235106e-22+((T)8.36354435630677421531e-19+((T)1.37555460633261799868e-15+((T)1.08268041139020870318e-12+((T)4.45344415861750144738e-10+((T)9.82852443688422223854e-8+((T)1.15138826111884280931e-5+((T)6.84079380915393090172e-4+((T)1.87648584092575249293e-2+((T)1.97102833525523411709e-1+ (T)5.04442073643383265887e-1*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-    //    T gd  = (T)1.86958710162783236342e-22+((T)8.39158816283118707363e-19+((T)1.38796531259578871258e-15+((T)1.10273215066240270757e-12+((T)4.60680728146520428211e-10+((T)1.04314589657571990585e-7+((T)1.27545075667729118702e-5+((T)8.14679107184306179049e-4+((T)2.53603741420338795122e-2+((T)3.37748989120019970451e-1+((T)1.47495759925128324529e0 +u)*u)*u)*u)*u)*u)*u)*u)*u)*u)*u ;
-
-    T u01 = u;
-    T u02 = u01*u;
-    T u03 = u02*u;
-    T u04 = u03*u;
-    T u05 = u04*u;
-    T u06 = u05*u;
-    T u07 = u06*u;
-    T u08 = u07*u;
-    T u09 = u08*u;
-    T u10 = u09*u;
-    T u11 = u10*u;
-    T fn  = (T)3.76329711269987889006e-20 + (T)1.34283276233062758925e-16*u01 + (T)1.72010743268161828879e-13*u02 + (T)1.02304514164907233465e-10*u03 + (T)3.05568983790257605827e-8 *u04 + (T)4.63613749287867322088e-6*u05 + (T)3.45017939782574027900e-4*u06 + (T)1.15220955073585758835e-2*u07 + (T)1.43407919780758885261e-1*u08 + (T)4.21543555043677546506e-1*u09;
-    T fd  = (T)1.25443237090011264384e-20 + (T)4.52001434074129701496e-17*u01 + (T)5.88754533621578410010e-14*u02 + (T)3.60140029589371370404e-11*u03 + (T)1.12699224763999035261e-8 *u04 + (T)1.84627567348930545870e-6*u05 + (T)1.55934409164153020873e-4*u06 + (T)6.44051526508858611005e-3*u07 + (T)1.16888925859191382142e-1*u08 + (T)7.51586398353378947175e-1*u09 + u10;
-    T gn  = (T)1.86958710162783235106e-22 + (T)8.36354435630677421531e-19*u01 + (T)1.37555460633261799868e-15*u02 + (T)1.08268041139020870318e-12*u03 + (T)4.45344415861750144738e-10*u04 + (T)9.82852443688422223854e-8*u05 + (T)1.15138826111884280931e-5*u06 + (T)6.84079380915393090172e-4*u07 + (T)1.87648584092575249293e-2*u08 + (T)1.97102833525523411709e-1*u09 + (T)5.04442073643383265887e-1*u10 ;
-    T gd  = (T)1.86958710162783236342e-22 + (T)8.39158816283118707363e-19*u01 + (T)1.38796531259578871258e-15*u02 + (T)1.10273215066240270757e-12*u03 + (T)4.60680728146520428211e-10*u04 + (T)1.04314589657571990585e-7*u05 + (T)1.27545075667729118702e-5*u06 + (T)8.14679107184306179049e-4*u07 + (T)2.53603741420338795122e-2*u08 + (T)3.37748989120019970451e-1*u09 + (T)1.47495759925128324529e0 *u10 + u11 ;
-
-
-    f     = 1.0 - u * fn / fd;
-    g     =       t * gn / gd;
-
-    t     = (T)PIBYTWO * x2;
-    sincos(t, &s, &c);
-    t     = (T)PI * x;
-
-    *cc   = 0.5 + (f * s - g * c) / t;
-    *ss   = 0.5 - (f * c + g * s) / t;
-  }
-
-  if (xxa < 0.0)                // Swap as function is antisymmetric  .
-  {
-    *cc   = -*cc;
-    *ss   = -*ss;
-  }
-}
-
 const double EPS    = std::numeric_limits<double>::epsilon();
 const double FPMIN  = std::numeric_limits<double>::min()/EPS;
 
-
-/** Generate the complex response value for Fourier f-dot interpolation  .
- *
- * This is based on gen_z_response in responce.c
- *
- * @param rx            The x index of the value in the kernel
- * @param z             The Fourier Frequency derivative (# of bins the signal smears over during the observation)
- * @param absz          Is the absolute value of z
- * @param roffset       Is the offset in Fourier bins for the full response (i.e. At this point, the response would equal 1.0)
- * @param numbetween    Is the number of points to interpolate between each standard FFT bin. (i.e. 'numbetween' = 2 = interbins, this is the standard)
- * @param numkern       Is the number of complex points that the kernel will contain.
- * @param rr            A pointer to the real part of the complex response for rx
- * @param ri            A pointer to the imaginary part of the complex response for rx
- */
 template<typename T>
-__device__ inline void gen_z_response(int rx, T z,  T absz, T numbetween, int numkern, float* rr, float* ri)
-{
-  int signz;
-  T zd, r, xx, yy, zz, startr, startroffset;
-  T fressy, frescy, fressz, frescz, tmprl, tmpim;
-  T s, c, pibyz, cons, delta;
-
-  T zT = z;
-  T rT = r;
-
-  startr        = 0 - (0.5 * zT);
-  startroffset  = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
-
-  if (rx == numkern / 2.0 && startroffset < 1E-3 && absz < 1E-3)
-  {
-    T nr, ni;
-
-    zz      = zT * zT;
-    xx      = startroffset * startroffset;
-    nr      = (T)1.0 - (T)0.16449340668482264365 * zz;
-    ni      = (T)-0.5235987755982988731 * zT;
-    nr      += startroffset * (T)1.6449340668482264365 * zT;
-    ni      += startroffset * ((T)PI - (T)0.5167712780049970029 * zz);
-    nr      += xx * ((T)-6.579736267392905746 + (T)0.9277056288952613070 * zz);
-    ni      += xx * ((T)3.1006276680299820175 * zT);
-
-    *rr     = nr;
-    *ri     = ni;
-  }
-  else
-  {
-    /* This is evaluating Eq (39) in:
-     * Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
-     *
-     * Where: qᵣ  is the variable r and represents the distance from the centre frequency
-     *        |ṙ| is the variable z which is ḟ
-     */
-
-    signz   = (zT < 0.0) ? -1 : 1;
-    zd      = signz * (T)SQRT2 / sqrt(absz);
-    zd      = signz * sqrt(2.0 / absz);
-    cons    = zd / 2.0;                             // 1 / sqrt(2*r')
-
-    startr  += numkern / (T) (2 * numbetween);
-    delta   = -1.0 / numbetween;
-    r       = startr + rx * delta;
-
-    pibyz   = (T)PI / zT;
-    yy      = rT * zd;
-    zz      = yy + zT * zd;
-    xx      = pibyz * rT * rT;
-
-    sincos_t(xx, &s, &c);
-    fresnl<T>(yy, &fressy, &frescy);
-    fresnl<T>(zz, &fressz, &frescz);
-
-    tmprl   = signz * (frescz - frescy);
-    tmpim   = fressy - fressz;
-
-    *rr     =  (tmprl * c - tmpim * s) * cons;
-    *ri     = -(tmprl * s + tmpim * c) * cons;
-  }
-}
-
-/* This routine uses the correlation method to do a Fourier        */
-/* complex interpolation at a single point in the f-fdot plane.    */
-/* It does the correlations manually. (i.e. no FFTs)               */
-/* Arguments:                                                      */
-/*   'data' is a complex array of the data to be interpolated.     */
-/*   'numdata' is the number of complex points (bins) in data.     */
-/*   'r' is the Fourier frequency in data that we want to          */
-/*      interpolate.  This can (and should) be fractional.         */
-/*   'z' is the fdot to use (z=f-dot*T^2 (T is integration time)). */
-/*   'kern_half_width' is the half-width of the kernel in bins.    */
-/*   'ans' is the complex answer.                                  */
-template<typename T>
-__device__ fcomplexcu rz_interp_cu(fcomplexcu* inputData, int loR, int noBins, double r, double z, int kern_half_width)
-{
-  int numkern, intfreq;
-  double  fracfreq;                                       // Fractional part of r
-  double  dintfreq;                                       // Integer part of r
-  int signz;
-  int ii, lodata;
-  T absz, zd, q_r, xx, Yr, Zr, startr;
-  T fressy, frescy, fressz, frescz;
-  T s, c, pibyz, cons, sinc;
-  T tR, tI;                                               // Response values
-
-  T zT = z;
-
-  fcomplexcu inp;
-  fcomplexcu ans;
-
-  ans.r = 0.0;
-  ans.i = 0.0;
-
-  if ( r > 0 )
-  {
-    // Split 'r' into integer and fractional parts
-    fracfreq          = modf(r, &dintfreq); // This has to be double precision
-    intfreq           = (int) dintfreq;
-    numkern           = 2 * kern_half_width;
-    lodata            = intfreq - kern_half_width;
-
-    // Set up values dependent on Z alone
-    absz              = fabs(zT);
-    startr            = fracfreq - (0.5 * z);
-    signz             = (zT < 0.0) ? -1 : 1;
-    zd                = signz * (T)SQRT2 / sqrt(absz);
-    cons              = zd / 2.0;
-    pibyz             = (T)PI / zT;
-    startr            += kern_half_width;
-
-    if ( absz < FTLIM )
-    {
-      // Just doing a Fourier Interpolation so use a different start r
-      startr = (r - lodata);
-    }
-
-    FOLD // Clamp values to usable bounds  .
-    {
-      if ( lodata < 0 )
-      {
-        numkern += lodata;
-        startr  += lodata;
-        lodata  = 0;
-      }
-
-      lodata -= loR;
-
-      if ( lodata + numkern >= noBins )
-      {
-        numkern = noBins - lodata;
-      }
-    }
-
-    // Loop over positions, calculate response values and do multiplications
-    for ( ii = 0, q_r = startr; ii < numkern; q_r--, ii++ )
-    {
-      FOLD //  Read the input value  .
-      {
-        inp             = inputData[lodata+ii];
-      }
-
-      FOLD //  Calculate response value  .
-      {
-        if ( absz < FTLIM ) 	// Just do a Fourier Interpolation  .
-        {
-          xx              = (T)PI*q_r ;
-          sincos_t(xx, &s, &c);
-
-          if ( q_r == 0.0 )
-            sinc = 1.0;
-          else
-            sinc = s / xx;
-
-          tR              = c * sinc;
-          tI              = s * sinc;
-        }
-        else                  // Calculate the values  .
-        {
-          Yr              = q_r * zd;
-          Zr              = Yr + zT * zd;
-          xx              = pibyz * q_r * q_r;
-
-          sincos_t(xx, &s, &c);
-          fresnl<T>(Yr, &fressy, &frescy);
-          fresnl<T>(Zr, &fressz, &frescz);
-
-          T Ster          = fressz - fressy;
-          T Cter          = frescy - frescz;
-          tR              = cons * (c*Ster + signz*s*Cter);
-          tI              = cons * (s*Ster - signz*c*Cter);
-        }
-      }
-
-      FOLD //  Do the multiplication  .
-      {
-        ans.r           += tR * inp.r - tI*inp.i;
-        ans.i           += tR * inp.i + tI*inp.r;
-      }
-    }
-  }
-
-  return ans;
-}
-
-/**  Uses the correlation method to do a Fourier interpolation at a number integer spaced (r) points in the f-fdot plane.
- *
- * It does the correlations manually. (i.e. no FFTs)
- * The kernels can be reused for the same value of z and fraction of r
- * Thus each thread calculates each kernel value once and uses it to calculate the value of
- * a number of integer spaced points in the r direction
- *
- * @param inputData           A pointer to the beginning of the input data
- * @param outData             A pointer to the location of the output complex numbers, this is a thread dependent array of length noBlk
- * @param loR                 The R value of the first bin in the input data
- * @param r                   The R value of the first point to do the interpolation at
- * @param z                   The Z value of the to do the interpolation at
- * @param blkWidth            The width of the blocks in bins
- * @param kern_half_width     The half width of the points to use in the interpolation
- */
-template<typename T, int noBlk>
-__device__ void rz_interp_cu(fcomplexcu* inputData, fcomplexcu* outData, int loR, int inStride, double r, double z, int blkWidth, int kern_half_width)
-{
-  int numkern, intfreq;
-  double  fracfreq;                                       // Fractional part of r
-  double  dintfreq;                                       // Integer part of r
-  int signz;
-  int ii, lodata;
-  T absz, zd, q_r, xx, Yr, Zr, startr;
-  T fressy, frescy, fressz, frescz;
-  T s, c, pibyz, cons, sinc;
-  T tR, tI;                                               // Response values
-  T zT = z;
-
-  fcomplexcu inp;     // Input value
-  inp.r = 0;
-  inp.i = 0;
-
-  if ( r > 0 )
-  {
-    // Split 'r' into integer and fractional parts
-    fracfreq          = modf(r, &dintfreq); // This has to be double precision
-    intfreq           = (int) dintfreq;
-    numkern           = 2 * kern_half_width;
-    lodata            = intfreq - kern_half_width;
-
-    // Set up values dependent on Z alone
-    absz              = fabs(zT);
-    startr            = fracfreq - (0.5 * zT);
-    signz             = (zT < 0.0) ? -1 : 1;
-    zd                = signz * (T)SQRT2 / sqrt(absz);
-    cons              = zd / 2.0;
-    pibyz             = (T)PI / zT;
-    startr            += kern_half_width;
-
-    if ( absz < FTLIM )
-    {
-      startr = (r - lodata);
-    }
-
-    lodata            -= loR; // Adjust to a local index
-
-    // Loop over positions, calculate response values and do multiplications
-    for ( ii = 0, q_r = startr; ii < numkern; q_r--, ii++ )
-    {
-      FOLD //  Calculate response value  .
-      {
-        if ( absz < FTLIM )   // Just do a Fourier Interpolation  .
-        {
-          xx              = (T)PI*q_r ;
-          sincos_t(xx, &s, &c);
-
-          if ( q_r == 0.0 )
-            sinc = 1.0;
-          else
-            sinc = s / xx;
-
-          tR              = c * sinc;
-          tI              = s * sinc;
-        }
-        else                  // Calculate the kernel value  .
-        {
-          Yr              = q_r * zd;
-          Zr              = Yr + zT * zd;
-          xx              = pibyz * q_r * q_r;
-
-          sincos_t(xx, &s, &c);
-          fresnl<T>(Yr, &fressy, &frescy);
-          fresnl<T>(Zr, &fressz, &frescz);
-
-          T Ster          = fressz - fressy;
-          T Cter          = frescy - frescz;
-          tR              = cons * (c*Ster + signz*s*Cter);
-          tI              = cons * (s*Ster - signz*c*Cter);
-        }
-      }
-
-      // Use the kernel value on each input value with the same fractional part
-      for ( int blk = 0; blk < noBlk; blk++ )
-      {
-        FOLD // Clamp values to usable bounds  .
-        {
-          int idx = lodata+ii+blk*blkWidth;
-
-          if ( idx >= 0 && idx < inStride )
-          {
-            FOLD //  Read the input value  .
-            {
-              inp             = inputData[idx];
-            }
-
-            FOLD //  Do the multiplication  .
-            {
-              outData[blk].r           += tR * inp.r - tI * inp.i;
-              outData[blk].i           += tR * inp.i + tI * inp.r;
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-template<typename T>
-__global__ void ffdotPln_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
+__global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
 
   if ( ix < noR && iy < noZ)
   {
-    //    if ( ix ==0 && iy == 0 )
-    //    {
-    //      printf("\n");
-    //    }
     double r            = firstR + ix/(double)(noR-1) * rSZ ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
 
-    double total_power  = 0;
-    fcomplexcu ans;
-
-    //double absz         = fabs(z);
+    T total_power  = 0;
+    T real = 0;
+    T imag = 0;
 
     for( int i = 1; i <= noHarms; i++ )
     {
-      double absz         = fabs(z*i);
-      //      if(ix ==0 && iy == 0 )
-      //      {
-      //        printf("%02i absz: %.5f\n",i, absz);
-      //      }
-      if( absz < DLIM && absz > FTLIM )
-      {
-        //ans  = rz_interp_cu<double>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfwidth);
-        ans  = rz_interp_cu<double>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, hw.val[i-1] );
-      }
-      else
-      {
-        //ans  = rz_interp_cu<T>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfwidth);
-        ans  = rz_interp_cu<T>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, hw.val[i-1] );
-      }
+      rz_interp_cu<T, float2>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r, z, halfwidth, &real, &imag);
 
-      //total_power     += POWERCU(ans.r, ans.i)/norm.val[i-1];
-      total_power     += POWERCU(ans.r, ans.i);
+      total_power     += POWERCU(real, imag);
     }
 
-    //powers[iy*noR + ix] = total_power;
     powers[iy*oStride + ix] = total_power;
   }
 }
 
 template<typename T, int noBlk>
-__global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, int halfwidth, double firstR, double firstZ, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
+__global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -536,7 +78,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
 
     float       total_power[noBlk];
-    fcomplexcu  ans[noBlk];
+    float2      ans[noBlk];
 
     for( int blk = 0; blk <= noBlk; blk++ )
     {
@@ -550,24 +92,26 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
       // Set complex values to 0 for this harmonic
       for( int blk = 0; blk <= noBlk; blk++ )
       {
-        ans[blk].r = 0;
-        ans[blk].i = 0;
+        ans[blk].x = 0;
+        ans[blk].y = 0;
       }
 
       // Calculate complex value, using direct application of the convolution
-      if( absz < DLIM && absz > FTLIM )
+      if( absz < DLIM && absz > FILIM_F )
       {
-        rz_interp_cu<double, noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
+        // TMP Fix
+        //rz_interp_cu<double, float2, noBlk>((&fft[iStride*(i-1)]), ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
       }
       else
       {
-        rz_interp_cu<T,      noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
+        // TMP fix
+        //rz_interp_cu<T,      float2, noBlk>(&fft[iStride*(i-1)], ans, loR.val[i-1], iStride, r*i, z*i, blkWidth*i, hw.val[i-1] );
       }
 
       // Calculate power for the harmonic
       for( int blk = 0; blk <= noBlk; blk++ )
       {
-        total_power[blk] += POWERC(ans[blk]);
+        total_power[blk] += POWERF(ans[blk]);
       }
     }
 
@@ -580,19 +124,20 @@ __global__ void ffdotPlnByBlk_ker(float* powers, fcomplexcu* fft, int noHarms, i
   }
 }
 
-__global__ void rz_interp_ker(double r, double z, fcomplexcu* fft, int loR, int noBins, int halfwidth, double normFactor)
-{
-  float total_power   = 0;
-
-  fcomplexcu ans      = rz_interp_cu<float>(fft, loR, noBins, r, z, halfwidth);
-  //fcomplexcu ans      = rz_interp_cu<double>(fft, loR, noBins, r, z, halfwidth);
-  total_power         += POWERCU(ans.r, ans.i)/normFactor;
-
-  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERCU(ans.r, ans.i), ans.r, ans.i);
-}
+//__global__ void rz_interp_ker(double r, double z, float2* fft, int loR, int noBins, int halfwidth, double normFactor)
+//{
+//  float total_power   = 0;
+//
+//  float2 ans ;
+//  ans = rz_interp_cu<float>(fft, loR, noBins, r, z, halfwidth);
+//  //fcomplexcu ans      = rz_interp_cu<double>(fft, loR, noBins, r, z, halfwidth);
+//  total_power         += POWERCU(ans.x, ans.y)/normFactor;
+//
+//  //printf("rz_interp_ker r: %.4f  z: %.4f  Power: %.4f  ( %.4f, %.4f )\n", r, z, POWERCU(ans.r, ans.i), ans.r, ans.i);
+//}
 
 template<typename T>
-__global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu* fft, int loR, int noBins, int noHarms, int noReps, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, float16 norm)
+__global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, float2* fft, int loR, int noBins, int noHarms, int noReps, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, float16 norm)
 {
   const int ix        = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy        = blockIdx.y * blockDim.y + threadIdx.y;
@@ -641,8 +186,9 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
       {
         //if ( idx == 1001 )
         {
-          fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
-          power            += POWERCU(ans.r, ans.i)/norm.val[i-1];
+          // TMP fix
+          //float2 ans        = rz_interp_cu<T, float2>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
+          //power            += POWERCU(ans.x, ans.y)/norm.val[i-1];
         }
       }
 
@@ -692,8 +238,9 @@ __global__ void ffdotSwarm_ker(unsigned long long seed, candOpt* out, fcomplexcu
         power = 0;
         for( int i = 1; i <= noHarms; i++ )
         {
-          fcomplexcu ans   = rz_interp_cu<T>(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
-          power           += POWERCU(ans.r, ans.i)/norm.val[i-1];
+          // TMP Fix
+          //float2 ans       = rz_interp_cu<T, float2 >(fft, loR, noBins, pos.x*i, pos.y*i, halfwidth);
+          //power           += POWERF(ans)/norm.val[i-1];
         }
 
         if ( power > lBestP ) // Update Local bets  .
@@ -899,7 +446,7 @@ int ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, dou
     dimGrid.y = ceil(noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    ffdotPln_ker<float><<<dimGrid, dimBlock, 0, 0>>>(cuPowers, cuInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm, hw);
+    ffdotPln_ker<float><<<dimGrid, dimBlock, 0, 0>>>(cuPowers, (float2*)cuInp, noHarms, halfwidth, minR, maxZ, rSZ, zSZ, noR, noZ, noInp, noPow, rOff, norm, hw);
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdotPln_ker kernel.");
   }
@@ -1130,31 +677,31 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
       switch (noBlk)
       {
         case 2:
-          ffdotPlnByBlk_ker<T,2><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,2><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 3:
-          ffdotPlnByBlk_ker<T,3><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,3><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 4:
-          ffdotPlnByBlk_ker<T,4><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,4><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 5:
-          ffdotPlnByBlk_ker<T,5><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,5><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 6:
-          ffdotPlnByBlk_ker<T,6><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,6><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 7:
-          ffdotPlnByBlk_ker<T,7><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,7><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 8:
-          ffdotPlnByBlk_ker<T,8><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,8><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 9:
-          ffdotPlnByBlk_ker<T,9><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,9><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         case 10:
-          ffdotPlnByBlk_ker<T,10><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+          ffdotPlnByBlk_ker<T,10><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
           break;
         default:
         {
@@ -1175,7 +722,7 @@ void ffdotPln( cuOptCand* pln, fftInfo* fft )
       dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
       // Call the kernel to normalise and spread the input data
-      ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm, hw);
+      ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm, hw);
     }
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
@@ -1244,7 +791,7 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
     dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
     // Call the kernel to normalise and spread the input data
-    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>(time(NULL), (candOpt*)pln->d_out, pln->d_inp, fft->idx, fft->nor, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
+    ffdotSwarm_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>(time(NULL), (candOpt*)pln->d_out, (float2*)(pln->d_inp), fft->idx, fft->nor, pln->noHarms, 10, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, norm);
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
@@ -1264,70 +811,70 @@ void ffdotSwrm( cuOptCand* pln, fftInfo* fft )
   }
 }
 
-void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ, int halfwidth)
-{
-  fcomplexcu *cuInp;
-  int     rOff, lodata;
-  double factor;
-  double log2 = log(2.0);
-
-  int noInp       = 2*halfwidth;
-  lodata          = floor( centR ) - halfwidth ;
-  rOff            = lodata - loR ;
-
-  FOLD // Clamp size  .
-  {
-    if ( lodata < 0 )
-    {
-      noInp         += lodata;
-      rOff          -= lodata;
-    }
-
-    if ( rOff + noInp >= noBins )
-    {
-      fprintf(stderr, "WARNING: attempting to do a f-∂f interpolation beyond the end of the FFT.\n");
-      noInp = noBins - rOff;
-    }
-  }
-
-  FOLD // GPU Memory operations  .
-  {
-    CUDA_SAFE_CALL(cudaMalloc((void** )&cuInp, noInp * sizeof(cufftComplex) ),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMemcpy(cuInp, &fft[rOff], noInp * sizeof(cufftComplex), cudaMemcpyHostToDevice), "Copying convolution kernels between devices.");
-  }
-
-  FOLD // Calculate normalisation factor  .
-  {
-    float*  normPow = (float*) malloc(noInp*sizeof(float));
-
-    for ( int i = 0; i < noInp; i++ )
-    {
-      normPow[i] = POWERCU(fft[rOff+i].r, fft[rOff+i].i ) ;
-    }
-
-    float medianv   = median(normPow, noInp);
-    factor          = sqrt(medianv/log2);
-
-    free(normPow);
-  }
-
-  FOLD // Call kernel  .
-  {
-    dim3 dimBlock, dimGrid;
-
-    // Blocks of 1024 threads ( the maximum number of threads per block )
-    dimBlock.x = 1;
-    dimBlock.y = 1;
-    dimBlock.z = 1;
-
-    // One block per harmonic, thus we can sort input powers in Shared memory
-    dimGrid.x = 1;
-    dimGrid.y = 1;
-
-    // Call the kernel to normalise and spread the input data
-    rz_interp_ker<<<dimGrid, dimBlock, 0, 0>>>(centR, centZ, cuInp, rOff, noInp, halfwidth, factor);
-  }
-}
+//void rz_interp_cu(fcomplex* fft, int loR, int noBins, double centR, double centZ, int halfwidth)
+//{
+//  fcomplexcu *cuInp;
+//  int     rOff, lodata;
+//  double factor;
+//  double log2 = log(2.0);
+//
+//  int noInp       = 2*halfwidth;
+//  lodata          = floor( centR ) - halfwidth ;
+//  rOff            = lodata - loR ;
+//
+//  FOLD // Clamp size  .
+//  {
+//    if ( lodata < 0 )
+//    {
+//      noInp         += lodata;
+//      rOff          -= lodata;
+//    }
+//
+//    if ( rOff + noInp >= noBins )
+//    {
+//      fprintf(stderr, "WARNING: attempting to do a f-∂f interpolation beyond the end of the FFT.\n");
+//      noInp = noBins - rOff;
+//    }
+//  }
+//
+//  FOLD // GPU Memory operations  .
+//  {
+//    CUDA_SAFE_CALL(cudaMalloc((void** )&cuInp, noInp * sizeof(cufftComplex) ),   "Failed to allocate device memory for kernel stack.");
+//    CUDA_SAFE_CALL(cudaMemcpy(cuInp, &fft[rOff], noInp * sizeof(cufftComplex), cudaMemcpyHostToDevice), "Copying convolution kernels between devices.");
+//  }
+//
+//  FOLD // Calculate normalisation factor  .
+//  {
+//    float*  normPow = (float*) malloc(noInp*sizeof(float));
+//
+//    for ( int i = 0; i < noInp; i++ )
+//    {
+//      normPow[i] = POWERCU(fft[rOff+i].r, fft[rOff+i].i ) ;
+//    }
+//
+//    float medianv   = median(normPow, noInp);
+//    factor          = sqrt(medianv/log2);
+//
+//    free(normPow);
+//  }
+//
+//  FOLD // Call kernel  .
+//  {
+//    dim3 dimBlock, dimGrid;
+//
+//    // Blocks of 1024 threads ( the maximum number of threads per block )
+//    dimBlock.x = 1;
+//    dimBlock.y = 1;
+//    dimBlock.z = 1;
+//
+//    // One block per harmonic, thus we can sort input powers in Shared memory
+//    dimGrid.x = 1;
+//    dimGrid.y = 1;
+//
+//    // Call the kernel to normalise and spread the input data
+//    rz_interp_ker<<<dimGrid, dimBlock, 0, 0>>>(centR, centZ, cuInp, rOff, noInp, halfwidth, factor);
+//  }
+//}
 
 template<typename T>
 void generatePln(cand* cand, fftInfo* fft, cuOptCand* pln, int noP, double scale , int plt = -1, int nn = 0 )

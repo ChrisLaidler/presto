@@ -184,8 +184,15 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             {
               fcomplexcu ipd = inpDat[step];
               fcomplexcu out;
+
+#if CORRECT_MULT
+              out.r = (ipd.r * ker.r - ipd.i * ker.i);
+              out.i = (ipd.r * ker.i + ipd.i * ker.r);
+#else
               out.r = (ipd.r * ker.r + ipd.i * ker.i);
               out.i = (ipd.i * ker.r - ipd.r * ker.i);
+#endif
+
               ffdot[idx] = out;
             }
           }
@@ -207,55 +214,55 @@ __host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     case 1	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,1>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,2>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,3>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,4>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,5>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,6>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,7>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,8>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,9>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default	:

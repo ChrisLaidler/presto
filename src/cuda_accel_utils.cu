@@ -26,13 +26,13 @@ extern "C"
 #include "log.h"
 #endif
 
-__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plane  height  in stage order
-__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plane  stride  in stage order
-__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];     ///< Plane  strides   in family
-__device__ __constant__ fcomplexcu*   KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointer in stage order
+__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
+__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
+__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+__device__ __constant__ void*         KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointer in stage order
 __device__ __constant__ stackInfo     STACKS[64];
-__device__ __constant__ int           STK_STRD[MAX_STACKS];                 ///< Stride of the stacks
-__device__ __constant__ char          STK_INP[MAX_STACKS][4069];            ///< input details
+__device__ __constant__ int           STK_STRD[MAX_STACKS];		///< Stride of the stacks
+__device__ __constant__ char          STK_INP[MAX_STACKS][4069];	///< input details
 
 
 int    globalInt01    = 0;
@@ -262,11 +262,11 @@ void createFFTPlans(cuFFdotBatch* kernel)
   {
     cuFfdotStack* cStack  = &kernel->stacks[i];
 
-    FOLD //  .
-    {
-      sprintf(msg,"Stack %i",i);
-      nvtxRangePush(msg);
+    sprintf(msg,"Stack %i",i);
+    nvtxRangePush(msg);
 
+    FOLD // Input FFT's  .
+    {
       int n[]             = {cStack->width};
 
       int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};         /// Storage dimensions of the input data in memory
@@ -279,29 +279,65 @@ void createFFTPlans(cuFFdotBatch* kernel)
 
       FOLD // Create the input FFT plan  .
       {
-        if ( kernel->flags & CU_INPT_FFT_CPU )
-        {
-          nvtxRangePush("FFTW");
-          cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
-          nvtxRangePop();
-        }
-        else
-        {
-          nvtxRangePush("CUFFT Inp");
-          CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps), "Creating plan for input data of stack.");
-          nvtxRangePop();
-        }
+	if ( kernel->flags & CU_INPT_FFT_CPU )
+	{
+	  nvtxRangePush("FFTW");
+	  cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
+	  nvtxRangePop();
+	}
+	else
+	{
+	  nvtxRangePush("CUFFT Inp");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps), "Creating plan for input data of stack.");
+	  nvtxRangePop();
+	}
       }
-
-      FOLD // Create the stack iFFT plan  .
-      {
-        nvtxRangePush("CUFFT Pln");
-        CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
-        nvtxRangePop();
-      }
-
-      nvtxRangePop();
     }
+
+    FOLD // inverse FFT's  .
+    {
+      if ( kernel->flags & FLAG_DOUBLE )
+      {
+	int n[]             = {cStack->width};
+
+	int inembed[]       = {cStack->strideCmplx * sizeof(double2)};            /// Storage dimensions of the input data in memory
+	int istride         = 1;                                                  /// The distance between two successive input elements in the least significant (i.e., innermost) dimension
+	int idist           = cStack->strideCmplx;                                /// The distance between the first element of two consecutive signals in a batch of the input data
+
+	int onembed[]       = {cStack->strideCmplx * sizeof(double2)};
+	int ostride         = 1;
+	int odist           = cStack->strideCmplx;
+
+	FOLD // Create the stack iFFT plan  .
+	{
+	  nvtxRangePush("CUFFT Pln");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
+	  nvtxRangePop();
+	}
+      }
+      else
+      {
+	int n[]             = {cStack->width};
+
+	int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};         /// Storage dimensions of the input data in memory
+	int istride         = 1;                                                  /// The distance between two successive input elements in the least significant (i.e., innermost) dimension
+	int idist           = cStack->strideCmplx;                                /// The distance between the first element of two consecutive signals in a batch of the input data
+
+	int onembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
+	int ostride         = 1;
+	int odist           = cStack->strideCmplx;
+
+	FOLD // Create the stack iFFT plan  .
+	{
+	  nvtxRangePush("CUFFT Pln");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
+	  nvtxRangePop();
+	}
+
+      }
+    }
+
+    nvtxRangePop();
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
   }
@@ -339,6 +375,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
   size_t free, total;                           ///< GPU memory
   int noInStack[MAX_HARM_NO];
+  void* d_kerHold[MAX_STACKS];			///< Temporary memory for kernels if we are doing double precision FFT's
 
   //int noSrchHarms     = noGenHarms;
 
@@ -348,6 +385,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   size_t planeSize    = 0;                      ///< Total size (in bytes) of memory required independently of batch(es)
   float plnElsSZ      = 0;                      ///< The size of an element of the in-mem ff plane (generally the size of float complex)
   float powElsSZ      = 0;                      ///< The size of an element of the powers plane
+  float cmpElsSZ      = 0;                      ///< The size of an element of the kernel and complex plane
 
   gpuInf* gInf        = &sInf->gSpec->devInfo[devID];
   int device          = gInf->devid;
@@ -566,7 +604,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     FOLD // Determine the size of the elements of the planes  .
     {
-      // Half precision?
+      // Set power plane size
+      if ( sInf->sSpec->flags & FLAG_DOUBLE )
+      {
+	cmpElsSZ = sizeof(double2);
+      }
+      else
+      {
+	cmpElsSZ = sizeof(fcomplexcu);
+      }
+
+      // Half precision plane
       if ( sInf->sSpec->flags & FLAG_HALF )
       {
 #if CUDA_VERSION >= 7050
@@ -591,6 +639,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         powElsSZ = sizeof(fcomplexcu);
       }
+
     }
   }
 
@@ -947,12 +996,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         FOLD // Compute size of
         {
           // Compute stride  .
-          cStack->strideCmplx =   getStrie(cStack->width, sizeof(cufftComplex), alignment);
-          cStack->stridePower =   getStrie(cStack->width, powElsSZ,             alignment);
+          cStack->strideCmplx =   getStrie(cStack->width, cmpElsSZ, alignment);
+          cStack->stridePower =   getStrie(cStack->width, powElsSZ, alignment);
 
           kernel->inpDataSize +=  cStack->strideCmplx * cStack->noInStack * sizeof(cufftComplex);
-          kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * sizeof(cufftComplex);
-          kernel->plnDataSize +=  cStack->strideCmplx * cStack->height    * sizeof(cufftComplex);
+          kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * cmpElsSZ;
+          kernel->plnDataSize +=  cStack->strideCmplx * cStack->height    * cmpElsSZ;
 
           if ( !(kernel->flags & FLAG_CUFFT_CB_INMEM) )
             kernel->pwrDataSize +=  cStack->stridePower * cStack->height    * powElsSZ;
@@ -1059,7 +1108,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     for (int i = 0; i < kernel->noStacks; i++)
     {
       cuFfdotStack* cStack            = &kernel->stacks[i];
-      cStack->d_kerData               = &kernel->d_kerData[kerSiz];
+
+      if ( kernel->flags & FLAG_DOUBLE )
+	cStack->d_kerData             = &((double2*)kernel->d_kerData)[kerSiz];
+      else
+	cStack->d_kerData             = &((fcomplexcu*)kernel->d_kerData)[kerSiz];
 
       // Set the stride
       for (int j = 0; j< cStack->noInStack; j++)
@@ -1067,12 +1120,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         // Point the plane kernel data to the correct position in the "main" kernel
         int iDiff                     = cStack->kerHeigth - cStack->harmInf[j].height ;
         float fDiff                   = iDiff / 2.0;
-        cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->strideCmplx*(int)fDiff];
+        if ( kernel->flags & FLAG_DOUBLE )
+          cStack->kernels[j].d_kerData  = &((double2*)cStack->d_kerData)[cStack->strideCmplx*(int)fDiff];
+        else
+          cStack->kernels[j].d_kerData  = &((fcomplexcu*)cStack->d_kerData)[cStack->strideCmplx*(int)fDiff];
         cStack->kernels[j].harmInf    = &cStack->harmInf[j];
       }
       kerSiz                          += cStack->strideCmplx * cStack->kerHeigth;
     }
-
   }
 
   FOLD // Initialise the multiplication kernels  .
@@ -1094,6 +1149,30 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
 
       printf("\nGenerating GPU multiplication kernels using device %i\n", device);
+
+      FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
+      {
+	for (int i = 0; i < MAX_STACKS; i++)
+	{
+	  d_kerHold[i] = NULL;
+	}
+
+	if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
+	{
+	  for (int i = 0; i < kernel->noStacks; i++)
+	  {
+	    infoMSG(4,6,"Stack %i\n",i);
+
+	    cuFfdotStack* cStack = &kernel->stacks[i];
+
+	    size_t kerSz = cStack->strideCmplx * cStack->kerHeigth * sizeof(double2);
+
+	    d_kerHold[i] = cStack->d_kerData; // Store the old memory location
+
+	    CUDA_SAFE_CALL(cudaMalloc((void**)&cStack->d_kerData, kerSz), "Failed to allocate temporary device memory for kernel stack."); // This is temprary double memory it will be freed at the end of this function
+	  }
+	}
+      }
 
       FOLD // Calculate the response values  .
       {
@@ -1143,54 +1222,109 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
           cuFfdotStack* cStack = &kernel->stacks[i];
 
-          FOLD // Create the plan  .
+          if ( (kernel->flags & FLAG_KER_DOUBFFT) || (kernel->flags & FLAG_DOUBLE) )
           {
-            infoMSG(4,6,"Create plan\n");
+            FOLD // Create the plan  .
+            {
+              infoMSG(4,6,"Create plan\n");
 
-            sprintf(msg,"Plan %i",i);
-            nvtxRangePush(msg);
+              sprintf(msg,"Plan %i",i);
+              nvtxRangePush(msg);
 
-            int n[]             = {cStack->width};
-            int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
-            int istride         = 1;
-            int idist           = cStack->strideCmplx;
-            int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
-            int ostride         = 1;
-            int odist           = cStack->strideCmplx;
-            int height          = cStack->kerHeigth;
+              int n[]             = {cStack->width};
+              int inembed[]       = {cStack->strideCmplx* sizeof(double2)};
+              int istride         = 1;
+              int idist           = cStack->strideCmplx;
+              int onembed[]       = {cStack->strideCmplx* sizeof(double2)};
+              int ostride         = 1;
+              int odist           = cStack->strideCmplx;
+              int height          = cStack->kerHeigth;
 
-            // Normal plans
-            CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
-            CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+              // Normal plans
+              CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, height), "Creating plan for FFT'ing the kernel.");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 
-            nvtxRangePop();
+              nvtxRangePop();
+            }
+
+            FOLD // Call the plan  .
+            {
+              infoMSG(4,6,"Call the plan\n");
+
+              sprintf(msg,"Call %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
+              CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_kerData, (cufftDoubleComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+              nvtxRangePop();
+            }
+
+            FOLD // Destroy the plan  .
+            {
+              infoMSG(4,6,"Destroy the plan\n");
+
+              sprintf(msg,"Dest %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+
+              nvtxRangePop();
+            }
           }
-
-          FOLD // Call the plan  .
+          else
           {
-            infoMSG(4,6,"Call the plan\n");
+            FOLD // Create the plan  .
+            {
+              infoMSG(4,6,"Create plan\n");
 
-            sprintf(msg,"Call %i",i);
-            nvtxRangePush(msg);
+              sprintf(msg,"Plan %i",i);
+              nvtxRangePush(msg);
 
-            CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
-            CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
-            CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+              int n[]             = {cStack->width};
+              int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
+              int istride         = 1;
+              int idist           = cStack->strideCmplx;
+              int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
+              int ostride         = 1;
+              int odist           = cStack->strideCmplx;
+              int height          = cStack->kerHeigth;
 
-            nvtxRangePop();
-          }
+              // Normal plans
+              CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 
-          FOLD // Destroy the plan  .
-          {
-            infoMSG(4,6,"Destroy the plan\n");
+              nvtxRangePop();
+            }
 
-            sprintf(msg,"Dest %i",i);
-            nvtxRangePush(msg);
+            FOLD // Call the plan  .
+            {
+              infoMSG(4,6,"Call the plan\n");
 
-            CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
-            CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+              sprintf(msg,"Call %i",i);
+              nvtxRangePush(msg);
 
-            nvtxRangePop();
+              CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
+              CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+              nvtxRangePop();
+            }
+
+            FOLD // Destroy the plan  .
+            {
+              infoMSG(4,6,"Destroy the plan\n");
+
+              sprintf(msg,"Dest %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+
+              nvtxRangePop();
+            }
           }
 
           printf("•");
@@ -1204,6 +1338,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         nvtxRangePop();
       }
 
+      FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
+      {
+	if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
+	{
+	  for (int i = 0; i < kernel->noStacks; i++)
+	  {
+	    cuFfdotStack* cStack = &kernel->stacks[i];
+
+	    copyKerDoubleToFloat( cStack, (float*)d_kerHold[i] );
+
+	    void* hold;
+	    hold 		= cStack->d_kerData;
+	    cStack->d_kerData 	= d_kerHold[i];
+	    d_kerHold[i] 	= hold;
+	  }
+	}
+      }
+
       printf("Done generating GPU multiplication kernels\n");
     }
     else
@@ -1211,9 +1363,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       infoMSG(3,4,"Copy multiplication kernels\n");
 
       // TODO: Check this works in this location
-
       printf("• Copying multiplication kernels from device %i.\n", master->device);
-      //CUDA_SAFE_CALL(cudaMemcpyPeer(kernel->d_kerData, kernel->device, master->d_kerData, master->device, master->kerDataSize ), "Copying multiplication kernels between devices.");
       CUDA_SAFE_CALL(cudaMemcpyPeerAsync(kernel->d_kerData, kernel->device, master->d_kerData, master->device, master->kerDataSize, master->stacks->initStream ), "Copying multiplication kernels between devices.");
     }
   }
@@ -1891,6 +2041,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     nvtxRangePop();
   }
 
+  FOLD //  Free temporary memory for kernel
+  {
+    if ( master == NULL )     // Create the kernels  .
+    {
+      if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
+      {
+	for (int i = 0; i < kernel->noStacks; i++)
+	{
+	  cudaFreeNull( d_kerHold[i] );
+	}
+      }
+    }
+  }
+
   printf("Done initializing GPU %i.\n",device);
 
   std::cout.flush();
@@ -1943,7 +2107,10 @@ void setPlanePointers(cuFFdotBatch* batch)
 
       cuFFdot* cPlane           = &cStack->planes[j];
 
-      cPlane->d_planeMult       = &cStack->d_planeMult[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+      if ( batch->flags & FLAG_DOUBLE )
+	cPlane->d_planeMult       = &((double2*)cStack->d_planeMult)[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+      else
+	cPlane->d_planeMult       = &((float2*)cStack->d_planeMult) [ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
 
       if (cStack->d_planePowr)
       {
@@ -1997,7 +2164,12 @@ void setStkPointers(cuFFdotBatch* batch)
     cStack->h_iData       = &batch->h_iData[idSiz];
     cStack->planes        = &batch->planes[harm];
     cStack->kernels       = &batch->kernels[harm];
-    cStack->d_planeMult   = &batch->d_planeMult[cmplStart];
+
+    if ( batch->flags & FLAG_DOUBLE )
+      cStack->d_planeMult   = &((double2*)batch->d_planeMult)[cmplStart];
+    else
+      cStack->d_planeMult   = &((float2*)batch->d_planeMult) [cmplStart];
+
     if (batch->d_planePowr)
     {
       if ( batch->flags & FLAG_HALF )
@@ -2987,8 +3159,8 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
 
     int           height[MAX_HARM_NO];
     int           stride[MAX_HARM_NO];
-    int            width[MAX_HARM_NO];
-    fcomplexcu*   kerPnt[MAX_HARM_NO];
+    int           width[MAX_HARM_NO];
+    void*         kerPnt[MAX_HARM_NO];
 
     FOLD // Set values  .
     {
@@ -3027,7 +3199,7 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
     CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &width,  MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
 
     cudaGetSymbolAddress((void **)&dcoeffs, KERNEL_HARM);
-    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(fcomplexcu*), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(void*), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
   }
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the constant memory values for the multiplications.");
@@ -4394,6 +4566,8 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   sSpec.retType       |= CU_POWERZ_S    ;   	// Return type
   sSpec.retType       |= CU_STR_ARR     ;   	// Candidate storage structure
 
+  sSpec.retType       |= FLAG_KER_DOUBGEN;
+
   sSpec.fftInf.fft    = obs->fft;
   sSpec.fftInf.nor    = obs->numbins;
   sSpec.fftInf.rlo    = obs->rlo;
@@ -5087,7 +5261,7 @@ void printCommandLine(int argc, char *argv[])
   printf("\n");
 }
 
-void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
+void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
 {
 #ifdef CBL
   searchSpecs* sSpec;         ///< Specifications of the search
@@ -5106,7 +5280,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
   char hostname[1024];
   gethostname(hostname, 1024);
 
-  Logger* cvsLog = new Logger(fname, 1);
+  Logger* cvsLog = new Logger((char*)fname, 1);
   cvsLog->sedCsvDeliminator('\t');
 
   // Get the current time

@@ -38,6 +38,28 @@ __device__ int z_resp_halfwidth_high(double z)
   return m;
 }
 
+template<typename readT, typename writeT>
+__global__ void typeChangeKer(readT* read, writeT* write, size_t stride, size_t height)
+{
+
+  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
+  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
+  size_t offset;
+
+  if ( tid < stride )  // Valid thread  .
+  {
+    read  += tid;
+    write += tid;
+
+    for ( int h = 0; h < height; h++ )
+    {
+      offset = h * stride;
+
+      write[offset] = read[offset];
+    }
+  }
+}
+
 /** Create the convolution kernel for a f-∂f plane  .
  *
  *  This is "copied" from gen_z_response in respocen.c
@@ -82,8 +104,8 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
     //half_width    = z_resp_halfwidth((double) z);
   }
 
-  int noResp      = half_width / rSteps;		// The number of responce variables per side
-  float offset;						// The distance of the responce value from 0 (negitive to the leaft)
+  int noResp      = half_width / rSteps;		// The number of response variables per side
+  float offset;						// The distance of the response value from 0 (negative to the leaf)
 
   // Calculate the kernel index for this thread (centred on zero and wrapped)
   if ( cx < noResp )
@@ -93,7 +115,7 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   }
   else if  (cx >= width - noResp )
   {
-    offset = ( cx - width ) * rSteps; // This is the negitive side of the responce function
+    offset = ( cx - width ) * rSteps; // This is the negative side of the response function
     rx = 1;
   }
 
@@ -152,13 +174,13 @@ int createStackKernel(cuFfdotStack* cStack)
 
   FOLD // Call the CUDA kernels  .
   {
-    if      ( cStack->flags & FLAG_KER_DOUBGEN )
-    {
-      init_kernels<double, float2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((float2*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_DR);
-    }
-    else if ( cStack->flags & FLAG_KER_DOUBFFT )
+    if      ( (cStack->flags & FLAG_KER_DOUBFFT) || (cStack->flags & FLAG_DOUBLE) )
     {
       init_kernels<double, double2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((double2*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_DR);
+    }
+    else if ( cStack->flags & FLAG_KER_DOUBGEN )
+    {
+      init_kernels<double, float2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((float2*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_DR);
     }
     else
     {
@@ -168,6 +190,25 @@ int createStackKernel(cuFfdotStack* cStack)
     // Run message
     CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
   }
+
+  return 0;
+}
+
+
+int copyKerDoubleToFloat(cuFfdotStack* cStack, float* d_orrKer)
+{
+  dim3 dimBlock, dimGrid;
+
+  dimBlock.x     = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+  dimBlock.y     = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+
+  size_t width   = cStack->strideCmplx * 2 ;
+
+  // Set up grid
+  dimGrid.x = ceil(  width / ( float ) ( BLOCKSIZE * BLOCKSIZE ) );
+  dimGrid.y = 1;
+
+  typeChangeKer<double, float><<<dimGrid, dimBlock, 0, cStack->initStream>>>((double*)cStack->d_kerData, d_orrKer, width,  cStack->kerHeigth );
 
   return 0;
 }

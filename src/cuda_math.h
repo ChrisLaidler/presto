@@ -74,13 +74,22 @@ __host__ __device__ inline double modf_t ( double  x, double *y )
 }
 
 
-__host__ __device__ inline float  fabs_t(float  x)
+__host__ __device__ inline float  fabs_t(float  x )
 {
   return fabsf(x);
 }
-__host__ __device__ inline double fabs_t(double x)
+__host__ __device__ inline double fabs_t(double x )
 {
   return fabs(x);
+}
+
+__host__ __device__ inline float  fmod_t ( float  x, float   y )
+{
+  return fmodf(x, y);
+}
+__host__ __device__ inline double fmod_t ( double  x, double y )
+{
+  return fmod(x, y);
 }
 
 

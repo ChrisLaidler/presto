@@ -336,7 +336,7 @@ typedef struct fMax
 extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];		///< Plane  heights   in family
 extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];		///< Plane  strides   in family
 extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
-extern __device__ __constant__ fcomplexcu*  KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointers  in family
+extern __device__ __constant__ void*        KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointers  in family
 
 //--------------------  Details in stage order  ------------------------\\
 
@@ -613,6 +613,14 @@ void freeKernel(cuFFdotBatch* kernel);
  * @return
  */
 int createStackKernel(cuFfdotStack* cStack);
+
+/**
+ *
+ * @param cStack
+ * @param d_orrKer
+ * @return
+ */
+int copyKerDoubleToFloat(cuFfdotStack* cStack, float* d_orrKer);
 
 int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 

@@ -41,16 +41,16 @@ extern "C"
 
 //=========================================== Defines ====================================================
 
-#define     MAX_IN_STACK        10          ///< NOTE: this is 1 to big to handle the init problem
-#define     MAX_STACKS          5           ///< The maximum number stacks in a family of plains
-#define     MAX_HARM_NO         16          ///< The maximum number of harmonics handled by a accel search
-#define     MAX_YINDS           8000        ///< The maximum number of y indices to store in constant memory
-#define     INDS_BUFF           20          ///< The maximum number of y indices to store in constant memory
-#define     MAX_STEPS           8           ///< The maximum number of steps
-#define     MAX_STKSZ           9           ///< The maximum number of planes in a stack
-#define     MAX_GPUS            32          ///< The maximum number GPU's
-#define     INMEM_FFT_WIDTH     4096        ///< The size of FFT planes for in-mem GPU search
-
+#define		MAX_IN_STACK		10	///< NOTE: this is 1 to big to handle the init problem
+#define		MAX_STACKS		5	///< The maximum number stacks in a family of plains
+#define		MAX_HARM_NO		16	///< The maximum number of harmonics handled by a accel search
+#define		MAX_YINDS		8000	///< The maximum number of y indices to store in constant memory
+#define		INDS_BUFF		20	///< The maximum number of y indices to store in constant memory
+#define		MAX_STEPS		8	///< The maximum number of steps
+#define		MAX_STKSZ		9	///< The maximum number of planes in a stack
+#define		MAX_GPUS		32	///< The maximum number GPU's
+#define		INMEM_FFT_WIDTH		4096	///< The size of FFT planes for in-mem GPU search
+#define		CORRECT_MULT		1	///< Generate the kernel values the correct way and do the
 
 //====================================== Bit flag values =================================================
 
@@ -100,7 +100,9 @@ extern "C"
 #define     FLAG_SS_KERS        ( FLAG_SS_STG | FLAG_SS_INMEM  )
 #define     FLAG_SS_ALL         ( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
+#define     FLAG_DOUBLE 	(1ULL<<41)	///< Use double precision kernels and complex plane and iFFT's
 #define     FLAG_HALF           (1ULL<<24)	///< Use half precision when doing a INMEM search
+
 #define     FLAG_RET_STAGES     (1ULL<<25)	///< Return results for all stages of summing, default is only the final result
 #define     FLAG_STORE_ALL      (1ULL<<26)	///< Store candidates for all stages of summing, default is only the final result
 #define     FLAG_STORE_EXP      (1ULL<<27)	///< Store expanded candidates
@@ -157,7 +159,7 @@ extern "C"
 
 //====================================== Global variables ================================================
 
-extern int    useUnopt;								/// Use a saved text list of canidates this is used in development for optemisaing the optemisation stage
+extern int    useUnopt;								/// Use a saved text list of candidates this is used in development for optimising the optimisation stage
 extern int    msgLevel;								/// The level of debug messages to print, 0 -> none  higher results in more messages
 
 //===================================== Struct prototypes ================================================
@@ -236,7 +238,7 @@ typedef struct stackInfo
     int             famIdx;             ///<  The stage order of the first plane in the stack
     int64_t         flags;              ///<  CUDA accel search bit flags
 
-    fcomplexcu*     d_planeData;        ///<  Plane data for this stack
+    void*           d_planeData;        ///<  Plane data for this stack
     void*           d_planePowers;      ///<  Powers for this stack
     fcomplexcu*     d_iData;            ///<  Input data for this stack
 } stackInfo;
@@ -298,7 +300,7 @@ typedef struct cuHarmInfo
 typedef struct cuKernel
 {
     cuHarmInfo*     harmInf;            ///< A pointer to the harmonic information for this kernel
-    fcomplexcu*     d_kerData;          ///< A pointer to the first kernel element (Width, Stride and height determined by harmInf)
+    void*           d_kerData;          ///< A pointer to the first kernel element (Width, Stride and height determined by harmInf)
     fCplxTex        kerDatTex;          ///< A texture holding the kernel data
 } cuKernel;
 
@@ -312,7 +314,7 @@ typedef struct cuFFdot
     cuKernel*       kernel;             ///< A pointer to the kernel for this plane
 
     // pointers to device data
-    fcomplexcu*     d_planeMult;        ///< A pointer to the first element of the complex f-∂f plane (Width, Stride and height determined by harmInf)
+    void*           d_planeMult;        ///< A pointer to the first element of the complex f-∂f plane (Width, Stride and height determined by harmInf)
     void*           d_planePowr;        ///< A pointer to the powers for this stack
     fcomplexcu*     d_iData;            ///< A pointer to the input data for this plane this is a section of the 'raw' complex fft data, that has been Normalised, spread and FFT'd
 
@@ -361,12 +363,12 @@ typedef struct cuFfdotStack
     size_t          strideCmplx;        ///< The stride of the block of memory  [ in complex numbers! ]
     size_t          stridePower;        ///< The stride of the powers
 
-    fcomplexcu*     d_kerData;          ///< Kernel data for this stack
+    void*           d_kerData;          ///< Kernel data for this stack
 
     fcomplexcu*     d_iData;            ///< Device       input data for this stack
     fcomplexcu*     h_iData;            ///< Paged locked input data for this stack
 
-    fcomplexcu*     d_planeMult;        ///< Plane of complex data for multiplication
+    void*           d_planeMult;        ///< Plane of complex data for multiplication
     void*           d_planePowr;        ///< Plane of float data for the search
 
     stackInfo*      d_sInf;             ///< Stack info structure on the device (usually in constant memory)
@@ -536,8 +538,8 @@ typedef struct cuFFdotBatch
 
     float*          h_normPowers;       ///< A array to store powers for running double-tophat local-power normalisation
 
-    fcomplexcu*     d_kerData;          ///< Kernel data for all the stacks, generally this is only allocated once per device
-    fcomplexcu*     d_planeMult;        ///< Plane of complex data for multiplication
+    void*           d_kerData;          ///< Kernel data for all the stacks, generally this is only allocated once per device
+    void*           d_planeMult;        ///< Plane of complex data for multiplication
     void*           d_planePowr;        ///< Plane of float data for the search
 
     void*           h_outData1;         ///< The output
@@ -891,7 +893,7 @@ ExternC void printFlags(uint flags);
 
 ExternC void printCommandLine(int argc, char *argv[]);
 
-ExternC void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
+ExternC void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime);
 
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList* cands );
 

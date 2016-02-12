@@ -3,7 +3,10 @@
 
 #include "cuda_math.h"
 #include "cuda_response.h"
+#include "cuda_accel.h"
 
+#define FREESLIM1	1.600781059358212171622054418655453316130105033155
+#define FREESLIM2	36974.0
 
 __host__ __device__ inline float getFIlim(float nothing)
 {
@@ -14,6 +17,29 @@ __host__ __device__ inline double getFIlim(double nothing)
 {
   return FILIM_D;
 }
+
+
+__host__ __device__ inline void sinecos_fres(float x, float x2, float* sin, float* cos)
+{
+  double trigT 	= fmod_t((double)x * (double)x, 4.0);
+  trigT 	= trigT*(float)PIBYTWO;
+  sincos_t(trigT, sin, cos);
+
+//  double sinD, cosD;
+//  sincos_t((double)x*(double)x*(double)PIBYTWO, &sinD, &cosD);
+//  *sin = sinD;
+//  *cos = cosD;
+}
+
+__host__ __device__ inline void sinecos_fres(double x, double x2, double* sin, double* cos)
+{
+  double trigT 	= fmod_t(x2, 4.0);
+  trigT 	= trigT*(double)PIBYTWO;
+  sincos_t(trigT, sin, cos);
+
+  //sincos_t(x2*(double)PIBYTWO, sin, cos);
+}
+
 
 /** Fresnel integral  .
  *
@@ -66,17 +92,20 @@ __host__ __device__ inline double getFIlim(double nothing)
  * @param cc  The result C(xxa)
  */
 template<typename T>
-__host__ __device__ void fresnl(T xxa, T* ss, T* cc)
+__host__ __device__ void fresnl(T x, T* ss, T* cc)
 {
   T f, g, c, s, t, u;
-  T x, x2;
 
-  x       = fabs_t(xxa);
-  x2      = x * x;
+  T absX;
+//  T x2;
 
-  if      ( x2 < 2.5625   )     // Small so use a polynomial approximation  .
+  absX       = fabs_t(x);
+
+  //if      ( x2 < 2.5625   )		// Small so use a polynomial approximation  .
+  if      ( absX < (T)FREESLIM1   )	// Small so use a polynomial approximation  .
   {
-    t     = x2 * x2;
+    T x2	= absX * absX;
+    t		= x2 * x2;
 
     T t01 = t;
     T t02 = t01*t;
@@ -89,20 +118,22 @@ __host__ __device__ void fresnl(T xxa, T* ss, T* cc)
     T cn  = (T)9.99999999999999998822e-1 + (T)-2.05525900955013891793e-1*t01 + (T)1.88843319396703850064e-2*t02 + (T)-6.45191435683965050962e-4*t03 + (T)9.50428062829859605134e-6*t04 - (T)4.98843114573573548651e-8 *t05;
     T cd  = (T)1.00000000000000000118e0  + (T) 4.12142090722199792936e-2*t01 + (T)8.68029542941784300606e-4*t02 + (T) 1.22262789024179030997e-5*t03 + (T)1.25001862479598821474e-7*t04 + (T)9.15439215774657478799e-10*t05 + (T)3.99982968972495980367e-12*t06 ;
 
-    *ss   = x * x2 * sn / sd;
-    *cc   = x * cn / cd;
+    *ss   = absX * x2 * sn / sd;
+    *cc   = absX * cn / cd;
   }
-  else if ( x  > (T)36974.0  )  // Asymptotic behaviour  .
+  else if ( absX  > (T)FREESLIM2  )	// Asymptotic behaviour  .
   {
     *cc   = 0.5;
     *ss   = 0.5;
   }
-  else                          // Auxiliary functions for large argument  .
+  else					// Auxiliary functions for large argument  .
   {
-    x2    = x * x;
-    t     = (T)PI * x2;
-    u     = 1.0 / (t * t);
-    t     = 1.0 / t;
+    // x2 Could get really big so use double precision
+    T x2	= absX * absX;
+
+    t		= (T)PI * x2;
+    u		= 1.0 / (t * t);
+    t		= 1.0 / t;
 
     T u01 = u;
     T u02 = u01*u;
@@ -120,26 +151,101 @@ __host__ __device__ void fresnl(T xxa, T* ss, T* cc)
     T gn  = (T)1.86958710162783235106e-22 + (T)8.36354435630677421531e-19*u01 + (T)1.37555460633261799868e-15*u02 + (T)1.08268041139020870318e-12*u03 + (T)4.45344415861750144738e-10*u04 + (T)9.82852443688422223854e-8*u05 + (T)1.15138826111884280931e-5*u06 + (T)6.84079380915393090172e-4*u07 + (T)1.87648584092575249293e-2*u08 + (T)1.97102833525523411709e-1*u09 + (T)5.04442073643383265887e-1*u10 ;
     T gd  = (T)1.86958710162783236342e-22 + (T)8.39158816283118707363e-19*u01 + (T)1.38796531259578871258e-15*u02 + (T)1.10273215066240270757e-12*u03 + (T)4.60680728146520428211e-10*u04 + (T)1.04314589657571990585e-7*u05 + (T)1.27545075667729118702e-5*u06 + (T)8.14679107184306179049e-4*u07 + (T)2.53603741420338795122e-2*u08 + (T)3.37748989120019970451e-1*u09 + (T)1.47495759925128324529e0 *u10 + u11 ;
 
-    f     = 1.0 - u * fn / fd;
-    g     =       t * gn / gd;
+    f     = (T)1.0 - u * fn / fd;
+    g     =          t * gn / gd;
 
-    t     = (T)PIBYTWO * x2;
-    sincos_t(t, &s, &c);
-    t     = (T)PI * x;
+    sinecos_fres(absX, x2, &s, &c);
+    //t     = (T)PIBYTWO * x2;
+    //sincos_t(t, &s, &c);
+
+//    if ( x2 > 0  )
+//    {
+//      //typedef double fresT;
+//      double s_d, c_d, t_d, x2_d, frac, intp;
+//      //double t_d		= (double)PIBYTWO * x2_d;
+//      double trigT;
+//
+//      // USe double precision to get the x*x in the form (4a+b)
+//      x2_d 	= (double)absX * (double)absX;
+//
+//      frac 	= fmod_t(x2_d, 4.0);
+//      trigT 	= frac*PIBYTWO;
+//      //OR
+//      //intp 	= modf_t((double)x/2.0, &frac );
+//      //trigT 	= intp*frac*TWOPI + frac*frac*PIBYTWO;
+//      //OR
+//      //trigT = x2_d*(double)PIBYTWO;
+//
+//      sincos_t(trigT, &s, &c);		// Float trig
+//
+//      //sincos_t(trigT, &s_d, &c_d);	// Double trig
+//      //s = s_d;
+//      //c = c_d;
+//
+//      //t_d	     		= (double)PI * x;
+//
+//      //*cc   = 0.5 + (f * s_d - g * c_d) / t_d;
+//      //*ss   = 0.5 - (f * c_d + g * s_d) / t_d;
+//    }
+//    else
+//    {
+//      t     = (T)PIBYTWO * x2;
+//      sincos_t(t, &s, &c);
+//    }
+
+    t     = (T)PI * absX;
 
     *cc   = (T)0.5 + (f * s - g * c) / t;
     *ss   = (T)0.5 - (f * c + g * s) / t;
+
   }
 
-  if ( xxa < 0.0 )              // Swap as function is antisymmetric  .
+  if ( x < 0.0 )              // Swap as function is antisymmetric  .
   {
     *cc   = -*cc;
     *ss   = -*ss;
   }
 }
 
+__host__ __device__ inline void sinecos_resp(float Qk, float z, float PIoverZ, float* sin, float* cos)
+{
+  double x	= (double)Qk * (double)Qk / (double)z ;
+  float  xx	= fmod_t(x, 2.0);
+  xx		*= (float)PI;
+  sincos_t(xx, sin, cos);
+
+//  double sinD, cosD;
+//  sincos_t((double)PIoverZ*(double)Qk*(double)Qk, &sinD, &cosD);
+//  *sin = sinD;
+//  *cos = cosD;
+}
+
+__host__ __device__ inline void sinecos_resp(double Qk, double z, double PIoverZ, double* sin, double* cos)
+{
+  double  xx	= fmod_t(Qk*Qk/z, 2.0);
+  xx		*= (double)PI;
+  sincos_t(xx, sin, cos);
+
+//  sincos_t(PIoverZ*Qk*Qk, sin, cos);
+}
+
+/**
+ *
+ * Precedence for double:
+ * 1:	sq2overAbsZ
+ *
+ * @param Qk
+ * @param z
+ * @param sq2overAbsZ
+ * @param PIoverZ
+ * @param overSq2AbsZ
+ * @param sighnZ
+ * @param real
+ * @param imag
+ */
 template<typename T, uint flags>
-__host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T overSq2AbsZ, int sighnZ, T* real, T* imag)
+//__host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T overSq2AbsZ, int sighnZ, T* real, T* imag)
+__host__ __device__ void calc_z_response(T Qk, T z, double sq2overAbsZ, T PIoverZ, T overSq2AbsZ, int sighnZ, T* real, T* imag)
 {
   /* This is evaluating Eq (39) in:
    * Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
@@ -150,28 +256,41 @@ __host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T 
    *        The rest of the variables are values that do not change with k
    */
 
-  T SZk, CZk, SYk, CYk;
   T sin, cos;
+  //T xx = (T)PIoverZ * Qk * Qk ;
+  //sincos_t(xx, &sin, &cos);
+  sinecos_resp(Qk, z, PIoverZ, &sin, &cos);
 
-  T xx = PIoverZ * Qk * Qk ;
+  //T SZk, CZk, SYk, CYk;
+  T SZk, CZk, SYk, CYk;
   T Yk = sq2overAbsZ * Qk ;
   T Zk = sq2overAbsZ * ( Qk + z) ;
-
-  sincos_t(xx, &sin, &cos);
-
+  //fresnl<T>(Yk, &SYk, &CYk);
+  //fresnl<T>(Zk, &SZk, &CZk);
   fresnl<T>(Yk, &SYk, &CYk);
   fresnl<T>(Zk, &SZk, &CZk);
+  T Sk =  ( SZk - SYk );  				// Can be float
+  T Ck =  ( CYk - CZk ) * sighnZ ;			// Can be float
+  //Ck *= sighnZ;
 
-  T Sk =  SZk - SYk ;
-  T Ck =  CYk - CZk ;
+#if CORRECT_MULT
+  // This is the version I get by doing the math
+  //*real = overSq2AbsZ * (Sk*cos + Ck*sin) ;
+  //*imag = overSq2AbsZ * (Sk*sin - Ck*cos) ;
 
-  Ck *= sighnZ;
-
+  //// This is the corrected version ( math * -i )
+  *real =  overSq2AbsZ * ( Sk * sin - Ck * cos ) ;
+  *imag = -overSq2AbsZ * ( Sk * cos + Ck * sin ) ;
+#else
   if ( flags )
   {
-    // This is the version I get by doing the math
-    *real = overSq2AbsZ * (Sk*cos + Ck*sin) ;
-    *imag = overSq2AbsZ * (Sk*sin - Ck*cos) ;
+    //// This is the version I get by doing the math
+    //*real = overSq2AbsZ * (Sk*cos + Ck*sin) ;
+    //*imag = overSq2AbsZ * (Sk*sin - Ck*cos) ;
+    
+    //// This is the corrected version ( math * -i )
+    *real =  overSq2AbsZ * (Sk*sin - Ck*cos) ;
+    *imag = -overSq2AbsZ * (Sk*cos + Ck*sin) ;
   }
   else
   {
@@ -179,17 +298,19 @@ __host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T 
     *real = overSq2AbsZ * (Sk*sin - Ck*cos) ;
     *imag = overSq2AbsZ * (Sk*cos + Ck*sin) ;
   }
+#endif
 }
 
 template<typename T>
-__host__ __device__ void calc_r_response(T dist, T sinsin, T sincos, T* real, T* imag)
+__host__ __device__ void calc_r_response(T dist, T sinsinPI, T sincosPI, T* real, T* imag)
 {
   /* This is evaluating Eq (30) in:
    * Ransom, Scott M., Stephen S. Eikenberry, and John Middleditch. "Fourier techniques for very long astrophysical time-series analysis." The Astronomical Journal 124.3 (2002): 1788.
    *
    */
 
-  if ( dist > -SINCLIM && dist < SINCLIM )
+  //if ( dist > -SINCLIM && dist < SINCLIM )
+  if ( dist > -getFIlim(dist) && dist < getFIlim(dist) )
   {
     // Correct for division by zero ie: sinc(0) = 1
     *real = (T)1.0;
@@ -197,8 +318,8 @@ __host__ __device__ void calc_r_response(T dist, T sinsin, T sincos, T* real, T*
   }
   else
   {
-    *real = sincos / dist ;
-    *imag = sinsin / dist ;
+    *real = sincosPI / dist ;
+    *imag = -sinsinPI / dist ;
   }
 }
 
@@ -214,12 +335,12 @@ __host__ __device__ void calc_response_off(float offset, float z,  T* real, T* i
   if ( z < FILIM_F && z > -FILIM_F )
   {
     // Do Fourier interpolation
-    T dist = (T)PI*(-offset);
+    T dist = -offset;
     T sin, cos;
 
-    sincos_t(dist, &sin, &cos);
+    sincos_t(dist, &sin, &cos);					// TODO : this could be a bit more accurate if we split offset into fractional part
 
-    calc_r_response(dist, sin*sin, sin*cos, real, imag);
+    calc_r_response(dist, sin*sin/(T)PI, sin*cos/(T)PI, real, imag);
   }
   else
   {
@@ -231,7 +352,7 @@ __host__ __device__ void calc_response_off(float offset, float z,  T* real, T* i
     T PIoverZ       = PI / z;
     T overSq2AbsZ   = 1.0 / SQRT2 / sqrtAbsZ ;
 
-    calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, real, imag);
+    calc_z_response<T,1>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, real, imag);
   }
 }
 
@@ -245,37 +366,62 @@ __host__ __device__ void rz_interp_cu(dataT* inputData, long loR, long noBins, d
   double  fracfreq;						// Fractional part of r   - double precision
   double  dintfreq;						// Integer part of r      - double precision
   long    start;						// The first bin to use
-  float   offset;						// The distance from the centre frequency (r)
+  double  offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
   int     numkern;						// The actual number of kernel values to use
   T 	  resReal 	= 0;					// Response value - real
   T 	  resImag 	= 0;					// Response value - imaginary
 
-  FOLD // Calculate the reference bin (closes integer bin to r)  .
+  // TMP
+  T 	  respRealSum 	= 0;					//
+  T 	  respImagSum 	= 0;					//
+
+  T 	  inRealSum 	= 0;					//
+  T 	  inImagSum 	= 0;					//
+
+  T 	  mathRealSum 	= 0;					//
+  T 	  mathImagSum 	= 0;					//
+
+  T 	  accelRealSum 	= 0;					//
+  T 	  accelImagSum 	= 0;					//
+  
+  FOLD 								// Calculate the reference bin (closes integer bin to r)  .
   {
     fracfreq	= modf_t(r, &dintfreq);				// This is always double precision because - r needs to be r
-    start	= dintfreq + 1 - kern_half_width ;
+    start	= dintfreq + 1 - kern_half_width ;		// TODO check this +1????
 
     if ( fracfreq > 0.5 ) // Adjust to closest bin
     {
       fracfreq -= 1.0 ;
       dintfreq++;
     }
-
-    offset = ( r - start);					// This is rc-k for the first bin
   }
 
-  FOLD // Clamp values to usable bounds  .
+  FOLD 								// Clamp values to usable bounds  .
   {
     numkern 		= 2 * kern_half_width;
 
     if ( start < 0 )
     {
       numkern += start;						// Decrease number of kernel values
-      offset  -= start;						// offset and start are negative so subtract
       start    = 0;
     }
 
-    start -= loR;
+    offset = ( r - start);					// This is rc-k for the first bin
+  }
+
+  FOLD 								// Adjust for FFT
+  {
+    // Adjust to FFT
+    if ( start >= loR )
+    {
+      start -= loR;						// Adjust for accessing the input FFT
+    }
+    else
+    {
+      // Start is below beginning of available data so start at available data
+      offset = ( r - loR);					// This is rc-k for the first bin
+      start = 0;
+    }
 
     if ( start + numkern >= noBins )
     {
@@ -285,32 +431,55 @@ __host__ __device__ void rz_interp_cu(dataT* inputData, long loR, long noBins, d
 
   if ( z < FILIM_F && z > -FILIM_F )				// Do a Fourier interpolation
   {
-    T dist = (T)PI*offset;
+    T dist = offset;
+
     T sin, cos;
-    T sinsin, sincos;
+    T sinsinPI, sincosPI;
 
     // Do all the trig calculations for the constants
-    sincos_t(dist, &sin, &cos);
-    sinsin = sin * sin;
-    sincos = sin * cos;
+    sincos_t((T)PI*fracfreq, &sin, &cos);			// Highest precision using (T)PI*fracfreq
+    sinsinPI = sin * sin / (T)PI;
+    sincosPI = sin * cos / (T)PI;
 
-    for ( int i = 0 ; i < numkern; i++, dist-=(T)PI )		// Loop over the kernel elements  .
+    for ( int i = 0 ; i < numkern; i++, dist-- )		// Loop over the kernel elements  .
     {
+      if ( (start+i) >= 98 && (start+i) <= 101 )
+      {
+	int tmp = 0;
+      }
+
       FOLD //  Read the input value  .
       {
         inp	= inputData[start+i];
       }
-
-      FOLD // Calculate response  .
+      
+      FOLD 							// Calculate response  .
       {
-	calc_r_response(dist, sinsin,  sincos, &resReal, &resImag);
+	calc_r_response(dist, sinsinPI,  sincosPI, &resReal, &resImag);
+	
+	accelRealSum += resReal * inp.x - resImag*inp.y;
+	accelImagSum += resReal * inp.y + resImag*inp.x;
+	
+	respRealSum += resReal;
+	respImagSum += resImag;
       }
 
-      FOLD //  Do the multiplication and sum  accumulate  .
+      FOLD 							//  Do the multiplication and sum  accumulate  .
       {
 	*real	+= resReal * inp.x - resImag*inp.y;
 	*imag	+= resReal * inp.y + resImag*inp.x;
       }
+      
+//      if ( (start+i) >= 97 && (start+i) <= 103 )
+//      {
+//	printf("%10.4f\t%li\t", fabs_t(r - (start+i)), (start+i));
+//	printf("%8.3f\t%8.3f\t%8.3f\t", inRealSum, inImagSum, sqrt(POWERCU(inRealSum, inImagSum)));
+//	printf("%8.3f\t%8.3f\t%8.3f\t", accelRealSum, accelImagSum, sqrt(POWERCU(accelRealSum, accelImagSum)));
+//	printf("%8.3f\t%8.3f\t%8.3f\t", mathRealSum, mathImagSum, sqrt(POWERCU(mathRealSum, mathImagSum)));
+//	printf("%8.3f\t%8.3f\t%8.3f\t", respRealSum, respImagSum, sqrt(POWERCU(respRealSum, respImagSum)));
+//	printf("\n");
+//      }
+
     }
   }
   else								// Use a correlation kernel  .
@@ -318,33 +487,80 @@ __host__ __device__ void rz_interp_cu(dataT* inputData, long loR, long noBins, d
     // Calculate all the constants
     int signZ       = (z < 0.0) ? -1 : 1;
     T absZ          = fabs_t(z);
-    T sqrtAbsZ      = sqrt_t(absZ);
-    T sq2overAbsZ   = SQRT2 / sqrtAbsZ;
-    T PIoverZ       = PI / z;
-    T overSq2AbsZ   = 1.0 / SQRT2 / sqrtAbsZ ;
-    T Qk            = offset - z / (T)2.0;			// Just for acceleration
+    //double absZ          = fabs_t((double)z);
+    //T sqrtAbsZ      = sqrt_t(absZ);
+    double sqrtAbsZ      = sqrt_t((double)absZ);
+    //T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
+    double sq2overAbsZ   = (double)SQRT2 / sqrtAbsZ;
+    T PIoverZ       = (T)PI / z;
+    //double PIoverZ       = (double)PI / z;
+    //T overSq2AbsZ   = (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
+    double overSq2AbsZ   = (double)1.0 / (double)SQRT2 / sqrtAbsZ ;
+    //T Qk            = offset - z / (T)2.0;			// Just for acceleration
+    double Qk       = offset - z / (double)2.0;			// Just for acceleration
 
     for ( int i = 0 ; i < numkern; i++, Qk-- )			// Loop over the kernel elements
     {
-      FOLD //  Read the input value  .
+
+      FOLD 							//  Read the input value  .
       {
         inp	= inputData[start+i];
       }
 
-      FOLD // Calculate response  .
+      FOLD 							// Calculate response  .
       {
-	calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, real, imag);
+	calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	//calc_z_response<double,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal_D, &resImag_D);
+
+	//double dr, di;
+	//calc_z_response<double,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &dr, &di);
+	//resReal = dr;
+	//resImag = di;
+	
+//	double SZk, CZk, SYk, CYk;
+//	double sin, cos;
+//
+//	double Yk = sq2overAbsZ * Qk ;
+//	double Zk = sq2overAbsZ * ( Qk + z) ;
+//
+//	float bace;
+//	float frac;
+//	frac	= modf_t(Qk, &bace);				// This is always double precision because - r needs to be r
+//	//double xx = PIoverZ * (-2*bace*frac + frac*frac);
+//
+//	double xx = PIoverZ * Qk * Qk;
+//	sincos_t(xx, &sin, &cos);
+//
+//	//fresnl<T>(Yk, &SYk, &CYk);
+//	//fresnl<T>(Zk, &SZk, &CZk);
+//	fresnl<double>(Yk, &SYk, &CYk);
+//	fresnl<double>(Zk, &SZk, &CZk);
+//
+//	//T Sk =  SYk - SZk;
+//	//T Ck =  CZk - CYk;
+//	T Sk =  SZk - SYk;
+//	T Ck =  CYk - CZk;
+//
+//	Ck *= signZ;
+//
+//	//// This is the corrected version ( math * -i )
+//	resReal =  overSq2AbsZ * (Sk*sin - Ck*cos) ;
+//	resImag = -overSq2AbsZ * (Sk*cos + Ck*sin) ;
       }
 
-      FOLD //  Do the multiplication and sum  accumulate  .
+      FOLD 							//  Do the multiplication and sum  accumulate  .
       {
 	*real	+= resReal * inp.x - resImag*inp.y;
 	*imag	+= resReal * inp.y + resImag*inp.x;
+
+//	real_D	+= resReal_D * inp.x - resImag_D*inp.y;
+//	imag_D	+= resReal_D * inp.y + resImag_D*inp.x;
       }
     }
   }
+//  *real = real_D;
+//  *imag = imag_D;
 }
-
 
 template<typename T, typename outT>
 __host__ __device__ void gen_response_cu(double r, float z, int kern_half_width, outT* out)
@@ -353,7 +569,7 @@ __host__ __device__ void gen_response_cu(double r, float z, int kern_half_width,
   double  fracfreq;						// Fractional part of r   - double precision
   double  dintfreq;						// Integer part of r      - double precision
   long    start = 0;
-  float   offset;						// The distance from the centre frequency (r)
+  double  offset;						// The distance from the centre frequency (r)
   int     numkern;						// The actual number of kernel values to use
 
   FOLD // Calculate the reference bin (closes integer bin to r)  .
@@ -377,22 +593,22 @@ __host__ __device__ void gen_response_cu(double r, float z, int kern_half_width,
 
   if ( z < FILIM_F && z > -FILIM_F )				// Do a Fourier interpolation  .
   {
-    T dist = (T)PI*offset;
+    T dist = offset;
     T sin, cos;
-    T sinsin, sincos;
+    T sinsinPI, sincosPI;
 
     // Do all the trig calculations for the constants
-    sincos_t(dist, &sin, &cos);
-    sinsin = sin * sin;
-    sincos = sin * cos;
+    sincos_t(fracfreq*(T)PI, &sin, &cos);
+    sinsinPI = sin * sin / (T)PI ;
+    sincosPI = sin * cos / (T)PI ;
 
-    for ( int i = 0 ; i < numkern; i++, dist-=(T)PI )		// Loop over the kernel elements  .
+    for ( int i = 0 ; i < numkern; i++, dist-- )		// Loop over the kernel elements  .
     {
       //  Get the address of the output value  .
       resp	= &out[start+i];
 
       // Calculate response
-      calc_r_response<T>(dist, sinsin,  sincos, &resp->x, &resp->y);
+      calc_r_response<T>(dist, sinsinPI,  sincosPI, &resp->x, &resp->y);
 
       //T sighn = pow(-1,i);
       //printf("%04i response: %19.16f %19.16f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", i, resp->x, resp->y, dist, sighn*sin, sighn*cos, sighn*sin/dist );
@@ -421,12 +637,171 @@ __host__ __device__ void gen_response_cu(double r, float z, int kern_half_width,
 }
 
 
+template<typename T, typename dataT>
+__host__ __device__ void rz_interp_cu_inc(dataT* inputData, long loR, long noBins, double r, float z, int kern_half_width, T* real, T* imag)
+{
+  *real = (T)0.0;
+  *imag = (T)0.0;
+
+  dataT   inp;							// The input data, this is a complex number stored as, float2 or double2
+  double  fracfreq;						// Fractional part of r   - double precision
+  double  dintfreq;						// Integer part of r      - double precision
+  double  offset;						// The distance from the centre frequency (r)
+
+  T 	  resReal 	= 0;					// Response value - real
+  T 	  resImag 	= 0;					// Response value - imaginary
+
+  T 	  respRealSum 	= 0;					//
+  T 	  respImagSum 	= 0;					//
+
+  T 	  inRealSum 	= 0;					//
+  T 	  inImagSum 	= 0;					//
+
+  T 	  mathRealSum 	= 0;					//
+  T 	  mathImagSum 	= 0;					//
+
+  T 	  accelRealSum 	= 0;					//
+  T 	  accelImagSum 	= 0;					//
+
+  FOLD // Calculate the reference bin (closes integer bin to r)  .
+  {
+    fracfreq	= modf_t(r, &dintfreq);				// This is always double precision because - r needs to be r
+
+    if ( fracfreq > 0.5 )					// Adjust to closest bin  .
+    {
+      fracfreq -= 1.0 ;
+      dintfreq++;
+    }
+
+    offset = ( r - dintfreq);					// This is rc-k for the first bin
+  }
+
+  if ( z < FILIM_F && z > -FILIM_F )				// Do a Fourier interpolation  .
+  {
+
+    T dist;
+    T sin, cos;
+    T sinsinPI, sincosPI;
+
+    // Do all the trig calculations for the constants
+    sincos_t((T)PI*fracfreq, &sin, &cos);
+    sinsinPI = sin * sin / (T)PI;
+    sincosPI = sin * cos / (T)PI;
+
+
+    for ( int i = 0 ; i <= kern_half_width; i++ )		// Loop over the kernel elements  .
+    {
+      for ( int sn = -1; sn < 2; sn += 2 )
+      {
+	long k = dintfreq - i*sn;
+
+	dist = r - k;
+
+	FOLD //  Read the input value  .
+	{
+	  inp	= inputData[ k - loR ];
+
+	  inRealSum += inp.x;
+	  inImagSum += inp.y;
+	}
+
+	FOLD // Calculate response  .
+	{
+	  calc_r_response(dist, sinsinPI,  sincosPI, &resReal, &resImag);
+
+	  accelRealSum += resReal * inp.x - resImag*inp.y;
+	  accelImagSum += resReal * inp.y + resImag*inp.x;
+
+	  respRealSum += resReal;
+	  respImagSum += resImag;
+	}
+
+	FOLD //  Do the multiplication and sum  accumulate  .
+	{
+	  *real	+= resReal * inp.x - resImag*inp.y;
+	  *imag	+= resReal * inp.y + resImag*inp.x;
+	}
+
+	printf("%10.4f\t%li\t", fabs_t(r - k), k);
+	printf("%8.3f\t%8.3f\t%8.3f\t", inRealSum, inImagSum, sqrt(POWERCU(inRealSum, inImagSum)));
+	printf("%8.3f\t%8.3f\t%8.3f\t", accelRealSum, accelImagSum, sqrt(POWERCU(accelRealSum, accelImagSum)));
+	printf("%8.3f\t%8.3f\t%8.3f\t", mathRealSum, mathImagSum, sqrt(POWERCU(mathRealSum, mathImagSum)));
+	printf("%8.3f\t%8.3f\t%8.3f\t", respRealSum, respImagSum, sqrt(POWERCU(respRealSum, respImagSum)));
+	printf("\n");
+
+	if ( i == 0 )
+	  break;
+      }
+    }
+  }
+  else								// Use a correlation kernel  .
+  {
+    // Calculate all the constants
+    int signZ       = (z < 0.0) ? -1 : 1;
+    T absZ          = fabs_t(z);
+    T sqrtAbsZ      = sqrt_t(absZ);
+    T sq2overAbsZ   = SQRT2 / sqrtAbsZ;
+    T PIoverZ       = PI / z;
+    T overSq2AbsZ   = 1.0 / SQRT2 / sqrtAbsZ ;
+
+    for ( int i = 0 ; i <= kern_half_width; i++ )		// Loop over the kernel elements
+    {
+      for ( int sn = -1; sn < 2; sn += 2 )
+      {
+	long k = dintfreq - i*sn;
+	T Qk            = (r-k) - z / (T)2.0;			// Adjust for acceleration
+
+	FOLD //  Read the input value  .
+	{
+	  inp	= inputData[ k - loR ];
+
+	  inRealSum += inp.x;
+	  inImagSum += inp.y;
+	}
+
+	FOLD // Calculate response  .
+	{
+	  calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal, &resImag);
+
+	  accelRealSum += resReal * inp.x - resImag*inp.y;
+	  accelImagSum += resReal * inp.y + resImag*inp.x;
+
+	  respRealSum += resReal;
+	  respImagSum += resImag;
+
+	  calc_z_response<T,1>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal, &resImag);
+
+	  mathRealSum += resReal * inp.x - resImag*inp.y;
+	  mathImagSum += resReal * inp.y + resImag*inp.x;
+
+	}
+
+	FOLD //  Do the multiplication and sum  accumulate  .
+	{
+	  *real	+= resReal * inp.x - resImag*inp.y;
+	  *imag	+= resReal * inp.y + resImag*inp.x;
+	}
+
+	printf("%10.4f\t%li\t", fabs_t(r - k), k);
+	printf("%8.3f\t%8.3f\t%8.3f\t", inRealSum, inImagSum, sqrt(POWERCU(inRealSum, inImagSum)));
+	printf("%8.3f\t%8.3f\t%8.3f\t", accelRealSum, accelImagSum, sqrt(POWERCU(accelRealSum, accelImagSum)));
+	printf("%8.3f\t%8.3f\t%8.3f\t", mathRealSum, mathImagSum, sqrt(POWERCU(mathRealSum, mathImagSum)));
+	printf("%8.3f\t%8.3f\t%8.3f\t", respRealSum, respImagSum, sqrt(POWERCU(respRealSum, respImagSum)));
+	printf("\n");
+
+	if ( i == 0 )
+	  break;
+      }
+    }
+  }
+}
+
 template void fresnl<float> (float  xxa, float*  ss, float*  cc);
 template void fresnl<double>(double xxa, double* ss, double* cc);
 
-template void calc_z_response<float,  0>(float  Qk, float  z, float  sq2overAbsZ, float  PIoverZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
+template void calc_z_response<float,  0>(float  Qk, float  z, double  sq2overAbsZ, float  PIoverZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
 template void calc_z_response<double, 0>(double Qk, double z, double sq2overAbsZ, double PIoverZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
-template void calc_z_response<float,  1>(float  Qk, float  z, float  sq2overAbsZ, float  PIoverZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
+template void calc_z_response<float,  1>(float  Qk, float  z, double  sq2overAbsZ, float  PIoverZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
 template void calc_z_response<double, 1>(double Qk, double z, double sq2overAbsZ, double PIoverZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
 
 template void calc_response_bin<float> (long bin, double r, float z,  float*  real, float*  imag);
@@ -439,6 +814,12 @@ template void rz_interp_cu<float,  float2> (float2*  inputData, long loR, long n
 template void rz_interp_cu<float,  double2>(double2* inputData, long loR, long noBins, double r, float z, int kern_half_width, float*  real, float*  imag);
 template void rz_interp_cu<double, float2> (float2*  inputData, long loR, long noBins, double r, float z, int kern_half_width, double* real, double* imag);
 template void rz_interp_cu<double, double2>(double2* inputData, long loR, long noBins, double r, float z, int kern_half_width, double* real, double* imag);
+
+template void rz_interp_cu_inc<float,  float2> (float2*  inputData, long loR, long noBins, double r, float z, int kern_half_width, float*  real, float*  imag);
+template void rz_interp_cu_inc<float,  double2>(double2* inputData, long loR, long noBins, double r, float z, int kern_half_width, float*  real, float*  imag);
+template void rz_interp_cu_inc<double, float2> (float2*  inputData, long loR, long noBins, double r, float z, int kern_half_width, double* real, double* imag);
+template void rz_interp_cu_inc<double, double2>(double2* inputData, long loR, long noBins, double r, float z, int kern_half_width, double* real, double* imag);
+
 
 template void gen_response_cu<double, double2>(double r, float z, int kern_half_width, double2* out);
 template void gen_response_cu<float,  float2> (double r, float z, int kern_half_width, float2*  out);

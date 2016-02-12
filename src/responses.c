@@ -217,7 +217,7 @@ fcomplex *gen_r_response(double roffset, int numbetween, int numkern)
       response[ii].r = c * sinc;
       response[ii].i = s * sinc;
 
-      //printf("%04i response: %15.10f %15.10f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", ii, response[ii].r, response[ii].i, r, c, s, sinc );
+      //printf("%04i response: %15.10f %15.10f  r: %15.10f  c: %15.10f s: %15.10f sinc: %15.10f\n", ii, response[ii].r, response[ii].i, r, c, s, sinc ); // TMP remove
 
       c = alpha * (tmp = c) - beta * s + c;
       s = alpha * s + beta * tmp + s;
@@ -247,7 +247,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
 {
    int ii, signz, numkernby2;
    double absz, zd, q_r, xx, Yr, Zr, startr, startroffset;
-   double fressy, frescy, fressz, frescz, tmprl, tmpim;
+   double fressy, frescy, fressz, frescz, ctrm, strm;
    double s, c, pibyz, cons, delta;
    fcomplex *response;
 
@@ -287,7 +287,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
    /* Begin the calculations */
 
    startr             = roffset - (0.5 * z);
-   startroffset       = (startr < 0) ? 1.0 + modf(startr, &tmprl) : modf(startr, &tmprl);
+   startroffset       = (startr < 0) ? 1.0 + modf(startr, &ctrm) : modf(startr, &ctrm);
    signz              = (z < 0.0) ? -1 : 1;
    zd                 = signz * SQRT2 / sqrt(absz);
    cons               = zd / 2.0;
@@ -304,12 +304,14 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
       s               = sin(xx);
       fresnl(Yr, &fressy, &frescy);
       fresnl(Zr, &fressz, &frescz);
-      tmprl           = signz * (frescz - frescy);
-      tmpim           = fressy - fressz;
-      response[ii].r  = ((tmprl) * c - tmpim * s) * cons;
-      response[ii].i  = -(tmprl  * s + tmpim * c) * cons;
+      ctrm           = signz * (frescz - frescy);
+      strm           = fressy - fressz;
+      response[ii].r  = - cons * ( strm * s - ctrm * c );
+      response[ii].i  = - cons * ( strm * c + ctrm * s );
 
       //printf("%03i  q_r %10.5f \n", ii, q_r );
+
+      //printf("%04i response: %15.10f %15.10f  Yr: %15.10f  Zr: %15.10f xx: %15.10f  \n", ii, response[ii].r, response[ii].i, Yr, Zr, xx );
 
       // NB TODO: When I checked the math I think real and ima are inverted ??????
 

@@ -17,6 +17,7 @@ extern "C"
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
 #include <cuda_profiler_api.h>
+#include "cuda_response.h"
 #endif
 
 #include <sys/time.h>
@@ -733,6 +734,7 @@ int main(int argc, char *argv[])
   sSpec.flags        |= FLAG_SEPSRCH;
   sSpec.flags        |= FLAG_SEPRVAL;
   sSpec.flags        |= FLAG_SYNCH;       // Synchronous
+  sSpec.flags        |= FLAG_KER_DOUBGEN;		// FLAG_KER_DOUBFFT
 
   iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
   if ( iret1 )
@@ -837,8 +839,95 @@ int main(int argc, char *argv[])
       gettimeofday(&start, NULL);       // Profiling
       //cudaProfilerStart();              // Start profiling, only really necessary debug and profiling, surprise surprise
 
-      FOLD // Kernal studd  .
+      FOLD // Kernel stuff  .
       {
+	FOLD // TMP testing stuff response  .
+	{
+	  float r 	= 100.0;
+	  float z 	= 0.9;
+	  float hm 	= 10;
+
+	  double2*  gpuker = (double2*)malloc(sizeof(double2*)*hm*2);
+	  //fcomplex* cpuker = gen_z_response( r, 1, z, hm*2);
+
+	  float real;
+	  float imag;
+
+	  double realD;
+	  double imagD;
+
+	  printf("\n\n");
+
+	  //calc_response_off<float>(-hm-r, z, &real, &imag);
+	  //gen_response_cu<double, double2>(r, z, hm, (double2*)gpuker );
+
+	  double param, fractpart, intpart;
+	  fractpart = modf (r , &intpart);
+
+	  int 	nofbin = 2;
+	  int	sart = r - nofbin / 2;
+	  float step = 0.01;
+
+	  int 	hw = sSpec.fftInf.nor*2;
+	  hw = 1000;
+
+	  //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, 97.99, 0, hw, &realD, &imagD );
+
+	  //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, 98.01, 0, hw, &realD, &imagD );
+
+	  //printf("r\t%s\t%s z %.4f\t%s\t\t\t%s\t%s\n","Fourier Bins", "Correlation", z, "Power", "Fourier Interpolation", "Power");
+	  printf("   r\t%s\t", "Fourier Bins");
+	  printf("%s z %.2f Float \t%s",  "Correlation", z, "Power");
+	  printf("%s z %.2f Double\t%s\t\t\t", "Correlation", z, "Power");
+	  //printf("%s z %.4f Float \t%s\n",  "Fourier Interpolation", "Power");
+	  printf("\n");
+
+	  for ( int ix = 0; ix <= nofbin; ix++ )
+	  {
+	    printf("%.6f\t%.6f\t%.6f\t%.6f\t", (float)(sart+ix), sSpec.fftInf.fft[(int)sart+ix].r, sSpec.fftInf.fft[(int)sart+ix].i, sqrt(POWERCU(sSpec.fftInf.fft[(int)sart+ix].r, sSpec.fftInf.fft[(int)sart+ix].i)) );
+	    //printf("%.6f\t%.6f\n", sSpec.fftInf.fft[(int)sart+ix].r, sSpec.fftInf.fft[(int)sart+ix].i);
+	    printf("\n");
+	  }
+	  printf("\n");
+
+	  //printf("%.6f\t%.6f\t%.6f\t", (float)sart, sSpec.fftInf.fft[(int)sart].r, sSpec.fftInf.fft[(int)sart].i);
+	  //printf("\t%.6f\t%.6f\n", sSpec.fftInf.fft[(int)sart].r, sSpec.fftInf.fft[(int)sart].i);
+
+
+	  for ( float off = 0; off < nofbin; off += step )
+	  {
+	    printf("%.6f",sart + off);
+
+	    rz_interp_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, z, hw, &real, &imag );
+	    printf("\t%.6f\t%.6f\t%.6f\t", real, imag, sqrt(POWERCU(real, imag)) );
+
+	    rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, z, hw, &realD, &imagD );
+	    printf("\t%.6f\t%.6f\t%.6f\t", realD, imagD, sqrt(POWERCU(realD, imagD)) );
+
+	    //rz_interp_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &real, &imag );
+	    //printf("\t%.6f\t%.6f\t%.6f", real, imag, sqrt(POWERCU(real, imag)));
+
+	    printf("\n");
+	  }
+	  //printf("%.6f\t%.6f\t%.6f\t", (float)(sart + nofbin), sSpec.fftInf.fft[(int)sart+nofbin].r, sSpec.fftInf.fft[(int)sart+nofbin].i);
+	  //printf("\t%.6f\t%.6f\n", sSpec.fftInf.fft[(int)sart+nofbin].r, sSpec.fftInf.fft[(int)sart+nofbin].i);
+
+
+//	  for ( z = 0.001; z >= -0.001; z -= 0.001 )
+//	  {
+//	    for ( float off = -sart; off <= sart; off+= step )
+//	    {
+//	      calc_response_off<float>(off, z, &real, &imag);
+//	      printf("%.6f\t%.6f\t%.6f\t", off, real, imag);
+//	    }
+//	    printf("\n");
+//	  }
+
+
+	}
+
+	exit(1);
+
         FOLD // Generate the GPU kernel  .
         {
           cuSrch        = initCuKernels(&sSpec, &gSpec, NULL);
@@ -851,7 +940,7 @@ int main(int argc, char *argv[])
           }
         }
 
-        FOLD //  Convert CPU to inmem .
+        FOLD // Convert CPU to inmem .
         {
           if ( master->flags & FLAG_SS_INMEM  )
           {
@@ -878,7 +967,7 @@ int main(int argc, char *argv[])
           }
         }
 
-        FOLD //  Generate CPU kernel  .
+        FOLD // Generate CPU kernel  .
         {
           printf("Generating CPU correlation kernels:\n");
           subharminfs = create_subharminfos(&obs);
@@ -954,6 +1043,30 @@ int main(int argc, char *argv[])
                 printf("  GOOD  Very good.\n"  );
               else
                 printf("  Great \n");
+
+
+              FOLD //
+              {
+        	if ( ERR > buckets[2] )
+        	{
+        	  int y = master->hInfos[idx].height - 10;
+
+        	  printf("Harm: %02i\n", idx );
+        	  printf("CPU: ");
+        	  for ( int x = 0; x < 15; x++ )
+        	  {
+        	    printf(" %11.6f ", CPU_kernels.get(x,y));
+        	  }
+        	  printf("\n");
+
+        	  printf("GPU: ");
+        	  for ( int x = 0; x < 15; x++ )
+        	  {
+        	    printf(" %11.6f ", GPU_kernels.get(x,y));
+        	  }
+        	  printf("\n");
+        	}
+              }
             }
           }
         }
@@ -962,13 +1075,13 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP >= 0) 	                                  // -- Main Loop --  .
       {
         int  firstStep      = 0;
-        bool printDetails   = true;           // Print out stats on all input and planes
-        bool plotAllPlanes  = false;          // Plot all planes
-        bool printAllValues = false;          // Print out a couple off all the values
-        bool plot           = false;          // Draw bad planes
-        bool CSV            = false;          //
-        bool contPlotAll    = false;          //
-        bool contPlotCnd    = true;           //
+        bool printDetails   = true;		// Print out stats on all input and planes
+        bool plotAllPlanes  = false;		// Plot all planes
+        bool printAllValues = true;		// Print out a couple off all the values
+        bool plot           = false;		// Draw bad planes
+        bool CSV            = false;		//
+        bool contPlotAll    = false;		//
+        bool contPlotCnd    = false;		//
 
         int   harmtosum, harm;
         startr = obs.rlo, lastr = 0, nextr = 0;
@@ -1196,7 +1309,7 @@ int main(int argc, char *argv[])
                 for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
                 {
                   cuHarmInfo* cHInfo    = &batch->hInfos[harm];          // The current harmonic we are working on
-                  //cuFFdot*    plan      = &cStack->planes[plainNo];         // The current plane
+
                   cuFFdot*    plan      = &batch->planes[harm];          // The current plane
 
                   for ( int step = 0; step < batch->noSteps; step ++)    // Loop over steps
@@ -1230,7 +1343,7 @@ int main(int argc, char *argv[])
 
                         if ( !(batch->flags & FLAG_CUFFT_CB_OUT) )
                         {
-                          cmplxData = &plan->d_planeMult[offset];
+                          cmplxData = &((fcomplexcu*)plan->d_planeMult)[offset];
                           CUDA_SAFE_CALL(cudaMemcpy(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*sizeof(fcomplexcu), cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
                         }
 
@@ -1898,7 +2011,7 @@ int main(int argc, char *argv[])
             print_percent_complete(startrs[0] - obs.rlo, obs.highestbin - obs.rlo, "search", 0);
           }
 
-          FOLD  // Finish off CUDA search  .
+          FOLD // Finish off CUDA search  .
           {
             // Set r values to 0 so as to not process details
             for ( int step = 0; step < batch->noSteps ; step ++)

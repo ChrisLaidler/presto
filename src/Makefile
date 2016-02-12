@@ -34,7 +34,7 @@ PRESTOOBJS_BASE = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 	rzinterp.o rzwinterp.o select.o sorter.o swapendian.o\
 	transpose.o twopass.o twopass_real_fwd.o\
 	twopass_real_inv.o vectors.o multifiles.o mask.o\
-	fitsfile.o hget.o hput.o imio.o djcl.o
+	fitsfile.o hget.o hput.o imio.o djcl.o zapping.o
 
 COMPILE_START_TIME := $(shell date +\(%j\*24\*60\*60+%H\*60\*60+%M\*60+%S\))
 COMPILE_CURRENT_TIME = `date  +\(%j\*24\*60\*60+%H\*60\*60+%M\*60+%S\)`
@@ -449,7 +449,7 @@ mpiprepsubband: mpiprepsubband_cmd.c $(OBJDIR)mpiprepsubband_cmd.o $(OBJDIR)mpip
 ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o
 	@echo ""
 	@echo "Linking accelsearch$(POSTFIX)"
-	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(NVCC_OBS) $(PRESTOLINK) $(GLIBLINK) -lm $(FFTLINK)
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),accelsearch$(POSTFIX))
 
 $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o
@@ -609,7 +609,8 @@ $(OBJDIR)%.o: %.c
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
-	$(CPP) $(CFLAGS) -o $@ -c $<
+	#$(CPP) $(CFLAGS) -o $@ -c $<
+	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 	
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)
