@@ -13,14 +13,11 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cufft.h>
+#include <sys/time.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 
 #include "cuda_accel.h"
-
-
-#define   POWERCU(r,i)  ((r)*(r) + (i)*(i))   /// The sum of powers of two number
-#define   POWERC(c)     POWERCU(c.r, c.i)     /// The sum of powers of a complex number
 
 #define BLACK     "\033[22;30m"
 #define GREEN     "\033[22;31m"
@@ -32,67 +29,6 @@
 #define cudaFreeNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFree(pointer), "Failed to free device memory."); pointer = NULL; }
 #define cudaFreeHostNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFreeHost(pointer), "Failed to free host memory."); pointer = NULL; }
 
-
-
-// cuFFT API errors
-#ifdef _CUFFT_H_
-static const char *_cudaGetErrorEnum(cufftResult error)
-{
-  switch (error)
-  {
-    case CUFFT_SUCCESS:
-      return "CUFFT_SUCCESS";
-
-    case CUFFT_INVALID_PLAN:
-      return "CUFFT_INVALID_PLAN";
-
-    case CUFFT_ALLOC_FAILED:
-      return "CUFFT_ALLOC_FAILED";
-
-    case CUFFT_INVALID_TYPE:
-      return "CUFFT_INVALID_TYPE";
-
-    case CUFFT_INVALID_VALUE:
-      return "CUFFT_INVALID_VALUE";
-
-    case CUFFT_INTERNAL_ERROR:
-      return "CUFFT_INTERNAL_ERROR";
-
-    case CUFFT_EXEC_FAILED:
-      return "CUFFT_EXEC_FAILED";
-
-    case CUFFT_SETUP_FAILED:
-      return "CUFFT_SETUP_FAILED";
-
-    case CUFFT_INVALID_SIZE:
-      return "CUFFT_INVALID_SIZE";
-
-    case CUFFT_UNALIGNED_DATA:
-      return "CUFFT_UNALIGNED_DATA";
-
-    case CUFFT_INCOMPLETE_PARAMETER_LIST:
-      return "CUFFT_INCOMPLETE_PARAMETER_LIST";
-
-    case CUFFT_INVALID_DEVICE:
-      return "CUFFT_INVALID_DEVICE";
-
-    case CUFFT_PARSE_ERROR:
-      return "CUFFT_PARSE_ERROR";
-
-    case CUFFT_NO_WORKSPACE:
-      return "CUFFT_NO_WORKSPACE";
-
-    case CUFFT_LICENSE_ERROR:
-      return "CUFFT_LICENSE_ERROR";
-
-    case CUFFT_NOT_IMPLEMENTED:
-      return "CUFFT_NOT_IMPLEMENTED";
-  }
-
-  return "<unknown>";
-}
-#endif
-
 // Defines for GPU Architecture types (using the SM version to determine the # of cores per SM)
 typedef struct
 {
@@ -103,6 +39,7 @@ typedef struct
 
 //====================================== Inline functions ================================================//
 
+const char* _cudaGetErrorEnum(cufftResult error);
 
 //==================================== Function Prototypes ===============================================//
 
@@ -118,11 +55,9 @@ void debugMessage ( const char* format, ... );
 
 void errMsg ( const char* format, ... );
 
+ExternC void infoMSG ( int lev, int indent, const char* format, ... );
+
 int detect_gdb_tree(void);
-
-
-
-
 
 /**
  * @brief get free ram in bytes
@@ -132,9 +67,12 @@ int detect_gdb_tree(void);
 ExternC unsigned long getFreeRamCU();
 
 ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
-ExternC void rz_interp_cu(fcomplex* fft, int loR, int noR, double centR, double centZ, int halfwidth);
-ExternC void opt_candPlns(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln);
-ExternC void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln);
+//ExternC void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptCand* pln);
+//ExternC void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln);
+
+ExternC void opt_accelcand(accelcand* cand, cuOptCand* pln, int no);
+
+ExternC int optList(GSList *listptr, cuSearch* cuSrch);
 
 ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
 ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);
@@ -157,5 +95,7 @@ ExternC int getMemAlignment();
 /** Get the stride (in number of elements) given a number of elements and the "block" size  .
  */
 ExternC int getStrie(int noEls, int elSz, int blockSz);
+
+void timeEvents( cudaEvent_t start, cudaEvent_t end, float* timeSum, const char* msg );
 
 #endif /* CUDA_UTILS_H_ */

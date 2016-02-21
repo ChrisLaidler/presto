@@ -10,6 +10,7 @@ void tablesplitfftraw(float data[], double table[], long n, int isign);
 double *maketable(long nn, int isign);
 void fft_scramble(float data[], long nn);
 
+
 long long good_factor(long long nn)
 /* Return the factor of a number that is closest to its sqrt. */
 /* If the number is prime, return 0.                          */
@@ -34,6 +35,7 @@ long long good_factor(long long nn)
    }
    return 0;
 }
+
 
 void tablesixstepfft(fcomplex * indata, long nn, int isign)
 /*  This is a modified version of a six-step-FFT routine from the    */
@@ -195,6 +197,29 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
 
    transpose_fcomplex(indata, n1, n2, move, move_size);
    free(move);
+}
+
+
+void cmplxfftw(fcomplex* indata, long n, int isign)
+{
+#ifdef USEFFTW
+  fftwf_plan plan_l =  fftwf_plan_dft_1d(n, (fftwf_complex*)indata, (fftwf_complex*)indata, isign, (uint)FFTW_ESTIMATE);
+  fftwf_execute(plan_l);
+  fftwf_destroy_plan(plan_l);
+
+#endif
+}
+
+
+void realfftw(float idata[], long n, int isign)
+{
+#ifdef USEFFTW
+
+   fftwf_plan plan_l =  fftwf_plan_dft_r2c_1d(n, idata, (fftwf_complex*)idata, (uint)FFTW_ESTIMATE);
+   fftwf_execute(plan_l);
+   fftwf_destroy_plan(plan_l);
+
+#endif
 }
 
 

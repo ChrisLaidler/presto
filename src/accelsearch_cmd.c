@@ -20,23 +20,28 @@
 char *Program;
 
 /*@-null*/
-static int nstepsDefault[] = {4};
 static int nbatchDefault[] = {2};
+static int nstepsDefault[] = {4};
+static int numoptDefault[] = {4};
 
 static Cmdline cmd = {
   /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
   /* gpuP = */ 0,
   /* gpu = */ (int*)0,
   /* gpuC = */ 0,
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
-  /* nstepsP = */ 1,
-  /* nsteps = */ nstepsDefault,
-  /* nstepsC = */ 1,
-  /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   /* nbatchP = */ 1,
   /* nbatch = */ nbatchDefault,
   /* nbatchC = */ 1,
-  /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
+  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  /* nstepsP = */ 1,
+  /* nsteps = */ nstepsDefault,
+  /* nstepsC = */ 1,
+  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /* numoptP = */ 1,
+  /* numopt = */ numoptDefault,
+  /* numoptC = */ 1,
+  /***** -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   /* widthP = */ 1,
   /* width = */ 4,
   /* widthC = */ 1,
@@ -821,23 +826,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
-  if( !cmd.nstepsP ) {
-    printf("-nsteps not found.\n");
-  } else {
-    printf("-nsteps found:\n");
-    if( !cmd.nstepsC ) {
-      printf("  no values\n");
-    } else {
-      printf("  values =");
-      for(i=0; i<cmd.nstepsC; i++) {
-        printf(" `%d'", cmd.nsteps[i]);
-      }
-      printf("\n");
-    }
-  }
-
-  /***** -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
   if( !cmd.nbatchP ) {
     printf("-nbatch not found.\n");
   } else {
@@ -853,7 +842,39 @@ showOptionValues(void)
     }
   }
 
-  /***** -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
+  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  if( !cmd.nstepsP ) {
+    printf("-nsteps not found.\n");
+  } else {
+    printf("-nsteps found:\n");
+    if( !cmd.nstepsC ) {
+      printf("  no values\n");
+    } else {
+      printf("  values =");
+      for(i=0; i<cmd.nstepsC; i++) {
+        printf(" `%d'", cmd.nsteps[i]);
+      }
+      printf("\n");
+    }
+  }
+
+  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  if( !cmd.numoptP ) {
+    printf("-numopt not found.\n");
+  } else {
+    printf("-numopt found:\n");
+    if( !cmd.numoptC ) {
+      printf("  no values\n");
+    } else {
+      printf("  values =");
+      for(i=0; i<cmd.numoptC; i++) {
+        printf(" `%d'", cmd.numopt[i]);
+      }
+      printf("\n");
+    }
+  }
+
+  /***** -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   if( !cmd.widthP ) {
     printf("-width not found.\n");
   } else {
@@ -1074,62 +1095,65 @@ showOptionValues(void)
 void
 usage(void)
 {
-  fprintf(stderr,"%s","   [-gpu [gpu]] [-nsteps [nsteps]] [-nbatch [nbatch]] [-width width] [-lsgpu] [-cpu] [-ncpus ncpus] [-lobin lobin] [-numharm numharm] [-zmax zmax] [-sigma sigma] [-rlo rlo] [-rhi rhi] [-flo flo] [-fhi fhi] [-inmem] [-photon] [-median] [-locpow] [-zaplist zaplist] [-baryv baryv] [-otheropt] [-noharmpolish] [-noharmremove] [--] infile\n");
-  fprintf(stderr,"%s","      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
-  fprintf(stderr,"%s","             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
-  fprintf(stderr,"%s","                   0...32 int values between 0 and 32\n");
-  fprintf(stderr,"%s","          -nsteps: A list of the number of f-∂f plains each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
-  fprintf(stderr,"%s","                   0...32 int values between 1 and 8\n");
-  fprintf(stderr,"%s","                   default: `4'\n");
-  fprintf(stderr,"%s","          -nbatch: A list of the number of batches of f-∂f plains to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
-  fprintf(stderr,"%s","                   0...32 int values between 1 and 5\n");
-  fprintf(stderr,"%s","                   default: `2'\n");
-  fprintf(stderr,"%s","           -width: The width of the larges f-∂f plain. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
-  fprintf(stderr,"%s","                   1 int value between 1 and 64\n");
-  fprintf(stderr,"%s","                   default: `4'\n");
-  fprintf(stderr,"%s","           -lsgpu: List all available CUDA GPU's and exit\n");
-  fprintf(stderr,"%s","             -cpu: Do a CPU search\n");
-  fprintf(stderr,"%s","           -ncpus: Number of processors to use with OpenMP\n");
-  fprintf(stderr,"%s","                   1 int value between 1 and oo\n");
-  fprintf(stderr,"%s","                   default: `1'\n");
-  fprintf(stderr,"%s","           -lobin: The first Fourier frequency in the data file\n");
-  fprintf(stderr,"%s","                   1 int value between 0 and oo\n");
-  fprintf(stderr,"%s","                   default: `0'\n");
-  fprintf(stderr,"%s","         -numharm: The number of harmonics to sum (power-of-two)\n");
-  fprintf(stderr,"%s","                   1 int value between 1 and 16\n");
-  fprintf(stderr,"%s","                   default: `8'\n");
-  fprintf(stderr,"%s","            -zmax: The max (+ and -) Fourier freq deriv to search\n");
-  fprintf(stderr,"%s","                   1 int value between 0 and 1200\n");
-  fprintf(stderr,"%s","                   default: `200'\n");
-  fprintf(stderr,"%s","           -sigma: Cutoff sigma for choosing candidates\n");
-  fprintf(stderr,"%s","                   1 float value between 1.0 and 30.0\n");
-  fprintf(stderr,"%s","                   default: `2.0'\n");
-  fprintf(stderr,"%s","             -rlo: The lowest Fourier frequency (of the highest harmonic!) to search\n");
-  fprintf(stderr,"%s","                   1 double value between 0.0 and oo\n");
-  fprintf(stderr,"%s","             -rhi: The highest Fourier frequency (of the highest harmonic!) to search\n");
-  fprintf(stderr,"%s","                   1 double value between 0.0 and oo\n");
-  fprintf(stderr,"%s","             -flo: The lowest frequency (Hz) (of the highest harmonic!) to search\n");
-  fprintf(stderr,"%s","                   1 double value between 0.0 and oo\n");
-  fprintf(stderr,"%s","                   default: `1.0'\n");
-  fprintf(stderr,"%s","             -fhi: The highest frequency (Hz) (of the highest harmonic!) to search\n");
-  fprintf(stderr,"%s","                   1 double value between 0.0 and oo\n");
-  fprintf(stderr,"%s","                   default: `10000.0'\n");
-  fprintf(stderr,"%s","           -inmem: Compute full f-fdot plane in memory.  Very fast, but only for short time series.\n");
-  fprintf(stderr,"%s","          -photon: Data is poissonian so use freq 0 as power normalization\n");
-  fprintf(stderr,"%s","          -median: Use block-median power normalization (default)\n");
-  fprintf(stderr,"%s","          -locpow: Use double-tophat local-power normalization (not usually recommended)\n");
-  fprintf(stderr,"%s","         -zaplist: A file of freqs+widths to zap from the FFT (only if the input file is a *.[s]dat file)\n");
-  fprintf(stderr,"%s","                   1 char* value\n");
-  fprintf(stderr,"%s","           -baryv: The radial velocity component (v/c) towards the target during the obs\n");
-  fprintf(stderr,"%s","                   1 double value between -0.1 and 0.1\n");
-  fprintf(stderr,"%s","                   default: `0.0'\n");
-  fprintf(stderr,"%s","        -otheropt: Use the alternative optimization (for testing/debugging)\n");
-  fprintf(stderr,"%s","    -noharmpolish: Do not use 'harmpolish' by default\n");
-  fprintf(stderr,"%s","    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
-  fprintf(stderr,"%s","           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
-  fprintf(stderr,"%s","                   1 value\n");
-  fprintf(stderr,"%s","  version: 26Aug15\n");
-  fprintf(stderr,"%s","  ");
+  fprintf(stderr,"   [-gpu [gpu]] [-nbatch [nbatch]] [-nsteps [nsteps]] [-numopt [numopt]] [-width width] [-lsgpu] [-cpu] [-ncpus ncpus] [-lobin lobin] [-numharm numharm] [-zmax zmax] [-sigma sigma] [-rlo rlo] [-rhi rhi] [-flo flo] [-fhi fhi] [-inmem] [-photon] [-median] [-locpow] [-zaplist zaplist] [-baryv baryv] [-otheropt] [-noharmpolish] [-noharmremove] [--] infile\n");
+  fprintf(stderr,"      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
+  fprintf(stderr,"             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
+  fprintf(stderr,"                   0...32 int values between 0 and 32\n");
+  fprintf(stderr,"          -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
+  fprintf(stderr,"                   0...32 int values between 1 and 5\n");
+  fprintf(stderr,"                   default: `2'\n");
+  fprintf(stderr,"          -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
+  fprintf(stderr,"                   0...32 int values between 1 and 8\n");
+  fprintf(stderr,"                   default: `4'\n");
+  fprintf(stderr,"          -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
+  fprintf(stderr,"                   0...32 int values between 1 and 7\n");
+  fprintf(stderr,"                   default: `4'\n");
+  fprintf(stderr,"           -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
+  fprintf(stderr,"                   1 int value between 1 and 65536\n");
+  fprintf(stderr,"                   default: `4'\n");
+  fprintf(stderr,"           -lsgpu: List all available CUDA GPU's and exit\n");
+  fprintf(stderr,"             -cpu: Do a CPU search\n");
+  fprintf(stderr,"           -ncpus: Number of processors to use with OpenMP\n");
+  fprintf(stderr,"                   1 int value between 1 and oo\n");
+  fprintf(stderr,"                   default: `1'\n");
+  fprintf(stderr,"           -lobin: The first Fourier frequency in the data file\n");
+  fprintf(stderr,"                   1 int value between 0 and oo\n");
+  fprintf(stderr,"                   default: `0'\n");
+  fprintf(stderr,"         -numharm: The number of harmonics to sum (power-of-two)\n");
+  fprintf(stderr,"                   1 int value between 1 and 16\n");
+  fprintf(stderr,"                   default: `8'\n");
+  fprintf(stderr,"            -zmax: The max (+ and -) Fourier freq deriv to search\n");
+  fprintf(stderr,"                   1 int value between 0 and 1200\n");
+  fprintf(stderr,"                   default: `200'\n");
+  fprintf(stderr,"           -sigma: Cutoff sigma for choosing candidates\n");
+  fprintf(stderr,"                   1 float value between 1.0 and 30.0\n");
+  fprintf(stderr,"                   default: `2.0'\n");
+  fprintf(stderr,"             -rlo: The lowest Fourier frequency (of the highest harmonic!) to search\n");
+  fprintf(stderr,"                   1 double value between 0.0 and oo\n");
+  fprintf(stderr,"             -rhi: The highest Fourier frequency (of the highest harmonic!) to search\n");
+  fprintf(stderr,"                   1 double value between 0.0 and oo\n");
+  fprintf(stderr,"             -flo: The lowest frequency (Hz) (of the highest harmonic!) to search\n");
+  fprintf(stderr,"                   1 double value between 0.0 and oo\n");
+  fprintf(stderr,"                   default: `1.0'\n");
+  fprintf(stderr,"             -fhi: The highest frequency (Hz) (of the highest harmonic!) to search\n");
+  fprintf(stderr,"                   1 double value between 0.0 and oo\n");
+  fprintf(stderr,"                   default: `10000.0'\n");
+  fprintf(stderr,"           -inmem: Compute full f-fdot plane in memory.  Very fast, but only for short time series.\n");
+  fprintf(stderr,"          -photon: Data is poissonian so use freq 0 as power normalization\n");
+  fprintf(stderr,"          -median: Use block-median power normalization (default)\n");
+  fprintf(stderr,"          -locpow: Use double-tophat local-power normalization (not usually recommended)\n");
+  fprintf(stderr,"         -zaplist: A file of freqs+widths to zap from the FFT (only if the input file is a *.[s]dat file)\n");
+  fprintf(stderr,"                   1 char* value\n");
+  fprintf(stderr,"           -baryv: The radial velocity component (v/c) towards the target during the obs\n");
+  fprintf(stderr,"                   1 double value between -0.1 and 0.1\n");
+  fprintf(stderr,"                   default: `0.0'\n");
+  fprintf(stderr,"        -otheropt: Use the alternative optimization (for testing/debugging)\n");
+  fprintf(stderr,"    -noharmpolish: Do not use 'harmpolish' by default\n");
+  fprintf(stderr,"    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
+  fprintf(stderr,"           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
+  fprintf(stderr,"                   1 value\n");
+  fprintf(stderr,"  version: 21Feb16\n");
+  fprintf(stderr,"  ");
   exit(EXIT_FAILURE);
 }
 /**********************************************************************/
@@ -1156,16 +1180,6 @@ parseCmdline(int argc, char **argv)
       continue;
     }
 
-    if( 0==strcmp("-nsteps", argv[i]) ) {
-      int keep = i;
-      cmd.nstepsP = 1;
-      i = getIntOpts(argc, argv, i, &cmd.nsteps, 0, 32);
-      cmd.nstepsC = i-keep;
-      checkIntLower("-nsteps", cmd.nsteps, cmd.nstepsC, 8);
-      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 1);
-      continue;
-    }
-
     if( 0==strcmp("-nbatch", argv[i]) ) {
       int keep = i;
       cmd.nbatchP = 1;
@@ -1176,12 +1190,32 @@ parseCmdline(int argc, char **argv)
       continue;
     }
 
+    if( 0==strcmp("-nsteps", argv[i]) ) {
+      int keep = i;
+      cmd.nstepsP = 1;
+      i = getIntOpts(argc, argv, i, &cmd.nsteps, 0, 32);
+      cmd.nstepsC = i-keep;
+      checkIntLower("-nsteps", cmd.nsteps, cmd.nstepsC, 8);
+      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 1);
+      continue;
+    }
+
+    if( 0==strcmp("-numopt", argv[i]) ) {
+      int keep = i;
+      cmd.numoptP = 1;
+      i = getIntOpts(argc, argv, i, &cmd.numopt, 0, 32);
+      cmd.numoptC = i-keep;
+      checkIntLower("-numopt", cmd.numopt, cmd.numoptC, 7);
+      checkIntHigher("-numopt", cmd.numopt, cmd.numoptC, 1);
+      continue;
+    }
+
     if( 0==strcmp("-width", argv[i]) ) {
       int keep = i;
       cmd.widthP = 1;
       i = getIntOpt(argc, argv, i, &cmd.width, 1);
       cmd.widthC = i-keep;
-      checkIntLower("-width", &cmd.width, cmd.widthC, 64);
+      checkIntLower("-width", &cmd.width, cmd.widthC, 65536);
       checkIntHigher("-width", &cmd.width, cmd.widthC, 1);
       continue;
     }

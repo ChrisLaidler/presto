@@ -1,5 +1,3 @@
-// Automated testing SS: 16 16
-
 #include <cufft.h>
 #include <algorithm>
 
@@ -26,15 +24,15 @@ extern "C"
 #ifdef CBL
 #include <unistd.h>
 #include "log.h"
-//#include "quadTree.h"
-//#include "candTree.h"
 #endif
 
-__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];    ///< Plain  height  in stage order
-__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];    ///< Plain  stride  in stage order
-__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];     ///< Plain  strides   in family
-__device__ __constant__ fcomplexcu*   KERNEL_HARM[MAX_HARM_NO];    ///< Kernel pointer in stage order
+__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
+__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
+__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+__device__ __constant__ void*         KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointer in stage order
 __device__ __constant__ stackInfo     STACKS[64];
+__device__ __constant__ int           STK_STRD[MAX_STACKS];		///< Stride of the stacks
+__device__ __constant__ char          STK_INP[MAX_STACKS][4069];	///< input details
 
 
 int    globalInt01    = 0;
@@ -50,6 +48,33 @@ float  globalFloat04  = 0;
 float  globalFloat05  = 0;
 
 int     useUnopt      = 0;
+int     msgLevel      = 0;
+
+double ratioARR[] = {
+    3.0 / 2.0,
+    5.0 / 2.0,
+    2.0 / 3.0,
+    4.0 / 3.0,
+    5.0 / 3.0,
+    3.0 / 4.0,
+    5.0 / 4.0,
+    2.0 / 5.0,
+    3.0 / 5.0,
+    4.0 / 5.0,
+    5.0 / 6.0,
+    2.0 / 7.0,
+    3.0 / 7.0,
+    4.0 / 7.0,
+    3.0 / 8.0,
+    5.0 / 8.0,
+    2.0 / 9.0,
+    3.0 / 10.0,
+    2.0 / 11.0,
+    3.0 / 11.0,
+    2.0 / 13.0,
+    3.0 / 13.0,
+    2.0 / 15.0
+};
 
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
@@ -86,34 +111,68 @@ __host__ __device__ long long next2_to_n_cu(long long x)
   return i;
 }
 
-/*
-void printData_cu(cuFFdotBatch* batch, const int FLAGS, int harmonic, int nX, int nY, int sX, int sY)
+void setActiveBatch(cuFFdotBatch* batch, int rIdx)
 {
-  //cuFFdot* cPlain       = &batch->plains[harmonic];
-  //printfData<<<1,1,0,0>>>((float*)cPlain->d_iData, nX, nY, cPlain->harmInf->inpStride, sX, sY);
+  batch->rActive = rIdx;
 }
- */
+
+float half2float(const ushort h)
+{
+  unsigned int sign     = ((h >> 15) & 1);
+  unsigned int exponent = ((h >> 10) & 0x1f);
+  unsigned int mantissa = ((h & 0x3ff) << 13);
+
+  if (exponent == 0x1f)     // NaN or Inf
+  {
+    mantissa = (mantissa ? (sign = 0, 0x7fffff) : 0);
+    exponent = 0xff;
+  }
+  else if (!exponent)       // Denorm or Zero
+  {
+    if (mantissa)
+    {
+      unsigned int msb;
+      exponent = 0x71;
+      do
+      {
+        msb = (mantissa & 0x400000);
+        mantissa <<= 1;  /* normalize */
+        --exponent;
+      }
+      while (!msb);
+
+      mantissa &= 0x7fffff;  /* 1.mantissa is implicit */
+    }
+  }
+  else
+  {
+    exponent += 0x70;
+  }
+
+  uint res = ((sign << 31) | (exponent << 23) | mantissa);
+  return  *((float*)(&res));
+}
 
 /* The fft length needed to properly process a subharmonic */
-int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen)
+int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen, presto_interp_acc accuracy)
 {
   int bins_needed, end_effects;
 
   bins_needed = accelLen * harm_fract + 2;
-  end_effects = 2 * ACCEL_NUMBETWEEN * z_resp_halfwidth(calc_required_z(harm_fract, max_zfull), LOWACC);
+  end_effects = 2 * ACCEL_NUMBETWEEN * z_resp_halfwidth(calc_required_z(harm_fract, max_zfull), accuracy);
   return next2_to_n_cu(bins_needed + end_effects);
 }
 
 /** Calculate an optimal accellen given a width  .
  *
- * @param width the width of the plain usually a power of two
+ * @param width the width of the plane usually a power of two
  * @param zmax
  * @return
  * If width is not a power of two it will be rounded up to the nearest power of two
  */
-uint optAccellen(float width, int zmax)
+uint optAccellen(float width, int zmax, presto_interp_acc accuracy)
 {
-  float halfwidth       = z_resp_halfwidth(zmax, LOWACC); /// The halfwidth of the maximum zmax, to calculate accel len
+  float halfwidth       = z_resp_halfwidth(zmax, accuracy); /// The halfwidth of the maximum zmax, to calculate accel len
   float pow2            = pow(2 , round(log2(width)) );
   uint oAccelLen        = floor(pow2 - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
 
@@ -126,7 +185,7 @@ uint optAccellen(float width, int zmax)
  * @param zmax
  * @return
  */
-uint calcAccellen(float width, float zmax)
+uint calcAccellen(float width, float zmax, presto_interp_acc accuracy)
 {
   int accelLen;
 
@@ -136,9 +195,154 @@ uint calcAccellen(float width, float zmax)
   }
   else
   {
-    accelLen = optAccellen(width*1000.0,zmax) ;
+    accelLen = optAccellen(width*1000.0, zmax, accuracy) ;
   }
   return accelLen;
+}
+
+/** Allocate R value array
+ *
+ */
+void createRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
+{
+  rVals**   rLev2;
+
+  int oSet                = 0;
+
+
+  (*rLev1)                = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noGenHarms*batch->noRArryas);
+  memset((*rLev1), 0, sizeof(rVals)*batch->noSteps*batch->noGenHarms*batch->noRArryas);
+  for (int i1 = 0 ; i1 < batch->noSteps*batch->noGenHarms*batch->noRArryas; i1++)
+  {
+    (*rLev1)[i1].step     = -1; // Invalid step (0 is a valid value!)
+  }
+
+  *rAraays                = (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
+
+  for (int rIdx = 0; rIdx < batch->noRArryas; rIdx++)
+  {
+    rLev2                 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+    (*rAraays)[rIdx]      = rLev2;
+
+    for (int step = 0; step < batch->noSteps; step++)
+    {
+      rLev2[step]         = &((*rLev1)[oSet]);
+      oSet               += batch->noGenHarms;
+    }
+  }
+}
+
+void freeRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
+{
+  if (*rAraays)
+  {
+    for (int rIdx = 0; rIdx < batch->noRArryas; rIdx++)
+    {
+      rVals**   rLev2;
+
+      rLev2 = (*rAraays)[rIdx];
+
+      freeNull(rLev2);
+    }
+
+    freeNull(*rAraays);
+  }
+
+  freeNull(*rLev1);
+}
+
+void createFFTPlans(cuFFdotBatch* kernel)
+{
+  char msg[1024];
+
+  nvtxRangePush("FFT plans");
+
+  // Note creating the plans is the most expensive task in the GPU init, I tried doing it in parallel but it was slower
+  for (int i = 0; i < kernel->noStacks; i++)
+  {
+    cuFfdotStack* cStack  = &kernel->stacks[i];
+
+    sprintf(msg,"Stack %i",i);
+    nvtxRangePush(msg);
+
+    FOLD // Input FFT's  .
+    {
+      int n[]             = {cStack->width};
+
+      int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};         /// Storage dimensions of the input data in memory
+      int istride         = 1;                                                  /// The distance between two successive input elements in the least significant (i.e., innermost) dimension
+      int idist           = cStack->strideCmplx;                                /// The distance between the first element of two consecutive signals in a batch of the input data
+
+      int onembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
+      int ostride         = 1;
+      int odist           = cStack->strideCmplx;
+
+      FOLD // Create the input FFT plan  .
+      {
+	if ( kernel->flags & CU_INPT_FFT_CPU )
+	{
+	  nvtxRangePush("FFTW");
+	  cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
+	  nvtxRangePop();
+	}
+	else
+	{
+	  nvtxRangePush("CUFFT Inp");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps), "Creating plan for input data of stack.");
+	  nvtxRangePop();
+	}
+      }
+    }
+
+    FOLD // inverse FFT's  .
+    {
+      if ( kernel->flags & FLAG_DOUBLE )
+      {
+	int n[]             = {cStack->width};
+
+	int inembed[]       = {cStack->strideCmplx * sizeof(double2)};            /// Storage dimensions of the input data in memory
+	int istride         = 1;                                                  /// The distance between two successive input elements in the least significant (i.e., innermost) dimension
+	int idist           = cStack->strideCmplx;                                /// The distance between the first element of two consecutive signals in a batch of the input data
+
+	int onembed[]       = {cStack->strideCmplx * sizeof(double2)};
+	int ostride         = 1;
+	int odist           = cStack->strideCmplx;
+
+	FOLD // Create the stack iFFT plan  .
+	{
+	  nvtxRangePush("CUFFT Pln");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
+	  nvtxRangePop();
+	}
+      }
+      else
+      {
+	int n[]             = {cStack->width};
+
+	int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};         /// Storage dimensions of the input data in memory
+	int istride         = 1;                                                  /// The distance between two successive input elements in the least significant (i.e., innermost) dimension
+	int idist           = cStack->strideCmplx;                                /// The distance between the first element of two consecutive signals in a batch of the input data
+
+	int onembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
+	int ostride         = 1;
+	int odist           = cStack->strideCmplx;
+
+	FOLD // Create the stack iFFT plan  .
+	{
+	  nvtxRangePush("CUFFT Pln");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
+	  nvtxRangePop();
+	}
+
+      }
+    }
+
+    nvtxRangePop();
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+  }
+
+  nvtxRangePop();
 }
 
 /** Initialise a kernel data structure and values on a given device  .
@@ -165,82 +369,86 @@ uint calcAccellen(float width, float zmax)
  * @param outData
  * @return
  */
-int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int device, int noBatches, int noSteps )
+int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int devID )
 {
-  nvtxRangePush("initKernel");
   std::cout.flush();
 
-  size_t free, total;             /// GPU memory
+  size_t free, total;                           ///< GPU memory
   int noInStack[MAX_HARM_NO];
-  int noHarms         = (1 << (sInf->noHarmStages - 1) );
-  int major           = 0;
-  int minor           = 0;
+  void* d_kerHold[MAX_STACKS];			///< Temporary memory for kernels if we are doing double precision FFT's
+
+  //int noSrchHarms     = noGenHarms;
+
   noInStack[0]        = 0;
-  size_t batchSize    = 0;        /// Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
-  size_t fffTotSize   = 0;        /// Total size (in bytes) of FFT temporary memory
-  size_t plainSize    = 0;        /// Total size (in bytes) of memory required independently of batch(es)
-  int flags           = sInf->sSpec->flags;
-  int alignment       = 0;
-  float plnElsSZ      = 0;
+  size_t batchSize    = 0;                      ///< Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
+  size_t fffTotSize   = 0;                      ///< Total size (in bytes) of FFT temporary memory
+  size_t planeSize    = 0;                      ///< Total size (in bytes) of memory required independently of batch(es)
+  float plnElsSZ      = 0;                      ///< The size of an element of the in-mem ff plane (generally the size of float complex)
+  float powElsSZ      = 0;                      ///< The size of an element of the powers plane
+  float cmpElsSZ      = 0;                      ///< The size of an element of the kernel and complex plane
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initKernel.");
+  gpuInf* gInf        = &sInf->gSpec->devInfo[devID];
+  int device          = gInf->devid;
+  int noBatches       = sInf->gSpec->noDevBatches[devID];
+  int noSteps         = sInf->gSpec->noDevSteps[devID];
+  int alignment       = gInf->alignment;
 
-  FOLD // See if we can use the cuda device  and whether it may be possible to do GPU in-mem search .
+  presto_interp_acc  accuracy = LOWACC;
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initKernel.");
+
+  infoMSG(3,3,"%s device %i\n",__FUNCTION__, device);
+
+  char msg[1024];
+  sprintf(msg, "Dev %02i", device );
+  nvtxRangePush(msg);
+
+  FOLD // See if we can use the cuda device and whether it may be possible to do GPU in-mem search .
   {
+    infoMSG(3,4,"access device %i\n", device);
+
     nvtxRangePush("Get Device");
 
     if ( device >= getGPUCount() )
     {
-      fprintf(stderr, "ERROR: There is no CUDA device %i.\n",device);
-      return 0;
+      fprintf(stderr, "ERROR: There is no CUDA device %i.\n", device);
+      return (0);
     }
     int currentDevvice;
-    CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
+    CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
     CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
     if (currentDevvice != device)
     {
       fprintf(stderr, "ERROR: CUDA Device not set.\n");
-      return 0;
+      return (0);
     }
     else
     {
-      cudaDeviceProp deviceProp;
-      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-
-      major                           = deviceProp.major;
-      minor                           = deviceProp.minor;
-      float ver                       =  major + minor/10.0f;
-      kernel->capability              = ver;
-
-      alignment                       = getMemAlignment();
-
-      sInf->mInf->alignment[device]   = alignment;
-      sInf->mInf->capability[device]  = ver;
-      sInf->mInf->name[device]        = (char*)malloc(256*sizeof(char));
-      sprintf(sInf->mInf->name[device], "%s", deviceProp.name );
     }
-
-    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
     nvtxRangePop();
   }
 
-  FOLD // Now see if this device could do a GPU in-mem search
+  FOLD // Now see if this device could do a GPU in-mem search  .
   {
     if ( master == NULL ) // For the moment lets try this on only the first card!
     {
-      double plnX       = ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo/(double)noHarms ) / (double)( ACCEL_DR ) ; // The number of bins
+      infoMSG(3,4,"in-mem?\n");
+
+      int noarms        = (1 << (sInf->noHarmStages - 1) );
+
+      double plnX       = ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo/(double)noarms ) / (double)( ACCEL_DR ) ; // The number of bins
       int    plnY       = calc_required_z(1.0, (float)sInf->sSpec->zMax );
 
-      if ( flags & FLAG_HALF )
+      if ( sInf->sSpec->flags & FLAG_HALF )
       {
-#if __CUDACC_VER__ >= 70500
+#if CUDA_VERSION >= 7050
         plnElsSZ = sizeof(half);
 #else
         plnElsSZ = sizeof(float);
-        fprintf(stderr, "ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
-        flags &= ~FLAG_HALF;
+        fprintf(stderr, "WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
+        sInf->sSpec->flags &= ~FLAG_HALF;
 #endif
       }
       else
@@ -248,57 +456,54 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         plnElsSZ = sizeof(float);
       }
 
+      if ( sInf->sSpec->flags & FLAG_KER_HIGH )
+        accuracy = HIGHACC;
+
+      // Calculate "approximate" plane width
+      uint accelLen     = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
+      float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, accelLen, accuracy );
+
       double totalSize  = plnX * plnY * plnElsSZ ;
-      double appRoxWrk  = plnY * INMEM_FFT_WIDTH * ( 4 * 3 + 1) ; // 4 plains * ( input + CUFFT )
+      double appRoxWrk  = plnY * fftLen * ( 4 * 3 + 1) ; // 4 planes * ( input + CUFFT )
 
       if ( totalSize + appRoxWrk < free )
       {
-        if ( !(flags & FLAG_SS_ALL) || (flags & FLAG_SS_INMEM) )
+        if ( !(sInf->sSpec->flags & FLAG_SS_ALL) || (sInf->sSpec->flags & FLAG_SS_INMEM) )
         {
           printf("Device %i can do a in-mem GPU search.\n", device);
-          printf("  There is %.2fGB free memory.\n  The entire plain requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, totalSize*1e-9, appRoxWrk*1e-6 );
+          printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, totalSize*1e-9, appRoxWrk*1e-6 );
         }
 
-        if ( (flags & FLAG_SS_ALL) && !(flags & FLAG_SS_INMEM) )
+        if ( (sInf->sSpec->flags & FLAG_SS_ALL) && !(sInf->sSpec->flags & FLAG_SS_INMEM) )
         {
-          fprintf(stderr,"WARNING: Opting to NOT do a in-mem search when we could!\n");
+          fprintf(stderr,"WARNING: Opting to NOT do a in-mem search when you could!\n");
         }
         else
         {
-#if __CUDACC_VER__ >= 60500
-          noHarms               = 1;
-          sInf->sSpec->pWidth   = INMEM_FFT_WIDTH / 1000.0 ;
+          sInf->noGenHarms        = 1;
 
           if ( sInf->gSpec->noDevices > 1 )
           {
-            fprintf(stderr,"Warning: Reverting to single device search.\n");
+            fprintf(stderr,"  Warning: Reverting to single device search.\n");
             sInf->gSpec->noDevices = 1;
           }
 
-          //          if ( sInf->gSpec->noDevBatches[0] > 1 )
-          //          {
-          //            fprintf(stderr,"Warning: Reverting to a single batch search, perhaps use more steps?.\n");
-          //            sInf->gSpec->noDevBatches[0] = 1;
-          //          }
+          sInf->sSpec->flags |= FLAG_SS_INMEM ;
 
-          flags |= FLAG_CUFFT_CB_OUT;
-          flags |= FLAG_SS_INMEM ;
-          //flags |= FLAG_RET_STAGES;
-
-          FOLD // Set types  .
-          {
-            sInf->sSpec->retType &= ~CU_TYPE_ALLL;
-            sInf->sSpec->retType |= CU_POWERZ_S;
-
-            sInf->sSpec->retType &= ~CU_SRT_ALL;
-            sInf->sSpec->retType |= CU_STR_ARR;
-          }
+#if CUDA_VERSION >= 6050
+          if ( !(sInf->sSpec->flags & FLAG_CUFFT_CB_POW) )
+            fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
 #else
-          fprintf(stderr,"ERROR: At the moment in-mem search requires CUDA 6.5 or later for CUFFT callbacks.\n");
+          fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal. Try upgrading to CUDA 6.5 or later.\n");
+          sInf->sSpec->flags &= ~FLAG_CUFFT_ALL;
+#endif
 
-          flags &= ~FLAG_CUFFT_CB_OUT;
-          flags &= ~FLAG_CUFFT_CB_IN;
-          flags |=  FLAG_SS_10 ;
+#if CUDA_VERSION >= 7050
+          if ( !(sInf->sSpec->flags & FLAG_HALF) )
+            fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
+#else
+          fprintf(stderr,"  Warning: You could be using half precision. Try upgrading to CUDA 7.5 or later.\n");
+#endif
 
           FOLD // Set types  .
           {
@@ -308,22 +513,140 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             sInf->sSpec->retType &= ~CU_SRT_ALL;
             sInf->sSpec->retType |= CU_STR_ARR;
           }
-#endif
         }
       }
       else
       {
-        if ( flags & FLAG_SS_INMEM  )
+        if ( !(sInf->sSpec->flags & FLAG_SS_ALL) || (sInf->sSpec->flags & FLAG_SS_INMEM) )
+        {
+          printf("Device %i can not do a in-mem GPU search.\n", device);
+          printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, totalSize*1e-9, appRoxWrk*1e-6 );
+        }
+
+        if ( sInf->sSpec->flags & FLAG_SS_INMEM  )
         {
           fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible\n\tThere is %.2f GB of free memory.\n\tIn-mem GPU search would require ~%.2f GB\n\n", free*1e-9, (totalSize + appRoxWrk)*1e-9 );
         }
-        flags &= ~FLAG_SS_INMEM ;
+        sInf->sSpec->flags &= ~FLAG_SS_INMEM ;
       }
+
+      if ( !(sInf->sSpec->flags & FLAG_SS_ALL) )
+      {
+        // Default to S&S 1.
+        sInf->sSpec->flags |= FLAG_SS_10;
+        sInf->sSpec->flags |= FLAG_RET_STAGES;
+      }
+    }
+  }
+
+  FOLD // Do a sanity check on Flags and CUDA version  .
+  {
+    // TODO: do a check whether there is enough precision in an int to store the index of the largest point
+
+    if ( master == NULL ) // For the moment lets try this on only the first card!
+    {
+      infoMSG(3,4,"FLAGS\n");
+
+      // CUFFT callbacks
+#if CUDA_VERSION < 6050
+      sInf->sSpec->flags &= ~FLAG_CUFFT_ALL;
+#endif
+
+      if ( (sInf->sSpec->flags & FLAG_HALF) && !(sInf->sSpec->flags & FLAG_SS_INMEM) && !(sInf->sSpec->flags & FLAG_CUFFT_CB_POW) )
+      {
+#if CUDA_VERSION >= 7050
+        fprintf(stderr, "WARNING: Can't use half precision with out of memory search and no CUFFT callbacks. Reverting to single precision!\n");
+#endif
+        sInf->sSpec->flags &= ~FLAG_HALF;
+      }
+
+      if ( !(sInf->sSpec->flags & FLAG_SS_INMEM) && (sInf->sSpec->flags & FLAG_CUFFT_CB_INMEM) )
+      {
+        fprintf(stderr, "WARNING: Can't use inmem callback with out of memory search. Disabling in-mem callback.\n");
+        sInf->sSpec->flags &= ~FLAG_CUFFT_CB_INMEM;
+      }
+
+      if ( (sInf->sSpec->flags & FLAG_CUFFT_CB_POW) && (sInf->sSpec->flags & FLAG_CUFFT_CB_INMEM) )
+      {
+        fprintf(stderr, "WARNING: in-mem CUFFT callback will supersede power callback, I have found power callbacks to be the best.\n");
+        sInf->sSpec->flags &= ~FLAG_CUFFT_CB_POW;
+      }
+
+      if ( (sInf->sSpec->flags & FLAG_SS_10) || (sInf->sSpec->flags & FLAG_SS_INMEM) )
+      {
+        sInf->sSpec->flags |= FLAG_RET_STAGES;
+      }
+
+      char typeS[1024];
+      sprintf(typeS, "Doing");
+
+      if ( sInf->sSpec->flags & FLAG_SS_INMEM )
+        sprintf(typeS, "%s a in-memory", typeS);
+      else
+        sprintf(typeS, "%s an out of memory", typeS);
+
+      sprintf(typeS, "%s search using", typeS);
+      if ( sInf->sSpec->flags & FLAG_HALF )
+        sprintf(typeS, "%s half", typeS);
+      else
+        sprintf(typeS, "%s single", typeS);
+
+      sprintf(typeS, "%s precision", typeS);
+      if ( sInf->sSpec->flags & FLAG_CUFFT_CB_POW )
+        sprintf(typeS, "%s and CUFFT callbacks to calculate powers.", typeS);
+      else if ( sInf->sSpec->flags & FLAG_CUFFT_CB_INMEM )
+        sprintf(typeS, "%s and CUFFT callbacks to calculate powers and store in the full plane.", typeS);
+      else
+        sprintf(typeS, "%s and no CUFFT callbacks.", typeS);
+
+      printf("\n%s\n\n", typeS);
+    }
+
+    FOLD // Determine the size of the elements of the planes  .
+    {
+      // Set power plane size
+      if ( sInf->sSpec->flags & FLAG_DOUBLE )
+      {
+	cmpElsSZ = sizeof(double2);
+      }
+      else
+      {
+	cmpElsSZ = sizeof(fcomplexcu);
+      }
+
+      // Half precision plane
+      if ( sInf->sSpec->flags & FLAG_HALF )
+      {
+#if CUDA_VERSION >= 7050
+        plnElsSZ = sizeof(half);
+#else
+        plnElsSZ = sizeof(float);
+        fprintf(stderr, "WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
+        sInf->sSpec->flags &= ~FLAG_HALF;
+#endif
+      }
+      else
+      {
+        plnElsSZ = sizeof(float);
+      }
+
+      // Set power plane size
+      if ( sInf->sSpec->flags & FLAG_CUFFT_CB_POW )
+      {
+        powElsSZ = plnElsSZ;
+      }
+      else
+      {
+        powElsSZ = sizeof(fcomplexcu);
+      }
+
     }
   }
 
   FOLD // Allocate and zero some structures  .
   {
+    infoMSG(3,4,"Allocate and zero structures\n");
+
     FOLD // Initialise main pointer to this kernel  .
     {
       memset(kernel, 0, sizeof(cuFFdotBatch));
@@ -335,8 +658,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else
       {
-        kernel->flag        = flags;
-        kernel->srchMaster  = 1;
+        kernel->flags         = sInf->sSpec->flags;
+        kernel->srchMaster    = 1;
+        kernel->noHarmStages  = sInf->noHarmStages;
+        kernel->noGenHarms    = sInf->noGenHarms;
+        kernel->noSrchHarms   = sInf->noSrchHarms;
       }
     }
 
@@ -344,108 +670,135 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       kernel->sInf          = sInf;
       kernel->device        = device;
-      kernel->isKernel      = 1;              // This is the device master
+      kernel->isKernel      = 1;                // This is the device master
+      kernel->capability    = gInf->capability;
     }
 
     FOLD // Allocate memory  .
     {
-      kernel->hInfos        = (cuHarmInfo*) malloc(noHarms * sizeof(cuHarmInfo));
-      kernel->kernels       = (cuKernel*)   malloc(noHarms * sizeof(cuKernel));
+      kernel->hInfos        = (cuHarmInfo*) malloc(kernel->noSrchHarms * sizeof(cuHarmInfo));
+      kernel->kernels       = (cuKernel*)   malloc(kernel->noGenHarms * sizeof(cuKernel));
 
       // Zero memory for kernels and harmonics
-      memset(kernel->hInfos,  0, noHarms * sizeof(cuHarmInfo));
-      memset(kernel->kernels, 0, noHarms * sizeof(cuKernel));
+      memset(kernel->hInfos,  0, kernel->noSrchHarms * sizeof(cuHarmInfo));
+      memset(kernel->kernels, 0, kernel->noGenHarms  * sizeof(cuKernel));
     }
   }
 
-  FOLD // First determine how many stacks and how many plains in each stack  .
+  FOLD // Determine how many stacks and how many planes in each stack  .
   {
     if ( master == NULL ) 	// Calculate details for the batch  .
     {
+      infoMSG(3,4,"Determine number of stacks and planes\n");
+
       FOLD // Determine accellen and step size  .
       {
-        printf("Determining GPU step size and plain width:\n");
+        infoMSG(3,5,"Determining step size and width\n");
 
-        if ( noHarms > 1 )
+        printf("Determining GPU step size and plane width:\n");
+
+        int   oAccelLen, oAccelLen1, oAccelLen2;
+
+        oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax, accuracy);
+
+        if ( kernel->noSrchHarms > 1 )
         {
-          // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-          int   oAccelLen1  = calcAccellen(sInf->sSpec->pWidth,     sInf->sSpec->zMax);
-          int   oAccelLen2  = calcAccellen(sInf->sSpec->pWidth/2.0, sInf->sSpec->zMax/2.0);
-          kernel->accelLen  = MIN(oAccelLen2*2, oAccelLen1);
+          // Working with a family of planes
 
-          if ( sInf->sSpec->pWidth < 100 ) // Check  .
+          if ( sInf->sSpec->pWidth > 100 )
           {
-            float fWidth    = floor(calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen)/1000.0);
+            // The user specified the exact width they want to use for accellen
+            kernel->accelLen  = oAccelLen1;
+          }
+          else
+          {
+            oAccelLen2  = calcAccellen(sInf->sSpec->pWidth/2.0, sInf->sSpec->zMax/2.0, accuracy);
+            oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
+            oAccelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*ACCEL_RDR) ) * (kernel->noSrchHarms*ACCEL_RDR);
 
-            float ss        = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen) ;
-            float l2        = log2( ss );
+            // Use double the accellen of the half plane
+            kernel->accelLen  = oAccelLen;
 
-            if      ( l2 == 10 )
-              fWidth = 1 ;
-            else if ( l2 == 11 )
-              fWidth = 2 ;
-            else if ( l2 == 12 )
-              fWidth = 4 ;
-            else if ( l2 == 13 )
-              fWidth = 8 ;
-            else if ( l2 == 14 )
-              fWidth = 16 ;
-            else if ( l2 == 15 )
-              fWidth = 32 ;
-            else if ( l2 == 16 )
-              fWidth = 64 ;
-
-            if ( fWidth != sInf->sSpec->pWidth )
+            FOLD // Check  .
             {
-              fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
-              exit(EXIT_FAILURE);
+              float ss        = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen, accuracy) ;
+              float l2        = log2( ss ) - 10 ;
+              float fWidth    = pow(2, l2);
+
+              if ( fWidth != sInf->sSpec->pWidth )
+              {
+                fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
+                exit(EXIT_FAILURE);
+              }
             }
           }
         }
         else
         {
-          kernel->accelLen = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax);
+          // Just a single plane
+          kernel->accelLen = oAccelLen1;
         }
 
-        // Now make sure that accelLen is divisible by (noHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
-        //if ( kernel->flag & (FLAG_SS_00 | FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
+        FOLD // Now make sure that accelLen is divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
         {
-          kernel->accelLen = floor( kernel->accelLen/(float)(noHarms*ACCEL_RDR) ) * (noHarms*ACCEL_RDR);
+          kernel->accelLen = floor( kernel->accelLen/(float)(kernel->noSrchHarms*ACCEL_RDR) ) * (kernel->noSrchHarms*ACCEL_RDR);
 
           if ( sInf->sSpec->pWidth > 100 ) // Check  .
           {
             if ( sInf->sSpec->pWidth != kernel->accelLen )
             {
-              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by noHarms*ACCEL_RDR (%i) try %i.\n", noHarms*ACCEL_RDR, kernel->accelLen );
+              fprintf(stderr,"ERROR: Using manual step size, value must be divisible by numharm * %i (%i) try %i.\n", ACCEL_RDR, kernel->noSrchHarms*ACCEL_RDR, kernel->accelLen );
               exit(EXIT_FAILURE);
             }
           }
         }
 
-        if ( kernel->accelLen > 100 )
+        FOLD // Print kernel accuracy  .
         {
-          float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen);
-          int   oAccelLen   = optAccellen(fftLen, sInf->sSpec->zMax);
-          float ratio       = kernel->accelLen/float(oAccelLen);
+          printf(" • Using ");
 
-          printf(" • Using max FFT length of %.0f and thus", fftLen);
-
-          if    	( ratio < 0.90 )
+          if ( sInf->sSpec->flags & FLAG_KER_HIGH )
           {
-            printf(" an non-optimal step-size of %i.\n", kernel->accelLen );
-            if ( sInf->sSpec->pWidth > 100 )
-            {
-              int K              = round(fftLen/1000.0);
-              fprintf(stderr,"    WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 46 32.\n    For a zmax of %i using %iK FFTs the optimal step-size is %i.\n", sInf->sSpec->zMax, K, oAccelLen);
-            }
-          }
-          else if ( ratio < 0.95 )
-          {
-            printf(" an close to optimal step-size of %i.\n", kernel->accelLen );
+            printf("high ");
           }
           else
           {
-            printf(" an optimal step-size of %i.\n", kernel->accelLen );
+            printf("standard ");
+          }
+          printf("accuracy response functions.\n");
+
+          if ( sInf->sSpec->flags & FLAG_KER_MAX )
+            printf(" • Using maximum response function length for entire kernel.\n");
+        }
+
+        if ( kernel->accelLen > 100 ) // Print output
+        {
+          float ratio;
+          float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, kernel->accelLen, accuracy);
+          float l2          = log2( fftLen ) - 10 ;
+          float fWidth      = pow(2, l2);
+
+          oAccelLen1  = calcAccellen(fWidth,     sInf->sSpec->zMax, accuracy);
+          oAccelLen2  = calcAccellen(fWidth/2.0, sInf->sSpec->zMax/2.0, accuracy);
+          oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
+          oAccelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*ACCEL_RDR) ) * (kernel->noSrchHarms*ACCEL_RDR);
+          ratio       = kernel->accelLen/float(oAccelLen);
+
+          printf(" • Using max plane width of %.0f and", fftLen);
+
+          if ( ratio < 1 )
+          {
+            printf(" step-size of %i. (%.2f%% of optimal) \n",  kernel->accelLen, ratio*100 );
+            printf("   > For a zmax of %i using %iK FFTs the optimal step-size is %i.\n", sInf->sSpec->zMax, (int)fWidth, oAccelLen);
+
+            if ( sInf->sSpec->pWidth > 100 )
+            {
+              fprintf(stderr,"     WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 46 32.\n");
+            }
+          }
+          else
+          {
+            printf(" a optimal step-size of %i.\n", kernel->accelLen );
           }
         }
         else
@@ -459,64 +812,108 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         int prevWidth       = 0;
         int noStacks        = 0;
-        int halfWidth       = 0;
+        int stackHW         = 0;
+        int hIdx, sIdx;
+        float hFrac;
 
-        for (int i = noHarms; i > 0; i--)
+        FOLD // Set up basic details of all the harmonics  .
         {
-          int idx                         = noHarms-i;
-          kernel->hInfos[idx].harmFrac    = (i) / (float)noHarms;
-          kernel->hInfos[idx].zmax        = calc_required_z(kernel->hInfos[idx].harmFrac, sInf->sSpec->zMax);
-          kernel->hInfos[idx].height      = (kernel->hInfos[idx].zmax / ACCEL_DZ) * 2 + 1;
-          kernel->hInfos[idx].width       = calc_fftlen3(kernel->hInfos[idx].harmFrac, kernel->hInfos[0].zmax, kernel->accelLen);
-          kernel->hInfos[idx].stackNo     = noStacks;
-
-          if ( prevWidth != kernel->hInfos[idx].width )
+          for (int i = kernel->noSrchHarms; i > 0; i--)
           {
-            noStacks++;
-            noInStack[noStacks - 1]       = 0;
-            prevWidth                     = kernel->hInfos[idx].width;
-            halfWidth                     = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
+            cuHarmInfo* hInfs;
+            hFrac               = (i) / (float)kernel->noSrchHarms;
+            hIdx                = kernel->noSrchHarms-i;
+            hInfs               = &kernel->hInfos[hIdx];                              // Harmonic index
 
-            // Maximise and align halfwidth
-            int sWidth                    = (int) ( ceil(kernel->accelLen * kernel->hInfos[idx].harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;
-            float hw                      = (kernel->hInfos[idx].width  - sWidth)/2.0/(float)ACCEL_NUMBETWEEN;
-            float noAlg                   = alignment / float(sizeof(fcomplex)) / (float)ACCEL_NUMBETWEEN ;     // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
-            float hw4                     = floor(hw/noAlg) * noAlg ;
+            hInfs->harmFrac     = hFrac;
+            hInfs->zmax         = calc_required_z(hInfs->harmFrac, sInf->sSpec->zMax);
+            hInfs->height       = (hInfs->zmax / ACCEL_DZ) * 2 + 1;
+            hInfs->width        = calc_fftlen3(hInfs->harmFrac, kernel->hInfos[0].zmax, kernel->accelLen, accuracy);
+            hInfs->halfWidth    = z_resp_halfwidth(hInfs->zmax, accuracy);
 
-            if ( halfWidth > hw4)
-              halfWidth                   = floor(hw);
+            if ( prevWidth != hInfs->width )
+            {
+              // We have a new stack
+              noStacks++;
+
+              if ( hIdx < kernel->noGenHarms )
+              {
+        	kernel->noStacks = noStacks;
+              }
+
+              noInStack[noStacks - 1]       = 0;
+              prevWidth                     = hInfs->width;
+              stackHW                       = z_resp_halfwidth(hInfs->zmax, accuracy);
+
+              // Maximise, centre and align halfwidth
+              int   sWidth                  = (int) ( ceil(kernel->accelLen * hInfs->harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;     // Width of usable data for this plane
+              float centHW                  = (hInfs->width  - sWidth)/2.0/(float)ACCEL_NUMBETWEEN;                                             //
+              float noAlg                   = alignment / float(sizeof(fcomplex)) / (float)ACCEL_NUMBETWEEN ;                                   // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
+              float centAlgnHW              = floor(centHW/noAlg) * noAlg ;                                                                     // Centre and aligned half width
+
+              if ( stackHW > centAlgnHW )
+              {
+        	stackHW                     = floor(centHW);
+              }
+              else
+              {
+        	stackHW                     = centAlgnHW;
+              }
+            }
+
+            hInfs->stackNo      = noStacks-1;
+
+            if ( kernel->flags & FLAG_CENTER )
+            {
+              hInfs->kerStart   = stackHW*ACCEL_NUMBETWEEN;
+            }
             else
-              halfWidth                   = hw4;
-          }
+            {
+              hInfs->kerStart   = hInfs->halfWidth*ACCEL_NUMBETWEEN;
+            }
 
-          if ( kernel->flag & FLAG_KER_ACC )
-          {
-            kernel->hInfos[idx].halfWidth = halfWidth; // Use maximum halfwidth for all plains in a stack this gives higher accuracy at small Z at no extra cost!
+            if ( hIdx < kernel->noGenHarms )
+            {
+              noInStack[noStacks - 1]++;
+            }
           }
-          else
-          {
-            kernel->hInfos[idx].halfWidth = z_resp_halfwidth(kernel->hInfos[idx].zmax, LOWACC);
-          }
-
-          noInStack[noStacks - 1]++;
         }
 
-        kernel->noHarms                   = noHarms;
-        kernel->noHarmStages              = log2((float)noHarms)+1;
-        kernel->noStacks                  = noStacks;
+        FOLD // Set up the indexing details of all the harmonics  .
+        {
+          // Calculate the stage order of the harmonics
+          sIdx = 0;
+
+          for ( int stage = 0; stage < kernel->noHarmStages; stage++ )
+          {
+            int harmtosum = 1 << stage;
+            for (int harm = 1; harm <= harmtosum; harm += 2, sIdx++)
+            {
+              hFrac     = harm/float(harmtosum);
+              hIdx      = hFrac == 1 ? 0 : round(hFrac*kernel->noSrchHarms);
+
+
+
+              kernel->hInfos[hIdx].stageIndex   = sIdx;
+              sInf->sIdx[sIdx]                  = hIdx;
+            }
+          }
+        }
       }
     }
     else                    // Copy details from the master batch  .
     {
       // Copy memory from kernels and harmonics
-      memcpy(kernel->hInfos,  master->hInfos,  noHarms * sizeof(cuHarmInfo));
-      memcpy(kernel->kernels, master->kernels, noHarms * sizeof(cuKernel));
+      memcpy(kernel->hInfos,  master->hInfos,  kernel->noSrchHarms * sizeof(cuHarmInfo));
+      memcpy(kernel->kernels, master->kernels, kernel->noGenHarms  * sizeof(cuKernel));
     }
   }
 
   FOLD // Allocate all the memory for the stack data structures  .
   {
-    long long neede = kernel->noStacks * sizeof(cuFfdotStack) + noHarms * sizeof(cuHarmInfo) + noHarms * sizeof(cuKernel);
+    infoMSG(3,4,"Allocate memory for stacks\n");
+
+    long long neede = kernel->noStacks * sizeof(cuFfdotStack) + kernel->noSrchHarms * sizeof(cuHarmInfo) + kernel->noGenHarms * sizeof(cuKernel);
 
     if ( neede > getFreeRamCU() )
     {
@@ -532,44 +929,31 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         memset(kernel->stacks, 0, kernel->noStacks * sizeof(cuFfdotStack));
       }
       else
+      {
         memcpy(kernel->stacks, master->stacks, kernel->noStacks * sizeof(cuFfdotStack));
+
+        FOLD // Zero some of the relevant values in the stack
+        {
+          for (int i = 0; i < kernel->noStacks; i++)           // Loop through Stacks  .
+          {
+            cuFfdotStack* cStack  = &kernel->stacks[i];
+
+            cStack->plnPlan       = 0;
+            cStack->inpPlan       = 0;
+          }
+        }
+      }
     }
   }
 
-  FOLD // Set up the basic details of all the harmonics and calculate the stride  .
+  FOLD // Set up the basic details of all the stacks and calculate the stride  .
   {
-    if ( master == NULL )
+    FOLD // Set up the basic details of all the stacks  .
     {
-      FOLD // Set up the basic details of all the harmonics  .
+      if ( master == NULL )
       {
-        // Calculate the stage order of the harmonics
-        int harmtosum;
-        int i = 0;
+        infoMSG(3,4,"Stack details\n");
 
-        for ( int stage = 0; stage < kernel->noHarmStages; stage++ )
-        {
-          harmtosum = 1 << stage;
-          for (int harm = 1; harm <= harmtosum; harm += 2, i++)
-          {
-            float harmFrac                  = harm/float(harmtosum);
-            int idx                         = round(harmFrac*noHarms);
-            if ( harmFrac == 1 )
-              idx = 0;
-
-            kernel->hInfos[idx].stageIndex  = i;
-            kernel->stageIdx[i]             = idx;
-          }
-        }
-
-        // Multi-step data layout method  .
-        if ( !(kernel->flag & FLAG_ITLV_ALL ) )
-        {
-          kernel->flag |= FLAG_ITLV_ROW ;          //  FLAG_ITLV_ROW   or    FLAG_ITLV_PLN
-        }
-      }
-
-      FOLD // Set up the basic details of all the harmonics  .
-      {
         int prev                = 0;
         for (int i = 0; i < kernel->noStacks; i++)           // Loop through Stacks  .
         {
@@ -581,7 +965,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           cStack->kernels       = &kernel->kernels[cStack->startIdx];
           cStack->width         = cStack->harmInf->width;
           cStack->kerHeigth     = cStack->harmInf->height;
-          cStack->flag          = kernel->flag;               // Used to create the kernel, will be over written later
+          cStack->flags         = kernel->flags;               // Used to create the kernel, will be over written later
 
           for (int j = 0; j < cStack->noInStack; j++)
           {
@@ -596,6 +980,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     FOLD // Calculate the stride and data thus data size of the stacks  .
     {
+      // This is device specific so done on each card
+
+      infoMSG(3,4,"Stride details\n");
+
       kernel->inpDataSize     = 0;
       kernel->kerDataSize     = 0;
       kernel->plnDataSize     = 0;
@@ -608,47 +996,104 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         FOLD // Compute size of
         {
           // Compute stride  .
-          cStack->strideCmplx =   getStrie(cStack->width, sizeof(cufftComplex), alignment);
-          cStack->strideFloat =   getStrie(cStack->width, sizeof(float),        alignment);
-
-          FOLD // TMP
-          {
-            size_t hStride      =   getStrie(cStack->width, sizeof(half),        alignment);
-            if ( hStride != cStack->strideFloat )
-            {
-              fprintf(stderr,"\n\nHEY! half stride != float stride\n\n");
-            }
-          }
+          cStack->strideCmplx =   getStrie(cStack->width, cmpElsSZ, alignment);
+          cStack->stridePower =   getStrie(cStack->width, powElsSZ, alignment);
 
           kernel->inpDataSize +=  cStack->strideCmplx * cStack->noInStack * sizeof(cufftComplex);
-          kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * sizeof(cufftComplex);
-          kernel->plnDataSize +=  cStack->strideCmplx * cStack->height    * sizeof(cufftComplex);
+          kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * cmpElsSZ;
+          kernel->plnDataSize +=  cStack->strideCmplx * cStack->height    * cmpElsSZ;
 
-          if ( kernel->flag & FLAG_CUFFT_CB_OUT )
-          {
-            kernel->pwrDataSize += cStack->strideFloat * cStack->height;
-          }
+          if ( !(kernel->flags & FLAG_CUFFT_CB_INMEM) )
+            kernel->pwrDataSize +=  cStack->stridePower * cStack->height    * powElsSZ;
         }
       }
     }
+  }
+
+  FOLD // Batch specific streams  .
+  {
+    nvtxRangePush("streams");
+
+    infoMSG(3,4,"Batch streams\n");
+
+    char strBuff[1024];
+
+    if ( kernel->flags & FLAG_SYNCH )
+    {
+      cuFfdotStack* fStack = &kernel->stacks[0];
+
+      CUDA_SAFE_CALL(cudaStreamCreate(&fStack->initStream),"Creating CUDA stream for initialisation");
+
+      sprintf(strBuff,"%i.0.0.0 Initialisation", device );
+      nvtxNameCudaStreamA(fStack->initStream, strBuff);
+      //printf("cudaStreamCreate: %s\n", strBuff);
+
+      for (int i = 0; i < kernel->noStacks; i++)
+      {
+        cuFfdotStack* cStack = &kernel->stacks[i];
+
+        cStack->initStream = fStack->initStream;
+      }
+    }
+    else
+    {
+      for (int i = 0; i < kernel->noStacks; i++)
+      {
+        cuFfdotStack* cStack = &kernel->stacks[i];
+
+        CUDA_SAFE_CALL(cudaStreamCreate(&cStack->initStream),"Creating CUDA stream for initialisation");
+
+        sprintf(strBuff,"%i.0.0.%i Initialisation", device, i);
+        nvtxNameCudaStreamA(cStack->initStream, strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
+      }
+    }
+
+    if ( !(kernel->flags & CU_FFT_SEP) )
+    {
+      if ( !(kernel->flags & CU_INPT_FFT_CPU) )
+      {
+        for (int i = 0; i < kernel->noStacks; i++)
+        {
+          cuFfdotStack* cStack = &kernel->stacks[i];
+
+          CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
+          sprintf(strBuff,"%i.0.2.%i FFT Input Dev", device, i);
+          nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+          //printf("cudaStreamCreate: %s\n", strBuff);
+        }
+      }
+
+      for (int i = 0; i < kernel->noStacks; i++)
+      {
+        cuFfdotStack* cStack = &kernel->stacks[i];
+
+        CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
+        sprintf(strBuff,"%i.0.4.%i FFT Plane Dev", device, i);
+        nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
+      }
+    }
+
+    nvtxRangePop();
   }
 
   FOLD // Allocate device memory for all the kernels data  .
   {
     nvtxRangePush("kernel malloc");
 
-    // CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+    infoMSG(3,4,"Allocate device memory for all the kernels data\n");
 
     if ( kernel->kerDataSize > free )
     {
       fprintf(stderr, "ERROR: Not enough device memory for GPU multiplication kernels. There is only %.2f MB free and you need %.2f MB \n", free / 1048576.0, kernel->kerDataSize / 1048576.0 );
       freeKernel(kernel);
-      return 0;
+      return (0);
     }
     else
     {
       CUDA_SAFE_CALL(cudaMalloc((void**)&kernel->d_kerData, kernel->kerDataSize), "Failed to allocate device memory for kernel stack.");
-      CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error allocation of device memory for kernel?.\n");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Allocation of device memory for kernel?.\n");
     }
 
     nvtxRangePop();
@@ -656,22 +1101,29 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
   FOLD // Set the sizes values of the harmonics and kernels and pointers to kernel data  .
   {
+    infoMSG(3,4,"Set the sizes values of the harmonics and kernels and pointers to kernel data\n");
+
     size_t kerSiz = 0;
 
     for (int i = 0; i < kernel->noStacks; i++)
     {
       cuFfdotStack* cStack            = &kernel->stacks[i];
-      cStack->d_kerData               = &kernel->d_kerData[kerSiz];
+
+      if ( kernel->flags & FLAG_DOUBLE )
+	cStack->d_kerData             = &((double2*)kernel->d_kerData)[kerSiz];
+      else
+	cStack->d_kerData             = &((fcomplexcu*)kernel->d_kerData)[kerSiz];
 
       // Set the stride
       for (int j = 0; j< cStack->noInStack; j++)
       {
-        cStack->harmInf[j].inpStride  = cStack->strideCmplx;
-
-        // Point the plain kernel data to the correct position in the "main" kernel
+        // Point the plane kernel data to the correct position in the "main" kernel
         int iDiff                     = cStack->kerHeigth - cStack->harmInf[j].height ;
         float fDiff                   = iDiff / 2.0;
-        cStack->kernels[j].d_kerData  = &cStack->d_kerData[cStack->strideCmplx*(int)fDiff];
+        if ( kernel->flags & FLAG_DOUBLE )
+          cStack->kernels[j].d_kerData  = &((double2*)cStack->d_kerData)[cStack->strideCmplx*(int)fDiff];
+        else
+          cStack->kernels[j].d_kerData  = &((fcomplexcu*)cStack->d_kerData)[cStack->strideCmplx*(int)fDiff];
         cStack->kernels[j].harmInf    = &cStack->harmInf[j];
       }
       kerSiz                          += cStack->strideCmplx * cStack->kerHeigth;
@@ -680,45 +1132,85 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
   FOLD // Initialise the multiplication kernels  .
   {
-    if ( master == NULL )  	  // Create the kernels  .
+    if ( master == NULL )     // Create the kernels  .
     {
-      nvtxRangePush("Initialise kernels");
+      infoMSG(3,4,"Initialise the multiplication kernels\n");
 
       // Run message
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error before creating GPU kernels");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Before creating GPU kernels");
 
-      float contamination = (kernel->hInfos->halfWidth*2*ACCEL_NUMBETWEEN)/(float)kernel->hInfos->width*100 ;
-
-      if ( contamination > 25 )
+      FOLD // Check contamination of the largest stack  .
       {
-        fprintf(stderr, "WARNING: Contamination is high, consider increasing width with the -width flag.\n");
+        float contamination = (kernel->hInfos->halfWidth*2*ACCEL_NUMBETWEEN)/(float)kernel->hInfos->width*100 ;
+        if ( contamination > 25 )
+        {
+          fprintf(stderr, "WARNING: Contamination is high, consider increasing width with the -width flag.\n");
+        }
       }
 
-      printf("\nGenerating GPU multiplication kernels using device %02i\n", device);
+      printf("\nGenerating GPU multiplication kernels using device %i\n", device);
 
-      int hh      = 1;
-      for (int i = 0; i < kernel->noStacks; i++)
+      FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
       {
-        cuFfdotStack* cStack = &kernel->stacks[i];
+	for (int i = 0; i < MAX_STACKS; i++)
+	{
+	  d_kerHold[i] = NULL;
+	}
 
-        printf("  ■ Stack %i has %02i f-∂f plain(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i+1, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
+	if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
+	{
+	  for (int i = 0; i < kernel->noStacks; i++)
+	  {
+	    infoMSG(4,6,"Stack %i\n",i);
 
-        // Call the CUDA kernels
-        // Only need one kernel per stack
+	    cuFfdotStack* cStack = &kernel->stacks[i];
 
-        createStackKernel(cStack);
-        printf("    ► Created kernel %i  Size: %7.1f MB  Height %4i   Contamination: %5.2f %% \n", i+1, cStack->harmInf->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0, cStack->harmInf->zmax, (cStack->harmInf->halfWidth*2*ACCEL_NUMBETWEEN)/(float)cStack->width*100);
+	    size_t kerSz = cStack->strideCmplx * cStack->kerHeigth * sizeof(double2);
 
-        for (int j = 0; j < cStack->noInStack; j++)
+	    d_kerHold[i] = cStack->d_kerData; // Store the old memory location
+
+	    CUDA_SAFE_CALL(cudaMalloc((void**)&cStack->d_kerData, kerSz), "Failed to allocate temporary device memory for kernel stack."); // This is temprary double memory it will be freed at the end of this function
+	  }
+	}
+      }
+
+      FOLD // Calculate the response values  .
+      {
+        infoMSG(3,5,"Calculate the response values\n");
+
+        nvtxRangePush("Calc response");
+
+        int hh      = 1;
+        for (int i = 0; i < kernel->noStacks; i++)
         {
-          printf("      • Harmonic %02i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i \n", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth );
-          hh++;
+          cuFfdotStack* cStack = &kernel->stacks[i];
+
+          float contamination = (cStack->harmInf->halfWidth*2*ACCEL_NUMBETWEEN)/(float)cStack->harmInf->width*100 ;
+          float padding       = (1-(kernel->accelLen*cStack->harmInf->harmFrac + cStack->harmInf->halfWidth*2*ACCEL_NUMBETWEEN ) / cStack->harmInf->width)*100.0 ;
+
+          printf("  ■ Stack %i has %02i f-∂f plane(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i+1, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
+
+          // Call the CUDA kernels
+          // Only need one kernel per stack
+          createStackKernel(cStack);
+
+          printf("    ► Created kernel %i  Size: %7.1f MB  Height %4i   Contamination: %5.2f %%  Padding: %5.2f %%\n", i+1, cStack->harmInf->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0, cStack->harmInf->zmax, contamination, padding);
+
+          for (int j = 0; j < cStack->noInStack; j++)
+          {
+            printf("      • Harmonic %02i  Fraction: %5.3f   Z-Max: %4i   Half Width: %4i  Start offset: %4i \n", hh, cStack->harmInf[j].harmFrac, cStack->harmInf[j].zmax, cStack->harmInf[j].halfWidth, cStack->harmInf[j].kerStart / ACCEL_NUMBETWEEN  );
+            hh++;
+          }
         }
+
+        nvtxRangePop();
       }
 
       FOLD // FFT the kernels  .
       {
-        cufftHandle plnPlan;
+        infoMSG(3,5,"FFT the  response values\n");
+
+        nvtxRangePush("FFT kernels");
 
         fflush(stdout);
         printf("  FFT'ing the kernels ");
@@ -726,38 +1218,113 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         for (int i = 0; i < kernel->noStacks; i++)
         {
+          infoMSG(4,6,"Stack %i\n",i);
+
           cuFfdotStack* cStack = &kernel->stacks[i];
 
-          FOLD // Create the plan  .
+          if ( (kernel->flags & FLAG_KER_DOUBFFT) || (kernel->flags & FLAG_DOUBLE) )
           {
-            size_t fftSize      = 0;
+            FOLD // Create the plan  .
+            {
+              infoMSG(4,6,"Create plan\n");
 
-            int n[]             = {cStack->width};
-            int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
-            int istride         = 1;
-            int idist           = cStack->strideCmplx;
-            int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
-            int ostride         = 1;
-            int odist           = cStack->strideCmplx;
-            int height          = cStack->kerHeigth;
+              sprintf(msg,"Plan %i",i);
+              nvtxRangePush(msg);
 
-            CUFFT_SAFE_CALL(cufftCreate(&plnPlan),"Creating plan for complex data of stack. [cufftCreate]");
-            CUFFT_SAFE_CALL(cufftMakePlanMany(plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height,    &fftSize), "Creating plan for complex data of stack. [cufftMakePlanMany]");
-            CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+              int n[]             = {cStack->width};
+              int inembed[]       = {cStack->strideCmplx* sizeof(double2)};
+              int istride         = 1;
+              int idist           = cStack->strideCmplx;
+              int onembed[]       = {cStack->strideCmplx* sizeof(double2)};
+              int ostride         = 1;
+              int odist           = cStack->strideCmplx;
+              int height          = cStack->kerHeigth;
 
-            fffTotSize          += fftSize;
+              // Normal plans
+              CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, height), "Creating plan for FFT'ing the kernel.");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+
+              nvtxRangePop();
+            }
+
+            FOLD // Call the plan  .
+            {
+              infoMSG(4,6,"Call the plan\n");
+
+              sprintf(msg,"Call %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
+              CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_kerData, (cufftDoubleComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+              nvtxRangePop();
+            }
+
+            FOLD // Destroy the plan  .
+            {
+              infoMSG(4,6,"Destroy the plan\n");
+
+              sprintf(msg,"Dest %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+
+              nvtxRangePop();
+            }
           }
-
-          FOLD // Call the plan  .
+          else
           {
-            CUFFT_SAFE_CALL(cufftExecC2C(plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
-            CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
-          }
+            FOLD // Create the plan  .
+            {
+              infoMSG(4,6,"Create plan\n");
 
-          FOLD // Destroy the plan  .
-          {
-            CUFFT_SAFE_CALL(cufftDestroy(plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
-            CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+              sprintf(msg,"Plan %i",i);
+              nvtxRangePush(msg);
+
+              int n[]             = {cStack->width};
+              int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
+              int istride         = 1;
+              int idist           = cStack->strideCmplx;
+              int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
+              int ostride         = 1;
+              int odist           = cStack->strideCmplx;
+              int height          = cStack->kerHeigth;
+
+              // Normal plans
+              CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+
+              nvtxRangePop();
+            }
+
+            FOLD // Call the plan  .
+            {
+              infoMSG(4,6,"Call the plan\n");
+
+              sprintf(msg,"Call %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
+              CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+              nvtxRangePop();
+            }
+
+            FOLD // Destroy the plan  .
+            {
+              infoMSG(4,6,"Destroy the plan\n");
+
+              sprintf(msg,"Dest %i",i);
+              nvtxRangePush(msg);
+
+              CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+              CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+
+              nvtxRangePop();
+            }
           }
 
           printf("•");
@@ -767,25 +1334,47 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
         printf("\n");
+
+        nvtxRangePop();
+      }
+
+      FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
+      {
+	if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
+	{
+	  for (int i = 0; i < kernel->noStacks; i++)
+	  {
+	    cuFfdotStack* cStack = &kernel->stacks[i];
+
+	    copyKerDoubleToFloat( cStack, (float*)d_kerHold[i] );
+
+	    void* hold;
+	    hold 		= cStack->d_kerData;
+	    cStack->d_kerData 	= d_kerHold[i];
+	    d_kerHold[i] 	= hold;
+	  }
+	}
       }
 
       printf("Done generating GPU multiplication kernels\n");
+    }
+    else
+    {
+      infoMSG(3,4,"Copy multiplication kernels\n");
 
-      nvtxRangePop();
+      // TODO: Check this works in this location
+      printf("• Copying multiplication kernels from device %i.\n", master->device);
+      CUDA_SAFE_CALL(cudaMemcpyPeerAsync(kernel->d_kerData, kernel->device, master->d_kerData, master->device, master->kerDataSize, master->stacks->initStream ), "Copying multiplication kernels between devices.");
     }
   }
 
   FOLD // Decide how to handle input and output and allocate required memory  .
   {
+    infoMSG(3,4,"Input and output.\n");
+
     nvtxRangePush("data");
 
-    printf("\nInitializing GPU %i (%s)\n", device, sInf->mInf->name[device] );
-
-    if ( master != NULL )     // Create the kernels  .
-    {
-      printf("• Copying multiplication kernels from device %i.\n", master->device);
-      CUDA_SAFE_CALL(cudaMemcpyPeer(kernel->d_kerData, kernel->device, master->d_kerData, master->device, master->kerDataSize ), "Copying multiplication kernels between devices.");
-    }
+    printf("\nInitializing GPU %i (%s)\n", device, sInf->gSpec->devInfo[devID].name );
 
     printf("• Examining GPU memory of device %2i:\n", kernel->device);
 
@@ -799,30 +1388,26 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       if ( master == NULL )
       {
-        double noHarmsReal    = (1<<(sInf->sSpec->noHarmStages-1));
-
-        int minR              = floor ( sInf->sSpec->fftInf.rlo / noHarmsReal - kernel->hInfos->halfWidth );
+        int minR              = floor ( sInf->sSpec->fftInf.rlo /(double) kernel->noSrchHarms - kernel->hInfos->halfWidth );
         int maxR              = ceil  ( sInf->sSpec->fftInf.rhi  + kernel->hInfos->halfWidth );
 
         searchScale* SrchSz   = new searchScale;
-        kernel->SrchSz        = SrchSz;
         sInf->SrchSz          = SrchSz;
         memset(SrchSz, 0, sizeof(searchScale));
 
-        SrchSz->searchRLow    = sInf->sSpec->fftInf.rlo / noHarmsReal;
+        SrchSz->searchRLow    = sInf->sSpec->fftInf.rlo / (double)kernel->noSrchHarms;
         SrchSz->searchRHigh   = sInf->sSpec->fftInf.rhi;
         SrchSz->rLow          = minR;
         SrchSz->rHigh         = maxR;
         SrchSz->noInpR        = maxR - minR  ;  /// The number of input data points
+        SrchSz->noSteps       = ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo ) / (float)( kernel->accelLen * ACCEL_DR ) ; // The number of planes to make
 
-        SrchSz->noSteps       = ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo ) / (float)( kernel->accelLen * ACCEL_DR ) ; // The number of plains to make
-
-        if ( kernel->flag & FLAG_SS_INMEM  )
+        if ( kernel->flags & FLAG_SS_INMEM   )
         {
-          SrchSz->noSteps     = ( SrchSz->searchRHigh - SrchSz->searchRLow ) / (float)( kernel->accelLen * ACCEL_DR ) ; // The number of plains to make
+          SrchSz->noSteps     = ( SrchSz->searchRHigh - SrchSz->searchRLow ) / (float)( kernel->accelLen * ACCEL_DR ) ; // The number of planes to make
         }
 
-        if ( kernel->flag  & FLAG_STORE_EXP )
+        if ( kernel->flags  & FLAG_STORE_EXP )
         {
           SrchSz->noOutpR     = ceil( (SrchSz->searchRHigh - SrchSz->searchRLow)/ACCEL_DR );
         }
@@ -831,10 +1416,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           SrchSz->noOutpR     = ceil(SrchSz->searchRHigh - SrchSz->searchRLow);
         }
 
-        if ( (kernel->flag & FLAG_STORE_ALL) && !( kernel->flag  & FLAG_RET_STAGES) )
+        if ( (kernel->flags & FLAG_STORE_ALL) && !( kernel->flags  & FLAG_RET_STAGES) )
         {
           printf("   Storing all results implies returning all results so adding FLAG_RET_STAGES to flags!\n");
-          kernel->flag  |= FLAG_RET_STAGES;
+          kernel->flags  |= FLAG_RET_STAGES;
         }
       }
     }
@@ -884,7 +1469,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         kernel->ssSlices          = MIN(kernel->ssSlices, ceil(kernel->hInfos->height/20.0) );
       }
-
     }
 
     FOLD // Calculate candidate type  .
@@ -933,13 +1517,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else if (kernel->cndType & CU_CANDFULL )  // This should be the default
         {
-          candSZ = sizeof(cand);
+          candSZ = sizeof(initCand);
         }
         else
         {
           fprintf(stderr,"ERROR: No output type specified in %s setting to default.\n", __FUNCTION__);
           kernel->cndType |= CU_CANDFULL;
-          candSZ = sizeof(cand);
+          candSZ = sizeof(initCand);
         }
 
         if      ( !(kernel->cndType & CU_SRT_ALL   ) ) // Set defaults  .
@@ -956,40 +1540,45 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       if      (kernel->retType & CU_STR_PLN   )
       {
-        if (  (kernel->flag & FLAG_CUFFT_CB_OUT) && ( !( (kernel->retType & CU_HALF) || (kernel->retType & CU_FLOAT)))   )
+        if (  (kernel->flags & FLAG_CUFFT_CB_POW) && ( !( (kernel->retType & CU_HALF) || (kernel->retType & CU_FLOAT)))   )
         {
-          fprintf(stderr,"WARNING: Returning plain and CUFFT output requires float return type.\n");
+          fprintf(stderr,"WARNING: Returning plane and CUFFT output requires float return type.\n");
           kernel->retType &= ~CU_TYPE_ALLL;
           kernel->retType |= CU_FLOAT;
         }
 
-        if ( !(kernel->flag & FLAG_CUFFT_CB_OUT) && !(kernel->retType & CU_CMPLXF) )
+        if ( !(kernel->flags & FLAG_CUFFT_CB_POW) && !(kernel->retType & CU_CMPLXF) )
         {
-          fprintf(stderr,"WARNING: Returning plain requires complex float return type.\n");
+          fprintf(stderr,"WARNING: Returning plane requires complex float return type.\n");
           kernel->retType &= ~CU_TYPE_ALLL;
           kernel->retType |= CU_CMPLXF;
         }
 
-        if ( kernel->flag & FLAG_SIG_GPU )
+        if ( kernel->flags & FLAG_SIG_GPU )
         {
-          fprintf(stderr,"WARNING: Cannot do GPU sigma calculations when returning plain data.\n");
-          kernel->flag &= ~FLAG_SIG_GPU;
+          fprintf(stderr,"WARNING: Cannot do GPU sigma calculations when returning plane data.\n");
+          kernel->flags &= ~FLAG_SIG_GPU;
         }
       }
 
-      if      (kernel->retType & CU_CMPLXF   	)
+      if      (kernel->retType & CU_CMPLXF    )
       {
         retSZ = sizeof(fcomplexcu);
       }
-      else if (kernel->retType & CU_INT      	)
+      else if (kernel->retType & CU_INT       )
       {
         retSZ = sizeof(int);
       }
       else if (kernel->retType & CU_HALF      )
       {
+#if CUDA_VERSION >= 7050
         retSZ = sizeof(half);
+#else
+        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+        exit(EXIT_FAILURE);
+#endif
       }
-      else if (kernel->retType & CU_FLOAT    	)
+      else if (kernel->retType & CU_FLOAT     )
       {
         retSZ = sizeof(float);
       }
@@ -997,29 +1586,29 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         retSZ = sizeof(double);
       }
-      else if (kernel->retType & CU_POWERZ_S 	)
+      else if (kernel->retType & CU_POWERZ_S  )
       {
         retSZ = sizeof(candPZs);
       }
-      else if (kernel->retType & CU_POWERZ_I 	)
+      else if (kernel->retType & CU_POWERZ_I  )
       {
         retSZ = sizeof(candPZi);
       }
-      else if (kernel->retType & CU_CANDMIN  	)
+      else if (kernel->retType & CU_CANDMIN   )
       {
         retSZ = sizeof(candMin);
       }
-      else if (kernel->retType & CU_CANDSMAL 	)
+      else if (kernel->retType & CU_CANDSMAL  )
       {
         retSZ = sizeof(candSml);
       }
-      else if (kernel->retType & CU_CANDBASC 	)
+      else if (kernel->retType & CU_CANDBASC  )
       {
         retSZ = sizeof(accelcandBasic);
       }
-      else if (kernel->retType & CU_CANDFULL 	)
+      else if (kernel->retType & CU_CANDFULL  )
       {
-        retSZ = sizeof(cand);
+        retSZ = sizeof(initCand);
       }
       else
       {
@@ -1033,7 +1622,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         if      ( kernel->retType & CU_STR_PLN )
         {
-          // Each stage returns a plain the size of the fundamental
+          // Each stage returns a plane the size of the fundamental
           retY = kernel->hInfos->height;
         }
         else
@@ -1044,34 +1633,31 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       FOLD // Return data structure  .
       {
-        if      ( kernel->flag & FLAG_SS_INMEM )
+        if      ( kernel->flags & FLAG_SS_INMEM )
         {
-          //kernel->strideRes = 4096;
-          kernel->strideRes = 8192;
-          //kernel->strideRes = 16384;
-          //kernel->strideRes = 32768;
+          kernel->strideOut = sInf->sSpec->ssStepSize;
         }
-        else if ( (kernel->retType & CU_STR_ARR) )
+        else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
         {
-          kernel->strideRes = kernel->hInfos->width;  // NOTE: This could be accellen rather than width, but to allow greater flexibility keep it at width. CU_STR_PLN    requires width
+          kernel->strideOut = getStrie(kernel->accelLen, retSZ, alignment);
         }
         else if (  kernel->retType & CU_STR_PLN  )
         {
           if      ( kernel->retType & CU_FLOAT  )
           {
-            kernel->strideRes = kernel->stacks->strideFloat ;
+            kernel->strideOut = kernel->stacks->stridePower ;
           }
           else if ( kernel->retType & CU_HALF   )
           {
-            kernel->strideRes = kernel->stacks->strideFloat ;
+            kernel->strideOut = kernel->stacks->stridePower ;
           }
           else if ( kernel->retType & CU_CMPLXF )
           {
-            kernel->strideRes = kernel->stacks->strideCmplx ;
+            kernel->strideOut = kernel->stacks->strideCmplx ;
           }
           else
           {
-            fprintf(stderr,"ERROR: CUDA return type not compatible with returning plain.\n");
+            fprintf(stderr,"ERROR: CUDA return type not compatible with returning plane.\n");
             exit(EXIT_FAILURE);
           }
         }
@@ -1083,53 +1669,48 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
 
       // Calculate return data size for one step
-      kernel->retDataSize   = retY*kernel->strideRes*retSZ;
+      kernel->retDataSize   = retY*kernel->strideOut*retSZ;
 
-      if ( kernel->flag & FLAG_RET_STAGES )
-        kernel->retDataSize *= sInf->noHarmStages;
+      if ( kernel->flags & FLAG_RET_STAGES )
+        kernel->retDataSize *= kernel->noHarmStages;
     }
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
     {
-      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: this call may not be necessary we could calculate this from previous values
+      nvtxRangePush("Calc steps");
+
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
       freeRam = getFreeRamCU();
 
       printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n",total / 1073741824.0, (free )  / 1073741824.0, freeRam / 1073741824.0 );
 
       FOLD // Calculate size of various memory's'  .
       {
-        FOLD // Determine the size of the powers plain  .
-        {
-          if ( (kernel->flag & FLAG_SS_INMEM) && (kernel->flag & FLAG_HALF) )
-          {
-#if __CUDACC_VER__ >= 70500
-            kernel->pwrDataSize *= sizeof(half);
-#else
-            kernel->pwrDataSize *= sizeof(float);
-            fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-#endif
-          }
-          else
-          {
-            kernel->pwrDataSize *= sizeof(float);
-          }
-        }
-
         batchSize             = kernel->inpDataSize + kernel->plnDataSize + kernel->pwrDataSize + kernel->retDataSize;  // This is currently the size of one step
-        fffTotSize            = kernel->inpDataSize + kernel->plnDataSize;                                              // FFT data treated separately cos there will be only one set per device
+        fffTotSize            = kernel->inpDataSize + kernel->plnDataSize;                                              // FFT data treated separately because there will be only one set per device
 
-        if ( flags & FLAG_SS_INMEM  ) // Size of memory for plain  full ff plain.
+        if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
         {
-          uint noStepsP       =  ceil(kernel->SrchSz->noSteps / (float)noSteps) * noSteps;
+          uint noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
           uint nX             = noStepsP * kernel->accelLen;
           uint nY             = kernel->hInfos->height;
-          plainSize          += nX * nY * plnElsSZ ;
+          planeSize          += nX * nY * plnElsSZ ;
         }
       }
 
       FOLD // Calculate how many batches and steps to do  .
       {
-        float possSteps = ( free - plainSize ) / (double) ( fffTotSize + batchSize * noBatches ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plain(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
+        float possSteps;
+        char cufftType[1024];
+
+        if ( kernel->flags & CU_FFT_SEP )
+        {
+          possSteps = ( free - planeSize ) / (double) ( (fffTotSize + batchSize) * noBatches ) ;
+        }
+        else
+        {
+          possSteps = ( free - planeSize ) / (double) (  fffTotSize + batchSize  * noBatches ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
+        }
 
         printf("     Requested %i batches on this device.\n", noBatches);
         if ( possSteps > 1 )
@@ -1155,37 +1736,49 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else
         {
-          printf("      There is not enough memory to crate %i batches with one plain each.\n", noBatches);
+          printf("      There is not enough memory to crate %i batches with one plane each.\n", noBatches);
 
           float noSteps1    = ( free ) / (double) ( fffTotSize + batchSize ) ;
           noSteps           = MIN(MAX_STEPS, floor(noSteps1));
           kernel->noSteps   = noSteps;
           noBatches         = 1;
 
-          printf("        Throttling to %i steps in 1 batch.\n", noSteps);
+          printf("        Throttling to %i steps in 1 batch.\n", kernel->noSteps);
         }
 
-        if ( noBatches <= 0 || noSteps <= 0 )
+        if ( noBatches <= 0 || kernel->noSteps <= 0 )
         {
-          fprintf(stderr, "ERROR: Insufficient memory to make make any plains on this device. One step would require %.2fGiB of device memory.\n", ( fffTotSize + batchSize )/1073741824.0 );
+          fprintf(stderr, "ERROR: Insufficient memory to make make any planes on this device. One step would require %.2fGiB of device memory.\n", ( fffTotSize + batchSize )/1073741824.0 );
 
           // TODO: check flags here!
 
           freeKernel(kernel);
-          return 0;
+          return (0);
         }
-        float  totUsed = ( kernel->kerDataSize + plainSize + ( fffTotSize + batchSize * noBatches ) * kernel->noSteps ) ;
 
-        printf("     Processing %i steps with each of the %i batch(s)\n", noSteps, noBatches );
+        if ( kernel->flags & CU_FFT_SEP )
+        {
+          // one CUFFT plan per batch
+          fffTotSize *= noBatches;
+          sprintf(cufftType, "( separate plans for each batch )");
+        }
+        else
+        {
+          sprintf(cufftType, "( single plan for all batches )");
+        }
+
+        float  totUsed = ( kernel->kerDataSize + planeSize + ( fffTotSize + batchSize * noBatches ) * kernel->noSteps ) ;
+
+        printf("     Processing %i steps with each of the %i batch(s)\n", kernel->noSteps, noBatches );
 
         printf("    -----------------------------------------------\n" );
-        printf("    Kernels      use: %5.2f GiB of device memory.\n", (kernel->kerDataSize) / 1073741824.0 );
-        printf("    CUFFT       uses: %5.2f GiB of device memory.\n", (fffTotSize*kernel->noSteps) / 1073741824.0 );
-        if ( plainSize )
+        printf("    Kernels        use: %5.2f GiB of device memory.\n", (kernel->kerDataSize) / 1073741824.0 );
+        printf("    CUFFT         uses: %5.2f GiB of device memory, %s\n", (fffTotSize*kernel->noSteps) / 1073741824.0, cufftType );
+        if ( planeSize )
         {
-          printf("    Plain       uses: %5.2f GiB of device memory.", (plainSize) / 1073741824.0 );
+          printf("    In-mem plane  uses: %5.2f GiB of device memory.", (planeSize) / 1073741824.0 );
 
-          if ( kernel->flag & FLAG_HALF )
+          if ( kernel->flags & FLAG_HALF )
           {
             printf(" (using half precision)\n");
           }
@@ -1194,9 +1787,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             printf("\n");
           }
         }
-        printf("    Each batch  uses: %5.2f GiB of device memory.\n", (batchSize*kernel->noSteps) / 1073741824.0 );
-        printf("               Using: %5.2f GiB of %.2f [%.2f%%] of GPU memory for search.\n",  totUsed / 1073741824.0, total / 1073741824.0, totUsed / (float)total * 100.0f );
+        printf("    Each batch    uses: %5.2f GiB of device memory.\n", (batchSize*kernel->noSteps) / 1073741824.0 );
+        printf("                 Using: %5.2f GiB of %.2f [%.2f%%] of GPU memory for search.\n",  totUsed / 1073741824.0, total / 1073741824.0, totUsed / (float)total * 100.0f );
       }
+
+      nvtxRangePop();
     }
 
     FOLD // Scale data sizes by number of steps  .
@@ -1204,29 +1799,23 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       kernel->inpDataSize *= kernel->noSteps;
       kernel->plnDataSize *= kernel->noSteps;
       kernel->pwrDataSize *= kernel->noSteps;
-      if ( !(flags & FLAG_SS_INMEM)  )
-        kernel->retDataSize *= kernel->noSteps;
+      if ( !(kernel->flags & FLAG_SS_INMEM)  )
+        kernel->retDataSize *= kernel->noSteps;       // In-mem search stage does not use steps
     }
 
-    float fullCSize     = kernel->SrchSz->noOutpR * candSZ;               /// The full size of all candidate data
+    float fullCSize     = sInf->SrchSz->noOutpR * candSZ;               /// The full size of all candidate data
 
-    if ( kernel->flag  & FLAG_STORE_ALL )
+    if ( kernel->flags  & FLAG_STORE_ALL )
       fullCSize *= kernel->noHarmStages; // Store  candidates for all stages
 
     FOLD // DO a sanity check on flags  .
     {
       FOLD // How to handle input  .
       {
-        if ( !(kernel->flag & CU_NORM_ALL) )
-        {
-          kernel->flag    |= CU_NORM_CPU;    // Prepare input data using CPU - Generally bets option, as CPU is "idle"
-        }
-
-        if ( (kernel->flag & CU_INPT_FFT_CPU) && !(kernel->flag & CU_NORM_CPU) )
+        if ( (kernel->flags & CU_INPT_FFT_CPU) && !(kernel->flags & CU_NORM_CPU) )
         {
           fprintf(stderr, "WARNING: Using CPU FFT of the input data necessitate doing the normalisation on CPU.\n");
-          kernel->flag &= ~CU_NORM_ALL;
-          kernel->flag |= CU_NORM_CPU;
+          kernel->flags |= CU_NORM_CPU;
         }
       }
 
@@ -1235,24 +1824,30 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         for (int i = 0; i < kernel->noStacks; i++)
         {
           cuFfdotStack* cStack  = &kernel->stacks[i];
-          cStack->flag          = kernel->flag;
+          cStack->flags         = kernel->flags;
         }
       }
     }
 
     FOLD // Batch independent device memory  .
     {
-      if ( flags & FLAG_SS_INMEM  )
+      if ( kernel->flags & FLAG_SS_INMEM  )
       {
-        uint noStepsP =  ceil(kernel->SrchSz->noSteps / (float)noSteps) * kernel->noSteps ;
-        uint nX       = noStepsP * kernel->accelLen;
-        uint nY       = kernel->hInfos->height;
-        size_t stride;
+        nvtxRangePush("in-mem alloc");
 
-        CUDA_SAFE_CALL(cudaMallocPitch(&kernel->d_plainFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate device memory for getMemAlignment.");
-        kernel->sInf->mInf->inmemStride = stride / plnElsSZ;
-        CUDA_SAFE_CALL(cudaMemsetAsync(kernel->d_plainFull, 0, stride*nY, 0),"Failed to initiate plain memory to zero");
+        uint    noStepsP =  ceil(sInf->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
+        uint    nX       = noStepsP * kernel->accelLen;
+        uint    nY       = kernel->hInfos->height;
+        size_t  stride;
+
+        CUDA_SAFE_CALL(cudaMallocPitch(&sInf->d_planeFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate device memory for getMemAlignment.");
+        CUDA_SAFE_CALL(cudaMemsetAsync(sInf->d_planeFull, 0, stride*nY, kernel->stacks->initStream),"Failed to initiate plane memory to zero");
+
+        sInf->inmemStride = stride / plnElsSZ;
+
+        nvtxRangePop();
       }
+
     }
 
     FOLD // Allocate global (device independent) host memory  .
@@ -1260,9 +1855,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       // One set of global set of "candidates" for all devices
       if ( master == NULL )
       {
+        nvtxRangePush("host alloc");
+
         if      ( kernel->cndType & CU_STR_ARR  )
         {
-          if ( sInf->sSpec->outData == NULL 	)
+          if ( sInf->sSpec->outData == NULL   )
           {
             // Have to allocate the array!
 
@@ -1271,8 +1868,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             {
               // Same host candidates for all devices
               // This can use a lot of memory for long searches!
-              kernel->h_candidates = malloc( fullCSize );
-              memset(kernel->h_candidates, 0, fullCSize );
+              sInf->h_candidates = malloc( fullCSize );
+              memset(sInf->h_candidates, 0, fullCSize );
               hostC += fullCSize;
             }
             else
@@ -1281,65 +1878,54 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               fprintf(stderr, "       Try set -fhi to a lower value. ie: numharm*1000. ( or buy more RAM, or close Chrome ;)\n");
               fprintf(stderr, "       Will continue trying to use a dynamic list.\n");
 
-              kernel->cndType &= ~CU_SRT_ALL ;
-              kernel->cndType |= CU_STR_LST ;
+//              kernel->cndType &= ~CU_SRT_ALL ;
+//              kernel->cndType |= CU_STR_LST ;
+
+              // Candidate type
+              kernel->cndType &= ~CU_TYPE_ALLL ;
+              kernel->cndType &= ~CU_SRT_ALL   ;
+
+              kernel->cndType |= CU_CANDFULL   ;
+              kernel->cndType |= CU_STR_LST    ;
             }
           }
           else
           {
-            // TODO: this needs to be freed at some point
-
             // This memory has already been allocated
-            kernel->h_candidates = sInf->sSpec->outData;
-            memset(kernel->h_candidates, 0, fullCSize ); // NOTE: this may error if the preallocated memory int karge enough!
+            sInf->h_candidates = sInf->sSpec->outData;
+            memset(sInf->h_candidates, 0, fullCSize ); // NOTE: this may error if the preallocated memory int karge enough!
           }
         }
         else if ( kernel->cndType & CU_STR_QUAD )
         {
-          remove( "/home/chris/src.cvs" ); // TMP
-
           if ( sInf->sSpec->outData == NULL )
           {
-            //            gridQuadTree<double, float>* qt;
-            //            vector2<double> center( 0, 0 );
-            //            vector2<double> width ( ACCEL_DR, ACCEL_DZ );
-            //
-            //            qt = new gridQuadTree<double, float>(center, width);
-            //
-            //            kernel->h_candidates = qt;
-
-
-            //            candQuadNode* node;
-            //
-            //            location* loc;
-            //
-            //            cand* canidate;
-            //
-            //            if ( *loc < *node )
-            //            {
-            //              printf("BOB\n");
-            //            }
-
             candTree* qt = new candTree;
-            kernel->h_candidates = qt;
-
+            sInf->h_candidates = qt;
           }
           else
           {
-            kernel->h_candidates = sInf->sSpec->outData;
+            sInf->h_candidates = sInf->sSpec->outData;
           }
         }
         else if ( kernel->cndType & CU_STR_LST  )
         {
           // Nothing really to do here =/
+          GSList* lst = g_slist_alloc();
+          lst->data = NULL;
+          lst->next = NULL;
+
+          sInf->h_candidates    = lst;
         }
         else if ( kernel->cndType & CU_STR_PLN  )
         {
-          fprintf(stderr,"WARNING: The case of candidate plains has not been implemented!\n");
+          fprintf(stderr,"WARNING: The case of candidate planes has not been implemented!\n");
 
           // This memory has already been allocated
-          kernel->h_candidates = sInf->sSpec->outData;
+          sInf->h_candidates = sInf->sSpec->outData;
         }
+
+        nvtxRangePop();
       }
     }
 
@@ -1347,7 +1933,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       printf("    Input and candidates use and additional:\n");
       if ( hostC )
-        printf("                      %5.2f GiB of host   memory\n", hostC / 1073741824.0 );
+        printf("                        %5.2f GiB of host   memory\n", hostC / 1073741824.0 );
     }
     printf("    -----------------------------------------------\n" );
 
@@ -1358,32 +1944,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     nvtxRangePop();
   }
 
-  FOLD // Stack specific events  .
+  FOLD // Create FFT plans, ( 1 - set per device )  .
   {
-    nvtxRangePush("events");
+    nvtxRangePush("FFT plans");
 
-    if ( noBatches > 1 )
+    if ( ( kernel->flags & CU_INPT_FFT_CPU ) && master == NULL )
     {
-      char strBuff[1024];
+      nvtxRangePush("read_wisdom");
 
-      if ( !(kernel->flag & CU_INPT_FFT_CPU) )
-      {
-        for (int i = 0; i < kernel->noStacks; i++)
-        {
-          cuFfdotStack* cStack = &kernel->stacks[i];
-          CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-          sprintf(strBuff,"%i FFT Input %i Stack", device, i);
-          nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
-        }
-      }
+      read_wisdom();
 
-      for (int i = 0; i < kernel->noStacks; i++)
-      {
-        cuFfdotStack* cStack = &kernel->stacks[i];
-        CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-        sprintf(strBuff,"%i FFT Plain %i Stack", device, i);
-        nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
-      }
+      nvtxRangePop();
+    }
+
+    if ( !(kernel->flags & CU_FFT_SEP) )
+    {
+      infoMSG(3,4,"Create FFT plans\n");
+
+      createFFTPlans(kernel);
     }
 
     nvtxRangePop();
@@ -1391,13 +1969,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
   FOLD // Create texture memory from kernels  .
   {
-    nvtxRangePush("text mem");
-
-    if ( kernel->flag & FLAG_TEX_MUL )
+    if ( kernel->flags & FLAG_TEX_MUL )
     {
+      infoMSG(3,4,"Create texture memory\n");
+
+      nvtxRangePush("text mem");
+
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
 
-      CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating texture from kernel data.");
 
       for (int i = 0; i < kernel->noStacks; i++)           // Loop through Stacks
       {
@@ -1420,12 +2000,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         resDesc.res.pitch2D.pitchInBytes  = cStack->strideCmplx * sizeof(fcomplex);
         resDesc.res.pitch2D.height        = cStack->kerHeigth;
 
-        CUDA_SAFE_CALL(cudaCreateTextureObject(&cStack->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
+        CUDA_SAFE_CALL(cudaCreateTextureObject(&cStack->kerDatTex, &resDesc, &texDesc, NULL), "Creating texture from kernel data.");
 
-        CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from the stack of kernel data.");
+        CUDA_SAFE_CALL(cudaGetLastError(), "Creating texture from the stack of kernel data.");
 
         // Create the actual texture object
-        for (int j = 0; j< cStack->noInStack; j++)        // Loop through plains in stack
+        for (int j = 0; j< cStack->noInStack; j++)        // Loop through planes in stack
         {
           cuKernel* cKer = &cStack->kernels[j];
 
@@ -1434,72 +2014,52 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           resDesc.res.pitch2D.width         = cKer->harmInf->width;
           resDesc.res.pitch2D.pitchInBytes  = cStack->strideCmplx * sizeof(fcomplex);
 
-          CUDA_SAFE_CALL(cudaCreateTextureObject(&cKer->kerDatTex, &resDesc, &texDesc, NULL), "Error Creating texture from kernel data.");
-          CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error creating texture from kernel data.");
+          CUDA_SAFE_CALL(cudaCreateTextureObject(&cKer->kerDatTex, &resDesc, &texDesc, NULL), "Creating texture from kernel data.");
+          CUDA_SAFE_CALL(cudaGetLastError(), "Creating texture from kernel data.");
         }
       }
-    }
 
-    nvtxRangePop();
+      nvtxRangePop();
+    }
   }
 
   FOLD // Set constant memory values  .
   {
+    infoMSG(3,4,"Set constant memory values\n");
+
     nvtxRangePush("const mem");
 
     setConstVals( kernel,  sInf->noHarmStages, sInf->powerCut, sInf->numindep );
+
     setConstVals_Fam_Order( kernel );                            // Constant values for multiply
-    copyCUFFT_LD_CB(kernel);
+
+    setStackVals( kernel );
+
+    FOLD // // CUFFT callbacks
+    {
+      if ( !(kernel->flags & CU_FFT_SEP) )
+      {
+#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
+        copyCUFFT_LD_CB(kernel);
+#endif
+      }
+    }
 
     nvtxRangePop();
   }
 
-  FOLD // Create FFT plans, ( 1 - set per device )  .
+  FOLD //  Free temporary memory for kernel
   {
-    nvtxRangePush("FFT plans");
-
-    if ( ( kernel->flag & CU_INPT_FFT_CPU ) && master == NULL)
+    if ( master == NULL )     // Create the kernels  .
     {
-      read_wisdom();
-    }
-
-    fffTotSize = 0;
-    for (int i = 0; i < kernel->noStacks; i++)
-    {
-      cuFfdotStack* cStack  = &kernel->stacks[i];
-      size_t fftSize        = 0;
-
-      FOLD
+      if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
       {
-        int n[]             = {cStack->width};
-        int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
-        int istride         = 1;
-        int idist           = cStack->strideCmplx;
-        int onembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};
-        int ostride         = 1;
-        int odist           = cStack->strideCmplx;
-
-        cufftCreate(&cStack->plnPlan);
-        cufftCreate(&cStack->inpPlan);
-
-        CUFFT_SAFE_CALL(cufftMakePlanMany(cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps,    &fftSize), "Creating plan for complex data of stack.");
-        fffTotSize += fftSize;
-
-        if (kernel->flag & CU_INPT_FFT_CPU )
-        {
-          cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
-        }
-        else
-        {
-          CUFFT_SAFE_CALL(cufftMakePlanMany(cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps, &fftSize), "Creating plan for input data of stack.");
-          fffTotSize += fftSize;
-        }
-
+	for (int i = 0; i < kernel->noStacks; i++)
+	{
+	  cudaFreeNull( d_kerHold[i] );
+	}
       }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
     }
-
-    nvtxRangePop();
   }
 
   printf("Done initializing GPU %i.\n",device);
@@ -1514,7 +2074,7 @@ void freeKernelGPUmem(cuFFdotBatch* kernrl)
 {
   cudaFreeNull(kernrl->d_kerData);
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error freeing device memory for kernel.\n");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Freeing device memory for kernel.\n");
 }
 
 /** Free kernel data structure  .
@@ -1526,39 +2086,62 @@ void freeKernel(cuFFdotBatch* kernrl)
 {
   freeKernelGPUmem(kernrl);
 
-  if ( kernrl->srchMaster )
-  {
-    freeNull(kernrl->SrchSz);
-    freeNull(kernrl->h_candidates);
-  }
-
   freeNull(kernrl->stacks);
   freeNull(kernrl->hInfos);
   freeNull(kernrl->kernels);
 }
 
-/** Initialise the pointers of the plains data structures of a batch  .
+/** Initialise the pointers of the planes data structures of a batch  .
  *
  * This assumes the stack pointers have already been setup
  *
  * @param batch
  */
-void setPlainPointers(cuFFdotBatch* batch)
+void setPlanePointers(cuFFdotBatch* batch)
 {
+  infoMSG(4,5,"setPlanePointers\n");
+
   for (int i = 0; i < batch->noStacks; i++)
   {
+    infoMSG(4,6,"stack %i\n", i);
+
     // Set stack pointers
     cuFfdotStack* cStack  = &batch->stacks[i];
 
     for (int j = 0; j < cStack->noInStack; j++)
     {
-      cuFFdot* cPlain           = &cStack->plains[j];
+      infoMSG(4,7,"plane %i\n", i);
 
-      cPlain->d_plainData       = &cStack->d_plainData[   cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
-      cPlain->d_plainPowers     = &cStack->d_plainPowers[ cStack->startZ[j] * batch->noSteps * cStack->strideFloat ];
-      cPlain->d_iData           = &cStack->d_iData[cStack->strideCmplx*j*batch->noSteps];
-      cPlain->harmInf           = &cStack->harmInf[j];
-      cPlain->kernel            = &cStack->kernels[j];
+      cuFFdot* cPlane           = &cStack->planes[j];
+
+      if ( batch->flags & FLAG_DOUBLE )
+	cPlane->d_planeMult       = &((double2*)cStack->d_planeMult)[ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+      else
+	cPlane->d_planeMult       = &((float2*)cStack->d_planeMult) [ cStack->startZ[j] * batch->noSteps * cStack->strideCmplx ];
+
+      if (cStack->d_planePowr)
+      {
+        if ( batch->flags & FLAG_HALF )
+        {
+#if CUDA_VERSION >= 7050
+          cPlane->d_planePowr   = &((half*)         cStack->d_planePowr)[ cStack->startZ[j] * batch->noSteps * cStack->stridePower ];
+#else
+          fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+          exit(EXIT_FAILURE);
+#endif
+        }
+        else
+        {
+          if ( batch->flags & FLAG_CUFFT_CB_POW )
+            cPlane->d_planePowr = &((float*)      cStack->d_planePowr)[ cStack->startZ[j] * batch->noSteps * cStack->stridePower ];
+          else
+            cPlane->d_planePowr = &((fcomplexcu*) cStack->d_planePowr)[ cStack->startZ[j] * batch->noSteps * cStack->stridePower ];
+        }
+      }
+
+      cPlane->d_iData           = &cStack->d_iData[cStack->strideCmplx*j*batch->noSteps];
+      cPlane->harmInf           = &cStack->harmInf[j];
+      cPlane->kernel            = &cStack->kernels[j];
     }
   }
 }
@@ -1571,31 +2154,58 @@ void setPlainPointers(cuFFdotBatch* batch)
  */
 void setStkPointers(cuFFdotBatch* batch)
 {
+  infoMSG(4,5,"setStkPointers\n");
+
   size_t cmplStart  = 0;
   size_t pwrStart   = 0;
   size_t idSiz      = 0;            /// The size in bytes of input data for one stack
-  int harm          = 0;            /// The harmonic index of the first plain the the stack
+  int harm          = 0;            /// The harmonic index of the first plane the the stack
 
   for (int i = 0; i < batch->noStacks; i++) // Set the various pointers of the stacks  .
   {
+    infoMSG(4,6,"stack %i\n", i);
+
     cuFfdotStack* cStack  = &batch->stacks[i];
 
     cStack->d_iData       = &batch->d_iData[idSiz];
     cStack->h_iData       = &batch->h_iData[idSiz];
-    cStack->plains        = &batch->plains[harm];
+    cStack->planes        = &batch->planes[harm];
     cStack->kernels       = &batch->kernels[harm];
-    cStack->d_plainData   = &batch->d_plainData[cmplStart];
-    cStack->d_plainPowers = &batch->d_plainPowers[pwrStart];
+
+    if ( batch->flags & FLAG_DOUBLE )
+      cStack->d_planeMult   = &((double2*)batch->d_planeMult)[cmplStart];
+    else
+      cStack->d_planeMult   = &((float2*)batch->d_planeMult) [cmplStart];
+
+    if (batch->d_planePowr)
+    {
+      if ( batch->flags & FLAG_HALF )
+      {
+#if CUDA_VERSION >= 7050
+        cStack->d_planePowr     = &((half*)       batch->d_planePowr)[ pwrStart ];
+#else
+        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+        exit(EXIT_FAILURE);
+#endif
+      }
+      else
+      {
+        if ( batch->flags & FLAG_CUFFT_CB_POW )
+          cStack->d_planePowr   = &((float*)      batch->d_planePowr)[ pwrStart ];
+        else
+          cStack->d_planePowr   = &((fcomplexcu*) batch->d_planePowr)[ pwrStart ];
+      }
+    }
 
     // Increment the various values used for offset
     harm                 += cStack->noInStack;
     idSiz                += batch->noSteps  * cStack->strideCmplx * cStack->noInStack;
     cmplStart            += cStack->height  * cStack->strideCmplx * batch->noSteps ;
-    pwrStart             += cStack->height  * cStack->strideFloat * batch->noSteps ;
+    pwrStart             += cStack->height  * cStack->stridePower * batch->noSteps ;
   }
 }
 
-/** Initialise the pointers of the stacks and plains data structures of a batch  .
+/** Initialise the pointers of the stacks and planes data structures of a batch  .
  *
  * This assumes the various memory blocks of the batch have been created
  *
@@ -1606,8 +2216,8 @@ void setBatchPointers(cuFFdotBatch* batch)
   // First initialise the various pointers of the stacks
   setStkPointers(batch);
 
-  // Now initialise the various pointers of the plains
-  setPlainPointers(batch);
+  // Now initialise the various pointers of the planes
+  setPlanePointers(batch);
 }
 
 /** Initialise a batch using details from the device kernel  .
@@ -1620,80 +2230,102 @@ void setBatchPointers(cuFFdotBatch* batch)
  */
 int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 {
+  char msg[1024];
+  sprintf(msg,"%i of %i", no, of);
+  nvtxRangePush(msg);
+
   char strBuff[1024];
   size_t free, total;
 
   FOLD // See if we can use the cuda device  .
   {
-    setDevice(kernel) ;
+    infoMSG(3,4,"Device %i\n", kernel->device);
+
+    setDevice(kernel->device) ;
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
   }
 
-  FOLD // Set up basic slack list parameters from the harmonics  .
+  FOLD // Copy details from kernel and allocate stacks .
   {
+    infoMSG(3,4,"Copy kernel\n");
+
     // Copy the basic batch parameters from the kernel
     memcpy(batch, kernel, sizeof(cuFFdotBatch));
 
     batch->srchMaster   = 0;
     batch->isKernel     = 0;
 
+    infoMSG(3,4,"Create and copy stacks\n");
+
+    // Allocate memory for the stacks
+    batch->stacks = (cuFfdotStack*) malloc(batch->noStacks * sizeof(cuFfdotStack));
+
     // Copy the actual stacks
-    batch->stacks = (cuFfdotStack*) malloc(batch->noStacks   * sizeof(cuFfdotStack));
-    memcpy(batch->stacks, kernel->stacks, batch->noStacks    * sizeof(cuFfdotStack));
+    memcpy(batch->stacks, kernel->stacks, batch->noStacks  * sizeof(cuFfdotStack));
   }
 
-  FOLD // Set the flags  .
+  FOLD // Set the batch specific flags  .
   {
-    FOLD // multiplication flags  .
+    infoMSG(3,4,"Set flags\n");
+
+    FOLD // Multiplication flags  .
     {
-      for ( int i = 0; i < batch->noStacks; i++ )
+      for ( int i = 0; i < batch->noStacks; i++ )   // Multiplication is generally stack specific so loop through stacks  .
       {
         cuFfdotStack* cStack  = &batch->stacks[i];
 
-        if ( !(cStack->flag & FLAG_MUL_ALL ) )   // Default to multiplication  .
+        FOLD // multiplication kernel  .
         {
-          int noInp =  cStack->noInStack * kernel->noSteps ;
+          if ( !(cStack->flags & FLAG_MUL_ALL ) )   // Default to multiplication  .
+          {
+            int64_t mFlag = 0;
 
-          if ( batch->capability > 3.0 )
-          {
-            // Lots of registers per thread so 4.2 is good
-            cStack->flag |= FLAG_MUL_21;
-          }
-          else
-          {
-            // We require fewer registers per thread, so use Multiplication kernel 2.1
-            if ( noInp <= 20 )
+            // In my testing I found multiplying each plane separately works fastest so it is the "default"
+            int noInp =  cStack->noInStack * kernel->noSteps ;
+
+            if ( batch->capability > 3.0 )
             {
-              // TODO: Check small, looks like some times 22 may be faster.
-              cStack->flag |= FLAG_MUL_21;
+              // Lots of registers per thread so 2.1 is good
+              mFlag |= FLAG_MUL_21;
             }
             else
             {
-              if ( kernel->noSteps <= 4 )
+              // We require fewer registers per thread, so use Multiplication kernel 2.1
+              if ( noInp <= 20 )
               {
-                // very few steps so 2.2 not always the best option
-                if ( kernel->hInfos->zmax > 100 )
-                {
-                  // This only really holds for 16 harmonics summed with 3 or 4 steps
-                  // In my testing it is generally true for zmax greater than 100
-                  cStack->flag |= FLAG_MUL_23;
-                }
-                else
-                {
-                  // Here 22 is usually better
-                  cStack->flag |= FLAG_MUL_22;
-                }
+                // TODO: Check small, looks like some times 22 may be faster.
+                mFlag |= FLAG_MUL_21;
               }
               else
               {
-                // Enough steps to justify Multiplication kernel 2.1
-                cStack->flag |= FLAG_MUL_22;
+                if ( kernel->noSteps <= 4 )
+                {
+                  // very few steps so 2.2 not always the best option
+                  if ( kernel->hInfos->zmax > 100 )
+                  {
+                    // This only really holds for 16 harmonics summed with 3 or 4 steps
+                    // In my testing it is generally true for zmax greater than 100
+                    mFlag |= FLAG_MUL_23;
+                  }
+                  else
+                  {
+                    // Here 22 is usually better
+                    mFlag |= FLAG_MUL_22;
+                  }
+                }
+                else
+                {
+                  // Enough steps to justify Multiplication kernel 2.1
+                  mFlag |= FLAG_MUL_22;
+                }
               }
             }
-          }
 
-          batch->flag |= FLAG_MUL_STK;
+            // Set the stack and batch flag
+            cStack->flags |= mFlag;
+            batch->flags  |= mFlag;
+          }
         }
 
         FOLD // Slices  .
@@ -1729,7 +2361,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             }
           }
 
-          // Clamp to size of kernel (ie height of the largest plain)
+          // Clamp to size of kernel (ie height of the largest plane)
           cStack->mulSlices = MIN(cStack->mulSlices,cStack->kerHeigth/2.0);
         }
 
@@ -1740,7 +2372,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             cStack->mulChunk = 4;
           }
 
-          // Clamp to size of kernel (ie height of the largest plain)
+          // Clamp to size of kernel (ie height of the largest plane)
           cStack->mulChunk = MIN( cStack->mulChunk, ceil(cStack->kerHeigth/2.0) );
         }
       }
@@ -1748,9 +2380,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Sum and search flags  .
     {
-      if ( !(batch->flag & FLAG_SS_ALL ) )   // Default to multiplication  .
+      if ( !(batch->flags & FLAG_SS_ALL ) )   // Default to multiplication  .
       {
-        batch->flag |= FLAG_SS_10;
+        batch->flags |= FLAG_SS_10;
       }
 
       if ( batch->ssChunk <= 0 )
@@ -1763,84 +2395,116 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     }
   }
 
-  FOLD // Allocate all device and host memory for the stacks  .
+  FOLD // Create FFT plans  .
   {
+    if ( kernel->flags & CU_FFT_SEP )
+    {
+      infoMSG(3,4,"Create FFT plans\n");
+
+      createFFTPlans(batch);
+
+      FOLD // Set CUFFT callbacks
+      {
+#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
+        copyCUFFT_LD_CB(batch);
+#endif
+      }
+    }
+  }
+
+  FOLD // Allocate all device and host memory for the batch  .
+  {
+    infoMSG(3,4,"Allocate memory for the batch\n");
+
     FOLD // Allocate page-locked host memory for input data  .
     {
-      CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plain input data." );
+      nvtxRangePush("Host");
 
-      if ( batch->flag & CU_NORM_CPU ) // Allocate memory for normalisation
-        batch->normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
+      CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plane input data." );
+
+      if ( batch->flags & CU_NORM_CPU ) // Allocate memory for normalisation
+        batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
+
+      nvtxRangePop();
     }
 
     FOLD // Allocate R value lists  .
     {
-      rVals*    l;
-      rVals**   ll;
-      int oSet;
+      batch->noRArryas        = 5; // This is just a convenient value
 
-      l  = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noHarms*3);
-      oSet = 0;
+      createRvals(batch, &batch->rArr1, &batch->rArraysPlane);
+      batch->rAraays = &batch->rArraysPlane;
 
-      ll = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      for(int step = 0; step < batch->noSteps; step++)
-      {
-        ll[step] = &l[oSet];
-        oSet+= batch->noHarms;
-      }
-      batch->rInput  = (rVals***)malloc(sizeof(rVals**));
-      *batch->rInput = ll;
+      if ( batch->flags & FLAG_SEPRVAL )
+        createRvals(batch, &batch->rArr2, &batch->rArraysSrch);
 
-      ll = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      for(int step = 0; step < batch->noSteps; step++)
-      {
-        ll[step] = &l[oSet];
-        oSet+= batch->noHarms;
-      }
-      batch->rSearch  = (rVals***)malloc(sizeof(rVals**));
-      *batch->rSearch = ll;
-
-      ll = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-      for(int step = 0; step < batch->noSteps; step++)
-      {
-        ll[step] = &l[oSet];
-        oSet+= batch->noHarms;
-      }
-      batch->rConvld  = (rVals***)malloc(sizeof(rVals**));
-      *batch->rConvld = ll;
+//      rVals*    rLev1;
+//      rVals**   rLev2;
+//
+//      int oSet                = 0;
+//      batch->noRArryas        = 5; // This is just a convenient value
+//
+//      rLev1                   = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
+//      memset(rLev1, 0, sizeof(rVals)*batch->noSteps*batch->noHarms*batch->noRArryas);
+//      for (int i1 = 0 ; i1 < batch->noSteps*batch->noHarms*batch->noRArryas; i1++)
+//      {
+//        rLev1[i1].step = -1; // Invalid step (0 is a valid value!)
+//      }
+//
+//      (*batch->rAraays)          = (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
+//
+//      for (int rIdx = 0; rIdx < batch->noRArryas; rIdx++)
+//      {
+//        rLev2                 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+//        (*batch->rAraays)[rIdx]  = rLev2;
+//
+//        for (int step = 0; step < batch->noSteps; step++)
+//        {
+//          rLev2[step]         = &rLev1[oSet];
+//          oSet               += batch->noHarms;
+//        }
+//      }
     }
 
-    FOLD // Allocate device Memory for Plains, Stacks & Input data (steps)  .
+    FOLD // Allocate device Memory for Planes, Stacks & Input data (steps)  .
     {
-      if ( (batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize ) > free )
+      nvtxRangePush("device");
+
+      size_t req = batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize;
+
+      if ( req > free ) // Not enough memory =(
       {
-        // Not enough memory =(
-
-        // NOTE: we could reduce noSteps for this stack, but all batches must be the same size to share the same CFFT plan
-
-        printf("Not enough GPU memory to create any more stacks.\n");
-        return 0;
+        printf("Not enough GPU memory to create any more batches.\n");
+        return (0);
       }
       else
       {
-        // Allocate device memory
-        CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_iData,          batch->inpDataSize ), "Failed to allocate device memory for kernel stack.");
-        CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_plainData,      batch->plnDataSize ), "Failed to allocate device memory for kernel stack.");
-
-        free -= batch->inpDataSize;
-        free -= batch->plnDataSize;
-
-        if ( batch->flag & FLAG_CUFFT_CB_OUT )
+        if ( batch->inpDataSize )
         {
-          CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_plainPowers,  batch->pwrDataSize ), "Failed to allocate device memory for kernel stack.");
+          CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_iData,       batch->inpDataSize ), "Failed to allocate device memory for batch input.");
+          free -= batch->inpDataSize;
+        }
 
+        if ( batch->plnDataSize )
+        {
+          CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planeMult,   batch->plnDataSize ), "Failed to allocate device memory for batch complex plane.");
+          free -= batch->plnDataSize;
+        }
+
+        if ( batch->pwrDataSize )
+        {
+          CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planePowr,   batch->pwrDataSize ), "Failed to allocate device memory for batch powers plane.");
           free -= batch->pwrDataSize;
         }
       }
+
+      nvtxRangePop();
     }
 
     FOLD // Allocate device & page-locked host memory for return data  .
     {
+      nvtxRangePush("Host");
+
       FOLD // Allocate device memory  .
       {
         if ( kernel->retDataSize && !(kernel->retType & CU_STR_PLN) )
@@ -1849,12 +2513,33 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           {
             // Not enough memory =(
             printf("Not enough GPU memory for return data.\n");
-            return 0;
+            return (0);
           }
           else
           {
-            CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_retData, batch->retDataSize ), "Failed to allocate device memory for return values.");
+            CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData1, batch->retDataSize ), "Failed to allocate device memory for return values.");
             free -= batch->retDataSize;
+
+            if ( batch->flags & FLAG_SS_INMEM )
+            {
+              if ( batch->retDataSize > batch->plnDataSize )
+              {
+                infoMSG(4,5,"Complex plane is smaller than return data -> FLAG_SEPSRCH\n");
+
+                batch->flags |= FLAG_SEPSRCH;
+              }
+
+              if ( batch->flags & FLAG_SEPSRCH )
+              {
+                // Create a separate output space
+                CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData2, batch->retDataSize ), "Failed to allocate device memory for return values.");
+                free -= batch->retDataSize;
+              }
+              else
+              {
+                batch->d_outData2 = batch->d_planeMult;
+              }
+            }
           }
         }
       }
@@ -1863,171 +2548,217 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
         if ( kernel->retDataSize )
         {
-          CUDA_SAFE_CALL(cudaMallocHost(&batch->h_retData, kernel->retDataSize), "Failed to create page-locked host memory plain for return data.");
-          memset(batch->h_retData, 0, kernel->retDataSize );
+          CUDA_SAFE_CALL(cudaMallocHost(&batch->h_outData1, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
+          memset(batch->h_outData1, 0, kernel->retDataSize );
+
+          if ( kernel->flags & FLAG_SS_INMEM )
+          {
+            CUDA_SAFE_CALL(cudaMallocHost(&batch->h_outData2, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
+            memset(batch->h_outData2, 0, kernel->retDataSize );
+          }
         }
       }
+
+      nvtxRangePop();
     }
 
-    // Create the plains structures
-    if ( batch->noHarms* sizeof(cuFFdot) > getFreeRamCU() )
+    FOLD // Create the planes structures
     {
-      fprintf(stderr, "ERROR: Not enough host memory for search.\n");
-      return 0;
-    }
-    else
-    {
-      batch->plains = (cuFFdot*) malloc(batch->noHarms* sizeof(cuFFdot));
-      memset(batch->plains, 0, batch->noHarms* sizeof(cuFFdot));
+      if ( batch->noGenHarms* sizeof(cuFFdot) > getFreeRamCU() )
+      {
+        fprintf(stderr, "ERROR: Not enough host memory for search.\n");
+        return 0;
+      }
+      else
+      {
+        batch->planes = (cuFFdot*) malloc(batch->noGenHarms* sizeof(cuFFdot));
+        memset(batch->planes, 0, batch->noGenHarms* sizeof(cuFFdot));
+      }
     }
 
     FOLD // Create timing arrays  .
     {
-#ifdef TIMING
-      batch->copyH2DTime  = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->normTime     = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->InpFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->multTime     = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->InvFFTTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->searchTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->resultTime   = (float*)malloc(batch->noStacks*sizeof(float));
-      batch->copyD2HTime  = (float*)malloc(batch->noStacks*sizeof(float));
+      if ( batch->flags & FLAG_TIME )
+      {
+        int sz = batch->noStacks*sizeof(float) ;
 
-      memset(batch->copyH2DTime,  0,batch->noStacks*sizeof(float));
-      memset(batch->normTime,     0,batch->noStacks*sizeof(float));
-      memset(batch->InpFFTTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->multTime,     0,batch->noStacks*sizeof(float));
-      memset(batch->InvFFTTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->searchTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->resultTime,   0,batch->noStacks*sizeof(float));
-      memset(batch->copyD2HTime,  0,batch->noStacks*sizeof(float));
-#endif
+        batch->copyH2DTime    = (float*)malloc(sz);
+        batch->normTime       = (float*)malloc(sz);
+        batch->InpFFTTime     = (float*)malloc(sz);
+        batch->multTime       = (float*)malloc(sz);
+        batch->InvFFTTime     = (float*)malloc(sz);
+        batch->copyToPlnTime  = (float*)malloc(sz);
+        batch->searchTime     = (float*)malloc(sz);
+        batch->resultTime     = (float*)malloc(sz);
+        batch->copyD2HTime    = (float*)malloc(sz);
+
+        memset(batch->copyH2DTime,    0, sz);
+        memset(batch->normTime,       0, sz);
+        memset(batch->InpFFTTime,     0, sz);
+        memset(batch->multTime,       0, sz);
+        memset(batch->InvFFTTime,     0, sz);
+        memset(batch->copyToPlnTime,  0, sz);
+        memset(batch->searchTime,     0, sz);
+        memset(batch->resultTime,     0, sz);
+        memset(batch->copyD2HTime,    0, sz);
+      }
     }
+  }
+
+  FOLD // Setup the pointers for the stacks and planes of this batch  .
+  {
+    infoMSG(3,4,"Setup the pointers\n");
+
+    setBatchPointers(batch);
   }
 
   FOLD // Set up the batch streams and events  .
   {
+    infoMSG(3,4,"Set up the batch streams and events\n");
+
     FOLD // Create Streams  .
     {
       FOLD // Input streams  .
       {
-        if      ( (batch->flag & CU_NORM_GPU) || (batch->flag & CU_NORM_CPU)  )
-        {
-          CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
-          sprintf(strBuff,"%i.%i.0.0 batch input", batch->device, no);
-          nvtxNameCudaStreamA(batch->inpStream, strBuff);
-        }
+        // Batch input ( Always needed, for copying input to device )
+        CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
+        sprintf(strBuff,"%i.%i.1.0 Batch Input", batch->device, no);
+        nvtxNameCudaStreamA(batch->inpStream, strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
 
-        if      ( batch->flag & CU_NORM_GPU  )
+        // Stack input
+        if ( !(batch->flags & CU_NORM_CPU)  )
         {
           for (int i = 0; i < batch->noStacks; i++)
           {
             cuFfdotStack* cStack  = &batch->stacks[i];
 
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inptStream), "Creating input data multStream for stack");
-            sprintf(strBuff,"%i.%i.0.%i Stack Input", batch->device, no, i);
+            sprintf(strBuff,"%i.%i.1.%i Stack Input", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->inptStream, strBuff);
+            //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
 
       FOLD // Input FFT streams  .
       {
-        if ( (no == 0) && (of == 0) && !(kernel->flag & CU_INPT_FFT_CPU) )
+        for (int i = 0; i < kernel->noStacks; i++)
         {
-          //printf("\nRecreating Input FFT streams\n");
+          cuFfdotStack* cStack = &batch->stacks[i];
 
-          for (int i = 0; i < kernel->noStacks; i++)
+          if ( kernel->flags & CU_FFT_SEP )       // Create stream  .
           {
-            cuFfdotStack* kStack = &kernel->stacks[i];
-            //CUDA_SAFE_CALL(cudaStreamDestroy(kStack->fftIStream),"Creating CUDA stream for fft's");
+            if ( !(kernel->flags & CU_INPT_FFT_CPU) )
+            {
+              CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for input fft's");
 
-            cuFfdotStack* cStack = &batch->stacks[i];
-            CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-            sprintf(strBuff,"%i FFT Input %i Stack", batch->device, i);
-            nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
-            kStack->fftIStream = cStack->fftIStream;
+              sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->device, no, i);
+              nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+              //printf("cudaStreamCreate: %s\n", strBuff);
+            }
+          }
+          else                                    // Copy stream of the kernel  .
+          {
+            cuFfdotStack* kStack  = &kernel->stacks[i];
+            cStack->fftIStream    = kStack->fftIStream;
           }
         }
       }
 
       FOLD // Multiply streams  .
       {
-        if      ( batch->flag & FLAG_MUL_BATCH )
+        if      ( batch->flags & FLAG_MUL_BATCH )
         {
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
-          sprintf(strBuff,"%i.%i.0.0 batch multiply", batch->device, no);
+          sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->device, no);
           nvtxNameCudaStreamA(batch->multStream, strBuff);
+          //printf("cudaStreamCreate: %s\n", strBuff);
         }
 
-        if ( (batch->flag & FLAG_MUL_STK) || (batch->flag & FLAG_MUL_PLN)  )
+        if ( (batch->flags & FLAG_MUL_STK) || (batch->flags & FLAG_MUL_PLN)  )
         {
           for (int i = 0; i< batch->noStacks; i++)
           {
             cuFfdotStack* cStack  = &batch->stacks[i];
 
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
-            sprintf(strBuff,"%i.%i.1.%i Stack Multiply", batch->device, no, i);
+            sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->multStream, strBuff);
+            //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
       }
 
       FOLD // Inverse FFT streams  .
       {
-        if ( (no == 0) && (of == 0) )
+        for (int i = 0; i < kernel->noStacks; i++)
         {
-          //printf("\nRecreating Inverse FFT streams\n");
+          cuFfdotStack* cStack = &batch->stacks[i];
 
-          for (int i = 0; i < kernel->noStacks; i++)
+          if ( batch->flags & CU_FFT_SEP )           // Create stream
           {
-            cuFfdotStack* kStack = &kernel->stacks[i];
-            //CUDA_SAFE_CALL(cudaStreamDestroy(kStack->fftPStream),"Creating CUDA stream for fft's");
-
-            cuFfdotStack* cStack = &batch->stacks[i];
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-            sprintf(strBuff,"%i FFT Plain %i Stack", batch->device, i);
+
+            sprintf(strBuff,"%i.%i.4.%i Stack iFFT", batch->device, no, i);
             nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
-            kStack->fftPStream = cStack->fftPStream;
+            //printf("cudaStreamCreate: %s\n", strBuff);
+          }
+          else                                        // Copy stream of the kernel
+          {
+            cuFfdotStack* kStack  = &kernel->stacks[i];
+            cStack->fftPStream    = kStack->fftPStream;
           }
         }
       }
 
       FOLD // Search stream  .
       {
-        CUDA_SAFE_CALL(cudaStreamCreate(&batch->strmSearch), "Creating strmSearch for batch.");
-        sprintf(strBuff,"%i.%i.2.0 batch search", batch->device, no);
-        nvtxNameCudaStreamA(batch->strmSearch, strBuff);
+        CUDA_SAFE_CALL(cudaStreamCreate(&batch->srchStream), "Creating strmSearch for batch.");
+        sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->device, no);
+        nvtxNameCudaStreamA(batch->srchStream, strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
       }
+
+      FOLD // Result stream  .
+      {
+        // Batch output ( Always needed, for copying results from device )
+        CUDA_SAFE_CALL(cudaStreamCreate(&batch->resStream), "Creating strmSearch for batch.");
+        sprintf(strBuff,"%i.%i.6.0 Batch result", batch->device, no);
+        nvtxNameCudaStreamA(batch->resStream, strBuff);
+        //printf("cudaStreamCreate: %s\n", strBuff);
+      }
+
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams for the batch.");
     }
 
     FOLD // Create Events  .
     {
       FOLD // Create batch events  .
       {
-#ifdef TIMING
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->iDataCpyComp), "Creating input event iDataCpyComp.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyComp),  "Creating input event candCpyComp.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->normComp),     "Creating input event normComp.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->multComp),     "Creating input event multComp.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->searchComp),   "Creating input event searchComp.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->processComp),  "Creating input event processComp.");
+        if ( batch->flags & FLAG_TIME )
+        {
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->iDataCpyComp), "Creating input event iDataCpyComp.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyComp),  "Creating input event candCpyComp.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->normComp),     "Creating input event normComp.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->multComp),     "Creating input event multComp.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->searchComp),   "Creating input event searchComp.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->processComp),  "Creating input event processComp.");
 
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->iDataCpyInit), "Creating input event iDataCpyInit.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyInit),  "Creating input event candCpyInit.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->multInit),     "Creating input event multInit.");
-        CUDA_SAFE_CALL(cudaEventCreate(&batch->searchInit),   "Creating input event searchInit.");
-
-        //cudaEventRecord(batch->iDataCpyInit);
-        //cudaEventRecord(batch->iDataCpyComp);
-#else
-        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->iDataCpyComp,   cudaEventDisableTiming ), "Creating input event iDataCpyComp.");
-        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->candCpyComp,    cudaEventDisableTiming ), "Creating input event candCpyComp.");
-        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->normComp,       cudaEventDisableTiming ), "Creating input event normComp.");
-        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->multComp,       cudaEventDisableTiming ), "Creating input event searchComp.");
-        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->searchComp,     cudaEventDisableTiming ), "Creating input event searchComp.");
-        CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->processComp,    cudaEventDisableTiming ), "Creating input event processComp.");
-#endif
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->iDataCpyInit), "Creating input event iDataCpyInit.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyInit),  "Creating input event candCpyInit.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->multInit),     "Creating input event multInit.");
+          CUDA_SAFE_CALL(cudaEventCreate(&batch->searchInit),   "Creating input event searchInit.");
+        }
+        else
+        {
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->iDataCpyComp,   cudaEventDisableTiming ), "Creating input event iDataCpyComp.");
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->candCpyComp,    cudaEventDisableTiming ), "Creating input event candCpyComp.");
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->normComp,       cudaEventDisableTiming ), "Creating input event normComp.");
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->multComp,       cudaEventDisableTiming ), "Creating input event searchComp.");
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->searchComp,     cudaEventDisableTiming ), "Creating input event searchComp.");
+          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->processComp,    cudaEventDisableTiming ), "Creating input event processComp.");
+        }
       }
 
       FOLD // Create stack events  .
@@ -2036,91 +2767,51 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         {
           cuFfdotStack* cStack  = &batch->stacks[i];
 
-#ifdef TIMING
-          // in  events
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    "Creating input normalisation event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinit),  "Creating input FFT initialisation event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftInit), 	  "Creating inverse FFT initialisation event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->multInit), 		"Creating multiplication initialisation event");
+          if ( batch->flags & FLAG_TIME )
+          {
+            // in  events (with timing)
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    "Creating input normalisation event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinit),  "Creating input FFT initialisation event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->multInit),    "Creating multiplication initialisation event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftInit), 	  "Creating inverse FFT initialisation event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemInit), "Creating inverse FFT copy initialisation event");
 
-          // out events (with timing)
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),    "Creating input normalisation event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->prepComp), 		"Creating input data preparation complete event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->multComp), 		"Creating multiplication complete event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftComp),    "Creating IFFT complete event");
-          CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemComp), "Creating IFFT memory copy complete event");
-#else
-          // out events (without timing)
-          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
-          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->prepComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
-          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->multComp,    cudaEventDisableTiming), "Creating multiplication complete event");
-          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftComp,    cudaEventDisableTiming), "Creating IFFT complete event");
-          CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftMemComp, cudaEventDisableTiming), "Creating IFFT memory copy complete event");
-#endif
+            // out events (with timing)
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),    "Creating input normalisation event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->prepComp), 		"Creating input data preparation complete event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->multComp), 		"Creating multiplication complete event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftComp),    "Creating IFFT complete event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemComp), "Creating IFFT memory copy complete event");
+          }
+          else
+          {
+            // out events (without timing)
+            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
+            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->prepComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
+            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->multComp,    cudaEventDisableTiming), "Creating multiplication complete event");
+            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftComp,    cudaEventDisableTiming), "Creating IFFT complete event");
+            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftMemComp, cudaEventDisableTiming), "Creating IFFT memory copy complete event");
+          }
         }
       }
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating events for the batch.");
     }
 
-    if ( 0 ) // TMP
-    {
-      for (int i = 0; i< batch->noStacks; i++)
-      {
-        cuFfdotStack* cStack = &batch->stacks[i];
-
-        cStack->fftIStream = cStack->inptStream;
-        cStack->fftPStream = cStack->multStream;
-      }
-    }
-
-    CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams and events for the batch.");
+    //CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams and events for the batch.");
   }
 
-  FOLD // Setup the pointers for the stacks and plains of this batch  .
+  FOLD // Create textures for the f-∂f planes  .
   {
-    setBatchPointers(batch);
-  }
-
-  /*   // Rather use 1 FFT plan per device  .
-  FOLD // Create FFT plans  .
-  {
-    for (int i = 0; i < batch->noStacks; i++)
-    {
-      cuFfdotStack* cStack  = &batch->stacks[i];
-      size_t fftSize        = 0;
-
-      FOLD
-      {
-        int n[]             = {cStack->width};
-        int inembed[]       = {cStack->stride* sizeof(fcomplexcu)};
-        int istride         = 1;
-        int idist           = cStack->stride;
-        int onembed[]       = {cStack->stride* sizeof(fcomplexcu)};
-        int ostride         = 1;
-        int odist           = cStack->stride;
-
-        cufftCreate(&cStack->plnPlan);
-        cufftCreate(&cStack->inpPlan);
-
-        CUFFT_SAFE_CALL(cufftPlanMany    (&cStack->plnPlan, 1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height),     "Creating plan for complex data of stack.");
-        //CUFFT_SAFE_CALL(cufftMakePlanMany(cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height, &fftSize),     "Creating plan for complex data of stack.");
-        CUFFT_SAFE_CALL(cufftPlanMany    (&cStack->inpPlan, 1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack),  "Creating plan for input data of stack.");
-        //CUFFT_SAFE_CALL(cufftMakePlanMany(cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack, &fftSize),  "Creating plan for input data of stack.");
-      }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
-    }
-  }
-   */
-
-  FOLD // Create textures for the f-∂f plains  .
-  {
-    if ( (batch->flag & FLAG_TEX_INTERP) && !( (batch->flag & FLAG_CUFFT_CB_OUT) && (batch->flag & FLAG_SAS_TEX) ) )
+    if ( (batch->flags & FLAG_TEX_INTERP) && !( (batch->flags & FLAG_CUFFT_CB_POW) && (batch->flags & FLAG_SAS_TEX) ) )
     {
       fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation\n");
-      batch->flag &= ~FLAG_TEX_INTERP;
+      batch->flags &= ~FLAG_TEX_INTERP;
     }
 
-    if ( batch->flag & FLAG_SAS_TEX )
+    if ( batch->flags & FLAG_SAS_TEX )
     {
+      infoMSG(3,4,"Create textures\n");
+
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
 
       struct cudaTextureDesc texDesc;
@@ -2130,7 +2821,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       texDesc.readMode          = cudaReadModeElementType;
       texDesc.normalizedCoords  = 0;
 
-      if ( batch->flag & FLAG_TEX_INTERP )
+      if ( batch->flags & FLAG_TEX_INTERP )
       {
         texDesc.filterMode        = cudaFilterModeLinear;   /// Liner interpolation
       }
@@ -2150,59 +2841,53 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
-          cuFFdot* cPlain = &cStack->plains[j];
+          cuFFdot* cPlane = &cStack->planes[j];
 
-          if ( batch->flag & FLAG_CUFFT_CB_OUT ) // float input
+          if ( batch->flags & FLAG_CUFFT_CB_POW ) // float input
           {
-            if      ( batch->flag & FLAG_ITLV_ROW )
+            if      ( batch->flags & FLAG_ITLV_ROW )
             {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width * batch->noSteps;
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
-            }
-            else if ( batch->flag & FLAG_ITLV_PLN )
-            {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width;
-              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
             else
             {
-              // Error
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height * batch->noSteps ;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width;
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
           }
           else // Implies complex numbers
           {
-            if      ( batch->flag & FLAG_ITLV_ROW )
+            if      ( batch->flags & FLAG_ITLV_ROW )
             {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width * batch->noSteps * 2;
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps * 2;
               resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
-            }
-            else if ( batch->flag & FLAG_ITLV_PLN )
-            {
-              resDesc.res.pitch2D.height          = cPlain->harmInf->height * batch->noSteps ;
-              resDesc.res.pitch2D.width           = cPlain->harmInf->width * 2;
-              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
-              resDesc.res.pitch2D.devPtr          = cPlain->d_plainPowers;
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
             else
             {
-              // Error
+              resDesc.res.pitch2D.height          = cPlane->harmInf->height * batch->noSteps ;
+              resDesc.res.pitch2D.width           = cPlane->harmInf->width * 2;
+              resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
+              resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
             }
           }
 
-          CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlain->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plain data.");
+          CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlane->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plane data.");
         }
       }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plain data.");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
     }
   }
 
-  return batch->noSteps;
+  nvtxRangePop();
+
+  return (batch->noSteps);
 }
 
 /** Free batch data structure  .
@@ -2213,45 +2898,70 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 {
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering freeBatchGPUmem.");
 
-  setDevice(batch) ;
+  setDevice(batch->device) ;
 
   FOLD // Free host memory
   {
-#ifdef STPMSG
-    printf("\t\tfree host memory\n", batch);
-#endif
+    infoMSG(2,2,"Free host memory\n");
 
-    freeNull(batch->normPowers);
+    freeNull(batch->h_normPowers);
   }
 
   FOLD // Free pinned memory
   {
-#ifdef STPMSG
-    printf("\t\tfree pinned memory\n", batch);
-#endif
+    infoMSG(2,2,"Free pinned memory\n");
+
     cudaFreeHostNull(batch->h_iData);
-    cudaFreeHostNull(batch->h_retData);
+    cudaFreeHostNull(batch->h_outData1);
   }
 
   FOLD // Free device memory
   {
-#ifdef STPMSG
-    printf("\t\tfree device memory\n", batch);
-#endif
+    infoMSG(2,2,"Free device memory\n");
 
+    FOLD // Free the output memory  .
+    {
+      if ( batch->d_outData1 == batch->d_planeMult )
+      {
+        // d_outData1 is re using d_planeMult so don't free
+        batch->d_outData1 = NULL;
+      }
+      else if ( batch->d_outData2 == batch->d_planeMult )
+      {
+        // d_outData2 is re using d_planeMult so don't free
+        batch->d_outData2 = NULL;
+      }
+
+      if ( batch->d_outData1 == batch->d_outData2 )
+      {
+        // They are the same so only free one
+        cudaFreeNull(batch->d_outData1);
+        batch->d_outData2 = NULL;
+      }
+      else
+      {
+        // Using separate output so free both
+        cudaFreeNull(batch->d_outData1);
+        cudaFreeNull(batch->d_outData2);
+      }
+    }
+
+    // Free the input and planes
     cudaFreeNull(batch->d_iData);
-    cudaFreeNull(batch->d_plainData );
-    cudaFreeNull(batch->d_plainPowers);
-    cudaFreeNull(batch->d_retData);
+    cudaFreeNull(batch->d_planeMult );
+    cudaFreeNull(batch->d_planePowr );
+
+    // Free the rval arrays used during generation and search stages
+    freeRvals(batch, &batch->rArr1, &batch->rArraysPlane);
+    if ( batch->flags & FLAG_SEPRVAL )
+      freeRvals(batch, &batch->rArr2, &batch->rArraysSrch);
   }
 
-  FOLD // Free textures for the f-∂f plains  .
+  FOLD // Free textures for the f-∂f planes  .
   {
-    if ( batch->flag & FLAG_SAS_TEX )
+    if ( batch->flags & FLAG_SAS_TEX )
     {
-#ifdef STPMSG
-      printf("\t\tfree textures\n", batch);
-#endif
+      infoMSG(2,2,"Free textures\n");
 
       for (int i = 0; i < batch->noStacks; i++)
       {
@@ -2259,20 +2969,18 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 
         for (int j = 0; j< cStack->noInStack; j++)
         {
-          cuFFdot* cPlain = &cStack->plains[j];
+          cuFFdot* cPlane = &cStack->planes[j];
 
-          if ( cPlain->datTex )
+          if ( cPlane->datTex )
           {
-            CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlain->datTex), "Creating texture from the plain data.");
-            cPlain->datTex = (fCplxTex)0;
+            CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlane->datTex), "Creating texture from the plane data.");
+            cPlane->datTex = (fCplxTex)0;
           }
         }
       }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plain data.");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
     }
   }
-
-
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Exiting freeBatchGPUmem.");
 }
@@ -2288,142 +2996,168 @@ void freeBatch(cuFFdotBatch* batch)
   FOLD // Free host memory
   {
     freeNull(batch->stacks);
-    freeNull(batch->plains);
+    freeNull(batch->planes);
 
-#ifdef TIMING
-    freeNull(batch->copyH2DTime );
-    freeNull(batch->normTime    );
-    freeNull(batch->InpFFTTime  );
-    freeNull(batch->multTime    );
-    freeNull(batch->InvFFTTime  );
-    freeNull(batch->searchTime  );
-    freeNull(batch->resultTime  );
-    freeNull(batch->copyD2HTime );
-#endif
+    if ( batch->flags & FLAG_TIME )
+    {
+      freeNull(batch->copyH2DTime   );
+      freeNull(batch->normTime      );
+      freeNull(batch->InpFFTTime    );
+      freeNull(batch->multTime      );
+      freeNull(batch->InvFFTTime    );
+      freeNull(batch->copyToPlnTime );
+      freeNull(batch->searchTime    );
+      freeNull(batch->resultTime    );
+      freeNull(batch->copyD2HTime   );
+    }
   }
 
 }
 
-cuOptCand* initOptCand(searchSpecs* sSpec)
+/** Initiate a optimisation plane
+ * If oPln has not been pre initialised and is NULL it will create a new data structure.
+ * If oPln has been pre initialised the device ID and Idx are used!
+ *
+ */
+cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0 )
 {
-  cuOptCand* oPln;
+  searchSpecs* sSpec = sSrch->sSpec;
 
-  oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
-  memset(oPln, 0, sizeof(cuOptCand));
+  FOLD // Get the possibly pre-initialised optimisation plane  .
+  {
+    if ( !oPln )
+    {
+      oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
+      memset(oPln,0,sizeof(cuOptCand));
 
-  int       noHarms   = (1<<(sSpec->noHarmStages-1));
+      if ( devLstId < MAX_GPUS )
+      {
+	oPln->device = sSrch->gSpec->devId[devLstId];
+      }
+      else
+      {
+	fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
+	exit(EXIT_FAILURE);
+      }
+    }
+    else
+    {
+      if ( oPln->device != sSrch->gSpec->devId[devLstId] )
+      {
+	bool found = false;
 
-  oPln->maxNoR        = 512;
-  oPln->maxNoZ        = 512;
-  oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;   // This needs to be multiplied by the size of the output element
-  oPln->alignment     = getMemAlignment();
-  float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
-  zMax                = MAX(zMax, 60 * noHarms );
-  zMax                = MAX(zMax, sSpec->zMax * 34 + 50 ); // TMP
-  oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
+	for ( int lIdx = 0; lIdx < MAX_GPUS; lIdx++ )
+	{
+	  if ( sSrch->gSpec->devId[lIdx] == oPln->device )
+	  {
+	    devLstId 	= lIdx;
+	    found 	= true;
+	    break;
+	  }
+	}
 
-  // Create streams
-  CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
-  nvtxNameCudaStreamA(oPln->stream, "Optimisation Stream");
+	if (!found)
+	{
+	  if (devLstId < MAX_GPUS )
+	  {
+	    oPln->device = sSrch->gSpec->devId[devLstId];
+	  }
+	  else
+	  {
+	    fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
+	    exit(EXIT_FAILURE);
+	  }
 
-  // Events
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
-  CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
+	}
+      }
+    }
+  }
 
+  FOLD // Create stuff  .
+  {
+    setDevice(oPln->device) ;
+
+    int   noHarms       = (1<<(sSpec->noHarmStages-1));
+    float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
+    zMax                = MAX(zMax, 60 * noHarms );
+    zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  		// TMP: This may be a bit high!
+
+    oPln->cuSrch	= sSrch;					// Set the pointer t the search specifications
+    oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );		// The halfwidth of the largest plane we think we may handle
+    oPln->maxNoR        = 512;						// The maximum number of r points we can handle
+    oPln->maxNoZ        = 512;						// The maximum number of z points we can handle
+    oPln->alignment     = sSrch->gSpec->devInfo[devLstId].alignment;	// Read from GPU specs
+
+    FOLD // Create streams  .
+    {
+      CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
+      char nmStr[1024];
+      sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
+      nvtxNameCudaStreamA(oPln->stream, nmStr);
+    }
+
+    FOLD // Events  .
+    {
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
+    }
+
+    FOLD // Allocate device memory  .
+    {
+      size_t freeMem, totalMem;
+
+      oPln->outSz         =  oPln->maxNoR    *oPln->maxNoZ *sizeof(float);
+      oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
+
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+
+      if ( (oPln->inpSz + oPln->outSz) > freeMem )
+      {
+	printf("Not enough GPU memory to create any more stacks.\n");
+	free(oPln);
+	return NULL;
+      }
+      else
+      {
+	// Allocate device memory
+	CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+	CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+
+	// Allocate host memory
+	CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+	CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+      }
+    }
+  }
   return oPln;
-}
-
-cuOptCand* initOptPln(searchSpecs* sSpec)
-{
-  nvtxRangePush("Init plain");
-  size_t freeMem, totalMem;
-
-  int       noHarms   = (1<<(sSpec->noHarmStages-1));
-
-  cuOptCand* oPln     = initOptCand(sSpec);
-
-  oPln->outSz        *= sizeof(float);
-  oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
-
-  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-
-  if ( (oPln->inpSz + oPln->outSz) > freeMem )
-  {
-    printf("Not enough GPU memory to create any more stacks.\n");
-    free(oPln);
-    return NULL;
-  }
-  else
-  {
-    // Allocate device memory
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
-
-    // Allocate host memory
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
-  }
-
-  nvtxRangePop();
-
-  return(oPln);
-}
-
-cuOptCand* initOptSwrm(searchSpecs* sSpec)
-{
-  size_t freeMem, totalMem;
-
-  cuOptCand* oPln     = initOptCand(sSpec);
-
-  oPln->outSz         *= sizeof(candOpt);
-  oPln->inpSz         = sSpec->fftInf.nor * sizeof(fcomplex) ;
-
-  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-
-  if ( (oPln->inpSz + oPln->outSz) > freeMem )
-  {
-    printf("Not enough GPU memory to create any more stacks.\n");
-    free(oPln);
-    return NULL;
-  }
-  else
-  {
-    // Allocate device memory
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),    "Failed to allocate device memory for kernel stack.");
-    CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),    "Failed to allocate device memory for kernel stack.");
-
-    // Allocate host memory
-    CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out, oPln->outSz), "Failed to allocate device memory for kernel stack.");
-
-    // Copy FFT to device memory
-    CUDA_SAFE_CALL(cudaMemcpy(oPln->d_inp, sSpec->fftInf.fft, oPln->inpSz, cudaMemcpyHostToDevice),      "Copying FFT to device");
-  }
-
-  return(oPln);
 }
 
 int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
 {
+  infoMSG(4,4,"setStackInfo\n" );
+
   stackInfo* dcoeffs;
   cudaGetSymbolAddress((void **)&dcoeffs, STACKS );
 
   for (int i = 0; i < batch->noStacks; i++)
   {
+    infoMSG(4,5,"stack %i\n",i);
+
     cuFfdotStack* cStack  = &batch->stacks[i];
     stackInfo*    cInf    = &h_inf[i];
 
     cInf->noSteps         = batch->noSteps;
-    cInf->noPlains        = cStack->noInStack;
+    cInf->noPlanes        = cStack->noInStack;
     cInf->famIdx          = cStack->startIdx;
-    cInf->flag            = batch->flag;
+    cInf->flags           = batch->flags;
 
     cInf->d_iData         = cStack->d_iData;
-    cInf->d_plainData     = cStack->d_plainData;
-    cInf->d_plainPowers   = cStack->d_plainPowers;
+    cInf->d_planeData     = cStack->d_planeMult;
+    cInf->d_planePowers   = cStack->d_planePowr;
 
     // Set the pointer to constant memory
     cStack->stkIdx        = offset+i;
@@ -2441,26 +3175,28 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
 
     int           height[MAX_HARM_NO];
     int           stride[MAX_HARM_NO];
-    int            width[MAX_HARM_NO];
-    fcomplexcu*   kerPnt[MAX_HARM_NO];
+    int           width[MAX_HARM_NO];
+    void*         kerPnt[MAX_HARM_NO];
 
     FOLD // Set values  .
     {
-      for (int i = 0; i < batch->noHarms; i++)
+      for (int i = 0; i < batch->noGenHarms; i++)
       {
+        cuFfdotStack* cStack  = &batch->stacks[ batch->hInfos[i].stackNo];
+
         height[i] = batch->hInfos[i].height;
-        stride[i] = batch->hInfos[i].inpStride;
+        stride[i] = cStack->strideCmplx;
         width[i]  = batch->hInfos[i].width;
         kerPnt[i] = batch->kernels[i].d_kerData;
 
-        if ( (i>=batch->noHarms) &&  (batch->hInfos[i].width != batch->hInfos[i].inpStride) )
+        if ( (i>=batch->noGenHarms) &&  (batch->hInfos[i].width != cStack->strideCmplx) )
         {
           fprintf(stderr,"ERROR: Width is not the same as stride, using width this may case errors in the multiplication.\n");
         }
       }
 
       // Rest
-      for (int i = batch->noHarms; i < MAX_HARM_NO; i++)
+      for (int i = batch->noGenHarms; i < MAX_HARM_NO; i++)
       {
         height[i] = 0;
         stride[i] = 0;
@@ -2470,19 +3206,70 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
     }
 
     cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_HARM);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
 
     cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_HARM);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
 
     cudaGetSymbolAddress((void **)&dcoeffs, WIDTH_HARM);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &width,  MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &width,  MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
 
     cudaGetSymbolAddress((void **)&dcoeffs, KERNEL_HARM);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(fcomplexcu*), cudaMemcpyHostToDevice),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &kerPnt, MAX_HARM_NO * sizeof(void*), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
   }
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error preparing the constant memory values for the multiplications.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the constant memory values for the multiplications.");
+
+  return 1;
+}
+
+int setStackVals( cuFFdotBatch* batch )
+{
+  stackInfo* dcoeffs;
+
+  if ( batch->noStacks > MAX_STACKS )
+  {
+    fprintf(stderr, "ERROR: Too many stacks in family in function %s in %s.", __FUNCTION__, __FILE__);
+    exit(EXIT_FAILURE);
+  }
+
+  //if ( batch->isKernel )
+  {
+    int         l_STK_STRD[MAX_STACKS];
+    char        l_STK_INP[MAX_STACKS][4069];
+
+    for (int i = 0; i < batch->noStacks; i++)
+    {
+      cuFfdotStack* cStack  = &batch->stacks[i];
+
+      l_STK_STRD[i] = cStack->strideCmplx;
+
+      int         off     = 0;
+      char        inpIdx  = 0;
+
+      // Create the actual texture object
+      for (int j = 0; j < cStack->noInStack; j++)        // Loop through planes in stack
+      {
+        cuHarmInfo*  hInf = &cStack->harmInf[j];
+
+        // Create the actual texture object
+        for (int k = 0; k < batch->noSteps; k++)        // Loop through planes in stack
+        {
+          for ( int h = 0; h < hInf->height; h++ )
+          {
+            l_STK_INP[i][off++] = inpIdx;
+          }
+          inpIdx++;
+        }
+      }
+    }
+
+    cudaGetSymbolAddress((void **)&dcoeffs, STK_STRD );
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, l_STK_STRD, sizeof(l_STK_STRD), cudaMemcpyHostToDevice, batch->stacks->initStream),              "Copying stack info to device");
+
+    cudaGetSymbolAddress((void **)&dcoeffs, STK_INP );
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, l_STK_INP, sizeof(l_STK_INP), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stack info to device");
+  }
 
   return 1;
 }
@@ -2495,27 +3282,203 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
  * @param noStacks
  * @return
  */
-int setConstStkInfo(stackInfo* h_inf, int noStacks)
+int setConstStkInfo(stackInfo* h_inf, int noStacks,  cudaStream_t stream)
 {
+  infoMSG(3,4,"set ConstStkInfo(%i)\n", noStacks );
+
   void *dcoeffs;
 
   // TODO: Do a test to see if  we are on the correct device
 
   cudaGetSymbolAddress((void **)&dcoeffs, STACKS);
-  CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, h_inf, noStacks * sizeof(stackInfo), cudaMemcpyHostToDevice),      "Copying stack info to device");
+  CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, h_inf, noStacks * sizeof(stackInfo), cudaMemcpyHostToDevice, stream),      "Copying stack info to device");
 
   return 1;
 }
 
-void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
+void drawPlaneCmplx(fcomplexcu* ffdotPlane, char* name, int stride, int height)
 {
   float *h_fArr = (float*) malloc(stride * height * sizeof(fcomplexcu));
-  //float DestS   = ffdotPlain->ffPowWidth*sizeof(float);
-  //float SourceS = ffdotPlain->ffPowStride;
-  CUDA_SAFE_CALL(cudaMemcpy2D(h_fArr, stride * sizeof(fcomplexcu), ffdotPlain, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
+  //float DestS   = ffdotPlane->ffPowWidth*sizeof(float);
+  //float SourceS = ffdotPlane->ffPowStride;
+  CUDA_SAFE_CALL(cudaMemcpy2D(h_fArr, stride * sizeof(fcomplexcu), ffdotPlane, stride * sizeof(fcomplexcu), stride * sizeof(fcomplexcu), height, cudaMemcpyDeviceToHost), "Failed to copy data from device to host");
 
   //draw2DArray(name, h_fArr, stride*2, height);
   free(h_fArr);
+}
+
+void timeSynch(cuFFdotBatch* batch)
+{
+  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  {
+    if ( batch->flags & FLAG_TIME ) // Timing  .
+    {
+      infoMSG(1,2,"Timing\n");
+
+      float time;         // Time in ms of the thing
+      cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+      FOLD // Norm Timing  .
+      {
+        if ( !(batch->flags & CU_NORM_CPU) )
+        {
+          for (int ss = 0; ss < batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
+
+            if ( ret != cudaErrorNotReady )
+            {
+#pragma omp atomic
+              batch->normTime[ss] += time;
+            }
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Norm Timing");
+        }
+      }
+
+      FOLD // Input FFT timing  .
+      {
+        if ( !(batch->flags & CU_INPT_FFT_CPU) )
+        {
+          for (int ss = 0; ss < batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
+
+            if ( ret != cudaErrorNotReady )
+            {
+#pragma omp atomic
+              batch->InpFFTTime[ss] += time;
+            }
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Input FFT timing");
+        }
+      }
+
+      FOLD // Copy input data  .
+      {
+        ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
+
+        if ( ret != cudaErrorNotReady )
+        {
+#pragma omp atomic
+          batch->copyH2DTime[0] += time;
+        }
+
+        CUDA_SAFE_CALL(cudaGetLastError(), "Copy input timing");
+      }
+
+      FOLD // Multiplication timing  .
+      {
+        if ( !(batch->flags & FLAG_MUL_CB) )
+        {
+          // Did the convolution by separate kernel
+
+          if ( batch->flags & FLAG_MUL_BATCH )   	// Convolution was done on the entire batch  .
+          {
+            ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
+
+            if ( ret != cudaErrorNotReady )
+            {
+#pragma omp atomic
+              batch->multTime[0] += time;
+            }
+          }
+          else                                    // Convolution was on a per stack basis  .
+          {
+            for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
+            {
+              cuFfdotStack* cStack = &batch->stacks[ss];
+
+              ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
+
+              if ( ret != cudaErrorNotReady )
+              {
+#pragma omp atomic
+                batch->multTime[ss] += time;
+              }
+            }
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Multiplication timing");
+        }
+      }
+
+      FOLD // Inverse FFT timing  .
+      {
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+
+          ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->InvFFTTime[ss] += time;
+          }
+        }
+
+        CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
+      }
+
+      FOLD // Copy to in-mem plane timing  .
+      {
+        if ( batch->flags & FLAG_SS_INMEM )
+        {
+          for (int ss = 0; ss < batch->noStacks; ss++)
+          {
+            cuFfdotStack* cStack = &batch->stacks[ss];
+
+            ret = cudaEventElapsedTime(&time, cStack->ifftMemInit, cStack->ifftMemComp);
+            if ( ret != cudaErrorNotReady )
+            {
+#pragma omp atomic
+              batch->copyToPlnTime[ss] += time;
+            }
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Copy to in-mem plane timing");
+        }
+      }
+
+      FOLD // Search Timing  .
+      {
+        if ( !(batch->flags & FLAG_SS_CPU) && !(batch->flags & FLAG_SS_INMEM ) )
+        {
+          ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
+
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->searchTime[0] += time;
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
+        }
+      }
+
+      FOLD // Copy D2H  .
+      {
+        if ( !(batch->flags & FLAG_SS_INMEM ) )
+        {
+          ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
+
+          if ( ret != cudaErrorNotReady )
+          {
+#pragma omp atomic
+            batch->copyD2HTime[0] += time;
+          }
+
+          CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
+        }
+      }
+    }
+  }
 }
 
 /** Cycle the arrays of r-values  .
@@ -2524,112 +3487,189 @@ void drawPlainCmplx(fcomplexcu* ffdotPlain, char* name, int stride, int height)
  */
 void cycleRlists(cuFFdotBatch* batch)
 {
-#ifdef STPMSG
-  printf("\tcycleRlists\n");
-#endif
-  rVals*** rvals    = batch->rSearch;
+  infoMSG(2,2,"Cycle R lists\n");
 
-  batch->rSearch = batch->rConvld;
-  batch->rConvld = batch->rInput;
-  batch->rInput  = rvals;
+  rVals** hold = (*batch->rAraays)[batch->noRArryas-1];
+  for ( int i = batch->noRArryas-1; i > 0; i-- )
+  {
+    (*batch->rAraays)[i] =  (*batch->rAraays)[i - 1];
+  }
+  (*batch->rAraays)[0] = hold;
+
+//  if ( msgLevel >= 3 )
+//  {
+//    for ( int i = 0 ; i < batch->noRArryas; i++ )
+//    {
+//      rVals* rVal = &(*batch->rAraays)[i][0][0];
+//
+//      printf("%i  step: %03i  r-low: %8.1f  numrs: %06ld\n", i, rVal->step, rVal->drlo, rVal->numrs );
+//    }
+//  }
 }
 
-void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, int search, fcomplexcu* fft, long long* numindep )
+/** Cycle the arrays of r-values  .
+ *
+ * @param batch
+ */
+void CycleBackRlists(cuFFdotBatch* batch)
 {
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering search_ffdot_batch_CU.");
+  infoMSG(2,1,"CycleBackRlists\n");
 
-#ifdef STPMSG
-  printf("  search_ffdot_batch_CU\n");
-#endif
-
-  FOLD // Initialise input data  .
+  rVals** hold = (*batch->rAraays)[0];
+  for ( int i = 0; i < batch->noRArryas-1; i++ )
   {
-    initInput(batch, searchRLow, searchRHi, norm_type, fft);
+    (*batch->rAraays)[i] =  (*batch->rAraays)[i + 1];
   }
 
-#ifdef SYNCHRONOUS
+  (*batch->rAraays)[batch->noRArryas-1] = hold;
+}
 
-  FOLD // Multiply & inverse FFT  .
+void cycleOutput(cuFFdotBatch* batch)
+{
+  infoMSG(2,2,"Cycle output\n");
+
+  void* d_hold = batch->d_outData1;
+  void* h_hold = batch->h_outData1;
+
+  batch->d_outData1 = batch->d_outData2;
+  batch->h_outData1 = batch->h_outData2;
+
+  batch->d_outData2 = d_hold;
+  batch->h_outData2 = h_hold;
+}
+
+void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
+{
+  infoMSG(1,1,"search_ffdot_batch_CU\n");
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering search_ffdot_batch_CU.");
+
+  // Calculate R values
+  setActiveBatch(batch, 0);
+  setGenRVals(batch, searchRLow, searchRHi );
+
+  if ( batch->flags & FLAG_SYNCH )
   {
+    initInput(batch, norm_type);
+
     multiplyBatch(batch);
-  }
 
-  FOLD // Sum & Search  .
+    IFFTBatch(batch);
+
+    if  ( batch->flags & FLAG_SS_INMEM )
+    {
+      copyToInMemPln(batch);
+    }
+    else
+    {
+      sumAndSearch(batch);
+
+      getResults(batch);
+
+      processSearchResults(batch);
+    }
+  }
+  else
   {
-    sumAndSearch(batch);
+    setActiveBatch(batch, 0);
+    initInput(batch, norm_type);
+
+    if  ( batch->flags & FLAG_SS_INMEM )
+    {
+      setActiveBatch(batch, 0);
+      multiplyBatch(batch);
+
+      setActiveBatch(batch, 1);
+      copyToInMemPln(batch);
+
+      setActiveBatch(batch, 0);
+      IFFTBatch(batch);
+    }
+    else
+    {
+      setActiveBatch(batch, 1);
+      sumAndSearch(batch);
+
+      setActiveBatch(batch, 2);
+      processSearchResults(batch);
+
+      setActiveBatch(batch, 1);
+      getResults(batch);
+
+      setActiveBatch(batch, 0);
+      convolveBatch(batch);
+    }
   }
 
-#else
-
-  FOLD // Sum & Search  .
-  {
-    sumAndSearch(batch);
-  }
-
-  FOLD // Multiply & inverse FFT  .
-  {
-    multiplyBatch(batch);
-  }
-
-#endif
-
-#ifdef STPMSG
-  printf("  Done (search_ffdot_batch_CU)\n");
-#endif
+  // Change R-values
+  cycleRlists(batch);
+  setActiveBatch(batch, 1);
 }
 
 void finish_Search(cuFFdotBatch* batch)
 {
+  infoMSG(1,1,"Finish search\n");
+
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
+    infoMSG(3,4,"pre synchronisation [blocking] ifftMemComp - stack\n");
+
     for (int ss = 0; ss < batch->noStacks; ss++)
     {
+      infoMSG(4,5,"Stack %i\n", ss);
+
       nvtxRangePush("EventSynch");
       cuFfdotStack* cStack = &batch->stacks[ss];
-      CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "ERROR: cudaEventSynchronize.");
+      CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
       nvtxRangePop();
     }
 
+    infoMSG(3,4,"pre synchronisation [blocking] processComp\n");
+
     nvtxRangePush("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "ERROR: cudaEventSynchronize.");
+    CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
     nvtxRangePop();
   }
 }
 
 void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type, fcomplexcu* fft, long long* numindep, float* powers)
 {
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering ffdot_planeCU2.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdot_planeCU2.");
 
   FOLD // Initialise input data  .
   {
-    initInput(batch, searchRLow, searchRHi, norm_type, fft);
+    setActiveBatch(batch, 0);
+    initInput(batch, norm_type);
   }
 
-#ifdef SYNCHRONOUS
-
-  FOLD // Multiply & inverse FFT  .
+  if ( batch->flags & FLAG_SYNCH )
   {
-    multiplyBatch(batch);
-  }
 
-  FOLD // Sum & Max
+    FOLD // Multiply & inverse FFT  .
+    {
+      convolveBatch(batch);
+    }
+
+    FOLD // Sum & Max
+    {
+      //sumAndMax(batch, numindep, powers);
+    }
+
+  }
+  else
   {
-    //sumAndMax(batch, numindep, powers);
+
+    FOLD // Sum & Max
+    {
+      //sumAndMax(batch, numindep, powers);
+    }
+
+    FOLD // Multiply & inverse FFT  .
+    {
+      convolveBatch(batch);
+    }
+
   }
-
-#else
-
-  FOLD // Sum & Max
-  {
-    //sumAndMax(batch, numindep, powers);
-  }
-
-  FOLD // Multiply & inverse FFT  .
-  {
-    multiplyBatch(batch);
-  }
-
-#endif
 
 }
 
@@ -2651,9 +3691,9 @@ int selectDevice(int device, int print)
     device = 0;
   }
 
-  CUDA_SAFE_CALL(cudaSetDevice(device), "ERROR: cudaSetDevice");
-  CUDA_SAFE_CALL(cudaDeviceReset(), "ERROR: cudaDeviceReset");
-  CUDA_SAFE_CALL(cudaGetLastError(), "CUDA Error At start of everything?.\n");
+  CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
+  CUDA_SAFE_CALL(cudaDeviceReset(), "Failed to set device using : cudaDeviceReset");
+  CUDA_SAFE_CALL(cudaGetLastError(), "At start of everything?.\n");
   CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
   if (currentDevvice!= device)
   {
@@ -2683,12 +3723,12 @@ void printCands(const char* fileName, GSList *cands, double T)
     fprintf ( stderr, "ERROR: Unable to open log file %s\n", fileName );
   else
   {
-    fprintf(myfile, "#\tr\tf\tz\tfd\tsig\tpower\tharm \n");
+    fprintf(myfile, "%4s\t%14s\t%10s\t%14s\t%13s\t%9s\t%7s\t%2s \n", "#", "t", "f", "z", "fd", "sig", "power", "harm" );
     int i = 0;
 
     while ( inp_list->next )
     {
-      fprintf(myfile, "%i\t%14.5f\t%10.6f\t%14.2f\t%13.10f\t%-7.4f\t%7.2f\t%i \n", i+1, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->r / T, ((accelcand *) (inp_list->data))->z,((accelcand *) (inp_list->data))->z/T/T, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
+      fprintf(myfile, "%4i\t%14.5f\t%10.6f\t%14.2f\t%13.10f\t%9.4f\t%7.2f\t%2i\n", i+1, ((accelcand *) (inp_list->data))->r, ((accelcand *) (inp_list->data))->r / T, ((accelcand *) (inp_list->data))->z,((accelcand *) (inp_list->data))->z/T/T, ((accelcand *) (inp_list->data))->sigma, ((accelcand *) (inp_list->data))->power, ((accelcand *) (inp_list->data))->numharm );
       inp_list = inp_list->next;
       i++;
     }
@@ -2713,17 +3753,17 @@ void printContext()
   printf("Thread %02i  currentDevvice: %i Context %p \n", trd, currentDevvice, pctx);
 }
 
-int setDevice(cuFFdotBatch* batch)
+int setDevice(int device)
 {
   int dev;
 
   CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
 
-  if ( dev != batch->device )
+  if ( dev != device )
   {
-    CUDA_SAFE_CALL(cudaSetDevice(batch->device), "ERROR: cudaSetDevice");
+    CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
     CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
-    if ( dev != batch->device )
+    if ( dev != device )
     {
       fprintf(stderr, "ERROR: CUDA Device not set.\n");
       exit(EXIT_FAILURE);
@@ -2741,6 +3781,7 @@ gpuSpecs gSpec(int devID = -1 )
   if (devID < 0 )
   {
     gSpec.noDevices      = getGPUCount();
+
     for ( int i = 0; i < gSpec.noDevices; i++)
       gSpec.devId[i]        = i;
   }
@@ -2756,6 +3797,7 @@ gpuSpecs gSpec(int devID = -1 )
     gSpec.noDevBatches[i] = 2;
     gSpec.noDevSteps[i]   = 4;
   }
+
   return gSpec;
 }
 
@@ -2768,7 +3810,7 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
 {
   gpuSpecs gpul;
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering readGPUcmd.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering readGPUcmd.");
 
   if ( cmd->gpuP ) // Determine the index and number of devices
   {
@@ -2795,18 +3837,16 @@ gpuSpecs readGPUcmd(Cmdline *cmd)
     else
       gpul.noDevBatches[dev] = cmd->nbatch[dev];
 
-#ifdef TIMING
-    if ( gpul.noDevBatches[dev] > 1 )
-    {
-      //fprintf(stderr,"WARING: Compiled in timing mode, user requested %i batches but will only process 1 on device %i.\n", gpul.noDevBatches[dev], gpul.devId[dev] );
-      //gpul.noDevBatches[dev] = 1;
-    }
-#endif
-
     if ( dev >= cmd->nstepsC )
       gpul.noDevSteps[dev] = cmd->nsteps[cmd->nbatchC-1];
     else
       gpul.noDevSteps[dev] = cmd->nsteps[dev];
+
+    if ( dev >= cmd->numoptC )
+      gpul.noDevOpt[dev] = cmd->numopt[cmd->nbatchC-1];
+    else
+      gpul.noDevOpt[dev] = cmd->numopt[dev];
+
   }
 
   return gpul;
@@ -2820,9 +3860,13 @@ bool strCom(const char* str1, const char* str2)
     return 0;
 }
 
+/** Read accel search details from the text file
+ *
+ * @param sSpec
+ */
 void readAccelDefalts(searchSpecs *sSpec)
 {
-  uint* flags = &(sSpec->flags);
+  int64_t*  flags = &(sSpec->flags);
   FILE *file;
   char fName[1024];
   sprintf(fName, "%s/lib/GPU_defaults.txt", getenv("PRESTO"));
@@ -2832,8 +3876,8 @@ void readAccelDefalts(searchSpecs *sSpec)
     printf("Reading GPU search settings from %s\n",fName);
 
     char* line;
-    char line2[1024];
-    int lineno = 0;
+    char  line2[1024];
+    int   lineno = 0;
 
     char *rest;
 
@@ -2847,33 +3891,54 @@ void readAccelDefalts(searchSpecs *sSpec)
       while ( *line <= 32 &&  *line != 10 )
         line++;
 
+      // Set to only be the word
+      int flagLen = 0;
+      char* flagEnd = line;
+      while ( *flagEnd != ' ' && *flagEnd != 0 && *flagEnd != 10 )
+      {
+        flagLen++;
+        flagEnd++;
+      }
+
       int ll = strlen(line);
 
       if      ( strCom(line, "FLAG_ITLV_ROW" ) || strCom(line, "INTERLEAVE_ROW" ) ||  strCom(line, "IL_ROW" ) )
       {
-        (*flags) &= ~FLAG_ITLV_ALL;
         (*flags) |= FLAG_ITLV_ROW;
       }
-      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) || strCom(line, "INTERLEAVE_PLAIN" ) || strCom(line, "IL_PLN" ) )
+      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) ||  strCom(line, "IL_PLN" ) )
       {
-        (*flags) &= ~FLAG_ITLV_ALL;
-        (*flags) |= FLAG_ITLV_PLN;
+        (*flags) &= ~FLAG_ITLV_ROW;
+      }
+
+      else if ( strCom(line, "FLAG_KER_STD"  ) )
+      {
+        (*flags) &= ~FLAG_KER_HIGH;
+      }
+      else if ( strCom(line, "FLAG_KER_HIGH" ) )
+      {
+        (*flags) |= FLAG_KER_HIGH;
+      }
+      else if ( strCom(line, "FLAG_KER_MAX"  ) )
+      {
+        (*flags) |= FLAG_KER_MAX;
+      }
+      else if ( strCom(line, "FLAG_CENTER"   ) )
+      {
+        (*flags) |= FLAG_CENTER;
       }
 
       else if ( strCom(line, "CU_NORM_CPU" ) || strCom(line, "NORM_CPU" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
       }
       else if ( strCom(line, "CU_NORM_GPU" ) || strCom(line, "NORM_GPU" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
-        (*flags) |= CU_NORM_GPU;
+        (*flags) &= ~CU_NORM_CPU;
       }
 
       else if ( strCom(line, "CU_INPT_FFT_CPU" ) || strCom(line, "CPU_FFT" ) || strCom(line, "FFT_CPU" ) )
       {
-        (*flags) &= ~CU_NORM_ALL;
         (*flags) |= CU_NORM_CPU;
         (*flags) |= CU_INPT_FFT_CPU;
       }
@@ -2885,41 +3950,57 @@ void readAccelDefalts(searchSpecs *sSpec)
       else if ( strCom(line, "FLAG_MUL_00" ) || strCom(line, "MUL_00" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_00;
+        (*flags) |=  FLAG_MUL_00;
       }
-      else if ( strCom(line, "FLAG_MUL_10" ) || strCom(line, "MUL_10" ) )
+      else if ( strCom(line, "FLAG_MUL_11" ) || strCom(line, "MUL_11" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_10;
+        (*flags) |=  FLAG_MUL_11;
       }
       else if ( strCom(line, "FLAG_MUL_21" ) || strCom(line, "MUL_21" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_21;
+        (*flags) |=  FLAG_MUL_21;
       }
       else if ( strCom(line, "FLAG_MUL_22" ) || strCom(line, "MUL_22" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_22;
+        (*flags) |=  FLAG_MUL_22;
       }
       else if ( strCom(line, "FLAG_MUL_23" ) || strCom(line, "MUL_23" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_23;
+        (*flags) |=  FLAG_MUL_23;
       }
       else if ( strCom(line, "FLAG_MUL_30" ) || strCom(line, "MUL_30" ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |= FLAG_MUL_30;
+        (*flags) |=  FLAG_MUL_30;
+      }
+      else if ( strCom(line, "FLAG_MUL_CB" ) || strCom(line, "MUL_CB" ) )
+      {
+#if CUDA_VERSION >= 6050
+        (*flags) &= ~FLAG_MUL_ALL;
+        (*flags) |=  FLAG_MUL_CB;
+#else
+        line[flagLen] = 0;
+        fprintf(stderr, "WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif
       }
       else if ( strCom(line, "FLAG_MUL_A"  ) || strCom(line, "MUL_A"  ) )
       {
         (*flags) &= ~FLAG_MUL_ALL;
       }
 
+      else if ( strCom(line, "FLAG_FFT_SEPERATE"  ) || strCom(line, "FLAG_FFT_SEP"  ) )
+      {
+        (*flags) |= CU_FFT_SEP;
+      }
+
       else if ( strCom(line, "FLAG_TEX_MUL" ) )
       {
-        (*flags) |= FLAG_TEX_MUL;
+        fprintf(stderr, "WARNING: The flag FLAG_TEX_MUL has been deprecated.\n");
+        //(*flags) |= FLAG_TEX_MUL;
       }
 
       else if ( strCom(line, "MUL_Chunk"  ) || strCom(line, "MUL_CHUNK"  ) )
@@ -2940,7 +4021,8 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else
         {
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", "MUL_CHUNK", lineno, fName);
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
         }
       }
       else if ( strCom(line, "MUL_Slices" ) || strCom(line, "MUL_SLICES" ) )
@@ -2961,32 +4043,32 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else
         {
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", "MUL_SLICES", lineno, fName);
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
         }
       }
 
-      else if ( strCom(line, "FLAG_CUFFT_CB_IN" ) || strCom(line, "CB_IN" ) )
+      else if ( strCom(line, "FLAG_CUFFT_CB_POW" ) 		|| strCom(line, "CB_POW"   ) )
       {
-#if __CUDACC_VER__ >= 60500
-        (*flags) |= FLAG_CUFFT_CB_IN;
+#if CUDA_VERSION >= 6050
+        (*flags) |= FLAG_CUFFT_CB_POW;
 #else
-        fprintf(stderr,"ERROR: use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
+        line[flagLen] = 0;
+        fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 #endif
       }
-
-      else if ( strCom(line, "FLAG_CUFFT_CB_OUT" ) || strCom(line, "CB_OUT" ) )
+      else if ( strCom(line, "FLAG_CUFFT_CB_INMEM" )  || strCom(line, "CB_INMEM" ) )
       {
-#if __CUDACC_VER__ >= 60500
-        (*flags) |= FLAG_CUFFT_CB_OUT;
+#if CUDA_VERSION >= 6050
+        (*flags) |= FLAG_CUFFT_CB_INMEM;
 #else
-        fprintf(stderr,"ERROR: use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
+        line[flagLen] = 0;
+        fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 #endif
       }
-
-      else if ( strCom(line, "FLAG_NO_CB" ) || strCom(line, "NO_CB" ) )
+      else if ( strCom(line, "FLAG_NO_CB" )           || strCom(line, "NO_CB" 	 ) )
       {
-        (*flags) &= ~FLAG_CUFFT_CB_IN;
-        (*flags) &= ~FLAG_CUFFT_CB_OUT;
+        (*flags) &= ~FLAG_CUFFT_ALL;
       }
 
       else if ( strCom(line, "FLAG_SAS_TEX" ) )
@@ -3009,6 +4091,12 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_SIG_GPU;
       }
 
+      else if ( strCom(line, "SS_INMEM_SZ" ) )
+      {
+        rest                = &line[ strlen("inMemSrchSz")+1];
+        sSpec->ssStepSize   = atoi(rest);
+      }
+
       else if ( strCom(line, "FLAG_SS_CPU" 	) || strCom(line, "SS_CPU" 	) )
       {
         (*flags) &= ~FLAG_SS_ALL;
@@ -3020,7 +4108,7 @@ void readAccelDefalts(searchSpecs *sSpec)
         sSpec->retType &= ~CU_SRT_ALL   ;
         sSpec->retType |= CU_STR_PLN    ;
 
-        if ( (*flags) & FLAG_CUFFT_CB_OUT )
+        if ( (*flags) & FLAG_CUFFT_CB_POW )
         {
           sSpec->retType &= ~CU_TYPE_ALLL   ;
           sSpec->retType |= CU_FLOAT        ;
@@ -3035,33 +4123,17 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
         (*flags) &= ~FLAG_SS_ALL;
         (*flags) |= FLAG_SS_00;
+        (*flags) |= FLAG_RET_STAGES;
       }
       else if ( strCom(line, "FLAG_SS_10"  	) || strCom(line, "SS_10"  	) )
       {
         (*flags) &= ~FLAG_SS_ALL;
         (*flags) |= FLAG_SS_10;
-      }
-      else if ( strCom(line, "FLAG_SS_20"  	) || strCom(line, "SS_20"  	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_20;
-      }
-      else if ( strCom(line, "FLAG_SS_30"  	) || strCom(line, "SS_30"  	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_30;
+        (*flags) |= FLAG_RET_STAGES;
       }
       else if ( strCom(line, "FLAG_SS_INMEM") || strCom(line, "SS_INMEM") )
       {
-#if __CUDACC_VER__ >= 60500
         (*flags) |= FLAG_SS_INMEM;
-        (*flags) |= FLAG_CUFFT_CB_OUT;
-#else
-        fprintf(stderr,"ERROR: use of in-mem search requires CUDA 6.5 for CUFFT callbacks.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
-        (*flags) &= ~FLAG_SS_INMEM;
-        (*flags) &= ~FLAG_CUFFT_CB_OUT;
-#endif
-
       }
       else if ( strCom(line, "FLAG_SS_A"    ) || strCom(line, "SS_A"   	) )
       {
@@ -3079,21 +4151,13 @@ void readAccelDefalts(searchSpecs *sSpec)
         {
           (*flags) &= ~FLAG_SS_ALL;
           (*flags) |= FLAG_SS_00;
+          (*flags) |= FLAG_RET_STAGES;
         }
         else if ( no == 1 )
         {
           (*flags) &= ~FLAG_SS_ALL;
           (*flags) |= FLAG_SS_10;
-        }
-        else if ( no == 2 )
-        {
-          (*flags) &= ~FLAG_SS_ALL;
-          (*flags) |= FLAG_SS_20;
-        }
-        else if ( no == 3 )
-        {
-          (*flags) &= ~FLAG_SS_ALL;
-          (*flags) |= FLAG_SS_30;
+          (*flags) |= FLAG_RET_STAGES;
         }
         else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
         {
@@ -3110,7 +4174,7 @@ void readAccelDefalts(searchSpecs *sSpec)
           sSpec->retType &= ~CU_SRT_ALL   ;
           sSpec->retType |= CU_STR_PLN    ;
 
-          if ( (*flags) & FLAG_CUFFT_CB_OUT )
+          if ( (*flags) & FLAG_CUFFT_CB_POW )
           {
             sSpec->retType &= ~CU_TYPE_ALLL   ;
             sSpec->retType |= CU_FLOAT        ;
@@ -3123,18 +4187,12 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else if ( strCom(line, "INMEM" ) || strCom(line, "inmem" ) )
         {
-#if __CUDACC_VER__ >= 60500
           (*flags) |= FLAG_SS_INMEM;
-          (*flags) |= FLAG_CUFFT_CB_OUT;
-#else
-          fprintf(stderr,"ERROR: use of in-mem search requires CUDA 6.5 for CUFFT callbacks.  (FLAG: %s line %i in %s)\n",line, lineno, fName);
-          (*flags) &= ~FLAG_SS_INMEM;
-          (*flags) &= ~FLAG_CUFFT_CB_OUT;
-#endif
         }
         else
         {
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", "FLAG_SS", lineno, fName);
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
         }
       }
 
@@ -3156,7 +4214,8 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else
         {
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", "MUL_CHUNK", lineno, fName);
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
         }
       }
       else if ( strCom(line, "SS_Slices" ) || strCom(line, "SS_SLICES" ) )
@@ -3177,7 +4236,8 @@ void readAccelDefalts(searchSpecs *sSpec)
         }
         else
         {
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", "SS_SLICES", lineno, fName);
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
         }
       }
 
@@ -3225,11 +4285,13 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom(line, "FLAG_HALF" 	  ) )
       {
-#if __CUDACC_VER__ >= 70500
-        (*flags) |= FLAG_HALF;
+#if CUDA_VERSION >= 7050
+        (*flags) |=  FLAG_HALF;
 #else
         (*flags) &= ~FLAG_HALF;
-        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision.\n");
+
+        line[flagLen] = 0;
+        fprintf(stderr,"WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision. (FLAG: %s line %i in %s)\n", line, lineno, fName);
 #endif
       }
       else if ( strCom(line, "FLAG_SINGLE" 	) )
@@ -3238,7 +4300,7 @@ void readAccelDefalts(searchSpecs *sSpec)
       }
       else if ( strCom(line, "FLAG_DOUBLE"  ) )
       {
-        fprintf(stderr,"ERROR: Cannot sore in-mem plain as double! Defaulting to float.\n");
+        fprintf(stderr,"ERROR: Cannot sore in-mem plane as double! Defaulting to float.\n");
         (*flags) &= ~FLAG_HALF;
       }
 
@@ -3276,34 +4338,153 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) &= ~FLAG_THREAD;
       }
 
+      else if ( strCom(line, "FLAG_STK_UP" ) )
+      {
+        (*flags) |= FLAG_STK_UP;
+      }
+      else if ( strCom(line, "FLAG_STK_DOWN" ) )
+      {
+        (*flags) &= ~FLAG_STK_UP;
+      }
+
+      else if ( strCom(line, "FLAG_CONV" ) )
+      {
+        (*flags) |= FLAG_CONV;
+      }
+      else if ( strCom(line, "FLAG_SEP" ) )
+      {
+        (*flags) &= ~FLAG_CONV;
+      }
 
       else if ( strCom(line, "FLAG_STORE_EXP" ) )
       {
         (*flags) |= FLAG_STORE_EXP;
       }
 
+      else if ( strCom(line, "FLAG_OPT_LOCAVE" ) )
+      {
+        (*flags) |= FLAG_OPT_LOCAVE;
+      }
+      else if ( strCom(line, "FLAG_OPT_MEDIAN" ) )
+      {
+        (*flags) &= ~FLAG_OPT_LOCAVE;
+      }
+
+      else if ( strCom(line, "FLAG_OPT_BEST" ) )
+      {
+        (*flags) |= FLAG_OPT_BEST;
+      }
+
+      else if ( strCom(line, "FLAG_OPT_DYN_HW" ) )
+      {
+        (*flags) |= FLAG_OPT_DYN_HW;
+      }
+
+      else if ( strCom(line, "OPT_MIN_LOC_HARMS" ) )
+      {
+        rest = &line[ strlen("OPT_MIN_LOC_HARMS")+1];
+        sSpec->optMinLocHarms = atoi(rest);
+      }
+
+      else if ( strCom(line, "OPT_MIN_REP_HARMS" ) )
+      {
+        rest = &line[ strlen("OPT_MIN_REP_HARMS")+1];
+        sSpec->optMinRepHarms = atoi(rest);
+      }
+
+      else if ( strCom(line, "optplnSiz" ) || strCom(line, "OPTPLNSIZ") )
+      {
+	rest = &line[ strlen("optplnSz")];
+	int idx = atoi(rest);
+	rest = &line[ strlen("optplnSz00")+1];
+
+	if 	( idx == 1 )
+	{
+	  sSpec->optPlnSiz[0] = atoi(rest);
+	}
+	else if ( idx == 2 )
+	{
+	  sSpec->optPlnSiz[1] = atoi(rest);
+	}
+	else if ( idx == 4 )
+	{
+	  sSpec->optPlnSiz[2] = atoi(rest);
+	}
+	else if ( idx == 8 )
+	{
+	  sSpec->optPlnSiz[3] = atoi(rest);
+	}
+	else if ( idx == 16 )
+	{
+	  sSpec->optPlnSiz[4] = atoi(rest);
+	}
+	else
+	{
+	  fprintf(stderr, "WARNING: expecting optplnSiz01, optplnSiz02, optplnSiz04, optplnSiz08 or optplnSiz16 \n");
+	}
+      }
+
+      else if ( strCom(line, "optPlnDim" ) || strCom(line, "OPTPLNDIM") )
+      {
+	rest = &line[ strlen("optPlnDim")];
+	int idx = atoi(rest);
+	if ( idx >= 1 && idx <= NO_OPT_LEVS )
+	{
+	  rest = &line[ strlen("optPlnDim00")+1];
+	  sSpec->optPlnDim[idx-1] = atoi(rest);
+	}
+	else
+	{
+	  fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 0 and %i \n",idx, NO_OPT_LEVS);
+	}
+      }
+
+      else if ( strCom(line, "optPlnScale" ) )
+      {
+        rest      = &line[ strlen("optPlnScale")+1];
+        sSpec->optPlnScale = atof(rest);
+      }
+
       else if ( strCom(line, "FLAG_RAND_1" ) || strCom(line, "RAND_1" ) )
       {
         (*flags) |= FLAG_RAND_1;
       }
-      else if ( strCom(line, "FLAG_RAND_2" ) || strCom(line, "RAND_2" ) )
+
+      else if ( strCom(line, "FLAG_DBG_SYNCH" ) )
       {
-        (*flags) |= FLAG_RAND_2;
+        (*flags) |= FLAG_SYNCH;
+      }
+      else if ( strCom(line, "FLAG_DBG_TIMING" ) )
+      {
+        //(*flags) |= FLAG_SYNCH; // Timing relies on synchronous search
+        (*flags) |= FLAG_TIME;
+      }
+      else if ( strCom(line, "FLAG_DPG_PRNT_CAND" ) )
+      {
+        (*flags) |= FLAG_DPG_PRNT_CAND;
+      }
+      else if ( strCom(line, "FLAG_DBG_SKIP_OPT" ) || strCom(line, "SKP_OPT" ) || strCom(line, "skpOpt"  ) )
+      {
+	(*flags) |= FLAG_DPG_SKP_OPT;
       }
 
-      else if ( strCom(line, "FLAG_KER_ACC" ) )
+      else if ( strCom(line, "pltOpt"  ) || strCom(line, "FLAG_DPG_PLT_OPT" ) )
       {
-        (*flags) |= FLAG_KER_ACC;
+	(*flags) |= FLAG_DPG_PLT_OPT;
       }
 
-      else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )
+      else if ( strCom(line, "FLAG_DPG_UNOPT" ) )
       {
-        int ll = strlen(line);
-        line[ll-1] = 0;
-        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n", line, lineno, fName);
+        useUnopt    = 1;
       }
 
-      else if ( strCom(line, "cuMedianBuffSz" ) )
+      else if ( strCom(line, "DBG_LEV" ) )
+      {
+        rest      = &line[ strlen("DBG_LEV")+1];
+        msgLevel  = atoi(rest);
+      }
+
+      else if ( strCom(line, "cuMedianBuffSz" ) )             // The size of the sub sections to use in the cuda median selection algorithm
       {
         rest = &line[ strlen("cuMedianBuffSz")+1];
         cuMedianBuffSz = atoi(rest);
@@ -3361,82 +4542,62 @@ void readAccelDefalts(searchSpecs *sSpec)
         globalInt05 = atoi(rest);
       }
 
-      // Optimisation vars
-      else if ( strCom(line, "optpln01" ) )
-      {
-        rest      = &line[ strlen("optpln01")+1];
-        optpln01  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln02" ) )
-      {
-        rest      = &line[ strlen("optpln02")+1];
-        optpln02  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln03" ) )
-      {
-        rest      = &line[ strlen("optpln03")+1];
-        optpln03  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln04" ) )
-      {
-        rest      = &line[ strlen("optpln04")+1];
-        optpln04  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln05" ) )
-      {
-        rest      = &line[ strlen("optpln05")+1];
-        optpln05  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln06" ) )
-      {
-        rest      = &line[ strlen("optpln06")+1];
-        optpln06  = atoi(rest);
-      }
-
-      else if ( strCom(line, "downScale" ) )
-      {
-        rest      = &line[ strlen("downScale")+1];
-        downScale = atof(rest);
-      }
+//      // Optimisation vars
+//      else if ( strCom(line, "optpln01" ) )
+//      {
+//        rest      = &line[ strlen("optpln01")+1];
+//        optpln01  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln02" ) )
+//      {
+//        rest      = &line[ strlen("optpln02")+1];
+//        optpln02  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln03" ) )
+//      {
+//        rest      = &line[ strlen("optpln03")+1];
+//        optpln03  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln04" ) )
+//      {
+//        rest      = &line[ strlen("optpln04")+1];
+//        optpln04  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln05" ) )
+//      {
+//        rest      = &line[ strlen("optpln05")+1];
+//        optpln05  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln06" ) )
+//      {
+//        rest      = &line[ strlen("optpln06")+1];
+//        optpln06  = atoi(rest);
+//      }
 
       else if ( strCom(line, "optSz01" ) )
       {
-        rest      = &line[ strlen("optSz01")+1];
-        optSz01   = atof(rest);
+        rest			= &line[ strlen("optSz01")+1];
+        sSpec->optPlnSiz[0]	= atof(rest);
       }
       else if ( strCom(line, "optSz02" ) )
       {
-        rest      = &line[ strlen("optSz02")+1];
-        optSz02   = atof(rest);
+        rest      		= &line[ strlen("optSz02")+1];
+        sSpec->optPlnSiz[1]	= atof(rest);
       }
       else if ( strCom(line, "optSz04" ) )
       {
-        rest      = &line[ strlen("optSz04")+1];
-        optSz04   = atof(rest);
+        rest      		= &line[ strlen("optSz04")+1];
+        sSpec->optPlnSiz[2]	= atof(rest);
       }
       else if ( strCom(line, "optSz08" ) )
       {
-        rest      = &line[ strlen("optSz08")+1];
-        optSz08   = atof(rest);
+        rest      		= &line[ strlen("optSz08")+1];
+        sSpec->optPlnSiz[3]	= atof(rest);
       }
       else if ( strCom(line, "optSz16" ) )
       {
-        rest      = &line[ strlen("optSz16")+1];
-        optSz16   = atof(rest);
-      }
-
-      else if ( strCom(line, "pltOpt"  ) )
-      {
-        pltOpt    = 1;
-      }
-      else if ( strCom(line, "PLT_OPT" ) )
-      {
-        pltOpt    = 1;
-      }
-
-      else if ( strCom(line, "UNOPT" ) )
-      {
-        useUnopt    = 1;
+        rest      		= &line[ strlen("optSz16")+1];
+        sSpec->optPlnSiz[4]	= atof(rest);
       }
 
       else if ( strCom(line, "#" ) || ll == 1 )
@@ -3444,9 +4605,15 @@ void readAccelDefalts(searchSpecs *sSpec)
         // Comment line !
       }
 
+      else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )
+      {
+        line[flagLen] = 0;
+        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n", line, lineno, fName);
+      }
+
       else
       {
-        line[ll-1] = 0;
+        line[flagLen] = 0;
         fprintf(stderr, "ERROR: Found unknown flag \"%s\" on line %i of %s.\n", line, lineno, fName);
       }
     }
@@ -3464,53 +4631,72 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   searchSpecs sSpec;
   memset(&sSpec, 0, sizeof(sSpec));
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering readSrchSpecs.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering readSrchSpecs.");
 
-  // Defaults for accel search
-  sSpec.flags         |= FLAG_RET_STAGES  ;
-  sSpec.flags         |= FLAG_ITLV_ROW    ; //   FLAG_ITLV_ROW    FLAG_ITLV_PLN
+  FOLD // Defaults for accel search  .
+  {
+    sSpec.retType       |= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
+    sSpec.flags         |= FLAG_RET_STAGES  ;
+    sSpec.flags         |= FLAG_ITLV_ROW    ;
 
 #ifndef DEBUG
-  sSpec.flags         |= FLAG_THREAD      ; // Multithreading really slows down debug so only turn it on by default for release mode, Note: This can be over ridden in the defaults file
+    sSpec.flags         |= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
 #endif
 
-#if __CUDACC_VER__ >= 60500
-  sSpec.flags         |= FLAG_CUFFT_CB_OUT;
+#if CUDA_VERSION >= 6050
+    sSpec.flags         |= FLAG_CUFFT_CB_POW; 	// CUFFT callback to calculate powers, very efficient so on by default
 #endif
 
-  sSpec.cndType       |= CU_CANDFULL    ;   // Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
-  sSpec.cndType       |= CU_STR_ARR     ;   // Candidate storage structure - CU_STR_ARR    is generally the fastest
-
-  sSpec.retType       |= CU_POWERZ_S    ;   // Return type
-  sSpec.retType       |= CU_STR_ARR     ;   // Candidate storage structure
-
-
-
-  sSpec.fftInf.fft    = obs->fft;
-  sSpec.fftInf.nor    = obs->numbins;
-  sSpec.fftInf.rlo    = obs->rlo;
-  sSpec.fftInf.rhi    = obs->rhi;
-
-  sSpec.noHarmStages  = obs->numharmstages;
-  sSpec.zMax          = obs->zhi;
-  sSpec.sigma         = cmd->sigma;
-  sSpec.pWidth        = cmd->width;
-
-  if ( obs->inmem )
-  {
-#if __CUDACC_VER__ >= 60500
-    sSpec.flags |= FLAG_SS_INMEM;
-    sSpec.flags |= FLAG_CUFFT_CB_OUT;
-#else
-    fprintf(stderr, "ERROR: At the moment use of in-mem search requires CUDA 6.5 for CUFFT callbacks.\n");
-    sSpec.flags &= ~FLAG_SS_INMEM;
-    sSpec.flags &= ~FLAG_CUFFT_CB_OUT;
+#if CUDA_VERSION >= 7050
+    sSpec.flags         |= FLAG_HALF;
 #endif
+
+    if ( obs->inmem )
+    {
+      sSpec.flags       |= FLAG_SS_INMEM;
+    }
+
+    sSpec.cndType       |= CU_CANDFULL    ;   	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
+    sSpec.cndType       |= CU_STR_ARR     ;   	// Candidate storage structure - CU_STR_ARR    is generally the fastest
+
+    sSpec.retType       |= CU_POWERZ_S    ;   	// Return type
+    sSpec.retType       |= CU_STR_ARR     ;   	// Candidate storage structure
+
+
+    sSpec.fftInf.fft    	= obs->fft;
+    sSpec.fftInf.nor    	= obs->numbins;
+    sSpec.fftInf.rlo    	= obs->rlo;
+    sSpec.fftInf.rhi    	= obs->rhi;
+
+    sSpec.noHarmStages  	= obs->numharmstages;
+    sSpec.zMax          	= obs->zhi;
+    sSpec.sigma         	= cmd->sigma;
+    sSpec.pWidth        	= cmd->width;
+
+    for ( int idx = 0; idx < NO_OPT_LEVS; idx++)
+      sSpec.optPlnDim[idx] 	= 0;
+    sSpec.optPlnDim[0]		= 50;
+    sSpec.optPlnDim[1]		= 30;
+    sSpec.optPlnDim[2]		= 20;
+    sSpec.optPlnDim[3]		= 20;
+    sSpec.optPlnDim[4]		= 10;
+
+    sSpec.optPlnSiz[0]		= 16;
+    sSpec.optPlnSiz[1]		= 14;
+    sSpec.optPlnSiz[2]		= 12;
+    sSpec.optPlnSiz[3]		= 10;
+    sSpec.optPlnSiz[4]		= 8;
+
+    sSpec.optPlnScale		= 6;
+
+    sSpec.optMinLocHarms	= 1;
+    sSpec.optMinRepHarms	= 1;
   }
 
+  // Now read the
   readAccelDefalts(&sSpec);
 
-  if ( sSpec.flags & (FLAG_SS_10 | FLAG_SS_20 | FLAG_SS_30) )
+  if ( sSpec.flags & (FLAG_SS_10 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
   {
     // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
     sSpec.fftInf.rlo  = floor(obs->rlo/(float)cmd->numharm)*cmd->numharm;
@@ -3519,48 +4705,47 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   return sSpec;
 }
 
-/** Create multiplication kernel and allocate memory for plains on all devices  .
+/** Create multiplication kernel and allocate memory for planes on all devices  .
  *
  * Create the kernels on the first device and then copy it to all others
  *
- * @param gSpec
- * @param sSpec
- * @param powcut
- * @param numindep
+ * @param sSrch     A pointer to the search structure
+ *
  * @return
  */
-//cuMemInfo* initCuAccel(gpuSpecs* gSpec, searchSpecs*  sSpec, float* powcut, long long* numindep)
-void initCuAccel(cuSearch* sSrch )
+void initPlanes(cuSearch* sSrch )
 {
-  //cuMemInfo* aInf = new cuMemInfo;
-  sSrch->mInf = new cuMemInfo;
-  memset(sSrch->mInf, 0, sizeof(cuMemInfo));
+  infoMSG(2,1,"Create all planes.\n");
 
+  sSrch->pInf = new cuPlnInfo;
+  memset(sSrch->pInf, 0, sizeof(cuPlnInfo));
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initCuAccel.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuAccel.");
 
   FOLD // Create the primary stack on each device, this contains the kernel  .
   {
+    infoMSG(2,2,"Create the primary stack/kernel on each device\n");
+
     nvtxRangePush("Initialise Kernels");
 
-    sSrch->mInf->kernels = (cuFFdotBatch*)malloc(sSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
+    sSrch->pInf->kernels = (cuFFdotBatch*)malloc(sSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
 
     int added;
     cuFFdotBatch* master = NULL;
 
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
     {
-      added = initKernel(&sSrch->mInf->kernels[sSrch->mInf->noDevices], master, sSrch, sSrch->gSpec->devId[dev], sSrch->gSpec->noDevBatches[dev], sSrch->gSpec->noDevSteps[dev] );
+      added = initKernel(&sSrch->pInf->kernels[sSrch->pInf->noDevices], master, sSrch, dev );
 
       if ( added && !master ) // This was the first batch so it is the master
       {
-        master = &sSrch->mInf->kernels[0];
+        master = &sSrch->pInf->kernels[0];
       }
 
       if ( added )
       {
-        sSrch->mInf->noBatches += added;
-        sSrch->mInf->noDevices++;
+        sSrch->pInf->noBatches += added;
+        sSrch->pInf->noDevices++;
       }
       else
       {
@@ -3571,7 +4756,7 @@ void initCuAccel(cuSearch* sSrch )
 
     nvtxRangePop();
 
-    if ( sSrch->mInf->noDevices <= 0 ) // Check if we got any devices  .
+    if ( sSrch->pInf->noDevices <= 0 ) // Check if we got any devices  .
     {
       fprintf(stderr, "ERROR: Failed to set up a kernel on any device. Try -lsgpu to see what devices there are.\n");
       exit (EXIT_FAILURE);
@@ -3579,16 +4764,18 @@ void initCuAccel(cuSearch* sSrch )
 
   }
 
-  FOLD // Create plains for calculations  .
+  FOLD // Create planes for calculations  .
   {
+    infoMSG(2,2,"Create planes\n");
+
     nvtxRangePush("Initialise Batches");
 
-    sSrch->mInf->noSteps       = 0;
-    sSrch->mInf->batches       = (cuFFdotBatch*)malloc(sSrch->mInf->noBatches*sizeof(cuFFdotBatch));
-    sSrch->mInf->devNoStacks   = (int*)malloc(sSrch->gSpec->noDevices*sizeof(int));
-    sSrch->mInf->h_stackInfo   = (stackInfo**)malloc(sSrch->gSpec->noDevices*sizeof(stackInfo*));
+    sSrch->pInf->noSteps       = 0;
+    sSrch->pInf->batches       = (cuFFdotBatch*)malloc(sSrch->pInf->noBatches*sizeof(cuFFdotBatch));
+    sSrch->pInf->devNoStacks   = (int*)malloc(sSrch->gSpec->noDevices*sizeof(int));
+    sSrch->pInf->h_stackInfo   = (stackInfo**)malloc(sSrch->gSpec->noDevices*sizeof(stackInfo*));
 
-    memset(sSrch->mInf->devNoStacks,0,sSrch->gSpec->noDevices*sizeof(int));
+    memset(sSrch->pInf->devNoStacks,0,sSrch->gSpec->noDevices*sizeof(int));
 
     int bNo = 0;
     int ker = 0;
@@ -3602,43 +4789,47 @@ void initCuAccel(cuSearch* sSrch )
 
         for ( int batch = 0 ; batch < sSrch->gSpec->noDevBatches[dev]; batch++ )
         {
-          noSteps = initBatch(&sSrch->mInf->batches[bNo], &sSrch->mInf->kernels[ker], batch, sSrch->gSpec->noDevBatches[dev]-1);
+          infoMSG(3,3,"Initialise batch %02i\n", bNo );
+
+          noSteps = initBatch(&sSrch->pInf->batches[bNo], &sSrch->pInf->kernels[ker], batch, sSrch->gSpec->noDevBatches[dev]-1);
 
           if ( noSteps == 0 )
           {
             if ( batch == 0 )
             {
-              fprintf(stderr, "ERROR: Failed to create at least one batch on device %i.\n", sSrch->mInf->kernels[dev].device);
+              fprintf(stderr, "ERROR: Failed to create at least one batch on device %i.\n", sSrch->pInf->kernels[dev].device);
             }
             break;
           }
           else
           {
-            sSrch->mInf->noSteps           += noSteps;
-            sSrch->mInf->devNoStacks[dev]  += sSrch->mInf->batches[bNo].noStacks;
+            sSrch->pInf->noSteps           += noSteps;
+            sSrch->pInf->devNoStacks[dev]  += sSrch->pInf->batches[bNo].noStacks;
             bNo++;
           }
         }
 
-        int noStacks = sSrch->mInf->devNoStacks[dev] ;
+        int noStacks = sSrch->pInf->devNoStacks[dev] ;
         if ( noStacks )
         {
-          sSrch->mInf->h_stackInfo[dev] = (stackInfo*)malloc(noStacks*sizeof(stackInfo));
+          infoMSG(3,3,"Initialise constant memory for stacks\n" );
+
+          sSrch->pInf->h_stackInfo[dev] = (stackInfo*)malloc(noStacks*sizeof(stackInfo));
           int idx = 0;
 
           // Set the values of the host data structures
           for (int batch = firstBatch; batch < bNo; batch++)
           {
-            idx += setStackInfo(&sSrch->mInf->batches[batch], sSrch->mInf->h_stackInfo[dev], idx);
+            idx += setStackInfo(&sSrch->pInf->batches[batch], sSrch->pInf->h_stackInfo[dev], idx);
           }
 
           if ( idx != noStacks )
           {
-            fprintf (stderr,"ERROR: in %s line %i, The number of steps on device do not match.\n.",__FILE__, __LINE__);
+            fprintf (stderr,"ERROR: in %s line %i, The number of stacks on device do not match.\n.",__FILE__, __LINE__);
           }
           else
           {
-            setConstStkInfo(sSrch->mInf->h_stackInfo[dev], idx);
+            setConstStkInfo(sSrch->pInf->h_stackInfo[dev], idx, sSrch->pInf->batches->stacks->initStream);
           }
         }
 
@@ -3646,29 +4837,76 @@ void initCuAccel(cuSearch* sSrch )
       }
     }
 
-    if ( bNo != sSrch->mInf->noBatches )
+    if ( bNo != sSrch->pInf->noBatches )
     {
       fprintf(stderr, "WARNING: Number of batches created does not match the number anticipated.\n");
-      sSrch->mInf->noBatches = bNo;
+      sSrch->pInf->noBatches = bNo;
     }
 
     nvtxRangePop();
   }
 }
 
-void freeAccelGPUMem(cuMemInfo* aInf)
+/** Create multiplication kernel and allocate memory for planes on all devices  .
+ *
+ * Create the kernels on the first device and then copy it to all others
+ *
+ * @param sSrch     A pointer to the search structure
+ *
+ * @return
+ */
+void initOptimisers(cuSearch* sSrch )
 {
-#ifdef STPMSG
-  printf("freeAccelGPUMem\n");
-#endif
+  sSrch->oInf = new cuOptInfo;
+  memset(sSrch->oInf, 0, sizeof(cuOptInfo));
 
-  FOLD // Free plains  .
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initOptimisers.");
+
+  FOLD // Create the primary stack on each device, this contains the kernel  .
+  {
+    nvtxRangePush("Initialise Optimisers");
+
+    sSrch->oInf->noOpts = 0;
+
+    for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
+    {
+      if ( sSrch->gSpec->noDevOpt[dev] > 0 )
+      {
+        sSrch->oInf->noOpts+=sSrch->gSpec->noDevOpt[dev];
+      }
+    }
+
+    sSrch->oInf->opts = (cuOptCand*)malloc(sSrch->oInf->noOpts*sizeof(cuOptCand));
+    memset(sSrch->oInf->opts, 0, sSrch->oInf->noOpts*sizeof(cuOptCand));
+
+    int idx = 0;
+    for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
+    {
+      for ( int oo = 0 ; oo < sSrch->gSpec->noDevOpt[dev]; oo++ )
+      {
+        // Setup some basic info
+        sSrch->oInf->opts[idx].pIdx     = idx;
+        sSrch->oInf->opts[idx].device   = sSrch->gSpec->devId[dev];
+
+        initOptCand(sSrch, &sSrch->oInf->opts[idx], dev );
+        idx++;
+      }
+    }
+
+    nvtxRangePop();
+  }
+}
+
+void freeAccelGPUMem(cuPlnInfo* aInf)
+{
+  infoMSG(2,0,"FreeAccelGPUMem\n");
+
+  FOLD // Free planes  .
   {
     for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
     {
-#ifdef STPMSG
-      printf("\tfreeBatchGPUmem %i\n", batch);
-#endif
+      infoMSG(2,1,"freeBatchGPUmem %i\n", batch);
+
       freeBatchGPUmem(&aInf->batches[batch]);
     }
   }
@@ -3677,23 +4915,18 @@ void freeAccelGPUMem(cuMemInfo* aInf)
   {
     for ( int dev = 0 ; dev < aInf->noDevices; dev++)         // Loop over devices
     {
-#ifdef STPMSG
-      printf("\tfreeKernelGPUmem %i\n", dev);
-#endif
+      infoMSG(2,1,"freeKernelGPUmem device: %i\n", dev);
+
       freeKernelGPUmem(&aInf->kernels[dev]);
     }
   }
-
-#ifdef STPMSG
-  printf("Done\n");
-#endif
 }
 
-void freeCuAccel(cuMemInfo* mInf)
+void freeCuAccel(cuPlnInfo* mInf)
 {
   if ( mInf )
   {
-    FOLD // Free plains  .
+    FOLD // Free planes  .
     {
       for ( int batch = 0 ; batch < mInf->noBatches; batch++ )  // Batches
       {
@@ -3712,8 +4945,8 @@ void freeCuAccel(cuMemInfo* mInf)
     freeNull(mInf->batches);
     freeNull(mInf->kernels);
 
-    for ( int i = 0; i < MAX_GPUS; i++ )
-      freeNull(mInf->name[i]);
+    //    for ( int i = 0; i < MAX_GPUS; i++ )
+    //      freeNull(mInf->name[i]);
 
     freeNull(mInf->devNoStacks);
 
@@ -3729,13 +4962,40 @@ void freeCuAccel(cuMemInfo* mInf)
   }
 }
 
-cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+void intSrchThrd(cuSearch* srch)
 {
+  resThrds* tInf = srch->threasdInfo;
+
+  if ( !tInf )
+  {
+    tInf     = new resThrds;
+    memset(tInf, 0, sizeof(resThrds));
+  }
+
+  if (pthread_mutex_init(&tInf->candAdd_mutex, NULL))
+  {
+    printf("Unable to initialise a mutex.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if (sem_init(&tInf->running_threads, 0, 0))
+  {
+    printf("Could not initialise a semaphore\n");
+    exit(EXIT_FAILURE);
+  }
+
+  srch->threasdInfo = tInf;
+}
+
+cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+{
+  infoMSG(2,1,"Initialise search data structure\n");
+
   bool same   = true;
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error entering initCuSearch.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuSearch.");
 
-  if ( srch )
+  if ( srch ) 	                    // Check if the search values have been pre-initialised  .
   {
     if ( srch->noHarmStages != sSpec->noHarmStages )
     {
@@ -3743,14 +5003,19 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
       // ERROR recreate everything
     }
 
-    if ( srch->mInf )
+    if ( same && srch->pInf )
     {
-      if ( srch->mInf->kernels->hInfos->zmax != sSpec->zMax )
+      if ( srch->pInf->kernels->hInfos->zmax != sSpec->zMax )
       {
         same = false;
         // Have to recreate
       }
-      if ( srch->mInf->kernels->accelLen != optAccellen(sSpec->pWidth,sSpec->zMax) )
+
+      presto_interp_acc accuracy = LOWACC;
+      if ( sSpec->flags & FLAG_KER_HIGH )
+        accuracy = HIGHACC;
+
+      if ( srch->pInf->kernels->accelLen != optAccellen(sSpec->pWidth,sSpec->zMax, accuracy) )
       {
         same = false;
         // Have to recreate
@@ -3767,19 +5032,36 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     }
   }
 
-  if ( !srch || same == false)
+  if ( !srch || !same )      	// Create a new search data structure  .
   {
-    srch = new cuSearch;
+    infoMSG(2,2,"Create a new search data structure\n");
+
+    if ( !srch )
+    {
+      srch = new cuSearch;
+    }
+//    else
+//    {
+//      freeNull(srch->sIdx);
+//      freeNull(srch->powerCut);
+//      freeNull(srch->numindep);
+//      freeNull(srch->timings);
+//    }
     memset(srch, 0, sizeof(cuSearch));
 
     srch->noHarmStages    = sSpec->noHarmStages;
-    srch->noHarms         = ( 1<<(srch->noHarmStages-1) );
-
-    srch->pIdx            = (int*)malloc(srch->noHarms * sizeof(int));
+    srch->noGenHarms      = ( 1<<(srch->noHarmStages-1) );
+    srch->noSrchHarms     = ( 1<<(srch->noHarmStages-1) );
+    srch->sIdx            = (int*)malloc(srch->noGenHarms * sizeof(int));
     srch->powerCut        = (float*)malloc(srch->noHarmStages * sizeof(float));
     srch->numindep        = (long long*)malloc(srch->noHarmStages * sizeof(long long));
 
-    srch->threasdInfo     = new resThrds;
+    //srch->timings	  = (long long*)malloc( TIME_END * sizeof(long long));
+    //memset(srch->timings, 0, TIME_END * sizeof(long long) );
+  }
+  else
+  {
+    infoMSG(2,2,"Using the existing search data structure\n");
   }
 
   srch->sSpec             = sSpec;
@@ -3787,72 +5069,81 @@ cuSearch* initCuSearch(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
   FOLD // Calculate power cutoff and number of independent values  .
   {
-    if (sSpec->zMax % ACCEL_DZ)
+    infoMSG(3,2,"Calculate power cutoff and number of independent values\n");
+
+    // Calculate appropriate z-max
+    if ( sSpec->zMax % ACCEL_DZ )
       sSpec->zMax = (sSpec->zMax / ACCEL_DZ + 1) * ACCEL_DZ;
 
     int numz = (sSpec->zMax / ACCEL_DZ) * 2 + 1;
 
-    FOLD //
+    FOLD // Calculate power cutoff and number of independent values  .
     {
       for (int ii = 0; ii < srch->noHarmStages; ii++)
       {
         if ( sSpec->zMax == 1 )
         {
-          srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) / srch->noHarms;
+          srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) / srch->noGenHarms;
         }
         else
         {
           srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * ( ACCEL_DZ / 6.95) / (double)(1<<ii);
         }
 
+        // Power cutoff
+        // TODO: Check if using half precision may affect this
         srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
       }
     }
   }
 
-  FOLD // Set up the threading  .
+  FOLD // Set up the CPU threading  .
   {
-    if (pthread_mutex_init(&srch->threasdInfo->candAdd_mutex, NULL))
-    {
-      printf("Unable to initialise a mutex.\n");
-      exit(EXIT_FAILURE);
-    }
+    infoMSG(3,2,"Set up the CPU threading\n");
 
-    if (sem_init(&srch->threasdInfo->running_threads, 0, 0))
-    {
-      printf("Could not initialise a semaphore\n");
-      exit(EXIT_FAILURE);
-    }
-    else
-    {
-      //sem_post(&srch->threasdInfo->running_threads); // Set to 1
-      int noTrd;
-      sem_getvalue(&srch->threasdInfo->running_threads, &noTrd );
-    }
-
-
-    //    if (pthread_mutex_init(&srch->threasdInfo->running_mutex, NULL))
-    //    {
-    //      printf("Unable to initialise a mutex.\n");
-    //      exit(EXIT_FAILURE);
-    //    }
+    intSrchThrd(srch);
   }
 
-  //  if ( sSpec->cndType & CU_STR_QUAD )
-  //  {
-  //    // If we are using the quadtree method we can do a 1 stage search
-  //    srch->noHarmStages  = 1;
-  //    srch->noHarms       = 1;
-  //  }
+  return srch;
+}
 
-  if ( !srch->mInf )
+cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+{
+  infoMSG(1,0,"Initialise CU search data structures\n");
+
+  if ( !srch )
   {
-    //srch->mInf = initCuAccel(gSpec, sSpec, srch->powerCut, srch->numindep );
-    initCuAccel( srch );
+    srch = initSearchInf(sSpec, gSpec, srch);
+  }
+
+  if ( !srch->pInf )
+  {
+    initPlanes( srch ); // This initialises the plane info
   }
   else
   {
-    // TODO do a whole bunch of checks here!
+    // TODO: Do a whole bunch of checks here!
+    fprintf(stderr, "ERROR: %s has not been set up to handle a pre-initialised memory info data structure.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+
+  return srch;
+}
+
+cuSearch* initCuOpt(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
+{
+  if ( !srch )
+    srch = initSearchInf(sSpec, gSpec, srch);
+
+  if ( !srch->oInf )
+  {
+    initOptimisers( srch );
+  }
+  else
+  {
+    // TODO: Do a whole bunch of checks here!
+    fprintf(stderr, "ERROR: %s has not been set up to handle a pre-initialised memory info data structure.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
   }
 
   return srch;
@@ -3862,10 +5153,10 @@ void freeCuSearch(cuSearch* srch)
 {
   if (srch)
   {
-    if ( srch->mInf )
-      freeCuAccel(srch->mInf);
+    if ( srch->pInf )
+      freeCuAccel(srch->pInf);
 
-    freeNull(srch->pIdx);
+    freeNull(srch->sIdx);
     freeNull(srch->powerCut);
     freeNull(srch->numindep);
 
@@ -3889,14 +5180,14 @@ void accelMax(cuSearch* srch)
    */
 
   cuFFdotBatch* master   = NULL;    // The first kernel stack created
-  master = srch->mInf->kernels;
+  master = srch->pInf->kernels;
 
 #ifdef WITHOMP
-  omp_set_num_threads(srch->mInf->noBatches);
+  omp_set_num_threads(srch->pInf->noBatches);
 #endif
 
   int ss = 0;
-  int maxxx = ( srch->sSpec->fftInf.rhi - srch->sSpec->fftInf.rlo ) / (float)( master->accelLen * ACCEL_DR ) ; /// The number of plains we can work with
+  int maxxx = ( srch->sSpec->fftInf.rhi - srch->sSpec->fftInf.rlo ) / (float)( master->accelLen * ACCEL_DR ) ; /// The number of planes we can work with
 
   if ( maxxx < 0 )
     maxxx = 0;
@@ -3914,13 +5205,13 @@ void accelMax(cuSearch* srch)
     int tid = 0;
 #endif
 
-    cuFFdotBatch* trdBatch = &srch->mInf->batches[tid];
+    cuFFdotBatch* trdBatch = &srch->pInf->batches[tid];
 
     double*  startrs = (double*)malloc(sizeof(double)*trdBatch->noSteps);
     double*  lastrs  = (double*)malloc(sizeof(double)*trdBatch->noSteps);
     size_t rest = trdBatch->noSteps;
 
-    setDevice(trdBatch) ;
+    setDevice(trdBatch->device) ;
 
     while ( ss < maxxx )
     {
@@ -3959,7 +5250,7 @@ void accelMax(cuSearch* srch)
       lastrs[step]  = 0;
     }
 
-    // Finish searching the plains, this is required because of the out of order asynchronous calls
+    // Finish searching the planes, this is required because of the out of order asynchronous calls
     for ( int pln = 0 ; pln < 2; pln++ )
     {
       //max_ffdot_planeCU(trdBatch, startrs, lastrs, 1,(fcomplexcu*)fftinf->fft, numindep, powers );
@@ -3970,13 +5261,13 @@ void accelMax(cuSearch* srch)
   }
 
   /*
-  printf("Free plains \n");
+  printf("Free planes \n");
 
-  FOLD // Free plains
+  FOLD // Free planes
   {
-    for ( int pln = 0 ; pln < nPlains; pln++ )  // Batches
+    for ( int pln = 0 ; pln < nPlanes; pln++ )  // Batches
     {
-      freeBatch(plainsj[pln]);
+      freeBatch(planesj[pln]);
     }
   }
 
@@ -3996,157 +5287,88 @@ void accelMax(cuSearch* srch)
 #endif
 }
 
-void plotPlains(cuFFdotBatch* batch)
+void plotPlanes(cuFFdotBatch* batch)
 {
-#ifdef CBL
-  printf("\n Creating data sets...\n");
-
-  nDarray<2, float>gpuCmplx [batch->noSteps][batch->noHarms];
-  nDarray<2, float>gpuPowers[batch->noSteps][batch->noHarms];
-  for ( int si = 0; si < batch->noSteps ; si ++)
-  {
-    for (int harm = 0; harm < batch->noHarms; harm++)
-    {
-      cuHarmInfo *hinf  = &batch[0].hInfos[harm];
-
-      gpuCmplx[si][harm].addDim(hinf->width*2, 0, hinf->width);
-      gpuCmplx[si][harm].addDim(hinf->height, -hinf->zmax, hinf->zmax);
-      gpuCmplx[si][harm].allocate();
-
-      gpuPowers[si][harm].addDim(hinf->width, 0, hinf->width);
-      gpuPowers[si][harm].addDim(hinf->height, -hinf->zmax, hinf->zmax);
-      gpuPowers[si][harm].allocate();
-    }
-  }
-
-  for ( int step = 0; step < batch->noSteps ; step ++)
-  {
-    for ( int stack = 0 ; stack < batch->noStacks; stack++ )
-    {
-      for (int harm = 0; harm < batch->noHarms; harm++)
-      {
-        cuHarmInfo   *cHInfo  = &batch->hInfos[harm];
-        cuFfdotStack *cStack  = &batch->stacks[cHInfo->stackNo];
-        //cuFFdot*      cPlain  = &batch->plains[harm];
-        rVals*        rVal    = &((*batch->rInput)[step][harm]);
-
-        for( int y = 0; y < cHInfo->height; y++ )
-        {
-
-          fcomplexcu *cmplxData;
-          float *powers;
-
-          if ( batch->flag & FLAG_ITLV_ROW )
-          {
-            cmplxData = &batch->d_plainData[(y*batch->noSteps + step)*cStack->strideCmplx ];
-            powers    = &batch->d_plainPowers[((y*batch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ) ];
-          }
-          else if ( batch->flag & FLAG_ITLV_PLN )
-          {
-            cmplxData = &batch->d_plainData[   (y + step*cHInfo->height)*cStack->strideCmplx ];
-            powers    = &batch->d_plainPowers[((y + step*cHInfo->height)*cStack->strideFloat  + cHInfo->halfWidth * 2 ) ];
-          }
-
-          cmplxData += cHInfo->halfWidth*2;
-          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlain->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-          if ( batch->flag & FLAG_CUFFT_CB_OUT )
-          {
-            //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlain->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-            CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
-            /*
-            for( int jj = 0; jj < plan->numrs[step]; jj++)
-            {
-              float *add = gpuPowers[step][harm].getP(jj*2+1,y);
-              gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
-            }
-             */
-          }
-        }
-      }
-    }
-  }
-#else
-  fprintf(stderr,"ERROR: Not compiled with debug libraries.\n");
-#endif
+  //#ifdef CBL
+  //  printf("\n Creating data sets...\n");
+  //
+  //  nDarray<2, float>gpuCmplx [batch->noSteps][batch->noHarms];
+  //  nDarray<2, float>gpuPowers[batch->noSteps][batch->noHarms];
+  //  for ( int si = 0; si < batch->noSteps ; si ++)
+  //  {
+  //    for (int harm = 0; harm < batch->noGenHarms; harm++)
+  //    {
+  //      cuHarmInfo *hinf  = &batch[0].hInfos[harm];
+  //
+  //      gpuCmplx[si][harm].addDim(hinf->width*2, 0, hinf->width);
+  //      gpuCmplx[si][harm].addDim(hinf->height, -hinf->zmax, hinf->zmax);
+  //      gpuCmplx[si][harm].allocate();
+  //
+  //      gpuPowers[si][harm].addDim(hinf->width, 0, hinf->width);
+  //      gpuPowers[si][harm].addDim(hinf->height, -hinf->zmax, hinf->zmax);
+  //      gpuPowers[si][harm].allocate();
+  //    }
+  //  }
+  //
+  //  for ( int step = 0; step < batch->noSteps ; step ++)
+  //  {
+  //    for ( int stack = 0 ; stack < batch->noStacks; stack++ )
+  //    {
+  //      for (int harm = 0; harm < batch->noGenHarms; harm++)
+  //      {
+  //        cuHarmInfo   *cHInfo  = &batch->hInfos[harm];
+  //        cuFfdotStack *cStack  = &batch->stacks[cHInfo->stackNo];
+  //        rVals* rVal           = &batch->rArrays[batch->rActive][step][harm];
+  //
+  //        for( int y = 0; y < cHInfo->height; y++ )
+  //        {
+  //
+  //          fcomplexcu *cmplxData;
+  //          float *powers;
+  //
+  //          if ( batch->flag & FLAG_ITLV_ROW )
+  //          {
+  //            cmplxData = &batch->d_planeMult[  (y*batch->noSteps + step)*cStack->strideCmplx ];
+  //            powers    = &batch->d_planePowr[ ((y*batch->noSteps + step)*cStack->strideFloat + cHInfo->halfWidth * 2 ) ];
+  //          }
+  //          else
+  //          {
+  //            cmplxData = &batch->d_planeMult[  (y + step*cHInfo->height)*cStack->strideCmplx ];
+  //            powers    = &batch->d_planePowr[ ((y + step*cHInfo->height)*cStack->strideFloat  + cHInfo->halfWidth * 2 ) ];
+  //          }
+  //
+  //          cmplxData += cHInfo->halfWidth*2;
+  //          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cHInfo->width-2*2*cHInfo->halfWidth)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+  //          //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (cPlane->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+  //          CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+  //          if ( batch->flag & FLAG_CUFFT_CB_OUT )
+  //          {
+  //            //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (cPlane->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+  //            CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+  //            /*
+  //            for( int jj = 0; jj < plan->numrs[step]; jj++)
+  //            {
+  //              float *add = gpuPowers[step][harm].getP(jj*2+1,y);
+  //              gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
+  //            }
+  //             */
+  //          }
+  //        }
+  //      }
+  //    }
+  //  }
+  //#else
+  //  fprintf(stderr,"ERROR: Not compiled with debug libraries.\n");
+  //#endif
 }
 
-/*
-void generatePlain(fftInfo fft, long long loBin, long long hiBin, int zMax, int noHarms)
+void printBitString( int64_t val )
 {
-  int width = hiBin - loBin;
-  int gpuC = 0;
-  int dev  = 0;
-  int nplainsC = 5;
-  int nplains[10];
-  int nsteps[10];
-  int gpu[10];
-  nplains[0]=2;
-  nsteps[0]=2;
-  int numharmstages = twon_to_index(noHarms);
-  noHarms = 1 << numharmstages ;
-  long long numindep[numharmstages];
-  float powc[numharmstages];
+  printf("Value %015ld : ", val );
 
-  int flags;
-
-  gpu[0] = 1;
-
-  cuFFdotBatch* kernels;             // List of stacks with the kernels, one for each device being used
-  cuFFdotBatch* master   = NULL;     // The first kernel stack created
-  int nPlains           = 0;        // The number of plains
-  int noKers            = 0;        // Real number of kernels/devices being used
-
-  fftInfo fftinf;
-  fftinf.fft    = fft;
-  fftinf.nor    = centerBin + width*2;
-  fftinf.rlow   = centerBin - width;
-  fftinf.rhi    = centerBin + width;
-
-  int ww =  twon_to_index(width);
-
-  int numz      = (zMax / ACCEL_DZ) * 2 + 1;
-
-  for (int ii = 0; ii < numharmstages; ii++) // Calculate numindep
+  for ( int i = 0; i < 64; i++)
   {
-    powc[ii] = 0;
-
-    if (numz == 1)
-      numindep[ii] = (fftinf.rhi - fftinf.rlow) / (1<<ii);
-    else
-    {
-      numindep[ii] = (fftinf.rhi - fftinf.rlow) * (numz + 1) * (ACCEL_DZ / 6.95) / (1<<ii);
-    }
-  }
-
-  flags = FLAG_CUFFT_CB_OUT ;
-
-  gpu[0] = 0;
-  kernels = new cuFFdotBatch;
-  int added = initHarmonics(kernels, master, numharmstages, zMax, fftinf, 0, 1, ww, 1, powc, numindep, flags, CU_FLOAT, CU_FLOAT, NULL );
-  cuFFdotBatch* batch = initStkList(kernels, 0, 0);
-
-  cuFFdotBatch* trdStack = batch;
-  double*  startrs = (double*)malloc(sizeof(double)*trdStack->noSteps);
-  double*  lastrs  = (double*)malloc(sizeof(double)*trdStack->noSteps);
-
-  startrs[0] = (centerBin - width) * noHarms ;
-  lastrs[0] = startrs[0] + master->accelLen * ACCEL_DR - ACCEL_DR;
-
-  max_ffdot_planeCU(trdStack, startrs, lastrs, 1, (fcomplexcu*)fftinf.fft, numindep, NULL);
-
-  nvtxRangePop();
-}
- */
-
-void printBitString(uint val)
-{
-  printf("Value %015i : ", val);
-
-  for ( int i = 0; i < 32; i++)
-  {
-    if( val & (1<<(31-i) ) )
+    if( val & ( 1ULL << (63-i) ) )
       printf("1");
     else
       printf("0");
@@ -4165,24 +5387,29 @@ void printCommandLine(int argc, char *argv[])
   printf("\n");
 }
 
-void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
+void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long prepTime, long long cpuKerTime, long long cupTime, long long gpuKerTime, long long gpuTime, long long optTime, long long cpuOptTime, long long gpuOptTime)
 {
 #ifdef CBL
-  searchSpecs* sSpec;  ///< Specifications of the search
-  cuMemInfo* mInf;  ///< The allocated Device and host memory and data structures to create plains including the kernels
+  searchSpecs* sSpec;         ///< Specifications of the search
+  cuPlnInfo* mInf;            ///< The allocated Device and host memory and data structures to create planes including the kernels
   cuFFdotBatch* batch;
-  sSpec = cuSrch->sSpec;
-  mInf = cuSrch->mInf;
-  batch = cuSrch->mInf->batches;
-  double noRR = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
+
+  sSpec         = cuSrch->sSpec;
+  mInf          = cuSrch->pInf;
+
+  if ( !cuSrch || !sSpec || !mInf  )
+    return;
+
+  batch         = cuSrch->pInf->batches;
+  double noRR   = sSpec->fftInf.rhi - sSpec->fftInf.rlo;
 
   char hostname[1024];
   gethostname(hostname, 1024);
 
-  Logger* cvsLog = new Logger(fname, 1);
+  Logger* cvsLog = new Logger((char*)fname, 1);
   cvsLog->sedCsvDeliminator('\t');
 
-  // get the current time
+  // Get the current time
   time_t rawtime;
   tm* ptm;
   time(&rawtime);
@@ -4199,7 +5426,7 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
     cvsLog->csvWrite("Devices",   "#", "%2i",     mInf->noDevices);
     cvsLog->csvWrite("GPU",       "#", "%2i",     batch->device);
 
-    cvsLog->csvWrite("Har",       "#", "%2li",    cuSrch->noHarms);
+    cvsLog->csvWrite("Har",       "#", "%2li",    cuSrch->noGenHarms);
     cvsLog->csvWrite("Plns",      "#", "%2i",     batch->stacks->noInStack);
 
     cvsLog->csvWrite("Obs N",     "#", "%7.3f",   obs->N  * 1e-6);
@@ -4222,56 +5449,63 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
 
   FOLD // Flags  .
   {
-    if ( batch->flag & FLAG_ITLV_ROW )
+    if ( batch->flags & FLAG_ITLV_ROW )
       cvsLog->csvWrite("IL",      "flg", "ROW");
     else
       cvsLog->csvWrite("IL",      "flg", "PLN");
 
-    if ( batch->flag & CU_NORM_CPU )
+    if ( batch->flags & CU_NORM_CPU )
       cvsLog->csvWrite("NORM",    "flg", "CPU");
     else
       cvsLog->csvWrite("NORM",    "flg", "GPU");
 
-    if ( batch->flag & CU_INPT_FFT_CPU )
+    if ( batch->flags & CU_INPT_FFT_CPU )
       cvsLog->csvWrite("Inp FFT", "flg", "CPU");
     else
       cvsLog->csvWrite("Inp FFT", "flg", "GPU");
 
-    if      ( batch->flag & FLAG_MUL_00 )
+    if      ( batch->flags & FLAG_MUL_00 )
       cvsLog->csvWrite("MUL",    "flg", "00");
-    else if ( batch->flag & FLAG_MUL_10 )
-      cvsLog->csvWrite("MUL",    "flg", "10");
-    else if ( batch->flag & FLAG_MUL_21 )
+    else if ( batch->flags & FLAG_MUL_11 )
+      cvsLog->csvWrite("MUL",    "flg", "11");
+    else if ( batch->flags & FLAG_MUL_21 )
       cvsLog->csvWrite("MUL",    "flg", "21");
-    else if ( batch->flag & FLAG_MUL_22 )
+    else if ( batch->flags & FLAG_MUL_22 )
       cvsLog->csvWrite("MUL",    "flg", "22");
-    else if ( batch->flag & FLAG_MUL_23 )
+    else if ( batch->flags & FLAG_MUL_23 )
       cvsLog->csvWrite("MUL",    "flg", "23");
-    else if ( batch->flag & FLAG_MUL_30 )
+    else if ( batch->flags & FLAG_MUL_30 )
       cvsLog->csvWrite("MUL",    "flg", "30");
+    else if ( batch->flags & FLAG_MUL_CB )
+      cvsLog->csvWrite("MUL",    "flg", "CB");
     else
       cvsLog->csvWrite("MUL",    "flg", "?");
 
-    if      ( batch->flag & FLAG_SS_00  )
+    if      ( batch->flags & FLAG_SS_00  )
       cvsLog->csvWrite("SS",    "flg", "00");
-    else if ( batch->flag & FLAG_SS_10  )
+    else if ( batch->flags & FLAG_SS_10  )
       cvsLog->csvWrite("SS",    "flg", "10");
-    else if ( batch->flag & FLAG_SS_20  )
-      cvsLog->csvWrite("SS",    "flg", "20");
-    else if ( batch->flag & FLAG_SS_30  )
-      cvsLog->csvWrite("SS",    "flg", "30");
-    else if ( batch->flag & FLAG_SS_CPU )
+    //    else if ( batch->flag & FLAG_SS_20  )
+    //      cvsLog->csvWrite("SS",    "flg", "20");
+    //    else if ( batch->flag & FLAG_SS_30  )
+    //      cvsLog->csvWrite("SS",    "flg", "30");
+    else if ( batch->flags & FLAG_SS_INMEM )
+      cvsLog->csvWrite("SS",    "flg", "In-Mem");
+    else if ( batch->flags & FLAG_SS_CPU )
       cvsLog->csvWrite("SS",    "flg", "CPU");
     else
       cvsLog->csvWrite("SS",    "flg", "?");
 
-    cvsLog->csvWrite("CB IN",     "flg", "%i", (bool)(batch->flag & FLAG_CUFFT_CB_IN));
-    cvsLog->csvWrite("CB OUT",    "flg", "%i", (bool)(batch->flag & FLAG_CUFFT_CB_OUT));
+    cvsLog->csvWrite("in-mem ss",  "#", "%i", batch->strideOut );
 
-    cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_TEX_MUL));
-    cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flag & FLAG_SAS_TEX));
-    cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flag & FLAG_TEX_INTERP));
-    if ( batch->flag & FLAG_SIG_GPU )
+
+    cvsLog->csvWrite("CB POW",    "flg", "%i", (bool)(batch->flags & FLAG_CUFFT_CB_POW));
+    cvsLog->csvWrite("CB INMEM",  "flg", "%i", (bool)(batch->flags & FLAG_CUFFT_CB_INMEM));
+
+    cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_TEX_MUL));
+    cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_SAS_TEX));
+    cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flags & FLAG_TEX_INTERP));
+    if ( batch->flags & FLAG_SIG_GPU )
       cvsLog->csvWrite("SIG",    "flg", "GPU");
     else
       cvsLog->csvWrite("SIG",    "flg", "CPU");
@@ -4322,10 +5556,17 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
         cvsLog->csvWrite("CAND",  "type", "?");
     }
 
-    cvsLog->csvWrite("RET_ALL",     "flg", "%i", (bool)(batch->flag & FLAG_RET_STAGES));
-    cvsLog->csvWrite("STR_ALL",     "flg", "%i", (bool)(batch->flag & FLAG_STORE_ALL));
-    cvsLog->csvWrite("STR_EXP",     "flg", "%i", (bool)(batch->flag & FLAG_STORE_EXP));
-    cvsLog->csvWrite("KER_ACC",     "flg", "%i", (bool)(batch->flag & FLAG_KER_ACC));
+    cvsLog->csvWrite("RET_ALL",     "flg", "%i", (bool)(batch->flags & FLAG_RET_STAGES));
+    cvsLog->csvWrite("STR_ALL",     "flg", "%i", (bool)(batch->flags & FLAG_STORE_ALL));
+    cvsLog->csvWrite("STR_EXP",     "flg", "%i", (bool)(batch->flags & FLAG_STORE_EXP));
+
+    if      ( batch->cndType & FLAG_KER_HIGH  )
+      cvsLog->csvWrite("KER_HW",  "type", "HIGH");
+    else
+      cvsLog->csvWrite("KER_HW",  "type", "STD");
+
+    cvsLog->csvWrite("KER_MAX",     "flg", "%i", (bool)(batch->flags & FLAG_KER_MAX) );
+    cvsLog->csvWrite("KER_CENT",    "flg", "%i", (bool)(batch->flags & FLAG_CENTER)  );
   }
 
   FOLD // Timing  .
@@ -4347,51 +5588,58 @@ void writeLogEntry(char* fname, accelobs* obs, cuSearch* cuSrch, long long prepT
     float InpFFT    = 0;
     float multT     = 0;
     float InvFFT    = 0;
+    float plnCpy    = 0;
     float ss        = 0;
     float resultT   = 0;
     float copyD2HT  = 0;
-#ifdef TIMING
-    for (int batch = 0; batch < cuSrch->mInf->noBatches; batch++)
-    {
-      float l_copyH2DT  = 0;
-      float l_InpNorm   = 0;
-      float l_InpFFT    = 0;
-      float l_multT     = 0;
-      float l_InvFFT    = 0;
-      float l_ss        = 0;
-      float l_resultT   = 0;
-      float l_copyD2HT  = 0;
 
-      for (int stack = 0; stack < cuSrch->mInf->batches[batch].noStacks; stack++)
+    if ( batch->flags & FLAG_TIME )
+    {
+      for (int batch = 0; batch < cuSrch->pInf->noBatches; batch++)
       {
-        cuFFdotBatch* batches = &cuSrch->mInf->batches[batch];
-        l_copyH2DT  += batches->copyH2DTime[stack];
-        l_InpNorm   += batches->normTime[stack];
-        l_InpFFT    += batches->InpFFTTime[stack];
-        l_multT     += batches->multTime[stack];
-        l_InvFFT    += batches->InvFFTTime[stack];
-        l_ss        += batches->searchTime[stack];
-        l_resultT   += batches->resultTime[stack];
-        l_copyD2HT  += batches->copyD2HTime[stack];
+        float l_copyH2DT  = 0;
+        float l_InpNorm   = 0;
+        float l_InpFFT    = 0;
+        float l_multT     = 0;
+        float l_InvFFT    = 0;
+        float l_plnCpy    = 0;
+        float l_ss        = 0;
+        float l_resultT   = 0;
+        float l_copyD2HT  = 0;
+
+        for (int stack = 0; stack < cuSrch->pInf->batches[batch].noStacks; stack++)
+        {
+          cuFFdotBatch* batches = &cuSrch->pInf->batches[batch];
+          l_copyH2DT  += batches->copyH2DTime[stack];
+          l_InpNorm   += batches->normTime[stack];
+          l_InpFFT    += batches->InpFFTTime[stack];
+          l_multT     += batches->multTime[stack];
+          l_InvFFT    += batches->InvFFTTime[stack];
+          l_plnCpy    += batches->copyToPlnTime[stack];
+          l_ss        += batches->searchTime[stack];
+          l_resultT   += batches->resultTime[stack];
+          l_copyD2HT  += batches->copyD2HTime[stack];
+        }
+        copyH2DT  += l_copyH2DT;
+        InpNorm   += l_InpNorm;
+        InpFFT    += l_InpFFT;
+        multT     += l_multT;
+        InvFFT    += l_InvFFT;
+        plnCpy    += l_plnCpy;
+        ss        += l_ss;
+        resultT   += l_resultT;
+        copyD2HT  += l_copyD2HT;
       }
-      copyH2DT  += l_copyH2DT;
-      InpNorm   += l_InpNorm;
-      InpFFT    += l_InpFFT;
-      multT     += l_multT;
-      InvFFT    += l_InvFFT;
-      ss        += l_ss;
-      resultT   += l_resultT;
-      copyD2HT  += l_copyD2HT;
     }
-#endif
-    cvsLog->csvWrite("copyH2D",   "ms", "%12.6f", copyH2DT);
-    cvsLog->csvWrite("InpNorm",   "ms", "%12.6f", InpNorm);
-    cvsLog->csvWrite("InpFFT",    "ms", "%12.6f", InpFFT);
-    cvsLog->csvWrite("Mult",      "ms", "%12.6f", multT);
-    cvsLog->csvWrite("InvFFT",    "ms", "%12.6f", InvFFT);
-    cvsLog->csvWrite("Sum & Srch", "ms", "%12.6f", ss);
-    cvsLog->csvWrite("result",    "ms", "%12.6f", resultT);
-    cvsLog->csvWrite("copyD2H",   "ms", "%12.6f", copyD2HT);
+    cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", copyH2DT);
+    cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", InpNorm);
+    cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", InpFFT);
+    cvsLog->csvWrite("Mult",        "ms", "%12.6f", multT);
+    cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", InvFFT);
+    cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", plnCpy);
+    cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", ss);
+    cvsLog->csvWrite("result",      "ms", "%12.6f", resultT);
+    cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", copyD2HT);
   }
 
   cvsLog->csvEndLine();
@@ -4431,40 +5679,14 @@ int hilClimb(candTree* tree, double tooclose = 5)
   return rem;
 }
 
-double ratioARR[] = {
-    3.0 / 2.0,
-    5.0 / 2.0,
-    2.0 / 3.0,
-    4.0 / 3.0,
-    5.0 / 3.0,
-    3.0 / 4.0,
-    5.0 / 4.0,
-    2.0 / 5.0,
-    3.0 / 5.0,
-    4.0 / 5.0,
-    5.0 / 6.0,
-    2.0 / 7.0,
-    3.0 / 7.0,
-    4.0 / 7.0,
-    3.0 / 8.0,
-    5.0 / 8.0,
-    2.0 / 9.0,
-    3.0 / 10.0,
-    2.0 / 11.0,
-    3.0 / 11.0,
-    2.0 / 13.0,
-    3.0 / 13.0,
-    2.0 / 15.0
-};
-
 int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 {
+  infoMSG(1,2,"Eliminate harmonics");
+
   int maxharm = 16;
   int numremoved = 0;
 
-  //double tooclose = 1.5;
-
-  cand* tmpCand = new cand;
+  initCand* tempCand = new initCand;
   container* next;
   container* close;
   container* serch;
@@ -4473,22 +5695,22 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 
   while ( lst )
   {
-    cand* candidate = (cand*)lst->data;
+    initCand* candidate = (initCand*)lst->data;
 
-    tmpCand->power    = candidate->power;
-    tmpCand->numharm  = candidate->numharm;
-    tmpCand->r        = candidate->r;
-    tmpCand->z        = candidate->z;
-    tmpCand->sig      = candidate->sig;
+    tempCand->power    = candidate->power;
+    tempCand->numharm  = candidate->numharm;
+    tempCand->r        = candidate->r;
+    tempCand->z        = candidate->z;
+    tempCand->sig      = candidate->sig;
 
     // Remove harmonics down
     for (double ii = 1; ii <= maxharm; ii++)
     {
       FOLD // Remove down candidates  .
       {
-        tmpCand->r  = candidate->r / ii;
-        tmpCand->z  = candidate->z / ii;
-        serch       = contFromCand(tmpCand);
+        tempCand->r  = candidate->r / ii;
+        tempCand->z  = candidate->z / ii;
+        serch       = contFromCand(tempCand);
         close       =  tree->getAll(serch, tooclose);
 
         while (close)
@@ -4507,9 +5729,9 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 
       FOLD // Remove down up  .
       {
-        tmpCand->r  = candidate->r * ii;
-        tmpCand->z  = candidate->z * ii;
-        serch       = contFromCand(tmpCand);
+        tempCand->r  = candidate->r * ii;
+        tempCand->z  = candidate->z * ii;
+        serch       = contFromCand(tempCand);
         close       =  tree->getAll(serch, tooclose/**sqrt(ii)*/);
 
         while (close)
@@ -4529,9 +5751,9 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 
     for (int ii = 1; ii < 23; ii++)
     {
-      tmpCand->r  = candidate->r * ratioARR[ii];
-      tmpCand->z  = candidate->z * ratioARR[ii];
-      serch       = contFromCand(tmpCand);
+      tempCand->r  = candidate->r * ratioARR[ii];
+      tempCand->z  = candidate->z * ratioARR[ii];
+      serch       = contFromCand(tempCand);
       close       =  tree->getAll(serch, tooclose);
 
       while (close)
@@ -4553,99 +5775,296 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 
   printf("Harmonics Removed %6i - %6i remain \n", numremoved, tree->noVals() );
 
-  return numremoved;
+  return (numremoved);
 }
 
-GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
+//GSList *testTest(cuFFdotBatch* batch, GSList *candsGPU)
+//{
+//  candTree optemised;
+//
+//  candTree trees[batch->noHarmStages];
+//
+//  candTree* qt =(candTree*)batch->h_candidates;
+//
+//  hilClimb(qt, 5);
+//  eliminate_harmonics(qt);
+//
+//  cuOptCand* oPlnPln;
+//  oPlnPln   = initOptPln(batch->sInf->sSpec);
+//
+//  container* cont = qt->getLargest();
+//
+//  int i = 0;
+//
+//  while ( cont )
+//  {
+//    i++;
+//    printf("\n");
+//    //if ( i == 12 )
+//    {
+//      cand*   candidate = (cand*)cont->data;
+//      cont->flag &= ~OPTIMISED_CONTAINER;
+//
+//      printf("Candidate %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+//
+//      //
+//      //    numharm   = candidate->numharm;
+//      //    sig       = candidate->sig;
+//      //    rr        = candidate->r;
+//      //    zz        = candidate->z;
+//      //    poww      = candidate->power;
+//      //
+//      //    candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+//
+//      //accelcand *cand = new accelcand;
+//      //memset(cand, 0, sizeof(accelcand));
+//      //cand->power   = candidate->power;
+//      //cand->r       = candidate->r;
+//      //cand->sigma   = candidate->sig;
+//      //cand->z       = candidate->z;
+//      //cand->numharm = candidate->numharm;
+//
+//      //accelcand* cand = create_accelcand(candidate->power, candidate->sig, candidate->numharm, candidate->r, candidate->z);
+//
+//      //candsGPU = insert_accelcand(candsGPU, cand),
+//
+//      int stg = log2((float)candidate->numharm);
+//      candTree* ret = opt_cont(&trees[stg], oPlnPln, cont, &batch->sInf->sSpec->fftInf, i);
+//
+//      trees[stg].add(ret);
+//
+//      delete(ret);
+//
+//      if ( cont->flag & OPTIMISED_CONTAINER )
+//      {
+//        candidate->sig = candidate_sigma_cl(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
+//        container* cont = optemised.insert(candidate, 0.1);
+//
+//        if ( cont )
+//        {
+//          printf("          %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+//        }
+//        else
+//        {
+//          printf("          NO\n");
+//        }
+//      }
+//      else
+//      {
+//        printf("          Already Done\n");
+//      }
+//    }
+//
+//    cont = cont->smaller;
+//  }
+//
+//  printf("Optimisation Removed %6i - %6i remain \n", qt->noVals() - optemised.noVals(), optemised.noVals() );
+//
+//  eliminate_harmonics(&optemised);
+//
+//  return candsGPU;
+//}
+
+//
+//uint getOffset(int height, int stride, int harmNo, int stepNo, int rowNo, void* data = NULL)
+//{
+//  offset    = (rowNo + stepNo*height)*stride + cHInfo->halfWidth * 2
+//}
+//
+//void* getPowerRow(cuFFdotBatch* batch, int harmNo, int stepNo, int rowNo, void* data = NULL)
+//{
+//  int stackNo = batch->hInfos[harmNo].stackNo;
+//
+//  cuFfdotStack* cStack    = &batch->stacks[stackNo];
+//  cuFFdot*      plan      = &batch->planes[harmNo];
+//  cuHarmInfo*   cHInfo    = &batch->hInfos[harmNo];      // The current harmonic we are working on
+//
+//  if ( data == NULL )
+//    data = batch->d_planePowr;
+//
+//  void* plnData;
+//  int   offset = 0;
+//
+//  if      ( batch->flag & FLAG_ITLV_ROW )
+//  {
+//    offset    = (rowNo*batch->noSteps + stepNo)*cStack->stridePower + cHInfo->halfWidth * 2 ;
+//    //powers    = &((float*)plan->d_planePowr)[offset];
+//  }
+//  else
+//  {
+//    offset    = (rowNo + stepNo*cHInfo->height)*cStack->stridePower + cHInfo->halfWidth * 2
+//    //powers    = &((float*)plan->d_planePowr)[offset];
+//  }
+//
+//  if      ( batch->flag & FLAG_HALF )
+//  {
+//    retrun &((half*)      plan->d_planePowr)[offset];
+//  }
+//  else if ( batch->flag & FLAG_CUFFT_CB_POW )
+//  {
+//    retrun &((float*)     plan->d_planePowr)[offset];
+//  }
+//  else if ( batch->flag & FLAG_CUFFT_CB_POW )
+//  {
+//    retrun &((cmplxData*) plan->d_planePowr)[offset];
+//  }
+//
+//}
+//
+//// Copy data from device  .
+//int getPowers(cuFFdotBatch* batch, float* dst)
+//{
+//  ulong sz  = 0;
+//  harm      = 0;
+//
+//  void* out;
+//
+//  if      ( batch->flag & FLAG_HALF )         // half output
+//  {
+//    out = malloc( batch->pwrDataSize * 2 );
+//  }
+//  else if ( batch->flag & FLAG_CUFFT_CB_POW ) // float output
+//  {
+//    out = malloc( batch->pwrDataSize );
+//  }
+//  else
+//  {
+//    out = malloc( batch->pwrDataSize / 2.0 ); // fcomplexcu output
+//  }
+//
+//  // Read data from device
+//  CUDA_SAFE_CALL(cudaMemcpyAsync(out, batch->d_planePowr, batch->pwrDataSize,   cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy input data from device.");
+//
+//  // Write data to page locked memory
+//  for ( int stackNo = 0; stackNo < batch->noStacks; stackNo++ )
+//  {
+//    cuFfdotStack* cStack = &batch->stacks[stackNo];
+//
+//    for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
+//    {
+//      cuHarmInfo* cHInfo    = &batch->hInfos[harm];      // The current harmonic we are working on
+//      cuFFdot*    plan      = &cStack->planes[plainNo];          // The current plane
+//
+//      for ( int stepNo = 0; stepNo < batch->noSteps; stepNo ++) // Loop over steps
+//      {
+//        rVals* rVal = &((batch->rValues)[stepNo][harm]);
+//
+//        if ( rVal->numdata )
+//        {
+//          //// Copy input data from GPU
+//          //fcomplexcu *data = &batch->d_iData[sz];
+//          //CUDA_SAFE_CALL(cudaMemcpyAsync(out, data, cStack->strideCmplx*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftIStream), "Failed to copy input data from device.");
+//
+//          CUDA_SAFE_CALL(cudaMemcpyAsync(out, plan->d_planePowr, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+//
+//          // Copy pain from GPU
+//          for( int y = 0; y < cHInfo->height; y++ )
+//          {
+//            fcomplexcu *cmplxData;
+//            float *powers;
+//
+//            if      ( batch->flag & FLAG_ITLV_ROW )
+//            {
+//              cmplxData = &plan->d_planeMult[(y*batch->noSteps + stepNo)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+//              powers    = &((float*)plan->d_planePowr)[(y*batch->noSteps + stepNo)*cStack->stridePower + cHInfo->halfWidth * 2 ];
+//            }
+//            else
+//            {
+//              cmplxData = &plan->d_planeMult[(y + stepNo*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ];
+//              powers    = &((float*)plan->d_planePowr)[(y + stepNo*cHInfo->height)*cStack->stridePower + cHInfo->halfWidth * 2 ];
+//            }
+//
+//            if      ( batch->flag & FLAG_CUFFT_CB_OUT )
+//            {
+//              //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[step][harm].getP(0,y), powers, (plan->numrs[step])*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+//              CUDA_SAFE_CALL(cudaMemcpyAsync(gpuPowers[stepNo][harm].getP(0,y), powers, (rVal->numrs)*sizeof(float),   cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+//              /*
+//                                   for( int jj = 0; jj < plan->numrs[step]; jj++)
+//                                   {
+//                                     float *add = gpuPowers[step][harm].getP(jj*2+1,y);
+//                                     gpuPowers[step][harm].setPoint<ARRAY_SET>(add, 0);
+//                                   }
+//               */
+//            }
+//            else
+//            {
+//              //cmplxData += cHInfo->halfWidth*ACCEL_RDR;
+//              //CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[step][harm].getP(0,y), cmplxData, (plan->numrs[step])*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+//              CUDA_SAFE_CALL(cudaMemcpyAsync(gpuCmplx[stepNo][harm].getP(0,y), cmplxData, (rVal->numrs)*2*sizeof(float), cudaMemcpyDeviceToHost, cStack->fftPStream), "Failed to copy input data from device.");
+//            }
+//          }
+//        }
+//
+//        sz += cStack->strideCmplx;
+//      }
+//      harm++;
+//    }
+//
+//    // New events for Synchronisation (this event will override the previous event)
+//    cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+//    cudaEventRecord(cStack->ifftComp,  cStack->fftPStream);
+//  }
+//
+//  free(out);
+//}
+
+/**  Wait for CPU threads to complete  .
+ *
+ */
+int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
 {
+  infoMSG(1,2,"Wait for CPU threads to complete\n");
 
-  int     cdx;
-  double  poww, sig;
-  double  rr, zz;
-  int     added = 0;
-  int     numharm;
+  int noTrd;
+  sem_getvalue(running_threads, &noTrd );
 
-  candTree optemised;
-
-  candTree trees[batch->noHarmStages];
-
-  candTree* qt =(candTree*)batch->h_candidates;
-
-  hilClimb(qt, 5);
-  eliminate_harmonics(qt);
-
-  cuOptCand* oPlnPln;
-  oPlnPln   = initOptPln(batch->sInf->sSpec);
-
-  container* cont = qt->getLargest();
-
-  int i = 0;
-
-  while ( cont )
+  if (noTrd)
   {
-    i++;
-    printf("\n");
-    //if ( i == 12 )
+    char waitMsg[1024];
+    int ite = 0;
+
+    nvtxRangePush("Wait on CPU threads");
+
+    while ( noTrd > 0 )
     {
-      cand*   candidate = (cand*)cont->data;
-      cont->flag &= ~OPTIMISED_CONTAINER;
+      nvtxRangePush("Sleep");
 
-      printf("Candidate %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
+      ite++;
 
-      //
-      //    numharm   = candidate->numharm;
-      //    sig       = candidate->sig;
-      //    rr        = candidate->r;
-      //    zz        = candidate->z;
-      //    poww      = candidate->power;
-      //
-      //    candsGPU  = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
-
-      //accelcand *cand = new accelcand;
-      //memset(cand, 0, sizeof(accelcand));
-      //cand->power   = candidate->power;
-      //cand->r       = candidate->r;
-      //cand->sigma   = candidate->sig;
-      //cand->z       = candidate->z;
-      //cand->numharm = candidate->numharm;
-
-      //accelcand* cand = create_accelcand(candidate->power, candidate->sig, candidate->numharm, candidate->r, candidate->z);
-
-      //candsGPU = insert_accelcand(candsGPU, cand),
-
-      int stg = log2((float)candidate->numharm);
-      candTree* ret = opt_cont(&trees[stg], oPlnPln, cont, &batch->sInf->sSpec->fftInf, i);
-
-      trees[stg].add(ret);
-
-      delete(ret);
-
-      if ( cont->flag & OPTIMISED_CONTAINER )
+      if ( noTrd >= 1 && !(ite % 10) )
       {
-        candidate->sig = candidate_sigma_cl(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
-        container* cont = optemised.insert(candidate, 0.1);
+        sprintf(waitMsg,"%s  %3i thread still active.", msg, noTrd);
 
-        if ( cont )
+        FOLD  // Spinner  .
         {
-          printf("          %03i  harm: %2i   pow: %9.3f   r: %9.4f  z: %7.4f\n",i, candidate->numharm, candidate->power, candidate->r, candidate->z );
-        }
-        else
-        {
-          printf("          NO\n");
+          if      (ite == 1 )
+            printf("\r%s⌜   ", waitMsg);
+          if      (ite == 2 )
+            printf("\r%s⌝   ", waitMsg);
+          if      (ite == 3 )
+            printf("\r%s⌟   ", waitMsg);
+          if      (ite == 4 )
+          {
+            printf("\r%s⌞   ", waitMsg);
+            ite = 0;
+          }
+          fflush(stdout);
         }
       }
-      else
-      {
-        printf("          Already Done\n");
-      }
+
+      usleep(sleepMS);
+      sem_getvalue(running_threads, &noTrd );
+
+      nvtxRangePop();
     }
 
-    cont = cont->smaller;
+    if (ite >= 10 )
+      printf("\n\n");
+
+    nvtxRangePop();
+
+    return (ite);
   }
 
-  printf("Optimisation Removed %6i - %6i remain \n", qt->noVals() - optemised.noVals(), optemised.noVals() );
-
-  eliminate_harmonics(&optemised);
-
-  return candsGPU;
+  return (0);
 }

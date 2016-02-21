@@ -142,7 +142,6 @@ void errMsg ( const char* format, ... )
 
 int detect_gdb_tree(void)
 {
-  //if ( gdb < 0 )
   int gdb;
   {
     int rc = 0;
@@ -159,7 +158,6 @@ int detect_gdb_tree(void)
 
   return gdb;
 }
-
 
 void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg)
 {
@@ -205,117 +203,62 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
   return -1;
 }
 
-void* initGPU(void* ptr)
-{
-  int currentDevvice;
-  char txt[1024];
-
-  //int device = (int)ptr;
-  int device = *((int*)(&ptr));
-
-  printf("Device no is %i \n",device);
-
-  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-
-  // Check if the the current device is 'device'
-  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-  if ( currentDevvice != device)
-  {
-    fprintf(stderr, "ERROR: Device not set.\n");
-  }
-  else // call something to initialise the device
-  {
-    sprintf(txt,"Init device %02i", device );
-    nvtxRangePush(txt);
-
-    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-    cudaFree(0);
-
-    nvtxRangePop();
-  }
-}
-
-void* initGPUs(void* ptr)
-{
-  gpuSpecs* gSpec = (gpuSpecs*)ptr;
-
-  int currentDevvice, deviceCount;
-  size_t free, total;
-  char txt[1024];
-
-  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
-
-  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
-  {
-    int device = gSpec->devId[dIdx];
-
-
-//    int* tmp = (int*)device;
+//void* initGPU(void* ptr)
+//{
+//  int currentDevvice;
+//  char txt[1024];
 //
-//    if (0)
-//    {
-//      pthread_t thread;
-//      int  iret1 = 0;
-//      iret1 = pthread_create( &thread, NULL, initGPUs, (void*) gSpec);
+//  //int device = *((int*)(&ptr));
+//  gpuInf device = *((int*)(&ptr));
 //
-//      if(iret1)
-//      {
-//        fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
-//        initGPUs((void*)gSpec);
-//      }
-//    }
-//    else
-//    {
-//      initGPUs((void*)gSpec);
-//    }
-
-    //
-    //
-    //    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-    //
-    //    // Check if the the current device is 'device'
-    //    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-    //    if ( currentDevvice != device)
-    //    {
-    //      fprintf(stderr, "ERROR: Device not set.\n");
-    //      exit(EXIT_FAILURE);
-    //    }
-    //
-    //    FOLD // call something to initialise the device
-    //    {
-    //      sprintf(txt,"Init device %02i", device );
-    //      nvtxRangePush(txt);
-    //
-    //      //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-    //
-    //      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-    //      cudaFree(0);
-    //
-    //      break;
-    //
-    //      nvtxRangePop();
-    //    }
-  }
-}
+//  printf("Device no is %i \n", device);
+//
+//  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+//
+//  // Check if the the current device is 'device'
+//  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+//  if ( currentDevvice != device)
+//  {
+//    fprintf(stderr, "ERROR: Device not set.\n");
+//  }
+//  else // call something to initialise the device
+//  {
+//    sprintf(txt,"Init device %02i", device );
+//    nvtxRangePush(txt);
+//
+//    //size_t free, total;
+//    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+//
+//    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+//
+//    cudaFree(0);
+//
+//    nvtxRangePop();
+//  }
+//
+//  return NULL;
+//}
 
 void initGPUs(gpuSpecs* gSpec)
 {
-
   int currentDevvice, deviceCount;
-  size_t free, total;
   char txt[1024];
+
+  int major           = 0;
+  int minor           = 0;
 
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
 
   for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
   {
-    int device = gSpec->devId[dIdx];
+    int device    = gSpec->devId[dIdx];
+    gpuInf* gInf  = &gSpec->devInfo[dIdx];
 
     CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
 
     // Check if the the current device is 'device'
     CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+
     if ( currentDevvice != device)
     {
       fprintf(stderr, "ERROR: Device not set.\n");
@@ -325,49 +268,21 @@ void initGPUs(gpuSpecs* gSpec)
       sprintf(txt,"Init device %02i", device );
       nvtxRangePush(txt);
 
-      //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-      //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-      cudaFree(0);
+      cudaDeviceProp deviceProp;
+      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
+
+      major                           = deviceProp.major;
+      minor                           = deviceProp.minor;
+      gInf->capability                = major + minor/10.0f;
+      gInf->alignment                 = getMemAlignment();                  // This action will initialise the CUDA context
+      gInf->devid                     = device;
+      gInf->name                      = (char*)malloc(256*sizeof(char));
+
+      sprintf(gInf->name, "%s", deviceProp.name );
 
       nvtxRangePop();
     }
-
-//    int* tmp = (int*)device;
-//
-//    if (1)
-//    {
-//      pthread_t thread;
-//      int  iret1 = 0;
-//      iret1 = pthread_create( &thread, NULL, initGPU, (void*) tmp);
-//
-//      if(iret1)
-//      {
-//        fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
-//        initGPUs((void*)gSpec);
-//      }
-//    }
-//    else
-//    {
-//      initGPUs((void*)gSpec);
-//    }
   }
-
-  //  if (0)
-  //  {
-  //    pthread_t thread;
-  //    int  iret1 = 0;
-  //    iret1 = pthread_create( &thread, NULL, initGPUs, (void*) gSpec);
-  //
-  //    if(iret1)
-  //    {
-  //      fprintf(stderr,"WARNING - failed to create pthread to initialize cuda context.\n");
-  //      initGPUs((void*)gSpec);
-  //    }
-  //  }
-  //  else
-  //  {
-  //    initGPUs((void*)gSpec);
-  //  }
 }
 
 void listDevices()
@@ -471,3 +386,162 @@ int getStrie(int noEls, int elSz, int blockSz)
   return elStride;
 }
 
+const char* _cudaGetErrorEnum(cufftResult error)
+{
+  switch (error)
+  {
+    case CUFFT_SUCCESS:
+      return "CUFFT_SUCCESS";
+
+    case CUFFT_INVALID_PLAN:
+      return "CUFFT_INVALID_PLAN";
+
+    case CUFFT_ALLOC_FAILED:
+      return "CUFFT_ALLOC_FAILED";
+
+    case CUFFT_INVALID_TYPE:
+      return "CUFFT_INVALID_TYPE";
+
+    case CUFFT_INVALID_VALUE:
+      return "CUFFT_INVALID_VALUE";
+
+    case CUFFT_INTERNAL_ERROR:
+      return "CUFFT_INTERNAL_ERROR";
+
+    case CUFFT_EXEC_FAILED:
+      return "CUFFT_EXEC_FAILED";
+
+    case CUFFT_SETUP_FAILED:
+      return "CUFFT_SETUP_FAILED";
+
+    case CUFFT_INVALID_SIZE:
+      return "CUFFT_INVALID_SIZE";
+
+    case CUFFT_UNALIGNED_DATA:
+      return "CUFFT_UNALIGNED_DATA";
+
+    case CUFFT_INCOMPLETE_PARAMETER_LIST:
+      return "CUFFT_INCOMPLETE_PARAMETER_LIST";
+
+    case CUFFT_INVALID_DEVICE:
+      return "CUFFT_INVALID_DEVICE";
+
+    case CUFFT_PARSE_ERROR:
+      return "CUFFT_PARSE_ERROR";
+
+    case CUFFT_NO_WORKSPACE:
+      return "CUFFT_NO_WORKSPACE";
+
+#if CUDA_VERSION >= 6050
+    case CUFFT_LICENSE_ERROR:
+      return "CUFFT_LICENSE_ERROR";
+
+    case CUFFT_NOT_IMPLEMENTED:
+      return "CUFFT_NOT_IMPLEMENTED";
+#endif
+
+  }
+
+  return "<unknown>";
+}
+
+/**
+ * @brief printf a message for info logging
+ *
+ * @param lev     The info level of this message
+ * @param indent  The indentation level pof this message
+ * @param format  C string that contains a format string that follows the same specifications as format in <a href="http://www.cplusplus.com/printf">printf</a>
+ * @return void
+ **/
+void infoMSG ( int lev, int indent, const char* format, ... )
+{
+  if ( lev <= msgLevel )
+  {
+    char buffer[1024];
+    char *msg = buffer;
+
+    va_list ap;
+    va_start ( ap, format );
+    vsprintf ( buffer, format, ap );      // Write the line
+    va_end ( ap );
+
+    while ( *msg == 10 )
+    {
+      printf("\n");
+      msg++;
+    }
+
+    printf("Info %02i ", lev);
+
+    for ( int i = 0; i < indent;  i++ )
+      printf("  ");
+
+    printf("%s", msg);
+
+    if ( msg[strlen(msg)-1] != 10 )
+    {
+      printf("\n");
+    }
+
+    fflush(stdout);
+    fflush(stderr);
+  }
+}
+
+
+void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const char* msg )
+{
+  infoMSG(3,3,"timeEvent %s\n", msg);
+
+  // Check for previous errors
+  CUDA_SAFE_CALL(cudaGetLastError(), "Entering timing");
+
+  float time;         // Time in ms of the thing
+  cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+  ret = cudaEventQuery(end);
+  if ( ret == cudaErrorNotReady )
+  {
+    // This is not ideal!
+    infoMSG(3,4,"pre synchronisation [blocking] end\n");
+
+    char msg2[1024];
+    cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
+    sprintf(msg2, "Blocking on %s", msg);
+    nvtxRangePush(msg2);
+
+    sprintf(msg2, "At a timing blocking synchronisation \"%s\"", msg);
+    CUDA_SAFE_CALL(cudaEventSynchronize(end), msg2 );
+
+    nvtxRangePop();
+
+  }
+
+  // Do the actual timing
+  ret = cudaEventElapsedTime(&time, start, end);
+
+  if      ( ret == cudaErrorInvalidResourceHandle )
+  {
+    // This is OK the event just hasn't been called yet
+    // This shouldn't happen if the checks were done correctly!
+
+    cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
+  }
+  else if ( ret == cudaErrorNotReady )
+  {
+    infoMSG(3,4,"\nnot ready!\n");
+  }
+  else if ( ret == cudaSuccess )
+  {
+#pragma omp atomic
+    (*timeSum) += time;
+  }
+  else
+  {
+    char msg2[1024];
+    sprintf(msg2, "Timing %s", msg);
+
+    fprintf(stderr, "CUDA ERROR: %s [ %s ]\n", msg2, cudaGetErrorString(ret));
+    exit(EXIT_FAILURE);
+  }
+}

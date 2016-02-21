@@ -1,11 +1,11 @@
 #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - All multiplications for a stack - Uses registers to store sections of the kernel - Loop ( chunk (read ker) - plan - Y - step ) .
- * Each thread loops down a column of the plain
- * Reads the input and multiples it with the kernel and writes result to plain
+ * Each thread loops down a column of the plane
+ * Reads the input and multiples it with the kernel and writes result to plane
  */
-template<int FLAGS, int noSteps, int noPlns>
-__global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
+template<int64_t FLAGS, int noSteps, int noPlns>
+__global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
@@ -14,7 +14,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
   if ( tid < width )  // Valid thread  .
   {
-    const int kerHeight = HEIGHT_HARM[firstPlain];       // The size of the kernel
+    const int kerHeight = HEIGHT_HARM[firstPlane];       // The size of the kernel
 
     short   lDepth      = ceilf(kerHeight/(float)gridDim.y);
     short   y0          = lDepth*blockIdx.y;
@@ -52,9 +52,9 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
       register fcomplexcu k10  = kernels[(c0+10)*stride];
       register fcomplexcu k11  = kernels[(c0+11)*stride];
 
-      for (int pln = 0; pln < noPlns; pln++)                  // Loop through the plains of the stack  .
+      for (int pln = 0; pln < noPlns; pln++)                  // Loop through the planes of the stack  .
       {
-        const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
+        const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
 
         const int p0            = MAX(c0 - kerYOffset,0);
@@ -67,7 +67,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
         __restrict__ fcomplexcu inpDat[noSteps];              // Set of input data for this thread/column
         FOLD // Read all input data  .
         {
-          // NOTE: I tested reading the input for plains and steps (2 loops above) but that was slower, here uses less registers as well.
+          // NOTE: I tested reading the input for planes and steps (2 loops above) but that was slower, here uses less registers as well.
 
           for (int step = 0; step < noSteps; step++)
           {
@@ -78,9 +78,9 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
           }
         }
 
-        for (int plainY = p0; plainY < p1; plainY++)          // Loop over the individual plain  .
+        for (int planeY = p0; planeY < p1; planeY++)          // Loop over the individual plane  .
         {
-          int y = plainY - p0 + kerAddd;
+          int y = planeY - p0 + kerAddd;
           fcomplexcu ker;
 
           FOLD // Read the kernel value  .
@@ -156,11 +156,11 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
             {
-              offsetPart1  = pHeight + plainY*noSteps*stride;
+              offsetPart1  = pHeight + planeY*noSteps*stride;
             }
-            else if ( FLAGS & FLAG_ITLV_PLN )
+            else
             {
-              offsetPart1  = pHeight + plainY*stride;
+              offsetPart1  = pHeight + planeY*stride;
             }
           }
 
@@ -174,7 +174,7 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
               {
                 idx  = offsetPart1 + step * stride;
               }
-              else if ( FLAGS & FLAG_ITLV_PLN )
+              else
               {
                 idx  = offsetPart1 + step * ns2;
               }
@@ -184,147 +184,153 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             {
               fcomplexcu ipd = inpDat[step];
               fcomplexcu out;
+
+#if CORRECT_MULT
+              // This is the "correct" version
+              out.r = (ipd.r * ker.r - ipd.i * ker.i);
+              out.i = (ipd.r * ker.i + ipd.i * ker.r);
+#else
+              // This is the version accelsearch uses, ( added for comparison )
               out.r = (ipd.r * ker.r + ipd.i * ker.i);
               out.i = (ipd.i * ker.r - ipd.r * ker.i);
+#endif
+
               ffdot[idx] = out;
             }
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plain
+        pHeight += plnHeight * noSteps * stride;              // Set striding value for next plane
       }
     }
   }
 }
 
-template<int FLAGS, int noSteps>
-__host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+template<int64_t FLAGS, int noSteps>
+__host__  void mult23_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  cuFfdotStack* cStack  = &batch->stacks[stack];
   int offset            = cStack->startIdx;
 
-  switch (cStack->noInStack)
+   switch (cStack->noInStack)
   {
     case 1	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,1>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,2>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,3>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,4>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,5>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,6>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,7>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,8>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9	:
     {
       //cudaFuncSetCacheConfig(mult23_k<FLAGS,noSteps,9>, cudaFuncCachePreferL1);
-      mult23_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult23_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default	:
     {
-      fprintf(stderr, "ERROR: mult23 has not been templated for %i plains in a stack.\n",cStack->noInStack);
+      fprintf(stderr, "ERROR: mult23 has not been templated for %i planes in a stack.\n", cStack->noInStack);
       exit(EXIT_FAILURE);
     }
   }
 }
 
-template<int FLAGS>
-__host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+template<int64_t FLAGS>
+__host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   switch (batch->noSteps)
   {
     case 1	:
     {
-      mult23_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 2	:
     {
-      mult23_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 3	:
     {
-      mult23_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 4	:
     {
-      mult23_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 5	:
     {
-      mult23_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 6	:
     {
-      mult23_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 7	:
     {
-      mult23_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 8	:
     {
-      mult23_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult23_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     default	:
     {
-      fprintf(stderr, "ERROR: convolveffdot42 has not been templated for %i steps\n", batch->noSteps);
+      fprintf(stderr, "ERROR: mult23 has not been templated for %i steps.\n", batch->noSteps);
       exit(EXIT_FAILURE);
     }
   }
 }
 
-__host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult23(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
@@ -332,14 +338,8 @@ __host__  void mult23_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY )) ;
   dimGrid.y = cStack->mulSlices ;
 
-
-  if      ( batch->flag & FLAG_ITLV_ROW )
-    mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
-  else if ( batch->flag & FLAG_ITLV_PLN )
-    mult23_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch, stack);
+  if      ( batch->flags & FLAG_ITLV_ROW )
+    mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
   else
-  {
-    fprintf(stderr, "ERROR: mult23 has not been templated for layout.\n");
-    exit(EXIT_FAILURE);
-  }
+    mult23_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
 }

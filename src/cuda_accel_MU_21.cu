@@ -1,18 +1,18 @@
 #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Y - Pln - step )  .
- * Each thread loops down a column of the plain
- * Reads the input and multiplies it with the kernel and writes result to plain
+ * Each thread loops down a column of the plane
+ * Reads the input and multiplies it with the kernel and writes result to plane
  */
-template<int FLAGS, int noSteps, int noPlns>
-__global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlain )
+template<int64_t FLAGS, int noSteps, int noPlns>
+__global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
 
   if ( tid < width )  // Valid thread  .
   {
-    const int   kerHeight = HEIGHT_HARM[firstPlain];              // The size of the kernel
+    const int   kerHeight = HEIGHT_HARM[firstPlane];              // The size of the kernel
     fcomplexcu  inpDat[noPlns][noSteps];                          // Set of input data for this thread/column
 
     int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
@@ -30,7 +30,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
     {
       for ( int step = 0; step < noSteps; step++ )
       {
-        for ( int pln = 0; pln < noPlns; pln++ )                  // Loop through the plains  .
+        for ( int pln = 0; pln < noPlns; pln++ )                  // Loop through the planes  .
         {
           fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
           ipd.r                 /= (float) width;
@@ -50,14 +50,14 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
         ker   = kernels[kerY*stride];
       }
 
-      for (int pln = 0; pln < noPlns; pln++)                      // Loop through the plains  .
+      for (int pln = 0; pln < noPlns; pln++)                      // Loop through the planes  .
       {
-        const int plnHeight     = HEIGHT_HARM[firstPlain + pln];
+        const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
         const int kerYOffset    = (kerHeight - plnHeight)/2;
-        const int plainY        = kerY - kerYOffset;
+        const int planeY        = kerY - kerYOffset;
         const int ns2           = plnHeight * stride;
 
-        if( plainY >= 0 && plainY < plnHeight )
+        if( planeY >= 0 && planeY < plnHeight )
         {
           int off1;
 
@@ -65,11 +65,11 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
             {
-              off1  = pHeight + plainY*noSteps*stride;
+              off1  = pHeight + planeY*noSteps*stride;
             }
-            else if ( FLAGS & FLAG_ITLV_PLN )
+            else
             {
-              off1  = pHeight + plainY*stride;
+              off1  = pHeight + planeY*stride;
             }
           }
 
@@ -83,7 +83,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
               {
                 idx  = off1 + step * stride;
               }
-              else if ( FLAGS & FLAG_ITLV_PLN )
+              else
               {
                 idx  = off1 + step * ns2;
               }
@@ -93,124 +93,130 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
             {
               fcomplexcu ipd = inpDat[pln][step];
               fcomplexcu out;
+
+#if CORRECT_MULT
+              // This is the "correct" version
+              out.r = (ipd.r * ker.r - ipd.i * ker.i);
+              out.i = (ipd.r * ker.i + ipd.i * ker.r);
+#else
+              // This is the version accelsearch uses, ( added for comparison )
               out.r = (ipd.r * ker.r + ipd.i * ker.i);
               out.i = (ipd.i * ker.r - ipd.r * ker.i);
+#endif
               ffdot[idx] = out;
             }
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;                  // Set striding value for next plain
+        pHeight += plnHeight * noSteps * stride;                  // Set striding value for next plane
       }
     }
   }
 }
 
-template<int FLAGS, int noSteps>
-__host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+template<int64_t FLAGS, int noSteps>
+__host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  cuFfdotStack* cStack  = &batch->stacks[stack];
   int offset            = cStack->startIdx;
 
   switch (cStack->noInStack)
   {
     case 1:
     {
-      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2:
     {
-      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3:
     {
-      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4:
     {
-      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5:
     {
-      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6:
     {
-      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7:
     {
-      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8:
     {
-      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9:
     {
-      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>(cStack->d_kerData , cStack->d_iData, cStack->d_plainData, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default:
     {
-      fprintf(stderr, "ERROR: mult21 has not been templated for %i plains in a stack.\n",cStack->noInStack);
+      fprintf(stderr, "ERROR: mult21 has not been templated for %i planes in a stack.\n",cStack->noInStack);
       exit(EXIT_FAILURE);
     }
   }
 }
 
-template<int FLAGS>
-__host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+template<int64_t FLAGS>
+__host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-
   switch (batch->noSteps)
   {
     case 1:
     {
-      mult21_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 2:
     {
-      mult21_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 3:
     {
-      mult21_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 4:
     {
-      mult21_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 5:
     {
-      mult21_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 6:
     {
-      mult21_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 7:
     {
-      mult21_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     case 8:
     {
-      mult21_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, stack);
+      mult21_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
     default:
@@ -221,11 +227,9 @@ __host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
-__host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack)
+__host__  void mult21(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   dim3 dimGrid, dimBlock;
-
-  cuFfdotStack* cStack = &batch->stacks[stack];
 
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
@@ -233,13 +237,8 @@ __host__  void mult21_f(cudaStream_t multStream, cuFFdotBatch* batch, uint stack
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = cStack->mulSlices;
 
-  if      ( batch->flag & FLAG_ITLV_ROW )
-    mult21_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, stack);
-  else if ( batch->flag & FLAG_ITLV_PLN )
-    mult21_s<FLAG_ITLV_PLN>(dimGrid, dimBlock, 0, multStream, batch, stack);
+  if      ( batch->flags & FLAG_ITLV_ROW )
+    mult21_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
   else
-  {
-    fprintf(stderr, "ERROR: mult21 has not been templated for layout.\n");
-    exit(EXIT_FAILURE);
-  }
+    mult21_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
 }

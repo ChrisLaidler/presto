@@ -2,21 +2,6 @@
 
 #include <semaphore.h>
 
-/*
-#include <cub/cub.cuh>
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
-
-#include "cuda_accel_utils.h"
-#include "cuda_utils.h"
-
-extern "C"
-{
-#define __float128 long double
-#include "accel.h"
-}
- */
-
 #include <cufft.h>
 #include <algorithm>
 
@@ -32,18 +17,18 @@ extern "C"
 
 //======================================= Constant memory =================================================\\
 
-__device__ __constant__ int       YINDS[MAX_YINDS];
-__device__ __constant__ float     POWERCUT_STAGE[MAX_HARM_NO];
-__device__ __constant__ float     NUMINDEP_STAGE[MAX_HARM_NO];
+__device__ __constant__ int       YINDS[MAX_YINDS];                   ///< The harmonic related Y index for each plane
+__device__ __constant__ float     POWERCUT_STAGE[MAX_HARM_NO];        ///<
+__device__ __constant__ float     NUMINDEP_STAGE[MAX_HARM_NO];        ///<
 
-__device__ __constant__ int       HEIGHT_STAGE[MAX_HARM_NO];         ///< Plain heights in stage order
-__device__ __constant__ int       STRIDE_STAGE[MAX_HARM_NO];         ///< Plain strides in stage order
-__device__ __constant__ int       HWIDTH_STAGE[MAX_HARM_NO];         ///< Plain half width in stage order
+__device__ __constant__ int       HEIGHT_STAGE[MAX_HARM_NO];          ///< Plane heights in stage order
+__device__ __constant__ int       STRIDE_STAGE[MAX_HARM_NO];          ///< Plane strides in stage order
+__device__ __constant__ int       PSTART_STAGE[MAX_HARM_NO];          ///< Start offset of good points in a plane, stage order
 
-__device__ __constant__ float*    PLN_START;
-__device__ __constant__ uint      PLN_STRIDE;
-__device__ __constant__ int       NO_STEPS;
-__device__ __constant__ int       ALEN;
+__device__ __constant__ void*     PLN_START;                          ///< A pointer to the start of the in-mem plane
+__device__ __constant__ uint      PLN_STRIDE;                         ///< The strided in units of the in-mem plane
+__device__ __constant__ int       NO_STEPS;                           ///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
+__device__ __constant__ int       ALEN;                               ///< CUDA copy of the accelLen used in the search
 
 //====================================== Constant variables  ===============================================\\
 
@@ -57,6 +42,7 @@ __device__ const short CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
 
 //======================================= Global variables  ================================================\\
 
+//int    inMemSrchSz = 32768; // Deprecated
 
 //========================================== Functions  ====================================================\\
 
@@ -77,29 +63,21 @@ __host__ __device__ inline int twon_to_index(int n)
   return x;
 }
 
-template<uint FLAGS>
-__device__ inline int getY(int plainY, const int noSteps,  const int step, const int plainHeight = 0 )
+template<int64_t FLAGS>
+__device__ inline int getY(int planeY, const int noSteps,  const int step, const int planeHeight = 0 )
 {
   // Calculate y indice from interleave method
   if      ( FLAGS & FLAG_ITLV_ROW )
   {
-    return plainY * noSteps + step;
+    return planeY * noSteps + step;
   }
-  else if ( FLAGS & FLAG_ITLV_PLN )
-  {
-    return plainY + plainHeight*step;
-  }
-  /*
-  else if ( FLAGS & FLAG_ITLV_STK )
-  {
-    return plainY + stackHeight*step;
-  }
-   */
   else
-    return 0;
+  {
+    return planeY + planeHeight*step;
+  }
 }
 
-template<uint FLAGS>
+template<int64_t FLAGS>
 __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t tex, fcomplexcu* base, const int stride)
 {
   if  ( (FLAGS & FLAG_SAS_TEX ) )
@@ -128,43 +106,6 @@ __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t
 //  else
 //    return 1.0-gcf(a,x);          //  Use the continued fraction representation.
 //}
-
-inline float half2float(const ushort h)
-{
-  unsigned int sign = ((h >> 15) & 1);
-  unsigned int exponent = ((h >> 10) & 0x1f);
-  unsigned int mantissa = ((h & 0x3ff) << 13);
-
-  if (exponent == 0x1f)   	// NaN or Inf
-  {
-    mantissa = (mantissa ? (sign = 0, 0x7fffff) : 0);
-    exponent = 0xff;
-  }
-  else if (!exponent)       // Denorm or Zero
-  {
-    if (mantissa)
-    {
-      unsigned int msb;
-      exponent = 0x71;
-      do
-      {
-        msb = (mantissa & 0x400000);
-        mantissa <<= 1;  /* normalize */
-        --exponent;
-      }
-      while (!msb);
-
-      mantissa &= 0x7fffff;  /* 1.mantissa is implicit */
-    }
-  }
-  else
-  {
-    exponent += 0x70;
-  }
-
-  uint res = ((sign << 31) | (exponent << 23) | mantissa);
-  return  *((float*)(&res));
-}
 
 /** Calculate the CDF of a gamma distribution
  */
@@ -428,10 +369,6 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
       cdfgam_d<8>(poww, &gpu_p, &gpu_q );
     else if (numharm==16)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
-//    else
-//    {
-//      cdfgam_d(poww, numharm*2, &gpu_p, &gpu_q );
-//    }
 
     if (gpu_p == 1.0)
       gpu_q *= numindep;
@@ -465,9 +402,9 @@ __host__ __device__ double candidate_sigma_cu(double poww, int numharm, long lon
  */
 __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const uint FLAGS = batch->flag ;
+  const int64_t FLAGS = batch->flags ;
 
-  if            ( (FLAGS & FLAG_CUFFT_CB_OUT) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if            ( (FLAGS & FLAG_CUFFT_CB_POW) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
     fprintf(stderr,"ERROR: Invalid sum and search kernel. Line %i in %s\n", __LINE__, __FILE__ );
     exit(EXIT_FAILURE);
@@ -483,6 +420,8 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
     {
       add_and_searchCU31(stream, batch );
     }
+    //		Depricated
+    //
     //    else if ( FLAGS & FLAG_SS_20 )
     //    {
     //      add_and_searchCU32(stream, batch );
@@ -501,11 +440,12 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
 
 int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long long *numindep )
 {
-  int noHarms         = batch->sInf->noHarms;
   void *dcoeffs;
 
-  FOLD // Calculate Y coefficients and copy to constant memory
+  FOLD // Calculate Y coefficients and copy to constant memory  .
   {
+    int noHarms         = batch->sInf->noSrchHarms;
+
     if ( ((batch->hInfos->height + INDS_BUFF) * noHarms) > MAX_YINDS)
     {
       printf("ERROR! YINDS to small!");
@@ -534,15 +474,14 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
         float harmFrac  = HARM_FRAC_STAGE[ii];
         int sZmax;
 
-        if ( batch->flag & FLAG_SS_INMEM )
+        if ( batch->flags & FLAG_SS_INMEM )
         {
           sZmax = zmax;
         }
         else
         {
-          int pidx  = batch->stageIdx[ii];
-          sZmax = batch->hInfos[pidx].zmax;
-          //calc_required_z(harmFrac, zmax);
+          int sIdx  = batch->sInf->sIdx[ii];
+          sZmax = batch->hInfos[sIdx].zmax;
         }
 
         for (int j = 0; j < batch->hInfos->height; j++)
@@ -555,7 +494,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
         }
       }
 
-      if ( ii < batch->noHarms)
+      if ( ii < batch->noSrchHarms)
       {
         batch->hInfos[ii].yInds = bace;
       }
@@ -572,51 +511,66 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     }
 
     cudaGetSymbolAddress((void **)&dcoeffs, YINDS);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice),                      "Copying Y indices to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, indsY, bace*sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),                      "Copying Y indices to device");
   }
 
-  if ( powcut )
+  FOLD // copy power cutoff values  .
   {
-    cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, powcut, numharmstages * sizeof(float), cudaMemcpyHostToDevice),      "Copying power cutoff to device");
-  }
-  else
-  {
-    float pw[5];
-    for ( int i = 0; i < 5; i++)
+    if ( powcut )
     {
-      pw[i] = 0;
+      cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT_STAGE);
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, powcut, numharmstages * sizeof(float), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying power cutoff to device");
     }
-    cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &pw, 5 * sizeof(float), cudaMemcpyHostToDevice),         "Copying power cutoff to device");
-  }
-
-  if (numindep)
-  {
-    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, numindep, numharmstages * sizeof(long long), cudaMemcpyHostToDevice),  "Copying stages to device");
-  }
-  else
-  {
-    long long numi[5];
-    for ( int i = 0; i < 5; i++)
+    else
     {
-      numi[i] = 0;
+      float pw[5];
+      for ( int i = 0; i < 5; i++)
+      {
+        pw[i] = 0;
+      }
+      cudaGetSymbolAddress((void **)&dcoeffs, POWERCUT_STAGE);
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &pw, 5 * sizeof(float), cudaMemcpyHostToDevice, batch->stacks->initStream),         "Copying power cutoff to device");
     }
-    cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &numi, 5 * sizeof(long long), cudaMemcpyHostToDevice),      "Copying stages to device");
+  }
 
+  FOLD // number of independent values  .
+  {
+    if (numindep)
+    {
+      cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP_STAGE);
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, numindep, numharmstages * sizeof(long long), cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying stages to device");
+    }
+    else
+    {
+      long long numi[5];
+      for ( int i = 0; i < 5; i++)
+      {
+        numi[i] = 0;
+      }
+      cudaGetSymbolAddress((void **)&dcoeffs, NUMINDEP_STAGE);
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &numi, 5 * sizeof(long long), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
+
+    }
   }
 
   FOLD // Some other values  .
   {
-    cudaMemcpyToSymbol(NO_STEPS, &(batch->noSteps), sizeof(int));
-    cudaMemcpyToSymbol(ALEN, &(batch->accelLen), sizeof(int));
+    cudaGetSymbolAddress((void **)&dcoeffs, NO_STEPS);
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs,  &(batch->noSteps),  sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying number of steps");
 
-    if ( batch->flag & FLAG_SS_INMEM  )
+    cudaGetSymbolAddress((void **)&dcoeffs, ALEN);
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs,  &(batch->accelLen), sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
+  }
+
+  FOLD // In-mem plane details  .
+  {
+    if ( batch->flags & FLAG_SS_INMEM  )
     {
-      cudaMemcpyToSymbol(PLN_START, &(batch->d_plainFull), sizeof(float*));
-      cudaMemcpyToSymbol(PLN_STRIDE, &batch->sInf->mInf->inmemStride, sizeof(int));
+      cudaGetSymbolAddress((void **)&dcoeffs, PLN_START);
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &(batch->sInf->d_planeFull),  sizeof(void*),  cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
+
+      cudaGetSymbolAddress((void **)&dcoeffs, PLN_STRIDE);
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &(batch->sInf->inmemStride),  sizeof(uint),   cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
     }
   }
 
@@ -624,144 +578,167 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
   {
     int height[MAX_HARM_NO];
     int stride[MAX_HARM_NO];
-    int hwidth[MAX_HARM_NO];
+    int pStart[MAX_HARM_NO];
 
     FOLD // Set values  .
     {
-      for (int i = 0; i < batch->noHarms; i++)
+      for (int i = 0; i < batch->noGenHarms; i++)
       {
-        int pidx  = batch->stageIdx[i];
-        height[i] = batch->hInfos[pidx].height;
-        stride[i] = batch->hInfos[pidx].width;
-        hwidth[i] = batch->hInfos[pidx].halfWidth*ACCEL_NUMBETWEEN;
+        int sIdx  = batch->sInf->sIdx[i];
+        height[i] = batch->hInfos[sIdx].height;
+        stride[i] = batch->hInfos[sIdx].width;
+        pStart[i] = batch->hInfos[sIdx].kerStart;
       }
 
       FOLD // The rest  .
       {
-        int zeroHeight  = batch->hInfos->height;
         int zeroZMax    = batch->hInfos->zmax;
 
-        for (int i = batch->noHarms; i < MAX_HARM_NO; i++)
+        presto_interp_acc accuracy = LOWACC;
+        if ( batch->flags & FLAG_KER_HIGH )
+          accuracy = HIGHACC;
+
+        for (int i = batch->noGenHarms; i < MAX_HARM_NO; i++)
         {
           float harmFrac  = HARM_FRAC_FAM[i];
           int zmax        = calc_required_z(harmFrac, zeroZMax);
           height[i]       = (zmax / ACCEL_DZ) * 2 + 1;
-          stride[i]       = calc_fftlen3(harmFrac, zmax, batch->accelLen);
-          hwidth[i]       = -1;
+          stride[i]       = calc_fftlen3(harmFrac, zmax, batch->accelLen, accuracy);
+          pStart[i]       = -1;
         }
       }
     }
 
-
     cudaGetSymbolAddress((void **)&dcoeffs, HEIGHT_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &height, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
 
     cudaGetSymbolAddress((void **)&dcoeffs, STRIDE_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &stride, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
 
-    cudaGetSymbolAddress((void **)&dcoeffs, HWIDTH_STAGE);
-    CUDA_SAFE_CALL(cudaMemcpy(dcoeffs, &hwidth, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice),      "Copying stages to device");
+    cudaGetSymbolAddress((void **)&dcoeffs, PSTART_STAGE);
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &pStart, MAX_HARM_NO * sizeof(int), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stages to device");
   }
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Error Preparing the constant memory.");
+  CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the constant memory.");
 
-  return 1;
+  return (1);
 }
 
 void SSKer(cuFFdotBatch* batch)
 {
-  if ( batch->state & HAVE_PLN )
+  infoMSG(2,3,"Sum & Search\n");
+
+  nvtxRangePush("S&S Ker");
+
+  FOLD // Do synchronisations  .
   {
-    nvtxRangePush("Add & Search");
+    infoMSG(3,4,"pre synchronisations\n");
 
-    FOLD // Do synchronisations  .
+    for (int ss = 0; ss < batch->noStacks; ss++)
     {
-      for (int ss = 0; ss < batch->noStacks; ss++)
+      cuFfdotStack* cStack = &batch->stacks[ss];
+
+      if ( batch->flags & FLAG_SS_INMEM )
       {
-        cuFfdotStack* cStack = &batch->stacks[ss];
-
-        if ( batch->flag & FLAG_SS_INMEM )
-        {
-          cudaStreamWaitEvent(batch->strmSearch, cStack->ifftMemComp, 0);
-        }
-        else
-        {
-          cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0);
-        }
-      }
-    }
-
-    FOLD // Timing event  .
-    {
-#ifdef TIMING // Timing event
-      CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->strmSearch),"Recording event: searchInit");
-#endif
-    }
-
-#ifdef STPMSG
-    printf("\t\tSum & search kernel\n");
-#endif
-
-    FOLD // Call the SS kernel  .
-    {
-      if ( batch->retType & CU_POWERZ_S )
-      {
-        if      ( batch->flag & FLAG_SS_STG )
-        {
-          add_and_searchCU3(batch->strmSearch, batch );
-        }
-        else if ( batch->flag & FLAG_SS_INMEM )
-        {
-          add_and_search_IMMEM(batch);
-        }
-        else
-        {
-          fprintf(stderr,"ERROR: function %s is not setup to handle this type of search.\n",__FUNCTION__);
-          exit(EXIT_FAILURE);
-        }
+        cudaStreamWaitEvent(batch->srchStream, cStack->ifftMemComp,   0);
       }
       else
       {
-        fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+        cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,      0);
+      }
+    }
+  }
+
+  FOLD // Timing event  .
+  {
+    if ( batch->flags & FLAG_TIME ) // Timing event
+    {
+      CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->srchStream),"Recording event: searchInit");
+    }
+  }
+
+
+
+  FOLD // Call the SS kernel  .
+  {
+    infoMSG(3,4,"kernel\n");
+
+    if ( batch->retType & CU_POWERZ_S )
+    {
+      if      ( batch->flags & FLAG_SS_STG )
+      {
+        add_and_searchCU3(batch->srchStream, batch );
+      }
+      else if ( batch->flags & FLAG_SS_INMEM )
+      {
+        add_and_search_IMMEM(batch);
+      }
+      else
+      {
+        fprintf(stderr,"ERROR: function %s is not setup to handle this type of search.\n",__FUNCTION__);
         exit(EXIT_FAILURE);
       }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Error at SSKer kernel launch");
     }
-
-    FOLD // Synchronisation  .
+    else
     {
-      CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+      fprintf(stderr,"ERROR: function %s is not setup to handle this type of return data for GPU accel search\n",__FUNCTION__);
+      exit(EXIT_FAILURE);
     }
-
-    batch->state |=  HAVE_SS;
-    batch->state &= ~HAVE_PLN;
-
-    nvtxRangePop();
+    CUDA_SAFE_CALL(cudaGetLastError(), "At SSKer kernel launch");
   }
+
+  FOLD // Synchronisation  .
+  {
+    infoMSG(3,4,"post synchronisations\n");
+
+    CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
+  }
+
+  nvtxRangePop();
 }
 
-int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double sig, int stage, int numharm, FILE* myfile = NULL)
+/** Process an individual candidate  .
+ *
+ */
+int procesCanidate(resultData* res, double rr, double zz, double poww, double sig, int stage, int numharm)
 {
+  // Adjust r and z for the number of harmonics
+  rr    /=  (double)numharm ;
+  zz    =   ( zz * ACCEL_DZ - res->zMax ) / (double)numharm ;
+
   if ( rr < res->SrchSz->searchRHigh )
   {
-    rr    /=  (double)numharm ;
-    zz    =   ( zz * ACCEL_DZ - res->zMax ) / (double)numharm ;
+    if ( !(res->flags & FLAG_SIG_GPU) ) // Do the sigma calculation  .
+    {
+      sig     = candidate_sigma_cl(poww, numharm, res->numindep[stage]);
+    }
 
     if      ( res->cndType & CU_STR_LST     )
     {
-      //*cands = insert_new_accelcand(*cands, poww, sig, numharm, rr, zz, &added);
+      if ( res->threasdInfo )
+      {
+        // Thread safe
+	pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
+	GSList *candsGPU	= (GSList*)res->cndData;
+	int     added		= 0;
+        res->cndData		= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+        (*res->noResults)++;
+        pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
+      }
+      else
+      {
+	GSList *candsGPU	= (GSList*)res->cndData;
+	int     added		= 0;
+        res->cndData		= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+        (*res->noResults)++;
+      }
     }
     else if ( res->cndType & CU_STR_ARR     )
     {
-      if ( !(res->flag & FLAG_SIG_GPU) ) // Do the sigma calculation  .
-      {
-        sig     = candidate_sigma_cl(poww, numharm, res->numindep[stage]);
-      }
-
       double  rDiff = rr - res->SrchSz->searchRLow ;
       long    grIdx;   /// The index of the candidate in the global list
 
-      if ( res->flag & FLAG_STORE_EXP )
+      if ( res->flags & FLAG_STORE_EXP )
       {
         grIdx = floor(rDiff*ACCEL_RDR);
       }
@@ -772,24 +749,22 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
 
       if ( grIdx >= 0 && grIdx < res->SrchSz->noOutpR )  // Valid index  .
       {
-        //batch->noResults++;
-
-        if ( res->flag & FLAG_STORE_ALL )               // Store all stages  .
+        if ( res->flags & FLAG_STORE_ALL )               // Store all stages  .
         {
           grIdx += stage * (res->SrchSz->noOutpR);      // Stride by size
         }
 
         if ( res->cndType & CU_CANDFULL )
         {
+          initCand* candidate = &((initCand*)res->cndData)[grIdx];
+
+          // this sigma is greater than the current sigma for this r value
+          if ( candidate->sig < sig )
           {
-            cand* candidate = &((cand*)res->cndData)[grIdx];
-
-            // this sigma is greater than the current sigma for this r value
-            if ( candidate->sig < sig )
+            if ( res->threasdInfo )
             {
-
               pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
-              if ( candidate->sig < sig )
+              if ( candidate->sig < sig ) // Check again
               {
                 if ( candidate->sig == 0 )
                   (*res->noResults)++;
@@ -802,6 +777,17 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
               }
               pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
             }
+            else
+            {
+              if ( candidate->sig == 0 )
+                (*res->noResults)++;
+
+              candidate->sig      = sig;
+              candidate->power    = poww;
+              candidate->numharm  = numharm;
+              candidate->r        = rr;
+              candidate->z        = zz;
+            }
           }
         }
         else
@@ -813,44 +799,9 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
     }
     else if ( res->cndType & CU_STR_QUAD    )
     {
-//      gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(res->cndData) ;
-//
-//      quadPoint<double, float> voxel;
-//      voxel.position.x  = rr;
-//      voxel.position.y  = zz;
-//      voxel.value       = poww;
-//
-//      qt->insertDynamic(voxel);
-//
-//      quadNode<double, float>* head = qt->getHead();
+      candTree* qt = (candTree*)res->cndData;
 
-
-//      candQuadNode* node;
-//
-//      location* loc;
-//
-//      cand* canidate;
-//
-//      if ( *loc < *node )
-//      {
-//        printf("BOB\n");
-//      }
-
-
-
-      candTree* qt =(candTree*)res->cndData;
-
-      if ( *res->noResults > 1946)
-      {
-        int tmp = 0;
-      }
-
-      if ( !(res->flag & FLAG_SIG_GPU) ) // Do the sigma calculation  .
-      {
-        sig     = candidate_sigma_cl(poww, numharm, res->numindep[stage]);
-      }
-
-      cand* candidate = new cand;
+      initCand* candidate     = new initCand;
 
       candidate->sig      = sig;
       candidate->power    = poww;
@@ -858,38 +809,34 @@ int procesCanidateTrd(resultData* res, double rr, double zz, double poww, double
       candidate->r        = rr;
       candidate->z        = zz;
 
-      if ( myfile != NULL )
-      {
-        fprintf ( myfile, "%.15f %.15f %i %.15f %.15f \n", sig, poww, numharm, rr, zz );
-      }
-
-
       (*res->noResults)++;
-
-      //printf("Insert %6i \n", *res->noResults);
 
       qt->insert(candidate);
     }
     else
     {
-      fprintf(stderr,"ERROR: function %s requires cand\n",__FUNCTION__);
+      fprintf(stderr,"ERROR: Function %s unknown candidate storage type.\n", __FUNCTION__);
       exit(EXIT_FAILURE);
     }
   }
+
+  return (0);
 }
 
+/** Process the results of the search this is usually run in a separate CPU thread  .
+ *
+ * This function is meant to be the entry of a separate thread
+ *
+ */
 void* processSearchResults(void* ptr)
 {
-  FILE * myfile;
-  myfile = fopen ( "/home/chris/src.cvs", "a+" );
-  fseek(myfile, 0, SEEK_END);
-
   resultData* res = (resultData*)ptr;
+  struct timeval start, end;      // Timing variables
 
-#ifdef TIMING // Timing  .
-  struct timeval start, end;
-  gettimeofday(&start, NULL);
-#endif
+  if ( res->flags & FLAG_TIME ) 		// Timing  .
+  {
+    gettimeofday(&start, NULL);
+  }
 
   double poww, sig;
   double rr, zz;
@@ -898,8 +845,8 @@ void* processSearchResults(void* ptr)
 
   for ( int stage = 0; stage < res->noStages; stage++ )
   {
-    numharm = (1<<stage);
-    float cutoff = res->powerCut[stage];
+    numharm       = (1<<stage);
+    float cutoff  = res->powerCut[stage];
 
     for ( int y = res->y0; y < res->y1; y++ )
     {
@@ -969,132 +916,171 @@ void* processSearchResults(void* ptr)
         else
         {
           fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-          sem_trywait(&res->threasdInfo->running_threads);
+          if ( res->threasdInfo )
+          {
+            sem_trywait(&res->threasdInfo->running_threads);
+          }
           exit(EXIT_FAILURE);
         }
 
         if ( poww > 0 )
         {
-          rr      = res->rLow + x * ACCEL_DR ;
-          procesCanidateTrd(res, rr, zz, poww, sig, stage, numharm, myfile ) ;
+          if ( isnan(poww) )
+          {
+            rr      = res->rLow + x * ACCEL_DR / numharm ;
+            fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
+          }
+          else
+          {
+            if ( isinf(poww) )
+            {
+              if ( res->flags & FLAG_HALF )
+              {
+                poww          = 6.55e4;      // Max 16 bit float value
+                double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+                fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", poww, rPos);
+              }
+              else
+              {
+                poww          = 3.402823e38; // Max 32 bit float value
+                double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+                fprintf(stderr,"WARNING: Search return inf power at bin %.2f. This is probably an error as you are using single precision floats.\n", rPos);
+              }
+            }
+
+            if ( zz < 0 || zz >= res->zMax+1)
+            {
+              double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+              fprintf(stderr,"ERROR: invalid z value found at bin %.2f.\n", rPos);
+            }
+            else
+            {
+              // This value is above the threshold
+              rr      = res->rLow + x * ACCEL_DR ;
+              procesCanidate(res, rr, zz, poww, sig, stage, numharm ) ;
+            }
+          }
         }
       }
     }
   }
 
-#ifdef TIMING // Timing  .
-  pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
-  gettimeofday(&end, NULL);
-  float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-  res->resultTime += v1;
-  pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
-#endif
+  if ( res->flags & FLAG_TIME ) // Timing  .
+  {
+    gettimeofday(&end, NULL);
+    float time =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
 
-  resThrds*   threasdInfo = res->threasdInfo;
+    if ( res->threasdInfo )
+    {
+      pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
+      res->resultTime[0] += time;
+      pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
+    }
+    else
+    {
+      res->resultTime[0] += time;
+    }
+  }
 
-  sem_trywait(&res->threasdInfo->running_threads);
+  // Decrease the count number of running threads
+  if ( res->threasdInfo )
+  {
+    sem_trywait(&res->threasdInfo->running_threads);
+  }
 
   FOLD // Free memory
   {
-    free (res->retData);
+    if ( res->flags & FLAG_THREAD )
+      free (res->retData);
     free (res);
   }
 
-  fclose(myfile); // TMPS
+  return (NULL);
 }
 
+/** Process the search results for the batch  .
+ * This usually spawns a separate CPU thread to do the sigma calculations
+ */
 void processSearchResults(cuFFdotBatch* batch)
 {
-  if ( (batch->state & HAVE_RES) )
+  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-#ifdef STPMSG
-    printf("\t\tProcess previous results\n");
-#endif
+    struct timeval start, end;          // Timing variables
+    resultData* thrdDat;
 
-    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-    {
-#ifdef STPMSG
-      printf("\t\t\tEvent Synchronise\n");
-#endif
-
-      nvtxRangePush("EventSynch");
-      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-      nvtxRangePop();
-    }
-
-#ifdef TIMING // Timing  .
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
-#endif
+    infoMSG(1,2,"Process previous results\n");
 
     nvtxRangePush("CPU Process results");
 
-    double poww, sig;
-    double rr, zz;
-    int numharm;
-    int noStages = batch->sInf->noHarmStages;
-    rVals* rVal;
-
-    FOLD // ADD candidates to global list  .
+    if ( batch->flags & FLAG_TIME )    // Timing  .
     {
-#ifdef STPMSG
-      printf("\t\t\tAdd To List\n");
-#endif
+      gettimeofday(&start, NULL);
+    }
 
+    FOLD // Allocate temporary memory to copy results back to  .
+    {
+      nvtxRangePush("malloc");
 
-#ifdef SYNCHRONOUS
-      rVal = &((*batch->rConvld)[0][0]);
-#else
-      rVal = &((*batch->rSearch)[0][0]);
-#endif
-
-      resultData* thrdDat = new resultData;
+      thrdDat = new resultData;     // A data structure to hold info for the thread processing the results
       memset(thrdDat, 0, sizeof(resultData) );
 
-      nvtxRangePush("malloc");
-      thrdDat->retData = (void*)malloc(batch->retDataSize);
-      nvtxRangePop();
-
-      nvtxRangePush("memcpy");
-      memcpy(thrdDat->retData, batch->h_retData, batch->retDataSize);
-      nvtxRangePop();
-
-      thrdDat->SrchSz = batch->SrchSz;
-      thrdDat->cndData = batch->h_candidates;
-      thrdDat->cndType = batch->cndType;
-      thrdDat->noStages = batch->sInf->noHarmStages;
-      thrdDat->numindep = batch->sInf->numindep;
-      thrdDat->powerCut = batch->sInf->powerCut;
-      thrdDat->rLow = rVal->drlo;
-      thrdDat->retType = batch->retType;
-      thrdDat->threasdInfo = batch->sInf->threasdInfo;
-      thrdDat->flag = batch->flag;
-      thrdDat->zMax = batch->hInfos->zmax;
-      thrdDat->resultTime = batch->resultTime;
-      thrdDat->noResults = &batch->noResults;
-
-      thrdDat->x0 = 0;
-      thrdDat->x1 = 0;
-      thrdDat->y0 = 0;
-      thrdDat->y1 = batch->ssSlices;
-
-      thrdDat->xStride = batch->strideRes;
-      thrdDat->yStride = batch->ssSlices;
-
-      if ( !(batch->flag & FLAG_SS_INMEM) )
+      if ( batch->flags & FLAG_THREAD )
       {
-        thrdDat->xStride *= batch->noSteps;
+        thrdDat->retData = (void*)malloc(batch->retDataSize);
       }
 
-      for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
-      {
-#ifdef SYNCHRONOUS
-        rVal = &((*batch->rConvld)[step][0]);
-#else
-        rVal = &((*batch->rSearch)[step][0]);
-#endif
+      nvtxRangePop();
+    }
 
-        thrdDat->x1 += rVal->numrs;
+    FOLD // Initialise data structure  .
+    {
+      rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
+
+      infoMSG(3,3,"Initialise data structure\n");
+
+      thrdDat->SrchSz       = batch->sInf->SrchSz;
+      thrdDat->cndData      = batch->sInf->h_candidates;
+      thrdDat->cndType      = batch->cndType;
+      thrdDat->noStages     = batch->sInf->noHarmStages;
+      thrdDat->numindep     = batch->sInf->numindep;
+      thrdDat->powerCut     = batch->sInf->powerCut;
+      thrdDat->rLow         = rVal->drlo;
+      thrdDat->retType      = batch->retType;
+      thrdDat->threasdInfo  = batch->sInf->threasdInfo;
+      thrdDat->flags        = batch->flags;
+      thrdDat->zMax         = batch->hInfos->zmax;
+      thrdDat->resultTime   = batch->resultTime;
+      thrdDat->noResults    = &batch->noResults;
+
+      thrdDat->x0           = 0;
+      thrdDat->x1           = 0;
+      thrdDat->y0           = 0;
+      thrdDat->y1           = batch->ssSlices;
+
+      thrdDat->xStride      = batch->strideOut;
+      thrdDat->yStride      = batch->ssSlices;
+
+      if ( !(batch->flags & FLAG_THREAD) && (batch->flags & FLAG_SYNCH ) )
+      {
+        thrdDat->threasdInfo = NULL;
+      }
+
+      if ( !(batch->flags & FLAG_SS_INMEM) )
+      {
+        // Multi-step
+
+        thrdDat->xStride    *= batch->noSteps;
+
+        for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
+        {
+          rVals* rVal       = &(*batch->rAraays)[batch->rActive][step][0];
+          thrdDat->x1       += rVal->numrs;                 // These should all be Acelllen but there may be the case of the last step!
+        }
+      }
+      else
+      {
+        // NB: In-mem has only one step
+        thrdDat->x1         = rVal->numrs;
       }
 
       if ( thrdDat->x1 > thrdDat->xStride )
@@ -1102,76 +1088,199 @@ void processSearchResults(cuFFdotBatch* batch)
         fprintf(stderr,"ERROR: Number of elements of greater than stride. In function %s  \n",__FUNCTION__);
         exit(EXIT_FAILURE);
       }
+    }
 
-      if ( batch->flag & FLAG_THREAD )
+    FOLD // Timing 0  .
+    {
+      if ( batch->flags & FLAG_TIME )
       {
-        pthread_t thread;
-        int  iret1 = 0;
-        iret1 = pthread_create( &thread, NULL, processSearchResults, (void*) thrdDat);
+        gettimeofday(&end, NULL);
+        float time = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+        int idx = MIN(2, batch->noStacks-1);
 
-        if(iret1)
+        pthread_mutex_lock(&batch->sInf->threasdInfo->candAdd_mutex);
+        batch->resultTime[idx] += time;
+        pthread_mutex_unlock(&batch->sInf->threasdInfo->candAdd_mutex);
+      }
+    }
+
+    FOLD // Copy data from device  .
+    {
+      FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
+      {
+        infoMSG(3,4,"pre synchronisation [blocking] candCpyComp\n");
+
+        nvtxRangePush("EventSynch");
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+        nvtxRangePop();
+      }
+
+      FOLD // Timing  .
+      {
+        if ( batch->flags & FLAG_TIME )
         {
-          fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
-          exit(EXIT_FAILURE);
+          gettimeofday(&start, NULL);
+        }
+      }
+
+      FOLD // Copy data  .
+      {
+        infoMSG(3,3,"copy to temporary memory\n");
+
+        nvtxRangePush("memcpy");
+
+        void *gpuOutput;
+
+        if ( !(batch->flags & FLAG_SYNCH) && (batch->flags & FLAG_SS_INMEM) )
+        {
+          gpuOutput = batch->h_outData2;
         }
         else
         {
-          sem_post(&batch->sInf->threasdInfo->running_threads);
+          gpuOutput = batch->h_outData1;
+        }
+
+        if ( batch->flags & FLAG_THREAD )
+        {
+          memcpy(thrdDat->retData, gpuOutput, batch->retDataSize);
+
+          FOLD // Synchronisation  .
+          {
+            infoMSG(3,4,"synchronise\n");
+
+            // This will allow kernels to run while the CPU continues
+            CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
+          }
+        }
+        else
+        {
+          thrdDat->retData = gpuOutput;
+        }
+
+        nvtxRangePop();
+      }
+
+      FOLD // Timing 1  .
+      {
+        if ( batch->flags & FLAG_TIME )
+        {
+          gettimeofday(&end, NULL);
+          float time =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+          int idx = MIN(1, batch->noStacks-1);
+
+          pthread_mutex_lock(&batch->sInf->threasdInfo->candAdd_mutex);
+          batch->resultTime[idx] += time;
+          pthread_mutex_unlock(&batch->sInf->threasdInfo->candAdd_mutex);
         }
       }
-      else
+    }
+
+    FOLD // ADD candidates to global list potently in a separate thread  .
+    {
+      if ( thrdDat->threasdInfo )// Increase the count number of running threads, processSearchResults will decrease it when its finished
+        sem_post(&batch->sInf->threasdInfo->running_threads);
+
+      if ( batch->flags & FLAG_SYNCH )
       {
+        nvtxRangePush("Thread");
+      }
+
+      if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
+      {
+        infoMSG(3,4,"create thread\n");
+
+        pthread_t thread;
+        int  iret1 = pthread_create( &thread, NULL, processSearchResults, (void*) thrdDat);
+
+        if (iret1)
+        {
+          fprintf(stderr,"Error - pthread_create() return code: %d\n", iret1);
+          exit(EXIT_FAILURE);
+        }
+
+        if ( batch->flags & FLAG_SYNCH )
+        {
+          void *status;
+          if ( pthread_join(thread, &status) )
+          {
+            fprintf(stderr,"ERROR: Failed to join results thread.\n");
+            exit(EXIT_FAILURE);
+          }
+        }
+      }
+      else                              	// Just call the function  .
+      {
+        infoMSG(3,4,"non thread\n");
+
         processSearchResults( (void*) thrdDat );
+
+        if ( !(batch->flags & FLAG_THREAD) )
+        {
+          // Not using threading so using original memory location
+
+          FOLD // Synchronisation  .
+          {
+            infoMSG(3,4,"synchronise\n");
+
+            // This will allow kernels to run while the CPU continues
+            CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
+          }
+        }
+      }
+
+      if ( batch->flags & FLAG_SYNCH )
+      {
+        nvtxRangePop();
       }
     }
 
     nvtxRangePop();
-
-#ifdef TIMING // Timing  .
-    gettimeofday(&end, NULL);
-    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-    batch->resultTime[0] += v1;
-#endif
-
-    FOLD // Synchronisation  .
-    {
-      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
-    }
-
-    batch->state &= ~HAVE_RES;
   }
 }
 
 void getResults(cuFFdotBatch* batch)
 {
-  if ( batch->state & HAVE_SS )
+  // Timing
+  if ( batch->flags & FLAG_TIME )
   {
+    if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+    {
+      // Sum & Search kernel
+      timeEvents( batch->candCpyInit, batch->candCpyComp, &batch->copyD2HTime[0],   "Copy device to host");
+    }
+  }
+
+  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  {
+    infoMSG(1,2,"Copy results from device to host\n");
+
     FOLD // Synchronisations  .
     {
-      cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
-      cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
+      infoMSG(3,3,"pre synchronise\n");
+
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->searchComp,  0),"Waiting on event searchComp");
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->processComp, 0),"Waiting on event processComp");
     }
 
-#ifdef TIMING // Timing event  .
-    CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->strmSearch),"Recording event: candCpyInit");
-#endif
+    FOLD // Timing event  .
+    {
+      if ( batch->flags & FLAG_TIME )
+      {
+        CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->srchStream),"Recording event: candCpyInit");
+      }
+    }
 
     FOLD // Copy relevant data back  .
     {
-#ifdef STPMSG
-      printf("\t\tCopy results from device to host\n");
-#endif
+      infoMSG(3,3,"Async memcpy\n");
 
       if      ( batch->retType & CU_STR_PLN )
       {
-        if ( batch->flag & FLAG_CUFFT_CB_OUT )
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainPowers, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
-        else
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_plainData, batch->plnDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_outData1, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
       else
       {
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
+        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_outData1, batch->d_outData1,  batch->retDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
@@ -1179,31 +1288,66 @@ void getResults(cuFFdotBatch* batch)
 
     FOLD // Synchronisations  .
     {
-      CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
+      infoMSG(3,3,"post synchronise\n");
+
+      CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->resStream),"Recording event: readComp");
     }
 
-    batch->state &= ~HAVE_SS;
-    batch->state |=  HAVE_RES;
+    CUDA_SAFE_CALL(cudaGetLastError(), "Leaving getResults.");
   }
 }
 
 void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and process data in normal steps  .
 {
+  // Timing
+  if ( batch->flags & FLAG_TIME )
+  {
+    if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+    {
+      // Sum & Search kernel
+      timeEvents( batch->searchInit, batch->searchComp, &batch->searchTime[0],   "Sum & Search");
+    }
+  }
+
+  // Sum and search the IFFT'd data  .
+  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  {
+    infoMSG(1,2,"Sum & Search\n");
+
+    if      ( batch->retType 	& CU_STR_PLN 	  )
+    {
+      // Nothing!
+    }
+    else if ( batch->flags    & FLAG_SS_INMEM )
+    {
+      // NOTHING
+    }
+    else if ( batch->flags    & FLAG_SS_CPU   )
+    {
+      // NOTHING
+    }
+    else
+    {
+      SSKer(batch);
+    }
+  }
+}
+
+void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and process data in normal steps  .
+{
   FOLD // Sum and search the IFFT'd data  .
   {
-#ifdef STPMSG
-    printf("\tSum & Search\n");
-#endif
+    infoMSG(2,1,"Sum & Search\n");
 
     if      ( batch->retType & CU_STR_PLN )
     {
       // Nothing!
     }
-    else if ( batch->flag & FLAG_SS_INMEM )
+    else if ( batch->flags & FLAG_SS_INMEM )
     {
       // NOTHING
     }
-    else if ( batch->flag & FLAG_SS_CPU )
+    else if ( batch->flags & FLAG_SS_CPU )
     {
       // NOTHING
     }
@@ -1213,348 +1357,70 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
     }
   }
 
-#ifdef SYNCHRONOUS
-
-  FOLD // Copy results from device to host  .
+  if ( batch->flags & FLAG_SYNCH )
   {
-    if  ( batch->flag & FLAG_SS_INMEM )
+    FOLD // Copy results from device to host  .
     {
-      // Nothing
-    }
-    else
-    {
-      getResults(batch);
-    }
-  }
-
-  FOLD // Process previous results  .
-  {
-    if  ( batch->flag & FLAG_SS_INMEM )
-    {
-      // Nothing
-    }
-    else
-    {
-      processSearchResults(batch);
-    }
-  }
-
-#else
-
-  FOLD // Process previous results  .
-  {
-    if  ( batch->flag & FLAG_SS_INMEM )
-    {
-      // Nothing
-    }
-    else
-    {
-      processSearchResults(batch);
-    }
-  }
-
-  FOLD // Copy results from device to host  .
-  {
-    if  ( batch->flag & FLAG_SS_INMEM )
-    {
-      // Nothing
-    }
-    else
-    {
-      getResults(batch);
-    }
-  }
-
-#endif
-
-#ifdef TIMING // Timing  .
-
-#ifndef SYNCHRONOUS
-  if ( (batch->state & HAVE_SS) )
-#endif
-  {
-    float time;         // Time in ms of the thing
-    cudaError_t ret;    // Return status of cudaEventElapsedTime
-
-    FOLD // Convolution timing  .
-    {
-      if ( !(batch->flag & FLAG_CUFFT_CB_IN) )
+      if  ( batch->flags & FLAG_SS_INMEM )
       {
-        // Did the convolution by separate kernel
-
-        if ( batch->flag & FLAG_MUL_BATCH )   // Convolution was done on the entire batch  .
-        {
-          FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-          {
-            nvtxRangePush("EventSynch");
-            CUDA_SAFE_CALL(cudaEventSynchronize(batch->multComp), "ERROR: copying result from device to host.");
-            nvtxRangePop();
-          }
-
-          ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
-          if ( ret == cudaErrorNotReady )
-          {
-            //printf("Not ready\n");
-          }
-          else
-          {
-            //printf("    ready\n");
-#pragma omp atomic
-            batch->multTime[0] += time;
-          }
-        }
-        else                                // Convolution was on a per stack basis  .
-        {
-          for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
-          {
-            cuFfdotStack* cStack = &batch->stacks[ss];
-
-            FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-            {
-              nvtxRangePush("EventSynch");
-              CUDA_SAFE_CALL(cudaEventSynchronize(cStack->multComp), "ERROR: copying result from device to host.");
-              nvtxRangePop();
-            }
-
-            ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
-            if ( ret == cudaErrorNotReady )
-            {
-              //printf("Not ready\n");
-            }
-            else
-            {
-              //printf("    ready\n");
-#pragma omp atomic
-              batch->multTime[ss] += time;
-            }
-          }
-        }
+        // Nothing
       }
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Convolution timing  .");
-    }
-
-    FOLD // Inverse FFT timing  .
-    {
-      for (int ss = 0; ss < batch->noStacks; ss++)
+      else
       {
-        cuFfdotStack* cStack = &batch->stacks[ss];
-
-        cudaError_t e1 = cudaEventQuery(cStack->ifftInit);
-        cudaError_t e2 = cudaEventQuery(cStack->ifftComp);
-
-        if ( ss == -1 )
-        {
-          printf("\n");
-          if ( e1 == cudaSuccess )
-          {
-            printf(" e1 Good\n");
-          }
-          else
-          {
-            printf(" e1 Bad\n");
-          }
-
-          if ( e2 == cudaSuccess )
-          {
-            printf(" e2 Good\n");
-          }
-          else
-          {
-            printf(" e2 Bad\n");
-          }
-        }
-
-        FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-        {
-          nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftComp), "ERROR: copying result from device to host.");
-          nvtxRangePop();
-        }
-
-        ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
-        if ( ret == cudaErrorNotReady )
-        {
-          //printf("Not ready\n");
-        }
-        else
-        {
-          //printf("    ready\n");
-#pragma omp atomic
-          batch->InvFFTTime[ss] += time;
-
-          //if ( ss == 0 )
-          //  printf("\nInvFFT: %f ms\n",time);
-        }
-      }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
-    }
-
-    FOLD // Search Timing  .
-    {
-      if ( !(batch->flag & FLAG_SS_CPU) && !(batch->flag & FLAG_SS_INMEM ) )
-      {
-        FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-        {
-          nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->searchComp), "ERROR: copying result from device to host.");
-          nvtxRangePop();
-        }
-
-        ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
-
-        if ( ret == cudaErrorNotReady )
-        {
-          //printf("Not ready\n");
-        }
-        else
-        {
-          //printf("    ready\n");
-#pragma omp atomic
-          batch->searchTime[0] += time;
-        }
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
+        getResults(batch);
       }
     }
 
-    FOLD // Copy D2H  .
+    FOLD // Process previous results  .
     {
-      if ( !(batch->flag & FLAG_SS_INMEM ) )
+      if  ( batch->flags & FLAG_SS_INMEM )
       {
-        FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-        {
-          nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-          nvtxRangePop();
-        }
-
-        ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
-
-        if ( ret == cudaErrorNotReady )
-        {
-          //printf("Not ready\n");
-        }
-        else
-        {
-          //printf("    ready\n");
-#pragma omp atomic
-          batch->copyD2HTime[0] += time;
-        }
-
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
+        // Nothing
+      }
+      else
+      {
+        processSearchResults(batch);
       }
     }
   }
-#endif
-}
-
-void sumAndMax(cuFFdotBatch* batch)
-{
-  //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-
-  dim3 dimBlock, dimGrid;
-
-  nvtxRangePush("Add & Max");
-
-  if ( (batch->state & HAVE_SS) || (batch->state & HAVE_MULT) ) // previous plain has data data so sum and search  .
+  else
   {
-    int noStages = log(batch->noHarms)/log(2) + 1;
-
-    FOLD // Do synchronisations  .
+    FOLD // Process previous results  .
     {
-      for (int ss = 0; ss< batch->noStacks; ss++)
+      if  ( batch->flags & FLAG_SS_INMEM )
       {
-        cuFfdotStack* cStack = &batch->stacks[ss];
-
-        cudaStreamWaitEvent(batch->strmSearch, cStack->ifftComp, 0);
+        // Nothing
       }
-    }
-
-    if ( batch->state & HAVE_MULT ) // We have a convolved plain so call Sum & search  kernel .
-    {
-      FOLD // Call the main sum & search kernel
+      else
       {
-        //        dimBlock.x  = SS3_X;
-        //        dimBlock.y  = SS3_Y;
-        //
-        //        float bw    = SS3_X * SS3_Y;
-        //        //float ww    = batch->batch[0].ffdotPowWidth[0] / ( bw );
-        //        float ww    = batch->accelLen / ( bw );
-        //
-        //        dimGrid.x   = ceil(ww);
-        //        dimGrid.y   = 1;
-        //
-        //        //add_and_maxCU31_f(dimGrid, dimBlock, 0, batch->strmSearch, searchList, (float*)batch->d_retData, batch->d_candSem, 0, pd, &batch->batch->rLow[0], batch->noSteps, batch->noHarmStages, batch->flag );
-        //
-        //        // Run message
-        //        CUDA_SAFE_CALL(cudaGetLastError(), "Error at add_and_searchCU31 kernel launch");
-        //
-        //        CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->strmSearch),"Recording event: searchComp");
+        processSearchResults(batch);
       }
-    }
-
-    if ( (batch->state & HAVE_SS) ) // Process previous results  .
-    {
-      FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
-      {
-        nvtxRangePush("EventSynch");
-        CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "ERROR: copying result from device to host.");
-        nvtxRangePop();
-      }
-
-      nvtxRangePush("CPU Process results");
-
-      for ( int step = 0; step < batch->noSteps; step++ )
-      {
-        rVals* rVal = &((*batch->rInput)[step][0]);
-
-        //int gIdx = batch->plains[0].searchRlowPrev[step] ;
-        int gIdx = rVal->drlo;
-
-        if ( batch->flag & FLAG_STORE_EXP )
-          gIdx =  ( rVal->drlo ) * ACCEL_RDR ;
-
-        float* gWrite = (float*)batch->h_candidates + gIdx;
-        float* pRead = (float*)(batch->h_retData) + batch->hInfos->width*step;
-
-        memcpy(gWrite, pRead, batch->accelLen*sizeof(float));
-      }
-
-      nvtxRangePop();
-
-      // Do some Synchronisation
-      CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->strmSearch),"Recording event: searchComp");
-
-      batch->state &= ~HAVE_SS;
     }
 
     FOLD // Copy results from device to host  .
     {
-      if ( (batch->state & HAVE_MULT) )
+      if  ( batch->flags & FLAG_SS_INMEM )
       {
-        cudaStreamWaitEvent(batch->strmSearch, batch->searchComp,  0);
-        cudaStreamWaitEvent(batch->strmSearch, batch->processComp, 0);
-
-        CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_retData, batch->d_retData, batch->retDataSize, cudaMemcpyDeviceToHost, batch->strmSearch), "Failed to copy results back");
-
-        CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->strmSearch),"Recording event: readComp");
-        CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
-
-        batch->state &= ~HAVE_MULT;
-        batch->state |=  HAVE_SS;
+        // Nothing
+      }
+      else
+      {
+        getResults(batch);
       }
     }
   }
+}
 
-  nvtxRangePop();
+void sumAndMax(cuFFdotBatch* batch)
+{
+  // TODO write this
 }
 
 void inMem(cuFFdotBatch* batch)
 {
-  long long noX = batch->accelLen * batch->SrchSz->noSteps ;
+  long long noX = batch->accelLen * batch->sInf->SrchSz->noSteps ;
   int       noY = batch->hInfos->height;
-  float*    pln = (float*)batch->h_candidates;
+  float*    pln = (float*)batch->sInf->h_candidates;
 
   //for ( int stage = 0; stage < batch->noHarmStages; stage++ )
   for ( int stage = 0; stage < 5 ; stage++ )
@@ -1585,154 +1451,176 @@ void inMem(cuFFdotBatch* batch)
   }
 }
 
+void inmemSS(cuFFdotBatch* batch, double drlo, int len)
+{
+  infoMSG(1,2,"Inmem Search\n");
+
+  setActiveBatch(batch, 0);
+  setSearchRVals(batch, drlo, len);
+
+//  if ( msgLevel >= 3 )
+//  {
+//    for ( int i = 0 ; i < batch->noRArryas; i++ )
+//    {
+//      rVals* rVal = &(*batch->rAraays)[i][0][0];
+//
+//      printf("%i  step: %03i  r-low: %8.1f  numrs: %06ld\n", i, rVal->step, rVal->drlo, rVal->numrs );
+//    }
+//  }
+
+  if ( batch->flags & FLAG_SYNCH )
+  {
+    add_and_search_IMMEM(batch);
+
+    getResults(batch);
+
+    processSearchResults(batch);
+  }
+  else
+  {
+    setActiveBatch(batch, 0);
+    add_and_search_IMMEM(batch);
+
+    setActiveBatch(batch, 1);
+    processSearchResults(batch);
+
+    setActiveBatch(batch, 0);
+    getResults(batch);
+  }
+  
+  // Cycle r values
+  cycleRlists(batch);
+  setActiveBatch(batch, 1);
+
+  // Cycle candidate output
+  cycleOutput(batch);
+}
+
 void inmemSumAndSearch(cuSearch* cuSrch)
 {
-  cuFFdotBatch* master  = &cuSrch->mInf->kernels[0];   // The first kernel created holds global variables
-  uint startBin         = master->SrchSz->searchRLow * ACCEL_RDR;
+  infoMSG(1,2,"Inmem Sum And Search\n");
+
+  cuFFdotBatch* master  = &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
+  uint startBin         = cuSrch->SrchSz->searchRLow * ACCEL_RDR;
   uint endBin           = startBin + cuSrch->SrchSz->noSteps * master->accelLen;
-  float totaBinsl = endBin - startBin ;
+  float totaBinsl       = endBin - startBin ;
+  int iteration         = 0;
+  uint currentBin       = startBin;
+
+  nvtxRangePush("Inmem Search");
+
+  FOLD // Set all r-values to zero  .
+  {
+    for ( int bIdx = 0; bIdx < cuSrch->pInf->noBatches; bIdx++ )
+    {
+      cuFFdotBatch* batch = &cuSrch->pInf->batches[bIdx];
+
+      for ( int rIdx = 0; rIdx < batch->noRArryas; rIdx++ )
+      {
+        for ( int step = 0; step < batch->noSteps; step++ )
+        {
+          for ( int harm = 0; harm < batch->noGenHarms; harm++ )
+          {
+            rVals* rVal = &(*batch->rAraays)[rIdx][step][harm];
+            memset(rVal, 0, sizeof(rVals) );
+
+            rVal->step = -1;
+          }
+        }
+      }
+    }
+  }
 
 #ifndef DEBUG   // Parallel if we are not in debug mode  .
-  omp_set_num_threads(cuSrch->mInf->noBatches);
+
+  if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+  {
+    omp_set_num_threads(1);
+  }
+  else
+  {
+    omp_set_num_threads(cuSrch->pInf->noBatches);
+  }
+
 #pragma omp parallel
 #endif
   FOLD  //                              ---===== Main Loop =====---  .
   {
     int tid = omp_get_thread_num();
-    cuFFdotBatch* batch = &cuSrch->mInf->batches[tid];
+    cuFFdotBatch* batch = &cuSrch->pInf->batches[tid];
 
-    setDevice(batch) ;
+    setDevice(batch->device) ;
 
     uint firstBin = 0;
     uint len      = 0;
 
-    //uint ite = 0;
-    //printf("\nPar %2i\n", tid );
-
-    FOLD // Set all r-values to zero  .
+    while ( currentBin < endBin )
     {
-      for ( int step = 0; step < batch->noSteps; step++ )
-      {
-        for ( int harm = 0; harm < batch->noHarms; harm++ )
-        {
-          rVals* rVal   = &((*batch->rInput)[step][harm]);
-          memset(rVal, 0, sizeof(rVals) );
-        }
-      }
-    }
-
-    while ( endBin > startBin )
-    {
-
-
 #pragma omp critical
       FOLD // Calculate the step  .
       {
-        firstBin    = startBin;
-        len         = MIN(batch->strideRes, endBin - firstBin) ;
-        startBin   += len;
-      }
-
-      //printf("\nIN:  tid %2i ite %03i   firstBin: %6i  endBin %6i \n", tid, ite, firstBin, endBin );
-
-      rVals* rVal   = &((*batch->rInput)[0][0]);
-      rVal->drlo    = firstBin * ACCEL_DR;
-      rVal->numrs   = len;
-
-      FOLD //SS  .
-      {
-        add_and_search_IMMEM(batch);
-      }
-
-      FOLD // Process results  .
-      {
-        processSearchResults(batch);
-      }
-
-      FOLD //  COPY  .
-      {
-        getResults(batch);
-      }
-
-      FOLD // Cycle r values  .
-      {
-        rVals*** rvals    = batch->rSearch;
-        batch->rSearch = batch->rInput;
-        batch->rInput  = rvals;
-      }
-
-#pragma omp critical
-      FOLD // Output
-      {
-        int noTrd;
-        sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-        printf("\rSearching  in-mem GPU plain. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+startBin)/totaBinsl*100.0, noTrd );
-        fflush(stdout);
-      }
-
-      //printf("\nOUT: tid %2i ite %03i \n", tid, ite++ );
-
-    }
-
-    //printf("\nSearching %2i Done\n", tid );
-
-    FOLD // Process results
-    {
-      processSearchResults(batch);
-    }
-  }
-
-  printf("\rSearching  in-mem GPU plain. %5.1f%%                                                                                    \n\n", 100.0 );
-
-  //printf("Searching Done\n");
-
-  FOLD // Wait for all processing threads to terminate
-  {
-    int noTrd;
-    sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
-
-    if (noTrd)
-    {
-      char msg[1024];
-      int ite = 0;
-
-      nvtxRangePush("Wait on CPU threads");
-
-      while ( noTrd > 0 )
-      {
-        nvtxRangePush("Sleep");
-
-        ite++;
-
-        if ( !(ite % 10) )
+        FOLD  // Synchronous behaviour  .
         {
-          sprintf(msg,"Waiting for CPU thread(s) to finish processing returned from the GPU, %3i thread still active. ", noTrd);
-
-          FOLD  // Spinner  .
+#ifndef  DEBUG
+          if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+#endif
           {
-            if      (ite == 1 )
-              printf("\r%s⌜   ", msg);
-            if      (ite == 2 )
-              printf("\r%s⌝   ", msg);
-            if      (ite == 3 )
-              printf("\r%s⌟   ", msg);
-            if      (ite == 4 )
-            {
-              printf("\r%s⌞   ", msg);
-              ite = 0;
-            }
-            fflush(stdout);
+            // If running in synchronous mode use multiple batches, just synchronously
+            tid     = iteration % cuSrch->pInf->noBatches ;
+            batch   = &cuSrch->pInf->batches[tid];
+            setDevice(batch->device) ;
           }
         }
 
-        usleep(200);
-        sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+        iteration++;
 
-        nvtxRangePop();
+        int step    = (currentBin-startBin)/batch->strideOut;
+        firstBin    = currentBin;
+        len         = MIN(batch->strideOut, endBin - firstBin) ;
+        currentBin += len;
+        rVals* rVal = &(*batch->rAraays)[0][0][0];
+        rVal->step  = step;
+
+        if ( msgLevel >= 1 )
+        {
+          int tot  = (endBin)/batch->strideOut;
+
+          infoMSG(1,1,"\nStep %4i of %4i thread %02i processing %02i steps on GPU %i\n", step+1, tot, tid, 1, batch->device );
+        }
       }
 
-      printf("\n");
-      nvtxRangePop();
+      inmemSS(batch, firstBin * ACCEL_DR, len);
+
+#pragma omp critical
+      FOLD // Output  .
+      {
+        if ( msgLevel == 0  )
+        {
+          int noTrd;
+          sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+          printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+currentBin)/totaBinsl*100.0, noTrd );
+          fflush(stdout);
+        }
+        else
+        {
+
+        }
+      }
+
+    }
+
+    for ( int step= 0 ; step < batch->noRArryas; step++ )
+    {
+      inmemSS(batch, 0, 0);
     }
   }
+
+  printf("\rSearching  in-mem GPU plane. %5.1f%%                                                                                    \n\n", 100.0 );
+
+  FOLD // Wait for all processing threads to terminate
+  {
+    waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
+  }
+
+  nvtxRangePop();
 }

@@ -1,9 +1,12 @@
 #include "makedata.h"
 #include "makeinf.h"
 #include "randlib.h"
+#include <stdlib.h> // TIME
+
 
 extern char bands[NUMBANDS][40];
 extern char scopes[NUMSCOPES][40];
+
 double fwhm;
 
 #ifdef USEDMALLOC
@@ -38,7 +41,6 @@ int main(int argc, char *argv[])
    int buffloc, oldper = 0, newper;
    float tempsig[BUFFSIZE];
 
-
    printf("\n\n");
    printf("  Pulsation Data Generation Program\n");
    printf("        by Scott M. Ransom\n");
@@ -71,7 +73,8 @@ int main(int argc, char *argv[])
 
    /* Determine the orbital phase adjustments if needed */
 
-   if (mdata.binary) {
+   if (mdata.binary)
+   {
       startE = keplars_eqn(mdata.orb.t, mdata.orb.p, mdata.orb.e, 1.0E-15);
       if (mdata.T > 2048)
          orbdt = 0.5;
@@ -101,31 +104,48 @@ int main(int argc, char *argv[])
       ptype_ptr = gauss;
       fwhm = mdata.fwhm;
       break;
+   case 5:			// MVMD added by Chris Laidler
+     ptype_ptr = mvmd;
+     fwhm = mdata.fwhm;
+     break;
+
    }
 
    printf("Calculating data points...\n\n");
-   printf("Amount Complete = 0%%");
+   printf("Amount Complete = %3d%%",0);
    fflush(stdout);
-   amp = mdata.amp;
-   mdata.phs /= 360.0;
-   mdata.fd /= 2.0;
-   mdata.fdd /= 6.0;
+   amp         = mdata.amp;
+   mdata.phs  /= 360.0;
+   mdata.fd   /= 2.0;
+   mdata.fdd  /= 6.0;
    mdata.ampmodf *= TWOPI;
    mdata.ampmodp *= DEGTORAD;
-   onoffpt = mdata.onoff;
-   ont = (*onoffpt++) * mdata.T;
-   offt = (*onoffpt++) * mdata.T;
+   onoffpt        = mdata.onoff;
+   ont            = (*onoffpt++) * mdata.T;
+   offt           = (*onoffpt++) * mdata.T;
+
+   // Seed the random generator (TODO: this could be a parameter)- added by Chris Laidler
+   srand(time(NULL));
+   setall(rand(),rand());
+
+   double pPower = 0;
+   double dPower = 0;
+
+   double SS1    = 0;
+   double SS2    = 0;
 
    /* Main data loop */
 
-   for (ct = 0, buffloc = 1; ct < mdata.N; ct++, buffloc++) {
+   for (ct = 0, buffloc = 1; ct < mdata.N; ct++, buffloc++)
+   {
 
       /* Calculate percentage complete */
 
       tb = ct * mdata.dt;
 
       newper = (int) (tb / mdata.T * 100.0) + 1;
-      if (newper > oldper) {
+      if (newper > oldper)
+      {
          printf("\rAmount Complete = %3d%%", newper);
          fflush(stdout);
          oldper = newper;
@@ -133,15 +153,19 @@ int main(int argc, char *argv[])
       /*  Advance onoff pointers when signal turns off */
 
       if (tb >= offt)
-         do {
-            ont = (*onoffpt++) * mdata.T;
-            offt = (*onoffpt++) * mdata.T;
+      {
+         do
+         {
+            ont   = (*onoffpt++) * mdata.T;
+            offt  = (*onoffpt++) * mdata.T;
          }
          while (tb >= offt);
+      }
 
       /*  Signal is on */
 
-      if ((tb >= ont) && (tb < offt)) {
+      if ((tb >= ont) && (tb < offt))
+      {
 
          T = tb;
 
@@ -162,28 +186,63 @@ int main(int argc, char *argv[])
 
          /*  Calculate the signal */
 
-         signal = amp * (*ptype_ptr) (phase) + mdata.dc;
+         signal = amp * (*ptype_ptr) (phase) ;
+
+	 // Check added by Chris Laidler
+         if ( signal < 0 )
+           signal = 0.0;
+
       }
+
       /*  Signal is off  */
 
       else
-         signal = mdata.dc;
+      {
+	 // This is now done when adding noise
+         //signal = mdata.dc;
+	signal = 0.0;
+      }
 
       /*  Add Poissonian noise  */
 
       if (mdata.noise == 1)
-         signal = (float) ignpoi(signal);
+      {
+//	Fout
+//	{
+//	  // This is a method for testing - added by Chris Laidler
+//	  float dcSig = ignpoi(mdata.dc);
+//	  float psSig = ignpoi(signal);
+//
+//	  float p1 = dcSig*dcSig;
+//	  float p2 = (dcSig+psSig)*(dcSig+psSig);
+//
+//	  dPower += dcSig;
+//	  pPower += psSig;
+//
+//	  SS1     += p2;
+//	  SS2     += p2-p1;
+//
+//	  signal = dcSig + psSig;
+//	}
+//	else
+	{
+	  // This is the more efficient method
+	  signal = (float)ignpoi(mdata.dc + signal);
+	}
+      }
 
       /*  Add Gaussian noise or no noise */
 
-      else if (mdata.noisesig != 0.0) {
-         signal = gennor(signal, mdata.noisesig);
+      else if (mdata.noisesig != 0.0)
+      {
+         signal = gennor(mdata.dc + signal, mdata.noisesig);
 
          /*  Rounds if needed */
 
          if (mdata.roundnum)
             signal = floor(signal + 0.5);
       }
+
       /*  Save data in buffer */
 
       tempsig[buffloc - 1] = (float) signal;
@@ -209,6 +268,25 @@ int main(int argc, char *argv[])
 /*       } */
 /*     } */
 /*   } */
+
+//   Fout
+//   {
+//     // Some debug output added by Chris Laidler
+//     printf("\n\nBase power %.2f pulsar power is %.2f  SS: %.2f  SS(pulsar): %.2f\n", dPower, pPower, SS1, SS2);
+//
+//     printf("N\t%ld\n", mdata.N);
+//     printf("T\t%.4lf\n", mdata.T);
+//     printf("amp\t%.6f\n", mdata.amp );
+//     printf("freq\t%.2f\n", mdata.f);
+//     printf("fwhm\t%.2f\n", mdata.fwhm);
+//
+//     printf("\nSignal\n");
+//     printf("Sum DC\t%.2f\n", dPower);
+//     printf("Sum Pulsar\t%.2f\n", pPower);
+//     printf("Sum Total\t%.2f\n", dPower + pPower);
+//     printf("SS\t%.2f\n", SS1);
+//     printf("SS Pulsar\t%.2f\n", SS2);
+//   }
 
    printf("\n\nData saved in binary floating point format ");
    printf("in \"%s\".\n\n", datafilenm);
@@ -355,4 +433,23 @@ double gauss(double val)
    phsval = modf(val, &integral);
    dtmp = (phsval - 0.5) / sigma;
    return exp(-0.5 * dtmp * dtmp) * sigfact;
+}
+
+// MVMD Added by Chris Laidler
+double mvmd(double val)
+{
+  static double firsttime = 1;
+
+  static double k;
+  static double bess = 0;
+
+  if (firsttime)
+  {
+    k           = calcK(fwhm);
+    firsttime   = 0;
+  }
+
+  double res = MVMD(k, val+0.5, 1, &bess );
+
+  return res;
 }

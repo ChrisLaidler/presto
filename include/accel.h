@@ -13,14 +13,13 @@
 //   The following is probably the best bet for general use given
 //   current speeds of FFTs.  However, if you only need to search up
 //   to zmax < 100, dropping to 4K FFTs is a few percent faster.  SMR 131110
-#define ACCEL_USELEN 7470 // This works up to zmax=300 to use 8K FFTs
-// #define ACCEL_USELEN 7960 // This works up to zmax=100 to use 8K FFTs
-// #define ACCEL_USELEN 3850 // This works up to zmax=100 to use 4K FFTs
-// #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
+#define ACCEL_USELEN 7470	// This works up to zmax=300 to use 8K FFTs
+// #define ACCEL_USELEN 7960	// This works up to zmax=100 to use 8K FFTs
+// #define ACCEL_USELEN 3850	// This works up to zmax=100 to use 4K FFTs
+// #define ACCEL_USELEN 1820	// This works up to zmax=100 to use 2K FFTs
 
-#undef  ACCEL_USELEN
-#define ACCEL_USELEN	3962			// Added by run time script for 4K FFT's at a ZMAZ of 50
-
+//#undef  ACCEL_USELEN
+//#define ACCEL_USELEN  16032 // TMP added 16k
 
 #undef FOLD
 #undef FOUT
@@ -59,7 +58,7 @@ typedef struct accelobs{
   int mmap_file;       /* The file number if using MMAP */
   int inmem;           /* True if we want to keep the full f/fdot plan in RAM */
   int norm_type;       /* 0 = old-style block median, 1 = local-means power norm */
-  double dt;           /* Data sample length (s) */           
+  double dt;           /* Data sample length (s) */
   double T;            /* Total observation length */
   double rlo;          /* Minimum fourier freq to search */
   double rhi;          /* Maximum fourier freq to search */
@@ -95,6 +94,15 @@ typedef struct accelcand{
   double *hirs;        /* Optimized freqs for the harmonics */
   double *hizs;        /* Optimized fdots for the harmonics */
   rderivs *derivs;     /* An rderivs structure for each harmonic */
+
+#ifdef CBL
+  //TMP Remove the vars
+  float   init_power;
+  float   init_sigma;
+  int     init_numharm;
+  double  init_r;
+  double  init_z;
+#endif
 } accelcand;
 
 typedef struct kernel{
@@ -130,20 +138,20 @@ typedef struct ffdotpows{
 
 subharminfo **create_subharminfos(accelobs *obs);
 void free_subharminfos(accelobs *obs, subharminfo **shis);
-void create_accelobs(accelobs *obs, infodata *idata, 
+void create_accelobs(accelobs *obs, infodata *idata,
                      Cmdline *cmd, int usemmap);
 GSList *sort_accelcands(GSList *list);
 GSList *eliminate_harmonics(GSList *cands, int *numcands);
 void deredden(fcomplex *fft, int numamps);
 void optimize_accelcand(accelcand *cand, accelobs *obs,int nn);
-void output_fundamentals(fourierprops *props, GSList *list, 
+void output_fundamentals(fourierprops *props, GSList *list,
                          accelobs *obs, infodata *idata);
 void output_harmonics(GSList *list, accelobs *obs, infodata *idata);
 void free_accelcand(gpointer data, gpointer user_data);
 void print_accelcand(gpointer data, gpointer user_data);
 fcomplex *get_fourier_amplitudes(int lobin, int numbins, accelobs *obs);
-ffdotpows *subharm_ffdot_plane(int numharm, int harmnum, 
-                               double fullrlo, double fullrhi, 
+ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
+                               double fullrlo, double fullrhi,
                                subharminfo *shi, accelobs *obs);
 ffdotpows *copy_ffdotpows(ffdotpows *orig);
 void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs);
@@ -155,9 +163,9 @@ void inmem_add_ffdotpows_trans(ffdotpows *fundamental, accelobs *obs,
 void free_ffdotpows(ffdotpows *ffd);
 void add_ffdotpows_ptrs(ffdotpows *fundamental, ffdotpows *subharmonic,
                         int numharm, int harmnum);
-void add_ffdotpows(ffdotpows *fundamental, ffdotpows *subharmonic, 
+void add_ffdotpows(ffdotpows *fundamental, ffdotpows *subharmonic,
                    int numharm, int harmnum);
-GSList *search_ffdotpows(ffdotpows *ffdot, int numharm, 
+GSList *search_ffdotpows(ffdotpows *ffdot, int numharm,
                          accelobs *obs, GSList *cands);
 void free_accelobs(accelobs *obs);
 
@@ -165,7 +173,6 @@ accelcand *duplicate_accelcand(accelcand *cand);
 GSList *copy_accelcands(GSList * list);
 GSList *duplicate_accelcands(GSList * list);
 
-//static
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
 GSList *insert_accelcand(GSList * list, accelcand *cand);
 

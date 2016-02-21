@@ -94,12 +94,12 @@ struct container
       memset(this, 0, sizeof(container));
     };
 
-    container(cand* canidate)
+    container(initCand* canidate)
     {
       memset(this, 0, sizeof(container));
 
-      data  = new cand;
-      *(cand*)data = *canidate;
+      data  = new initCand;
+      *(initCand*)data = *canidate;
       x     = canidate->r;
       y     = canidate->z;
       val   = canidate->sig;
@@ -111,7 +111,7 @@ struct container
     }
 };
 
-inline container* contFromCand(cand* canidate)
+inline container* contFromCand(initCand* canidate)
 {
   container* cont = new container(canidate);
 
@@ -157,7 +157,7 @@ struct valNode
     }
 };
 
-inline bool operator< ( const cand cnd, const candQuadNode node )
+inline bool operator< ( const initCand cnd, const candQuadNode node )
 {
   if ( cnd.r >= node.xMin && cnd.r < node.xMax && cnd.z < node.yMax && cnd.z >= node.yMin )
     return true;
@@ -232,7 +232,7 @@ inline  bool operator== ( const container& cont1, const container& cont2 )
     return false;
 };
 
-inline  bool operator== ( const cand& cnd, const container& cont )
+inline  bool operator== ( const initCand& cnd, const container& cont )
 {
   if ( ( cnd.sig == cont.val ) && ( cnd.r == cont.x ) && ( cnd.z == cont.y ) )
     return true;
@@ -264,12 +264,12 @@ inline bool operator& ( const double& val, const valNode& node )
                                             };
 
 
-inline  double operator| ( const cand& cnd1, const cand& cnd2 )
+inline  double operator| ( const initCand& cnd1, const initCand& cnd2 )
                                                                                                         {
   return ( (cnd1.r - cnd2.r)*(cnd1.r - cnd2.r) + (cnd1.z - cnd2.z)*(cnd1.z - cnd2.z) );
                                                                                                         };
 
-inline  double operator| ( const location& loc, const cand& cnd2 )
+inline  double operator| ( const location& loc, const initCand& cnd2 )
                                                                                                 {
   return ( (loc.r - cnd2.r)*(loc.r - cnd2.r) + (loc.z - cnd2.z)*(loc.z - cnd2.z) );
                                                                                                 };
@@ -294,13 +294,19 @@ class candTree
 
     ~candTree ( );
 
-    container* insert ( cand* cnd, double minDist = 1, uint flag = 0 );
+    container* insert ( initCand* cnd, double minDist = 1, uint flag = 0 );
 
     container* get(container* cont, double dist = 0.0 );
 
     container* getAll(container* cont, double dist = 1 );
 
-    container* getLargest(cand* cnd, double dist = 0.0 );
+    /** Get the initial candidate with the largest sigma within a given distance from a given candidate
+     *
+     * @param cnd
+     * @param dist
+     * @return
+     */
+    container* getLargest(initCand* cnd, double dist = 0.0 );
 
     container* getLargest(container* cont, double dist = 0.0 );
 
@@ -312,7 +318,7 @@ class candTree
 
     container* getSmallest();
 
-    uint remove( cand* cnd );
+    uint remove( initCand* cnd );
 
     uint remove( container* cont );
 

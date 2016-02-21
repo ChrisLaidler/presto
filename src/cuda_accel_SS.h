@@ -13,17 +13,14 @@
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 
-#ifdef CBL
-//#include "quadTree.h"
-#endif
 
 //====================================== Constant variables  ===============================================\\
 
-extern  __device__ const float FRAC_STAGE[16]    ;
+extern  __device__ const float FRAC_STAGE[16]       ;
 extern             const float HARM_FRAC_STAGE[16]  ;
-extern  __device__ const float FRAC_HARM[16]     ;
-extern  __device__ const short STAGE[5][2]       ;
-extern  __device__ const short CHUNKSZE[5]       ;
+extern  __device__ const float FRAC_HARM[16]        ;
+extern  __device__ const short STAGE[5][2]          ;
+extern  __device__ const short CHUNKSZE[5]          ;
 
 
 
