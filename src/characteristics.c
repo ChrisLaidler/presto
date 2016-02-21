@@ -125,17 +125,19 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
 
    /* Perform the summation */
 
-   //printf("Below\n");
+   // Below
    for (freq = lo1; freq < hi1; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
    }
-   //printf("Above\n");
+
+   // Above
    for (freq = lo2; freq < hi2; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
    }
-   sum /= (double) NUMLOCPOWAVG;
+   
+   sum /= (double) NUMLOCPOWAVG; // Average
    return sum;
 }
 
@@ -171,7 +173,7 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
 
   if ( numamps <= 0 )
   {
-    fprintf(stderr, "WARNING: numamps <= 0 in %s in %s\n", __FUNCTION__, __FILE__ );
+    //fprintf(stderr, "WARNING: numamps <= 0 in %s in %s\n", __FUNCTION__, __FILE__ );
     return (0) ;
   }
 
@@ -198,6 +200,7 @@ float get_scaleFactorZ(fcomplex * data, int numdata, double r, double z, double 
   return norm;
 }
 
+
 void get_derivs3d(fcomplex * data, int numdata, double r,
                   double z, double w, double localpower, rderivs * result)
   /* Return an rderives structure that contains the power,      */
@@ -223,8 +226,6 @@ void get_derivs3d(fcomplex * data, int numdata, double r,
    double powargr, powargi, radargr, radargi, radtmp, pwr[5], phs[5];
    int ii, kern_half_width;
    fcomplex ans;
-
-   //printf("get_derivs3d\n");
 
    /* Read the powers and phases: */
 
@@ -568,9 +569,6 @@ double chi2_logp(double chi2, int dof)
         // printf("Using asymtotic expansion...\n");
         // Use some asymtotic expansions for the chi^2 distribution
         //   this is eqn 26.4.19 of A & S
-      double tmp_l1 = log_asymtotic_incomplete_gamma(0.5*dof, 0.5*chi2);
-      double tmp_l2 = log_asymtotic_gamma(0.5*dof);
-
         logp = log_asymtotic_incomplete_gamma(0.5*dof, 0.5*chi2) -
             log_asymtotic_gamma(0.5*dof);
     } else {
@@ -679,9 +677,9 @@ double candidate_sigma(double power, int numsum, double numtrials)
     }
 
     // Get the natural log probability
-    chi2 = 2.0 * power;
-    dof = 2.0 * numsum;
-    logp = chi2_logp(chi2, dof);
+    chi2 	= 2.0 * power;
+    dof		= 2.0 * numsum;
+    logp 	= chi2_logp(chi2, dof);
 
     // Correct for numtrials
     if ( power > 100 )
@@ -690,6 +688,7 @@ double candidate_sigma(double power, int numsum, double numtrials)
     }
     else
     {
+      // More accurate version
       double q = adjustNumTrial(exp(logp), numtrials);
       logp = log(q);
     }
@@ -718,19 +717,7 @@ double power_for_sigma(double sigma, int numsum, double numtrials)
       exit(1);
    }
 
-   double xx;
-   double pp = 1 - q;
-   double pw = pow(p,1/numtrials);
-   double qq = 1 - pow(1-q,1/numtrials);
-   pp = 1 - qq;
-
-   which = 2;
-   df = 2.0 * numsum;
-   status = 0;
-   cdfchi(&which, &pp, &qq, &xx, &df, &status, &bound);
-
-
-   // CBL fixed as the assumption of 2 sigma in not really high enough to justify using the
+   // Chris Laidler: fixed as the assumption of 2 sigma in not really high enough to justify using the
    if ( q > 0.001 )
    {
      q = 1 - pow((1-q),1/numtrials);

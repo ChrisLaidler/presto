@@ -52,9 +52,11 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
           fcomplexcu val;
 
 #if CORRECT_MULT
+          // This is the "correct" version
           val.r = (input[step].r * ker->r - input[step].i * ker->i);
           val.i = (input[step].r * ker->i + input[step].i * ker->r);
 #else
+          // This is the version accelsearch uses, ( added for comparison )
           val.r = (input[step].r * ker->r + input[step].i * ker->i);
           val.i = (input[step].i * ker->r - input[step].r * ker->i);
 #endif

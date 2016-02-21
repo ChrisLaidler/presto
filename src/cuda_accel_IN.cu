@@ -363,15 +363,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
               }
 
               nvtxRangePush("CPU FFT");
-              fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iData, (fftwf_complex*)cStack->h_iData); //TMP but back
-              //fftwf_execute(cStack->inpPlanFFTW);
-
-              {
-                //fftwf_plan plan_forward = fftwf_plan_dft_1d(cStack->width, (fftwf_complex *) cStack->h_iData, (fftwf_complex *) cStack->h_iData, -1, FFTW_ESTIMATE);
-                //fftwf_execute(plan_forward);
-                //fftwf_execute_dft(plan_forward, (fftwf_complex*)cStack->h_iData, (fftwf_complex*)cStack->h_iData);
-              }
-
+              fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iData, (fftwf_complex*)cStack->h_iData);
               nvtxRangePop();
 
               if ( batch->flags & FLAG_TIME ) // Timing  .

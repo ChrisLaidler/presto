@@ -41,7 +41,6 @@ int main(int argc, char *argv[])
    int buffloc, oldper = 0, newper;
    float tempsig[BUFFSIZE];
 
-
    printf("\n\n");
    printf("  Pulsation Data Generation Program\n");
    printf("        by Scott M. Ransom\n");
@@ -105,7 +104,7 @@ int main(int argc, char *argv[])
       ptype_ptr = gauss;
       fwhm = mdata.fwhm;
       break;
-   case 5:
+   case 5:			// MVMD added by Chris Laidler
      ptype_ptr = mvmd;
      fwhm = mdata.fwhm;
      break;
@@ -125,7 +124,7 @@ int main(int argc, char *argv[])
    ont            = (*onoffpt++) * mdata.T;
    offt           = (*onoffpt++) * mdata.T;
 
-   // Seed the random generator
+   // Seed the random generator (TODO: this could be a parameter)- added by Chris Laidler
    srand(time(NULL));
    setall(rand(),rand());
 
@@ -189,6 +188,7 @@ int main(int argc, char *argv[])
 
          signal = amp * (*ptype_ptr) (phase) ;
 
+	 // Check added by Chris Laidler
          if ( signal < 0 )
            signal = 0.0;
 
@@ -198,49 +198,44 @@ int main(int argc, char *argv[])
 
       else
       {
+	 // This is now done when adding noise
          //signal = mdata.dc;
-      }
-
-      if(1) // TMP
-      {
-//        if ( ct < 1000 )
-//        {
-//          printf("%i\t%.5f\t%.9f\n", ct, phase, signal );
-//        }
-//
-//        if ( ct == 550 ) // TMP
-//        {
-//          int tmp = 0;
-//        }
+	signal = 0.0;
       }
 
       /*  Add Poissonian noise  */
 
       if (mdata.noise == 1)
       {
-        float dcSig = ignpoi(mdata.dc);
-        float psSig = ignpoi(signal);
-
-        float p1 = dcSig*dcSig;
-        float p2 = (dcSig+psSig)*(dcSig+psSig);
-
-        dPower += dcSig;
-        pPower += psSig;
-
-        SS1     += p2;
-        SS2     += p2-p1;
-
-        signal = dcSig + psSig;
-        //signal = psSig;
-
-        //signal = (float) ignpoi(signal);
+//	Fout
+//	{
+//	  // This is a method for testing - added by Chris Laidler
+//	  float dcSig = ignpoi(mdata.dc);
+//	  float psSig = ignpoi(signal);
+//
+//	  float p1 = dcSig*dcSig;
+//	  float p2 = (dcSig+psSig)*(dcSig+psSig);
+//
+//	  dPower += dcSig;
+//	  pPower += psSig;
+//
+//	  SS1     += p2;
+//	  SS2     += p2-p1;
+//
+//	  signal = dcSig + psSig;
+//	}
+//	else
+	{
+	  // This is the more efficient method
+	  signal = (float)ignpoi(mdata.dc + signal);
+	}
       }
 
       /*  Add Gaussian noise or no noise */
 
       else if (mdata.noisesig != 0.0)
       {
-         signal = gennor(signal, mdata.noisesig);
+         signal = gennor(mdata.dc + signal, mdata.noisesig);
 
          /*  Rounds if needed */
 
@@ -274,20 +269,24 @@ int main(int argc, char *argv[])
 /*     } */
 /*   } */
 
-   printf("\n\nBase power %.2f pulsar power is %.2f  SS: %.2f  SS(pulsar): %.2f\n", dPower, pPower, SS1, SS2);
-
-   printf("N\t%ld\n", mdata.N);
-   printf("T\t%.4lf\n", mdata.T);
-   printf("amp\t%.6f\n", mdata.amp );
-   printf("freq\t%.2f\n", mdata.f);
-   printf("fwhm\t%.2f\n", mdata.fwhm);
-
-   printf("\nSignal\n");
-   printf("Sum DC\t%.2f\n", dPower);
-   printf("Sum Pulsar\t%.2f\n", pPower);
-   printf("Sum Total\t%.2f\n", dPower + pPower);
-   printf("SS\t%.2f\n", SS1);
-   printf("SS Pulsar\t%.2f\n", SS2);
+//   Fout
+//   {
+//     // Some debug output added by Chris Laidler
+//     printf("\n\nBase power %.2f pulsar power is %.2f  SS: %.2f  SS(pulsar): %.2f\n", dPower, pPower, SS1, SS2);
+//
+//     printf("N\t%ld\n", mdata.N);
+//     printf("T\t%.4lf\n", mdata.T);
+//     printf("amp\t%.6f\n", mdata.amp );
+//     printf("freq\t%.2f\n", mdata.f);
+//     printf("fwhm\t%.2f\n", mdata.fwhm);
+//
+//     printf("\nSignal\n");
+//     printf("Sum DC\t%.2f\n", dPower);
+//     printf("Sum Pulsar\t%.2f\n", pPower);
+//     printf("Sum Total\t%.2f\n", dPower + pPower);
+//     printf("SS\t%.2f\n", SS1);
+//     printf("SS Pulsar\t%.2f\n", SS2);
+//   }
 
    printf("\n\nData saved in binary floating point format ");
    printf("in \"%s\".\n\n", datafilenm);
@@ -436,6 +435,7 @@ double gauss(double val)
    return exp(-0.5 * dtmp * dtmp) * sigfact;
 }
 
+// MVMD Added by Chris Laidler
 double mvmd(double val)
 {
   static double firsttime = 1;

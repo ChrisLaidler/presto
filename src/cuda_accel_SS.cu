@@ -715,20 +715,21 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
 
     if      ( res->cndType & CU_STR_LST     )
     {
-      GSList *candsGPU  = (GSList*)res->cndData;
-      int     added     = 0;
-
       if ( res->threasdInfo )
       {
         // Thread safe
-        pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
-        res->cndData        = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+	pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
+	GSList *candsGPU	= (GSList*)res->cndData;
+	int     added		= 0;
+        res->cndData		= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
         (*res->noResults)++;
         pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
       }
       else
       {
-        res->cndData        = insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+	GSList *candsGPU	= (GSList*)res->cndData;
+	int     added		= 0;
+        res->cndData		= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
         (*res->noResults)++;
       }
     }
@@ -755,7 +756,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
 
         if ( res->cndType & CU_CANDFULL )
         {
-          cand* candidate = &((cand*)res->cndData)[grIdx];
+          initCand* candidate = &((initCand*)res->cndData)[grIdx];
 
           // this sigma is greater than the current sigma for this r value
           if ( candidate->sig < sig )
@@ -800,7 +801,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
     {
       candTree* qt = (candTree*)res->cndData;
 
-      cand* candidate     = new cand;
+      initCand* candidate     = new initCand;
 
       candidate->sig      = sig;
       candidate->power    = poww;

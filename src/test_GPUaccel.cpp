@@ -23,10 +23,6 @@ extern "C"
 #include <sys/time.h>
 #include <time.h>
 
-#ifdef WITHOMP
-#include <omp.h>
-#endif
-
 #ifdef USEDMALLOC
 #include "dmalloc.h"
 #endif
@@ -36,9 +32,6 @@ extern "C"
 #include "arrayDsp.h"
 #include "util.h"
 #endif
-
-int     pltOpt    = 0;
-int     skpOpt    = 0;
 
 extern float calc_median_powers(fcomplex * amplitudes, int numamps);
 
@@ -726,14 +719,14 @@ int main(int argc, char *argv[])
 
   gSpec               = readGPUcmd(cmd);
   sSpec               = readSrchSpecs(cmd, &obs);
-  sSpec.pWidth        = ACCEL_USELEN; // NB: must have same accellen for tests!
+  sSpec.pWidth        = ACCEL_USELEN;			// NB: must have same accellen for tests!
   sSpec.flags        |= CU_NORM_EQUIV;
   sSpec.flags        &= ~FLAG_KER_HIGH;
   sSpec.flags        &= ~FLAG_KER_MAX;
   sSpec.flags        &= ~FLAG_CENTER;
   sSpec.flags        |= FLAG_SEPSRCH;
   sSpec.flags        |= FLAG_SEPRVAL;
-  sSpec.flags        |= FLAG_SYNCH;       // Synchronous
+  sSpec.flags        |= FLAG_SYNCH;			// Synchronous
   sSpec.flags        |= FLAG_KER_DOUBGEN;		// FLAG_KER_DOUBFFT
 
   iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
@@ -762,7 +755,7 @@ int main(int argc, char *argv[])
   sprintf(candsFile,"%s.unoptcands", fname );
 
   FILE *file;
-  if ( (file = fopen(candsFile, "rb")) && useUnopt )       		// Read candidates from previous search  . // TMP
+  if ( (file = fopen(candsFile, "rb")) && useUnopt )			// Read candidates from previous search  . // TMP
   {
     int numcands;
     size_t read;
@@ -780,7 +773,7 @@ int main(int argc, char *argv[])
     }
     fclose(file);
   }
-  else                                                             // Run Search  .
+  else									// Run Search  .
   {
     long long badInp  = 0;
     long long badCplx = 0;
@@ -841,14 +834,23 @@ int main(int argc, char *argv[])
 
       FOLD // Kernel stuff  .
       {
-	FOLD // TMP testing stuff response  .
+	double z 	= 0;
+
+	double realD;
+	double imagD;
+
+	float real;
+	float imag;
+
+	calc_response_off<double>(0.5, 0, &realD, &imagD);
+
+	Fout // TMP testing stuff response  .
 	{
-	  float r 	= 100.0;
-	  float z 	= 0.0000001;
+	  double r 	= 100.0;
+	  double z 	= 1e-7;
 	  float hm 	= 10;
 
 	  double2*  gpuker = (double2*)malloc(sizeof(double2*)*hm*2);
-	  //fcomplex* cpuker = gen_z_response( r, 1, z, hm*2);
 
 	  float real;
 	  float imag;
@@ -858,9 +860,6 @@ int main(int argc, char *argv[])
 
 	  printf("\n\n");
 
-	  //calc_response_off<float>(-hm-r, z, &real, &imag);
-	  //gen_response_cu<double, double2>(r, z, hm, (double2*)gpuker );
-
 	  double param, fractpart, intpart;
 	  fractpart = modf (r , &intpart);
 
@@ -869,7 +868,7 @@ int main(int argc, char *argv[])
 	  float step = 0.01;
 
 	  int 	hw = sSpec.fftInf.nor*2;
-	  //hw = 9000;
+	  hw = 10;
 
 	  //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, 97.99, 0, hw, &realD, &imagD );
 
@@ -877,8 +876,8 @@ int main(int argc, char *argv[])
 
 	  //printf("r\t%s\t%s z %.4f\t%s\t\t\t%s\t%s\n","Fourier Bins", "Correlation", z, "Power", "Fourier Interpolation", "Power");
 	  printf("   r\t%s\t", "Fourier Bins");
-	  printf("%s z %.2f Float \t%s\t\t\t", "Correlation", z, "Power");
-	  printf("%s z %.2f Double\t%s\t\t\t", "Correlation", z, "Power");
+	  printf("%s z %1.2e Float \t%s\t\t\t", "Correlation", z, "Power");
+	  printf("%s z %1.2e Double\t%s\t\t\t", "Correlation", z, "Power");
 	  //printf("%s Float \t%s\t\t",  "Fourier Interpolation", "Power");
 	  printf("\n");
 
@@ -898,16 +897,16 @@ int main(int argc, char *argv[])
 	  {
 	    printf("%.6f",sart + off);
 
-	    rz_interp_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, z, hw, &real, &imag );
+	    rz_convolution_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, z, hw, &real, &imag );
 	    printf("\t%.6f\t%.6f\t%.6f\t", real, imag, sqrt(POWERCU(real, imag)) );
 
-	    rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, z, hw, &realD, &imagD );
+	    rz_convolution_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, z, hw, &realD, &imagD );
 	    printf("\t%.6f\t%.6f\t%.6f\t", realD, imagD, sqrt(POWERCU(realD, imagD)) );
 
-	    //rz_interp_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &real, &imag );
+	    //rz_convolution_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &real, &imag );
 	    //printf("\t%.6f\t%.6f\t%.6f", real, imag, sqrt(POWERCU(real, imag)));
 
-	    //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &realD, &imagD );
+	    //rz_convolution_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &realD, &imagD );
 	    //printf("\t%.6f\t%.6f\t%.6f\t", realD, imagD, sqrt(POWERCU(realD, imagD)) );
 
 	    printf("\n");
@@ -928,8 +927,6 @@ int main(int argc, char *argv[])
 
 
 	}
-
-	exit(1);
 
         FOLD // Generate the GPU kernel  .
         {
@@ -1052,7 +1049,7 @@ int main(int argc, char *argv[])
               {
         	if ( ERR > buckets[2] )
         	{
-        	  int y = master->hInfos[idx].height - 10;
+        	  int y = master->hInfos[idx].height/2.0;
 
         	  printf("Harm: %02i\n", idx );
         	  printf("CPU: ");
@@ -1080,7 +1077,7 @@ int main(int argc, char *argv[])
         int  firstStep      = 0;
         bool printDetails   = true;		// Print out stats on all input and planes
         bool plotAllPlanes  = false;		// Plot all planes
-        bool printAllValues = true;		// Print out a couple off all the values
+        bool printAllValues = false;		// Print out a couple off all the values
         bool plot           = false;		// Draw bad planes
         bool CSV            = false;		//
         bool contPlotAll    = false;		//
@@ -2042,7 +2039,7 @@ int main(int argc, char *argv[])
 
         printf("\nDone\n");
 
-        if 	    ( master->cndType & CU_STR_ARR   )  // Write back from the candidate array to list  .
+        if 	( master->cndType & CU_STR_ARR   )  // Write back from the candidate array to list  .
         {
           printf("\nCopying candidates from array to list.\n");
 
@@ -2057,7 +2054,7 @@ int main(int argc, char *argv[])
           double  rr, zz;
           int     added = 0;
           int     numharm;
-          cand*   candidate = (cand*)cuSrch->h_candidates;
+          initCand*   candidate = (initCand*)cuSrch->h_candidates;
           FILE *  pFile;
           int n;
           char name [1024];
@@ -2166,10 +2163,10 @@ int main(int argc, char *argv[])
     sprintf(scmd,"mv /home/chris/accel/*.csv %s/                2>/dev/null", dirname );
     system(scmd);
 
-    gettimeofday(&start, NULL);       // Profiling
+    gettimeofday(&start, NULL);			// Profiling
     nvtxRangePush("Optimisation");
-    gettimeofday(&start, NULL);       // Note could start the timer after kernel init
-    //cudaProfilerStart();              // TMP Start profiling, only really necessary for debug and profiling, surprise surprise
+    gettimeofday(&start, NULL);			// Note could start the timer after kernel init
+    //cudaProfilerStart();              	// TMP Start profiling, only really necessary for debug and profiling, surprise surprise
 #endif
 
     numcands = g_slist_length(cands);
@@ -2202,7 +2199,7 @@ int main(int argc, char *argv[])
       {
 #ifdef CUDA // Profiling  .
         nvtxRangePush("CPU");
-        gettimeofday(&start, NULL); // Note could start the timer after kernel init
+        gettimeofday(&start, NULL);		// Note could start the timer after kernel init
 #endif
 
         printf("Optimising %i candidates.\n\n", numcands);
@@ -2283,7 +2280,8 @@ int main(int argc, char *argv[])
             {
               nvtxRangePush("Pln opt");
               gettimeofday(&startL, NULL);       // Profiling
-              opt_candPlns(candGPU, cuSrch, &obs, ii+1, oPlnPln);
+              //opt_candPlns(candGPU, cuSrch, &obs, ii+1, oPlnPln);
+              opt_accelcand(candGPU, oPlnPln, ii+1);
               gettimeofday(&endL, NULL);
               gTime = ((endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec));
               gSum += gTime;
@@ -2377,7 +2375,8 @@ int main(int argc, char *argv[])
     gettimeofday(&end, NULL);
     optTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
-    if ( pltOpt > 0 )
+    //if ( pltOpt > 0 )
+    if ( sSpec.flags & FLAG_DPG_PLT_OPT )
     {
       sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
       mkdir(dirname, 0755);

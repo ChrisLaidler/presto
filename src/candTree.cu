@@ -63,7 +63,7 @@ candTree::~candTree ( )
   pthread_mutex_unlock( &editMutex );
 }
 
-container* candTree::insert ( cand* cnd, double minDist, uint flag )
+container* candTree::insert ( initCand* cnd, double minDist, uint flag )
 {
   minDist = minDist*minDist; // Square cos all measured distances aren't square rooted
 
@@ -133,7 +133,7 @@ container* candTree::getAll(container* cont, double dist)
   return lst;
 }
 
-container* candTree::getLargest(cand* cnd, double dist )
+container* candTree::getLargest(initCand* cnd, double dist )
 {
   container* cont  = new container(cnd);
 
@@ -178,7 +178,7 @@ container* candTree::getSmallest()
   return getSmallest(vHead);
 };
 
-uint candTree::remove( cand* cnd )
+uint candTree::remove( initCand* cnd )
 {
   container* cont = new container(cnd);
   return remove( cont );
@@ -249,7 +249,7 @@ int candTree::add(candTree* other, double minDist)
 
     while (cont)
     {
-      cand* canidate = (cand*)cont->data;
+      initCand* canidate = (initCand*)cont->data;
 
       container* contNew = new container(canidate);
       cont->flag |= ACTUAL_CONTAINER;
@@ -1100,7 +1100,7 @@ container* candTree::getAllRec( container* cont, candQuadNode* node, boundingBox
         {
           // Within distance so add to list!
 
-          container* newCont = contFromCand((cand*)node->cont->data);
+          container* newCont = contFromCand((initCand*)node->cont->data);
           list = insertDecreasing(list, newCont);
         }
       }
@@ -1468,7 +1468,7 @@ uint candTree::removeActula( container* cont )
     {
       decValCount(cont->vParent);
 
-      if ( cont->vParent->noEls == 0 && !(cont->vParent->max == NULL && cont->vParent->max == NULL) ) // TMP  .
+      if ( cont->vParent->noEls == 0 && !(cont->vParent->max == NULL && cont->vParent->max == NULL) ) // This check may be unnecessary
       {
         errMsg( "We have a problem!\n");
       }

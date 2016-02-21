@@ -13,17 +13,13 @@
 //   The following is probably the best bet for general use given
 //   current speeds of FFTs.  However, if you only need to search up
 //   to zmax < 100, dropping to 4K FFTs is a few percent faster.  SMR 131110
-#define ACCEL_USELEN 7470 // This works up to zmax=300 to use 8K FFTs
-// #define ACCEL_USELEN 7960 // This works up to zmax=100 to use 8K FFTs
-// #define ACCEL_USELEN 3850 // This works up to zmax=100 to use 4K FFTs
-// #define ACCEL_USELEN 1820 // This works up to zmax=100 to use 2K FFTs
+#define ACCEL_USELEN 7470	// This works up to zmax=300 to use 8K FFTs
+// #define ACCEL_USELEN 7960	// This works up to zmax=100 to use 8K FFTs
+// #define ACCEL_USELEN 3850	// This works up to zmax=100 to use 4K FFTs
+// #define ACCEL_USELEN 1820	// This works up to zmax=100 to use 2K FFTs
 
-#undef  ACCEL_USELEN
-#define ACCEL_USELEN	3808
-
-#undef  ACCEL_USELEN
-#define ACCEL_USELEN  16032 // TMP added 16k
-
+//#undef  ACCEL_USELEN
+//#define ACCEL_USELEN  16032 // TMP added 16k
 
 #undef FOLD
 #undef FOUT
@@ -99,12 +95,14 @@ typedef struct accelcand{
   double *hizs;        /* Optimized fdots for the harmonics */
   rderivs *derivs;     /* An rderivs structure for each harmonic */
 
+#ifdef CBL
+  //TMP Remove the vars
   float   init_power;
   float   init_sigma;
   int     init_numharm;
   double  init_r;
   double  init_z;
-
+#endif
 } accelcand;
 
 typedef struct kernel{
@@ -175,7 +173,6 @@ accelcand *duplicate_accelcand(accelcand *cand);
 GSList *copy_accelcands(GSList * list);
 GSList *duplicate_accelcands(GSList * list);
 
-//static
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
 GSList *insert_accelcand(GSList * list, accelcand *cand);
 

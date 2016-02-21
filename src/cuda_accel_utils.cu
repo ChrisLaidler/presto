@@ -818,65 +818,65 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         FOLD // Set up basic details of all the harmonics  .
         {
-        for (int i = kernel->noSrchHarms; i > 0; i--)
-        {
-          cuHarmInfo* hInfs;
-          hFrac               = (i) / (float)kernel->noSrchHarms;
-          hIdx                = kernel->noSrchHarms-i;
-          hInfs               = &kernel->hInfos[hIdx];                              // Harmonic index
-
-          hInfs->harmFrac     = hFrac;
-          hInfs->zmax         = calc_required_z(hInfs->harmFrac, sInf->sSpec->zMax);
-          hInfs->height       = (hInfs->zmax / ACCEL_DZ) * 2 + 1;
-          hInfs->width        = calc_fftlen3(hInfs->harmFrac, kernel->hInfos[0].zmax, kernel->accelLen, accuracy);
-          hInfs->halfWidth    = z_resp_halfwidth(hInfs->zmax, accuracy);
-
-          if ( prevWidth != hInfs->width )
+          for (int i = kernel->noSrchHarms; i > 0; i--)
           {
-            // We have a new stack
-            noStacks++;
+            cuHarmInfo* hInfs;
+            hFrac               = (i) / (float)kernel->noSrchHarms;
+            hIdx                = kernel->noSrchHarms-i;
+            hInfs               = &kernel->hInfos[hIdx];                              // Harmonic index
 
-            if ( hIdx < kernel->noGenHarms )
+            hInfs->harmFrac     = hFrac;
+            hInfs->zmax         = calc_required_z(hInfs->harmFrac, sInf->sSpec->zMax);
+            hInfs->height       = (hInfs->zmax / ACCEL_DZ) * 2 + 1;
+            hInfs->width        = calc_fftlen3(hInfs->harmFrac, kernel->hInfos[0].zmax, kernel->accelLen, accuracy);
+            hInfs->halfWidth    = z_resp_halfwidth(hInfs->zmax, accuracy);
+
+            if ( prevWidth != hInfs->width )
             {
-              kernel->noStacks = noStacks;
+              // We have a new stack
+              noStacks++;
+
+              if ( hIdx < kernel->noGenHarms )
+              {
+        	kernel->noStacks = noStacks;
+              }
+
+              noInStack[noStacks - 1]       = 0;
+              prevWidth                     = hInfs->width;
+              stackHW                       = z_resp_halfwidth(hInfs->zmax, accuracy);
+
+              // Maximise, centre and align halfwidth
+              int   sWidth                  = (int) ( ceil(kernel->accelLen * hInfs->harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;     // Width of usable data for this plane
+              float centHW                  = (hInfs->width  - sWidth)/2.0/(float)ACCEL_NUMBETWEEN;                                             //
+              float noAlg                   = alignment / float(sizeof(fcomplex)) / (float)ACCEL_NUMBETWEEN ;                                   // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
+              float centAlgnHW              = floor(centHW/noAlg) * noAlg ;                                                                     // Centre and aligned half width
+
+              if ( stackHW > centAlgnHW )
+              {
+        	stackHW                     = floor(centHW);
+              }
+              else
+              {
+        	stackHW                     = centAlgnHW;
+              }
             }
 
-            noInStack[noStacks - 1]       = 0;
-            prevWidth                     = hInfs->width;
-            stackHW                       = z_resp_halfwidth(hInfs->zmax, accuracy);
+            hInfs->stackNo      = noStacks-1;
 
-            // Maximise, centre and align halfwidth
-            int   sWidth                  = (int) ( ceil(kernel->accelLen * hInfs->harmFrac * ACCEL_DR ) * ACCEL_RDR + DBLCORRECT ) + 1 ;     // Width of usable data for this plane
-            float centHW                  = (hInfs->width  - sWidth)/2.0/(float)ACCEL_NUMBETWEEN;                                             //
-            float noAlg                   = alignment / float(sizeof(fcomplex)) / (float)ACCEL_NUMBETWEEN ;                                   // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
-            float centAlgnHW              = floor(centHW/noAlg) * noAlg ;                                                                     // Centre and aligned half width
-
-            if ( stackHW > centAlgnHW )
+            if ( kernel->flags & FLAG_CENTER )
             {
-              stackHW                     = floor(centHW);
+              hInfs->kerStart   = stackHW*ACCEL_NUMBETWEEN;
             }
             else
             {
-              stackHW                     = centAlgnHW;
+              hInfs->kerStart   = hInfs->halfWidth*ACCEL_NUMBETWEEN;
+            }
+
+            if ( hIdx < kernel->noGenHarms )
+            {
+              noInStack[noStacks - 1]++;
             }
           }
-
-          hInfs->stackNo      = noStacks-1;
-
-          if ( kernel->flags & FLAG_CENTER )
-          {
-            hInfs->kerStart   = stackHW*ACCEL_NUMBETWEEN;
-          }
-          else
-          {
-            hInfs->kerStart   = hInfs->halfWidth*ACCEL_NUMBETWEEN;
-          }
-
-          if ( hIdx < kernel->noGenHarms )
-          {
-            noInStack[noStacks - 1]++;
-          }
-        }
         }
 
         FOLD // Set up the indexing details of all the harmonics  .
@@ -1517,13 +1517,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else if (kernel->cndType & CU_CANDFULL )  // This should be the default
         {
-          candSZ = sizeof(cand);
+          candSZ = sizeof(initCand);
         }
         else
         {
           fprintf(stderr,"ERROR: No output type specified in %s setting to default.\n", __FUNCTION__);
           kernel->cndType |= CU_CANDFULL;
-          candSZ = sizeof(cand);
+          candSZ = sizeof(initCand);
         }
 
         if      ( !(kernel->cndType & CU_SRT_ALL   ) ) // Set defaults  .
@@ -1608,7 +1608,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
       else if (kernel->retType & CU_CANDFULL  )
       {
-        retSZ = sizeof(cand);
+        retSZ = sizeof(initCand);
       }
       else
       {
@@ -1878,8 +1878,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               fprintf(stderr, "       Try set -fhi to a lower value. ie: numharm*1000. ( or buy more RAM, or close Chrome ;)\n");
               fprintf(stderr, "       Will continue trying to use a dynamic list.\n");
 
-              kernel->cndType &= ~CU_SRT_ALL ;
-              kernel->cndType |= CU_STR_LST ;
+//              kernel->cndType &= ~CU_SRT_ALL ;
+//              kernel->cndType |= CU_STR_LST ;
+
+              // Candidate type
+              kernel->cndType &= ~CU_TYPE_ALLL ;
+              kernel->cndType &= ~CU_SRT_ALL   ;
+
+              kernel->cndType |= CU_CANDFULL   ;
+              kernel->cndType |= CU_STR_LST    ;
             }
           }
           else
@@ -3016,49 +3023,52 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
 {
   searchSpecs* sSpec = sSrch->sSpec;
 
-  if ( !oPln )
+  FOLD // Get the possibly pre-initialised optimisation plane  .
   {
-    oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
-    memset(oPln,0,sizeof(cuOptCand));
-
-    if ( devLstId < MAX_GPUS )
+    if ( !oPln )
     {
-      oPln->device = sSrch->gSpec->devId[devLstId];
+      oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
+      memset(oPln,0,sizeof(cuOptCand));
+
+      if ( devLstId < MAX_GPUS )
+      {
+	oPln->device = sSrch->gSpec->devId[devLstId];
+      }
+      else
+      {
+	fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
+	exit(EXIT_FAILURE);
+      }
     }
     else
     {
-      fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
-      exit(EXIT_FAILURE);
-    }
-  }
-  else
-  {
-    if ( oPln->device != sSrch->gSpec->devId[devLstId] )
-    {
-      bool found = false;
-
-      for ( int lIdx = 0; lIdx < MAX_GPUS; lIdx++ )
+      if ( oPln->device != sSrch->gSpec->devId[devLstId] )
       {
-        if ( sSrch->gSpec->devId[lIdx] == oPln->device )
-        {
-          devLstId = lIdx;
-          found = true;
-          break;
-        }
-      }
+	bool found = false;
 
-      if (!found)
-      {
-        if (devLstId < MAX_GPUS )
-        {
-          oPln->device = sSrch->gSpec->devId[devLstId];
-        }
-        else
-        {
-          fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
-          exit(EXIT_FAILURE);
-        }
+	for ( int lIdx = 0; lIdx < MAX_GPUS; lIdx++ )
+	{
+	  if ( sSrch->gSpec->devId[lIdx] == oPln->device )
+	  {
+	    devLstId 	= lIdx;
+	    found 	= true;
+	    break;
+	  }
+	}
 
+	if (!found)
+	{
+	  if (devLstId < MAX_GPUS )
+	  {
+	    oPln->device = sSrch->gSpec->devId[devLstId];
+	  }
+	  else
+	  {
+	    fprintf(stderr, "ERROR: Device list index is greater that the list length, in function: %s.\n", __FUNCTION__);
+	    exit(EXIT_FAILURE);
+	  }
+
+	}
       }
     }
   }
@@ -3070,51 +3080,57 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
     int   noHarms       = (1<<(sSpec->noHarmStages-1));
     float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
     zMax                = MAX(zMax, 60 * noHarms );
-    zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  // TMP: This may be a bit high!
+    zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  		// TMP: This may be a bit high!
 
-    oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );
-    oPln->maxNoR        = 512;
-    oPln->maxNoZ        = 512;
-    oPln->outSz         = oPln->maxNoR * oPln->maxNoZ ;       // This needs to be multiplied by the size of the output element
-    oPln->alignment     = sSrch->gSpec->devInfo[devLstId].alignment; //getMemAlignment();
+    oPln->cuSrch	= sSrch;					// Set the pointer t the search specifications
+    oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );		// The halfwidth of the largest plane we think we may handle
+    oPln->maxNoR        = 512;						// The maximum number of r points we can handle
+    oPln->maxNoZ        = 512;						// The maximum number of z points we can handle
+    oPln->alignment     = sSrch->gSpec->devInfo[devLstId].alignment;	// Read from GPU specs
 
-    // Create streams
-    CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
-    char nmStr[1024];
-    sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
-    nvtxNameCudaStreamA(oPln->stream, nmStr);
-    //printf("cudaStreamCreate: %s\n", nmStr);
-
-    // Events
-    CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
-    CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
-    CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
-    CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
-    CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
-    CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
-
-    size_t freeMem, totalMem;
-
-    oPln->outSz        *= sizeof(float);
-    oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
-
-    CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-
-    if ( (oPln->inpSz + oPln->outSz) > freeMem )
+    FOLD // Create streams  .
     {
-      printf("Not enough GPU memory to create any more stacks.\n");
-      free(oPln);
-      return NULL;
+      CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
+      char nmStr[1024];
+      sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
+      nvtxNameCudaStreamA(oPln->stream, nmStr);
     }
-    else
-    {
-      // Allocate device memory
-      CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-      CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
 
-      // Allocate host memory
-      CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-      CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+    FOLD // Events  .
+    {
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
+    }
+
+    FOLD // Allocate device memory  .
+    {
+      size_t freeMem, totalMem;
+
+      oPln->outSz         =  oPln->maxNoR    *oPln->maxNoZ *sizeof(float);
+      oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
+
+      CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+
+      if ( (oPln->inpSz + oPln->outSz) > freeMem )
+      {
+	printf("Not enough GPU memory to create any more stacks.\n");
+	free(oPln);
+	return NULL;
+      }
+      else
+      {
+	// Allocate device memory
+	CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
+	CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+
+	// Allocate host memory
+	CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
+	CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+      }
     }
   }
   return oPln;
@@ -4345,6 +4361,90 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_STORE_EXP;
       }
 
+      else if ( strCom(line, "FLAG_OPT_LOCAVE" ) )
+      {
+        (*flags) |= FLAG_OPT_LOCAVE;
+      }
+      else if ( strCom(line, "FLAG_OPT_MEDIAN" ) )
+      {
+        (*flags) &= ~FLAG_OPT_LOCAVE;
+      }
+
+      else if ( strCom(line, "FLAG_OPT_BEST" ) )
+      {
+        (*flags) |= FLAG_OPT_BEST;
+      }
+
+      else if ( strCom(line, "FLAG_OPT_DYN_HW" ) )
+      {
+        (*flags) |= FLAG_OPT_DYN_HW;
+      }
+
+      else if ( strCom(line, "OPT_MIN_LOC_HARMS" ) )
+      {
+        rest = &line[ strlen("OPT_MIN_LOC_HARMS")+1];
+        sSpec->optMinLocHarms = atoi(rest);
+      }
+
+      else if ( strCom(line, "OPT_MIN_REP_HARMS" ) )
+      {
+        rest = &line[ strlen("OPT_MIN_REP_HARMS")+1];
+        sSpec->optMinRepHarms = atoi(rest);
+      }
+
+      else if ( strCom(line, "optplnSiz" ) || strCom(line, "OPTPLNSIZ") )
+      {
+	rest = &line[ strlen("optplnSz")];
+	int idx = atoi(rest);
+	rest = &line[ strlen("optplnSz00")+1];
+
+	if 	( idx == 1 )
+	{
+	  sSpec->optPlnSiz[0] = atoi(rest);
+	}
+	else if ( idx == 2 )
+	{
+	  sSpec->optPlnSiz[1] = atoi(rest);
+	}
+	else if ( idx == 4 )
+	{
+	  sSpec->optPlnSiz[2] = atoi(rest);
+	}
+	else if ( idx == 8 )
+	{
+	  sSpec->optPlnSiz[3] = atoi(rest);
+	}
+	else if ( idx == 16 )
+	{
+	  sSpec->optPlnSiz[4] = atoi(rest);
+	}
+	else
+	{
+	  fprintf(stderr, "WARNING: expecting optplnSiz01, optplnSiz02, optplnSiz04, optplnSiz08 or optplnSiz16 \n");
+	}
+      }
+
+      else if ( strCom(line, "optPlnDim" ) || strCom(line, "OPTPLNDIM") )
+      {
+	rest = &line[ strlen("optPlnDim")];
+	int idx = atoi(rest);
+	if ( idx >= 1 && idx <= NO_OPT_LEVS )
+	{
+	  rest = &line[ strlen("optPlnDim00")+1];
+	  sSpec->optPlnDim[idx-1] = atoi(rest);
+	}
+	else
+	{
+	  fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 0 and %i \n",idx, NO_OPT_LEVS);
+	}
+      }
+
+      else if ( strCom(line, "optPlnScale" ) )
+      {
+        rest      = &line[ strlen("optPlnScale")+1];
+        sSpec->optPlnScale = atof(rest);
+      }
+
       else if ( strCom(line, "FLAG_RAND_1" ) || strCom(line, "RAND_1" ) )
       {
         (*flags) |= FLAG_RAND_1;
@@ -4365,15 +4465,15 @@ void readAccelDefalts(searchSpecs *sSpec)
       }
       else if ( strCom(line, "FLAG_DBG_SKIP_OPT" ) || strCom(line, "SKP_OPT" ) || strCom(line, "skpOpt"  ) )
       {
-        skpOpt  = 1;
+	(*flags) |= FLAG_DPG_SKP_OPT;
       }
 
-      else if ( strCom(line, "pltOpt"  ) || strCom(line, "PLT_OPT" ) )
+      else if ( strCom(line, "pltOpt"  ) || strCom(line, "FLAG_DPG_PLT_OPT" ) )
       {
-        pltOpt    = 1;
+	(*flags) |= FLAG_DPG_PLT_OPT;
       }
 
-      else if ( strCom(line, "UNOPT" ) )
+      else if ( strCom(line, "FLAG_DPG_UNOPT" ) )
       {
         useUnopt    = 1;
       }
@@ -4442,68 +4542,62 @@ void readAccelDefalts(searchSpecs *sSpec)
         globalInt05 = atoi(rest);
       }
 
-      // Optimisation vars
-      else if ( strCom(line, "optpln01" ) )
-      {
-        rest      = &line[ strlen("optpln01")+1];
-        optpln01  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln02" ) )
-      {
-        rest      = &line[ strlen("optpln02")+1];
-        optpln02  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln03" ) )
-      {
-        rest      = &line[ strlen("optpln03")+1];
-        optpln03  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln04" ) )
-      {
-        rest      = &line[ strlen("optpln04")+1];
-        optpln04  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln05" ) )
-      {
-        rest      = &line[ strlen("optpln05")+1];
-        optpln05  = atoi(rest);
-      }
-      else if ( strCom(line, "optpln06" ) )
-      {
-        rest      = &line[ strlen("optpln06")+1];
-        optpln06  = atoi(rest);
-      }
-
-      else if ( strCom(line, "downScale" ) )
-      {
-        rest      = &line[ strlen("downScale")+1];
-        downScale = atof(rest);
-      }
+//      // Optimisation vars
+//      else if ( strCom(line, "optpln01" ) )
+//      {
+//        rest      = &line[ strlen("optpln01")+1];
+//        optpln01  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln02" ) )
+//      {
+//        rest      = &line[ strlen("optpln02")+1];
+//        optpln02  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln03" ) )
+//      {
+//        rest      = &line[ strlen("optpln03")+1];
+//        optpln03  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln04" ) )
+//      {
+//        rest      = &line[ strlen("optpln04")+1];
+//        optpln04  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln05" ) )
+//      {
+//        rest      = &line[ strlen("optpln05")+1];
+//        optpln05  = atoi(rest);
+//      }
+//      else if ( strCom(line, "optpln06" ) )
+//      {
+//        rest      = &line[ strlen("optpln06")+1];
+//        optpln06  = atoi(rest);
+//      }
 
       else if ( strCom(line, "optSz01" ) )
       {
-        rest      = &line[ strlen("optSz01")+1];
-        optSz01   = atof(rest);
+        rest			= &line[ strlen("optSz01")+1];
+        sSpec->optPlnSiz[0]	= atof(rest);
       }
       else if ( strCom(line, "optSz02" ) )
       {
-        rest      = &line[ strlen("optSz02")+1];
-        optSz02   = atof(rest);
+        rest      		= &line[ strlen("optSz02")+1];
+        sSpec->optPlnSiz[1]	= atof(rest);
       }
       else if ( strCom(line, "optSz04" ) )
       {
-        rest      = &line[ strlen("optSz04")+1];
-        optSz04   = atof(rest);
+        rest      		= &line[ strlen("optSz04")+1];
+        sSpec->optPlnSiz[2]	= atof(rest);
       }
       else if ( strCom(line, "optSz08" ) )
       {
-        rest      = &line[ strlen("optSz08")+1];
-        optSz08   = atof(rest);
+        rest      		= &line[ strlen("optSz08")+1];
+        sSpec->optPlnSiz[3]	= atof(rest);
       }
       else if ( strCom(line, "optSz16" ) )
       {
-        rest      = &line[ strlen("optSz16")+1];
-        optSz16   = atof(rest);
+        rest      		= &line[ strlen("optSz16")+1];
+        sSpec->optPlnSiz[4]	= atof(rest);
       }
 
       else if ( strCom(line, "#" ) || ll == 1 )
@@ -4539,45 +4633,67 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering readSrchSpecs.");
 
-  // Defaults for accel search
-  sSpec.flags         |= FLAG_RET_STAGES  ;
-  sSpec.flags         |= FLAG_ITLV_ROW    ;
+  FOLD // Defaults for accel search  .
+  {
+    sSpec.retType       |= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
+    sSpec.flags         |= FLAG_RET_STAGES  ;
+    sSpec.flags         |= FLAG_ITLV_ROW    ;
 
 #ifndef DEBUG
-  sSpec.flags         |= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
+    sSpec.flags         |= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
 #endif
 
 #if CUDA_VERSION >= 6050
-  sSpec.flags         |= FLAG_CUFFT_CB_POW; 	// CUFFT callback to calculate powers, very efficient so on by default
+    sSpec.flags         |= FLAG_CUFFT_CB_POW; 	// CUFFT callback to calculate powers, very efficient so on by default
 #endif
 
 #if CUDA_VERSION >= 7050
-  sSpec.flags         |= FLAG_HALF;
+    sSpec.flags         |= FLAG_HALF;
 #endif
 
-  if ( obs->inmem )
-  {
-    sSpec.flags       |= FLAG_SS_INMEM;
+    if ( obs->inmem )
+    {
+      sSpec.flags       |= FLAG_SS_INMEM;
+    }
+
+    sSpec.cndType       |= CU_CANDFULL    ;   	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
+    sSpec.cndType       |= CU_STR_ARR     ;   	// Candidate storage structure - CU_STR_ARR    is generally the fastest
+
+    sSpec.retType       |= CU_POWERZ_S    ;   	// Return type
+    sSpec.retType       |= CU_STR_ARR     ;   	// Candidate storage structure
+
+
+    sSpec.fftInf.fft    	= obs->fft;
+    sSpec.fftInf.nor    	= obs->numbins;
+    sSpec.fftInf.rlo    	= obs->rlo;
+    sSpec.fftInf.rhi    	= obs->rhi;
+
+    sSpec.noHarmStages  	= obs->numharmstages;
+    sSpec.zMax          	= obs->zhi;
+    sSpec.sigma         	= cmd->sigma;
+    sSpec.pWidth        	= cmd->width;
+
+    for ( int idx = 0; idx < NO_OPT_LEVS; idx++)
+      sSpec.optPlnDim[idx] 	= 0;
+    sSpec.optPlnDim[0]		= 50;
+    sSpec.optPlnDim[1]		= 30;
+    sSpec.optPlnDim[2]		= 20;
+    sSpec.optPlnDim[3]		= 20;
+    sSpec.optPlnDim[4]		= 10;
+
+    sSpec.optPlnSiz[0]		= 16;
+    sSpec.optPlnSiz[1]		= 14;
+    sSpec.optPlnSiz[2]		= 12;
+    sSpec.optPlnSiz[3]		= 10;
+    sSpec.optPlnSiz[4]		= 8;
+
+    sSpec.optPlnScale		= 6;
+
+    sSpec.optMinLocHarms	= 1;
+    sSpec.optMinRepHarms	= 1;
   }
 
-  sSpec.cndType       |= CU_CANDFULL    ;   	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
-  sSpec.cndType       |= CU_STR_ARR     ;   	// Candidate storage structure - CU_STR_ARR    is generally the fastest
-
-  sSpec.retType       |= CU_POWERZ_S    ;   	// Return type
-  sSpec.retType       |= CU_STR_ARR     ;   	// Candidate storage structure
-
-  sSpec.retType       |= FLAG_KER_DOUBGEN;
-
-  sSpec.fftInf.fft    = obs->fft;
-  sSpec.fftInf.nor    = obs->numbins;
-  sSpec.fftInf.rlo    = obs->rlo;
-  sSpec.fftInf.rhi    = obs->rhi;
-
-  sSpec.noHarmStages  = obs->numharmstages;
-  sSpec.zMax          = obs->zhi;
-  sSpec.sigma         = cmd->sigma;
-  sSpec.pWidth        = cmd->width;
-
+  // Now read the
   readAccelDefalts(&sSpec);
 
   if ( sSpec.flags & (FLAG_SS_10 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
@@ -4848,30 +4964,27 @@ void freeCuAccel(cuPlnInfo* mInf)
 
 void intSrchThrd(cuSearch* srch)
 {
-  //if ( srch->sSpec->flags & FLAG_THREAD )
+  resThrds* tInf = srch->threasdInfo;
+
+  if ( !tInf )
   {
-    resThrds* tInf = srch->threasdInfo;
-
-    if ( !tInf )
-    {
-      tInf     = new resThrds;
-      memset(tInf, 0, sizeof(cuSearch));
-    }
-
-    if (pthread_mutex_init(&tInf->candAdd_mutex, NULL))
-    {
-      printf("Unable to initialise a mutex.\n");
-      exit(EXIT_FAILURE);
-    }
-
-    if (sem_init(&tInf->running_threads, 0, 0))
-    {
-      printf("Could not initialise a semaphore\n");
-      exit(EXIT_FAILURE);
-    }
-
-    srch->threasdInfo = tInf;
+    tInf     = new resThrds;
+    memset(tInf, 0, sizeof(resThrds));
   }
+
+  if (pthread_mutex_init(&tInf->candAdd_mutex, NULL))
+  {
+    printf("Unable to initialise a mutex.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if (sem_init(&tInf->running_threads, 0, 0))
+  {
+    printf("Could not initialise a semaphore\n");
+    exit(EXIT_FAILURE);
+  }
+
+  srch->threasdInfo = tInf;
 }
 
 cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
@@ -4890,7 +5003,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
       // ERROR recreate everything
     }
 
-    if ( srch->pInf )
+    if ( same && srch->pInf )
     {
       if ( srch->pInf->kernels->hInfos->zmax != sSpec->zMax )
       {
@@ -4919,11 +5032,21 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     }
   }
 
-  if ( !srch || same == false)      // Create a new search data structure  .
+  if ( !srch || !same )      	// Create a new search data structure  .
   {
     infoMSG(2,2,"Create a new search data structure\n");
 
-    srch = new cuSearch;
+    if ( !srch )
+    {
+      srch = new cuSearch;
+    }
+//    else
+//    {
+//      freeNull(srch->sIdx);
+//      freeNull(srch->powerCut);
+//      freeNull(srch->numindep);
+//      freeNull(srch->timings);
+//    }
     memset(srch, 0, sizeof(cuSearch));
 
     srch->noHarmStages    = sSpec->noHarmStages;
@@ -4932,6 +5055,9 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     srch->sIdx            = (int*)malloc(srch->noGenHarms * sizeof(int));
     srch->powerCut        = (float*)malloc(srch->noHarmStages * sizeof(float));
     srch->numindep        = (long long*)malloc(srch->noHarmStages * sizeof(long long));
+
+    //srch->timings	  = (long long*)malloc( TIME_END * sizeof(long long));
+    //memset(srch->timings, 0, TIME_END * sizeof(long long) );
   }
   else
   {
@@ -5560,7 +5686,7 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
   int maxharm = 16;
   int numremoved = 0;
 
-  cand* tempCand = new cand;
+  initCand* tempCand = new initCand;
   container* next;
   container* close;
   container* serch;
@@ -5569,7 +5695,7 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 
   while ( lst )
   {
-    cand* candidate = (cand*)lst->data;
+    initCand* candidate = (initCand*)lst->data;
 
     tempCand->power    = candidate->power;
     tempCand->numharm  = candidate->numharm;

@@ -4,40 +4,6 @@
 #include "cuda_response.h"
 
 
-__device__ int z_resp_halfwidth(double z)
-{
-  int m;
-
-  z = fabs(z);
-
-  m = (long) (z * (0.00089 * z + 0.3131) + NUMFINTBINS);
-  m = (m < NUMFINTBINS) ? NUMFINTBINS : m;
-
-  // Prevent the equation from blowing up in large z cases
-
-  if (z > 100 && m > 0.6 * z)
-    m = 0.6 * z;
-
-  return m;
-}
-
-__device__ int z_resp_halfwidth_high(double z)
-{
-  int m;
-
-  z = fabs(z);
-
-  m = (long) (z * (0.002057 * z + 0.0377) + NUMFINTBINS * 3);
-  m += ((NUMLOCPOWAVG >> 1) + DELTAAVGBINS);
-
-  /* Prevent the equation from blowing up in large z cases */
-
-  if (z > 100 && m > 1.2 * z)
-     m = 1.2 * z;
-
-  return m;
-}
-
 template<typename readT, typename writeT>
 __global__ void typeChangeKer(readT* read, writeT* write, size_t stride, size_t height)
 {
@@ -88,11 +54,11 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   
   if      ( half_width == 0  )
   {
-    half_width    = z_resp_halfwidth((double) z);
+    half_width    = z_resp_halfwidth_cu<double>(z);
   }
   else if ( half_width == 1  )  // Use high accuracy kernels
   {
-    half_width    = z_resp_halfwidth_high((double) z);
+    half_width    = z_resp_halfwidth_cu_high<double>(z);
   }
   else
   {
@@ -100,8 +66,8 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   	
     //int hw2       = MAX(0.6*z, 16*1);
     //half_width    = MIN( half_width, hw2 ) ;
-    //half_width    = z_resp_halfwidth((double) z);
-    //half_width    = z_resp_halfwidth((double) z);
+    //half_width    = z_resp_halfwidth_cu((double) z);
+    //half_width    = z_resp_halfwidth_cu((double) z);
   }
 
   int noResp      = half_width / rSteps;		// The number of response variables per side

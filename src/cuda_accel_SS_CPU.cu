@@ -37,7 +37,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   int         sliceSz   = 16;
   int         noSlices  = ceil( zeroHeight / (float)sliceSz );
   int         noCands   = 0;
-  cand*       cnd       = (cand*)malloc(sizeof(cand)*noSlices*batch->accelLen*noStages*noSteps);
+  initCand*       cnd       = (initCand*)malloc(sizeof(initCand)*noSlices*batch->accelLen*noStages*noSteps);
 
   FOLD // Sum search data  .
   {

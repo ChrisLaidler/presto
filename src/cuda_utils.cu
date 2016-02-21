@@ -274,9 +274,9 @@ void initGPUs(gpuSpecs* gSpec)
       major                           = deviceProp.major;
       minor                           = deviceProp.minor;
       gInf->capability                = major + minor/10.0f;
-      gInf->alignment                 = getMemAlignment();                  // This action will initalise the CUDA context
-      gInf->name                      = (char*)malloc(256*sizeof(char));
+      gInf->alignment                 = getMemAlignment();                  // This action will initialise the CUDA context
       gInf->devid                     = device;
+      gInf->name                      = (char*)malloc(256*sizeof(char));
 
       sprintf(gInf->name, "%s", deviceProp.name );
 

@@ -1,8 +1,10 @@
 #include "accel.h"
 #include "accelsearch_cmd.h"
+
+#ifdef GPU
 #include "cuda_utils.h"
 #include "cuda.h"
-//#include "cudart.h"
+#endif
 
 #if defined (__GNUC__)
 #  define inline __inline__
@@ -328,6 +330,13 @@ GSList *insert_new_accelcand(GSList * list, float power, float sigma,
     new_list->data = (gpointer *) create_accelcand(power, sigma, numharm, rr, zz);
     *added = 1;
     return new_list;
+  }
+
+  if ( !list->data ) // Empty list so add it
+  {
+    list->data = (gpointer *) create_accelcand(power, sigma, numharm, rr, zz);
+    *added = 1;
+    return list;
   }
 
   /* Find the correct position in the list for the candidate */
@@ -1330,18 +1339,9 @@ void deredden(fcomplex * fft, int numamps)
     for (ii = 0; ii < lastbuflen; ii++) {
       lineval = mean_old + slope * (lineoffset - ii);
       scaleval = 1.0 / sqrt(lineval);
-
-      //float powargr, powargi;
-      //double ppos = POWER(fft[fixedoffset + ii].r, fft[fixedoffset + ii].i);
-
-      //printf("%i\t%e\t%e\n", fixedoffset + ii, lineval, ppos);
       fft[fixedoffset + ii].r *= scaleval;
       fft[fixedoffset + ii].i *= scaleval;
-
-      //double pp2 = POWER(fft[fixedoffset + ii].r, fft[fixedoffset + ii].i);
-      //printf("%i\t%e\t%e\t%e\n", fixedoffset + ii, lineval, ppos, pp2);
     }
-    //printf("-\n", lineoffset - ii,scaleval);
 
     /* Update our values */
     fixedoffset += lastbuflen;
@@ -1431,7 +1431,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     filelen = chkfilelen(datfile, sizeof(float));
     if (input_shorts)
       filelen *= 2;
-    if (filelen > 671088640 ) { /* Small since we need memory for the templates */
+    if (filelen > 67108864) { /* Small since we need memory for the templates */
       printf("\nThe input time series is too large.  Use 'realfft' first.\n\n");
       exit(0);
     }
@@ -1460,8 +1460,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     fclose(datfile);
 
     /* FFT it */
-    //realfft(ftmp, filelen, -1);
-    realfftw(ftmp, filelen, -1);
+    realfft(ftmp, filelen, -1);
     obs->fftfile = NULL;
     obs->fft = (fcomplex *) ftmp;
     obs->numbins = filelen / 2;
@@ -1492,12 +1491,11 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      nvtxRangePush("Read file");
-#endif
+      //nvtxRangePush("Read file");
 
       unsigned long freeRam = getFreeRamCU();
 
-      if ( freeRam * 0.6 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
+      if ( freeRam * 0.7 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
       {
         FILE *datfile;
         long long filelen;
@@ -1524,6 +1522,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
         printf("done.\n");
       }
       else
+#endif
       {
         // Use memmap
         fclose(obs->fftfile);
@@ -1550,7 +1549,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
       }
 
 #ifdef CUDA
-      nvtxRangePop();
+      //nvtxRangePop();
 #endif
 
     }
@@ -1588,9 +1587,12 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     } else {
 
       /* De-redden it */
-      printf("Removing red-noise...");
-      deredden(obs->fft, obs->numbins);
-      printf("done.\n\n");
+      if ( !obs->mmap_file )
+      {
+	printf("Removing red-noise...");
+	deredden(obs->fft, obs->numbins);
+	printf("done.\n\n");
+      }
 
       obs->norm_type = 0;
       printf("Normalizing powers using median-blocks (default).\n\n");

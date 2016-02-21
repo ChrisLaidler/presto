@@ -1,5 +1,6 @@
 #  Makefile for PRESTO
 #   by Scott M. Ransom
+#      and Chris Laidler
 
 # OS type
 OS = Linux
@@ -8,8 +9,12 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHCBL    = yes
+WITHCBL    = no
 
+# CUDA_ARCH needs to be set to the artitech of the device(s) you wnat to run the search on
+# CUDA_ARCH should be a space seperated list consisting to numbers ie "30 50" 
+# Where the numbers are major minor and can be found by running deviceQuery
+# You can use multiple values, just uncomment the specific lines below, or add youre own
 CUDA_ARCH  =
 #CUDA_ARCH += 20
 #CUDA_ARCH += 30
@@ -135,6 +140,18 @@ ifeq ($(mode),D)
   DEBUG=1
 endif
 
+# With CUDA
+ifeq ($(WITH_CUDA),yes)
+  
+  ifeq ($(CUDA_ARCH),)
+  	$(info )
+  	$(info Please specify CUDA_ARCH in the makefile if compiling with CUDA  )
+  	$(info                CUDA_ARCH is the devivce specific CUDA Capability )
+  	$(info )
+  	$(error Error: CUDA_ARCH not specifyed)
+  endif
+endif
+#
 # Very recent Intel CPUs might see a few percent speedup using -mavx
 CFLAGS 				= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -g -Wall -W -fPIC
 #	 -march=native
@@ -178,6 +195,8 @@ NVCCFLAGS	 += $(foreach root, $(CXXWARN), -Xcompiler $(root))
 
 NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)
 NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+
+GPUOUTP		=
 
 $(info)
 
@@ -243,6 +262,27 @@ ifeq ($(WITHOMP),yes)
   NVCLFLAGS   += -Xcompiler -fopenmp -DWITHOMP
 endif
 
+ifeq ($(WITHCBL),yes)
+  $(info • Compileing with Chris utility libraries)
+
+  # Include and link information for FreeType
+  FTCFLG     = $(shell freetype-config --cflags)
+  FTLINK     = $(shell freetype-config --libs)
+
+  LNDARR     += -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  INDARR     += -I$(SRC)/libs/build/include/ $(FTCFLG)
+
+  NVCCFLAGS  += -DCBL $(INDARR)
+  NVCLFLAGS  += -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+
+  CXXFLAGS   += -DCBL $(INDARR)
+
+  GPUOUTP    += $(BINPATH)/test_GPUaccel$(POSTFIX)
+else
+  LNDARR     =
+  INDARR     =
+endif
+
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
   
@@ -270,42 +310,23 @@ ifeq ($(WITH_CUDA),yes)
 
   CUACCL     	= -lcuaccel$(POSTFIX)
 
-  GPUOUTP    	= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
 	# Check for CUDA 6.5 for CUFFT callbacks 
-ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
-  CUDALIBS  	+= -lcufft_static -lculibos
-else
-  CUDALIBS		+= -lcufft
-endif
+	ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
+  	CUDALIBS  	+= -lcufft_static -lculibos
+	else
+	  CUDALIBS		+= -lcufft
+	endif
 
 else
-  NVCC        = $(CC)
+  NVCC        = $(CPP)
   NVCC_OBS    =
   NVCLFLAGS   = $(CLINKFLAGS)
   GPUOUTP     =
 endif
 
-ifeq ($(WITHCBL),yes)
-  $(info • Compileing with Chris utility libraries)
 
-  # Include and link information for FreeType
-  FTCFLG     = $(shell freetype-config --cflags)
-  FTLINK     = $(shell freetype-config --libs)
-
-  LNDARR     += -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
-  INDARR     += -I$(SRC)/libs/build/include/ $(FTCFLG)
-
-  NVCCFLAGS  += -DCBL $(INDARR)
-  NVCLFLAGS  += -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
-
-  CXXFLAGS   += -DCBL $(INDARR)
-
-  GPUOUTP    += $(BINPATH)/test_GPUaccel$(POSTFIX)
-else
-  LNDARR     =
-  INDARR     =
-endif
 
 $(info )
 
@@ -380,7 +401,7 @@ binaries: $(BINARIES)
 
 mpi: mpiprepsubband
 
-GPU: $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/test_GPUaccel$(POSTFIX)
+GPU: $(GPUOUTP)
 	@ # $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX) # Temporally removed
 	@ # Make file cant handle blank targets so here is a random comment =/
 
@@ -609,8 +630,7 @@ $(OBJDIR)%.o: %.c
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
-	#$(CPP) $(CFLAGS) -o $@ -c $<
-	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+	$(CPP) $(CFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 	
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)
@@ -657,6 +677,16 @@ cleanGPU: cudaclean
 	rm -f ../bin/test_GPUaccel*
 	rm -f ../bin/accelsearch*
 
+cleancubasics:
+	rm -f build/*/cuda_accel_IN.cu.o
+	rm -f build/*/cuda_accel_KR.cu.o
+	rm -f build/*/cuda_accel_SS.cu.o
+	rm -f build/*/cuda_accel_utils.cu.o
+	rm -f build/*/cuda_cand_OPT.cu.o
+	rm -f build/*/cuda_utils.cu.cu.o
+	rm -f build/*/accelsearch.o
+	rm -f build/*/test_GPUaccel.o
+	
 cudaclean:
 	rm -f build/*/*cu.o
 	rm -f build/*/cuda*.o

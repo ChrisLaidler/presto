@@ -12,6 +12,11 @@
 #include <cufft.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
+#include <sys/time.h>
+
+#ifdef WITHOMP
+#include <omp.h>
+#endif
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
@@ -392,23 +397,23 @@ extern float  globalFloat03;
 extern float  globalFloat04;
 extern float  globalFloat05;
 
-extern int    optpln01;
-extern int    optpln02;
-extern int    optpln03;
-extern int    optpln04;
-extern int    optpln05;
-extern int    optpln06;
+//extern int    optpln01;
+//extern int    optpln02;
+//extern int    optpln03;
+//extern int    optpln04;
+//extern int    optpln05;
+//extern int    optpln06;
+//
+//extern float  downScale;
+//
+//extern float  optSz01;
+//extern float  optSz02;
+//extern float  optSz04;
+//extern float  optSz08;
+//extern float  optSz16;
 
-extern float  downScale;
-
-extern float  optSz01;
-extern float  optSz02;
-extern float  optSz04;
-extern float  optSz08;
-extern float  optSz16;
-
-extern int    pltOpt;
-extern int    skpOpt;
+//extern int    pltOpt;
+//extern int    skpOpt;
 
 //====================================== Inline functions ================================================\\
 

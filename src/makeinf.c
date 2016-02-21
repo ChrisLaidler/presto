@@ -241,7 +241,7 @@ int main(void)
    writeinf(&data);
    printf("\nFinished.\n\n");
 
-   if (data.onoff)
-      free(data.onoff);
+//   if (data.onoff)
+//      free(data.onoff);
    exit(0);
 }

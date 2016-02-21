@@ -203,7 +203,6 @@ void tablesixstepfft(fcomplex * indata, long nn, int isign)
 void cmplxfftw(fcomplex* indata, long n, int isign)
 {
 #ifdef USEFFTW
-
   fftwf_plan plan_l =  fftwf_plan_dft_1d(n, (fftwf_complex*)indata, (fftwf_complex*)indata, isign, (uint)FFTW_ESTIMATE);
   fftwf_execute(plan_l);
   fftwf_destroy_plan(plan_l);

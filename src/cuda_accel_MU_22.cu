@@ -88,9 +88,11 @@ __global__ void mult22_k(const __restrict__ fcomplexcu*  kernels, const __restri
             fcomplexcu out;
 
 #if CORRECT_MULT
+            // This is the "correct" version
               out.r = (ipd.r * ker.r - ipd.i * ker.i);
               out.i = (ipd.r * ker.i + ipd.i * ker.r);
 #else
+              // This is the version accelsearch uses, ( added for comparison )
               out.r = (ipd.r * ker.r + ipd.i * ker.i);
               out.i = (ipd.i * ker.r - ipd.r * ker.i);
 #endif

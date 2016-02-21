@@ -28,7 +28,7 @@ NORM_CPU			# Do the input Normalisation on the CPU
 #NORM_GPU			# Do the input Normalisation on the GPU
 
 # FFT input in the CPU or the GPU
-FFT_CPU  			# Do the input FFT's on the CPU
+#FFT_CPU  			# Do the input FFT's on the CPU
 #FFT_GPU  			# Do the input FFT's on the GPU
 
 # cuMedianBuffSz		# This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
@@ -38,7 +38,7 @@ FFT_CPU  			# Do the input FFT's on the CPU
 # Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
 # In my testing MUL_CB is very slow, like 7 times slower (FFT only)!
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30  MUL_CB  MUL_AA
-MUL_23
+MUL_AA
 
 #FLAG_TEX_MUL			# [Deprecated]	Use texture memory in the multiplication kernel
 
@@ -65,12 +65,12 @@ FLAG_CUFFT_CB_POW		# Almost always a good option!
 ######## Return ##########
 
 # FLAG_RET_ARR			# [Deprecated]
-#FLAG_RET_PLN			# [Deprecated]
+# FLAG_RET_PLN			# [Deprecated]
 
 ######## Search ##########
 
 # If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
-FLAG_SINGLE			# Force single precision powers
+#FLAG_SINGLE			# Force single precision powers
 #FLAG_HALF			# Force half precision powers (requires CUDA 7.5 or greater)
 
 #FLAG_SAS_TEX			# [Deprecated]	Use texture memory in the sum and search kernel
@@ -81,11 +81,11 @@ FLAG_SINGLE			# Force single precision powers
 
 # Use separate CPU threads to process results
 #FLAG_THREAD			# (default)	Force CPU threading for sigma calculations
-FLAG_SEQ			# 		Force CPU sequential for sigma calculations
+#FLAG_SEQ			# 		Force CPU sequential for sigma calculations
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
-SS_10
+SS_AA
 
 SS_SLICES	5		# The number of horizontal "slices" to break the Sum & Search kernel into
 
@@ -106,14 +106,26 @@ CU_CAND_ARR			# Use an array 			(Fast access, but requires more CPU memory)
 
 ###### Optimisation ########
 
+#FLAG_OPT_MEDIAN  		# [ Default ] Use 1D median power for normalisation
+#FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation 
+
+FLAG_OPT_BEST			# Report the harmonic with the highest sigma value rather than the number of harmonic found with
+
+optPlnScale		10	# Optimisation step down
+
+OPT_MIN_LOC_HARMS	1	# 
+
+OPT_MIN_REP_HARMS	24	#
+
+
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
-optpln01 40			# The number of elements in the 1st optimisation plane
-optpln02 30			# The number of elements in the 2nd optimisation plane
-optpln03 20			# The number of elements in the 3rd optimisation plane
-optpln04 10			# The number of elements in the 4th optimisation plane
-optpln05 0			# The number of elements in the 5th optimisation plane
-optpln06 0			# The number of elements in the 6th optimisation plane (this is a double preseason plane)
+optPlnDim01 50			# The number of elements in the 1st optimisation plane
+optPlnDim02 30			# The number of elements in the 2nd optimisation plane
+optPlnDim03 20			# The number of elements in the 3rd optimisation plane
+optPlnDim04 10			# The number of elements in the 4th optimisation plane
+optPlnDim05 0			# The number of elements in the 5th optimisation plane
+optPlnDim06 5			# The number of elements in the 6th optimisation plane (this is a double preseason plane)
 
 # The Numbers below dictate the size in bins of the incremental planes used to refine the location of the maximum f-fdot value
 # Lager numbers will explore the f-fdot plane faster but will reduce resolution
@@ -126,10 +138,6 @@ optpln06 0			# The number of elements in the 6th optimisation plane (this is a d
 
 ###### Debug ########
 
-#PLT_OPT			# [Debug]		
-#UNOPT				# [Debug]	
-#SKP_OPT    			# [Debug] Don't do optimisation
-
 DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with increasing number
 #	0			# None [default]
 #	1			# Info
@@ -138,9 +146,14 @@ DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with i
 #	4			# Debug 3
 #	5			# Debug 4
 
-#FLAG_DBG_SYNCH			# [ Debug ] Perform a synchronous search
-#FLAG_DBG_TIMING   		# [ Debug ] Perform advanced timing the search
-FLAG_DPG_PRNT_CAND		# [ Debug ] Print CSV of candidates at various stages
+#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
+#FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
+#FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
+#FLAG_DBG_SYNCH			# [ Debug ]	Perform a synchronous search
+#FLAG_DBG_TIMING   		# [ Debug ]	Perform advanced timing the search
+#FLAG_DPG_PRNT_CAND		# [ Debug ]	Print CSV of candidates at various stages
+
+
 
 
 
