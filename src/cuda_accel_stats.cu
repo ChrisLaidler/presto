@@ -380,6 +380,7 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
       logQ = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
     }
 
+    // Correct q for number of trials
     logQ    += log( (double)numindep );
 
     double l = sqrt(-2.0*logQ);

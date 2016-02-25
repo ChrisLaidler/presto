@@ -83,7 +83,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int h
 	  if ( hw.val[i-1] )
 	    halfW	= hw.val[i-1];
 	  else
-	    halfW	= z_resp_halfwidth_cu_high<double>(z*i)*1.2;
+	    halfW	= z_resp_halfwidth_cu_high<double>(z*i+4);
 	}
 
 	// Set complex values to 0 for this harmonic
@@ -434,7 +434,6 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
 //  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 //  initCand* iCand 	= (initCand*)cont->data;
 
-
 //
 //  optInitCandLocPlns(iCand, pln, nn );
 //
@@ -681,7 +680,7 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
 {
   infoMSG(3,2,"Gen plain\n");
 
-  //searchSpecs*  sSpec	= pln->cuSrch->sSpec;
+  searchSpecs*  sSpec	= pln->cuSrch->sSpec;
   fftInfo*	fft	= &pln->cuSrch->sSpec->fftInf;
 
   FOLD // Large points  .
@@ -850,7 +849,6 @@ void* optCandDerivs(void* ptr)
 
       infoMSG(5,5,"Harm %i\n",ii );
 
-      infoMSG(6,6,"Scale Factor %i\n",ii );
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
       {
 	locpow = get_localpower3d(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
@@ -859,26 +857,26 @@ void* optCandDerivs(void* ptr)
       {
 	locpow = get_scaleFactorZ(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
       }
+      infoMSG(6,6,"locpow %.5f \n", locpow );
 
       if ( locpow )
       {
 	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii) + 4.0, HIGHACC);
 
-	infoMSG(6,6,"rz_convolution_cu, hw %i\n", kern_half_width );
 	rz_convolution_cu<double, float2>((float2*)fft->fft, fft->idx, fft->nor, cand->r*ii, cand->z*ii, kern_half_width, &real, &imag);
 
-	power = POWERCU(real, imag);
+	power = POWERCU(real, imag) / locpow ;
 
 	cand->pows[ii-1] = power;
 
-	infoMSG(6,6,"get_derivs3d\n", kern_half_width );
 	get_derivs3d(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0, locpow, &res->cand->derivs[ii-1] );
 
 	cand->power	+= power;
 	numindep	= (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (ACCEL_DZ / 6.95) / (ii) ;
 
-	infoMSG(6,6,"candidate_sigma_cl\n", kern_half_width );
 	sig		= candidate_sigma_cl(cand->power, (ii), numindep );
+
+	infoMSG(6,6,"Power %7.3f  Sig: %6.3f  Sum: Power %7.3f  Sig: %6.3f\n", power, candidate_sigma_cl(power, 1, 1 ), cand->power, sig );
 
 	if ( sig > maxSig || ii == 1 )
 	{
@@ -890,6 +888,7 @@ void* optCandDerivs(void* ptr)
 	if ( ii == cand->numharm )
 	{
 	  candHPower    = cand->power;
+
 	  if ( !(srch->sSpec->flags & FLAG_OPT_BEST) )
 	  {
 	    break;
@@ -898,7 +897,7 @@ void* optCandDerivs(void* ptr)
       }
     }
 
-    if ( bestP && (srch->sSpec->flags & FLAG_OPT_BEST) )
+    if ( bestP && (srch->sSpec->flags & FLAG_OPT_BEST) && ( maxSig > 0.001 ) )
     {
       cand->numharm	= bestH;
       cand->sigma	= maxSig;
@@ -908,11 +907,22 @@ void* optCandDerivs(void* ptr)
     }
     else
     {
+      cand->power	= candHPower;
       noStages		= log2((double)cand->numharm);
       numindep		= srch->numindep[noStages];
       cand->sigma	= candidate_sigma_cl(candHPower, cand->numharm, numindep);
 
       infoMSG(4,4,"Cand harm val Sigma: %5.2f Power: %6.4f\n", cand->sigma, cand->power);
+
+//      FOLD // TMP
+//      {
+//	float sig1 = candidate_sigma_cl(candHPower, cand->numharm, numindep );
+//	float sig2 = candidate_sigma(candHPower, cand->numharm, numindep );
+//
+//	infoMSG(4,4,"Sigma CPU %.4f GPU %.4f \n", sig1, sig2);
+//
+//	int tmp = 0;
+//      }
     }
   }
 
@@ -1085,7 +1095,7 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int no)
 
   if ( sSpec->flags & FLAG_OPT_SWARM )
   {
-    fprintf(stderr,"ERROR: partical swarm has been removed.\n");
+    fprintf(stderr,"ERROR: partial swarm has been removed.\n");
     exit(EXIT_FAILURE);
   }
   else
@@ -1191,6 +1201,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
       {
 	infoMSG(2,2,"\nOptimising initial candidate %i/%i, Power: %.3f  Sigma %.2f  Harm %i at (%.3f %.3f)\n", ti, numcands, candGPUP->power, candGPUP->sigma, candGPUP->numharm, candGPUP->r, candGPUP->z );
 
+	//if ( ti == 4 )
 	opt_accelcand(candGPUP, oPlnPln, ti);
 
 #pragma omp atomic

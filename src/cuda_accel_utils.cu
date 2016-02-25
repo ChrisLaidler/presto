@@ -4392,11 +4392,11 @@ void readAccelDefalts(searchSpecs *sSpec)
         sSpec->optMinRepHarms = atoi(rest);
       }
 
-      else if ( strCom(line, "optplnSiz" ) || strCom(line, "OPTPLNSIZ") )
+      else if ( strCom(line, "optPlnSiz" ) )
       {
-	rest = &line[ strlen("optplnSz")];
+	rest = &line[ strlen("optPlnSiz")];
 	int idx = atoi(rest);
-	rest = &line[ strlen("optplnSz00")+1];
+	rest = &line[ strlen("optPlnSiz00")+1];
 
 	if 	( idx == 1 )
 	{
@@ -5091,8 +5091,22 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
         }
 
         // Power cutoff
-        // TODO: Check if using half precision may affect this
         srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
+
+        FOLD // Adjust for some lack in precision, if using half precision
+        {
+	  if ( sSpec->flags & FLAG_HALF )
+	  {
+	    // TODO: Check if using half precision may affect this
+	    float noP = log10( srch->powerCut[ii] );
+	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
+	
+	    srch->powerCut[ii] -= dp*(1<<ii);			// Subtract one significant value for each harmonic
+
+	    float sig2 = candidate_sigma_cl(srch->powerCut[ii], (1<<ii), srch->numindep[ii] ); // TMP remove
+	    int tmp = 0;
+	  }
+        }
       }
     }
   }

@@ -996,6 +996,44 @@ int main(int argc, char *argv[])
 
       printf("\n\n");
 
+      FOLD // TMP
+      {
+	Logger slog(stdout);
+	slog.sedCsvDeliminator('\t');
+	listptr 	= cands;
+	double T	= obs.T;
+
+	for (ii = 0; ii < numcands; ii++)
+	{
+	  cand    = (accelcand *) (listptr->data);
+	  listptr = listptr->next;
+
+	  Fout
+
+	  slog.csvWrite("idx","%i",ii);
+
+	  slog.csvWrite("int freq","%9.7f",cand->init_r/T);
+	  slog.csvWrite("opt freq","%9.7f",cand->r/T);
+
+	  slog.csvWrite("int z   ","%9.6f",cand->init_z);
+	  slog.csvWrite("opt z   ","%9.6f",cand->z);
+
+	  slog.csvWrite("int harm","%9i",cand->init_numharm);
+	  slog.csvWrite("opt harm","%9i",cand->numharm);
+
+	  slog.csvWrite("int pow ","%9.5f",cand->init_power);
+	  slog.csvWrite("opt pow ","%9.5f",cand->power);
+
+	  slog.csvWrite("int sigma","%9.4f",cand->init_sigma);
+	  slog.csvWrite("opt sigma","%9.4f",cand->sigma);
+
+	  slog.csvEndLine();
+
+
+	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
+	}
+      }
+
       // Re sort with new sigma values
       cands = sort_accelcands(cands);
 
@@ -1083,7 +1121,7 @@ int main(int argc, char *argv[])
 #ifdef CBL // Chris: This is some temporary output to generate data for my thesis,
       Fout // TMP
       {
-	FOLD // Test sigma calculations  .
+	Fout // Test sigma calculations  .
 	{
 	  double noVals = 100 ;
 	  double base = 0.9998 ;
@@ -1138,56 +1176,83 @@ int main(int argc, char *argv[])
 	pSum   = 0;
 	pSum2  = 0;
 
+	Logger slog(stdout);
+	slog.sedCsvDeliminator('\t');
+
 	for (ii = 0; ii < numcands; ii++)
 	{
 	  cand    = (accelcand *) (listptr->data);
 	  listptr = listptr->next;
 
-	  long long baseR = round(cand->init_r);
-
-	  int hn;
-	  for ( hn = 1; hn <= cand->numharm; hn++ )
+	  Fout
 	  {
-	    // if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
+	    long long baseR = round(cand->init_r);
 
-	    long long idx   = baseR * hn ;
-	    float     freq  =  idx / T ;
-	    double 	hr = cand->init_r * hn;
-	    if ( (idx >= 0) && ( idx <  cuSrch->sSpec->fftInf.nor ) )
+	    int hn;
+	    for ( hn = 1; hn <= cand->numharm; hn++ )
 	    {
-	      fcomplex bin  = cuSrch->sSpec->fftInf.fft[idx - cuSrch->sSpec->fftInf.idx];
-	      double norm   = get_scaleFactorZ(cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.nor - cuSrch->sSpec->fftInf.idx, idx - cuSrch->sSpec->fftInf.idx, 0, 0.0);
+	      // if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
 
-	      double ang1   = atan (bin.r/bin.i) ;
-	      double ang2   = atan (bin.i/bin.r) ;
-
-	      double pow    = bin.i*bin.i + bin.r*bin.r;
-
-	      double factor = sqrt(norm);
-	      double pow2   = pow / factor / factor ;
-	      double sigma  = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
-
-	      if ( sigma < 0  )
+	      long long idx   = baseR * hn ;
+	      float     freq  =  idx / T ;
+	      double 	hr = cand->init_r * hn;
+	      if ( (idx >= 0) && ( idx <  cuSrch->sSpec->fftInf.nor ) )
 	      {
-		sigma = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+		fcomplex	bin	= cuSrch->sSpec->fftInf.fft[idx - cuSrch->sSpec->fftInf.idx];
+		double	norm	= get_scaleFactorZ(cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.nor - cuSrch->sSpec->fftInf.idx, idx - cuSrch->sSpec->fftInf.idx, 0, 0.0);
+
+		double	ang1	= atan (bin.r/bin.i) ;
+		double	ang2	= atan (bin.i/bin.r) ;
+
+		double	pow	= bin.i*bin.i + bin.r*bin.r;
+
+		double factor = sqrt(norm);
+		double pow2   = pow / factor / factor ;
+		double sigma  = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+
+		if ( sigma < 0  )
+		{
+		  sigma = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+		}
+
+		//printf("%2i\t%.4f\t%lli\t%10.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );
+
+		printf("%2i\t%.4f\t%.4f\n", hn, cand->r * hn / T, cand->z * hn );
+		printf("\n");
+		double real, imag;
+		rz_convolution_cu_inc<double, float2>((float2*)cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.idx, cuSrch->sSpec->fftInf.nor, cand->r * hn, cand->z * hn, cand->z * hn * 2 + 4, &real, &imag);
+
+		printf("\n\n\n");
+
+		pSum  += pow;
+		pSum2 += sqrt(pow);
 	      }
 
-	      //printf("%2i\t%.4f\t%lli\t%10.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );
-
-	      printf("%2i\t%.4f\t%.4f\n", hn, cand->r * hn / T, cand->z * hn );
-	      printf("\n");
-	      double real, imag;
-	      rz_convolution_cu_inc<double, float2>((float2*)cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.idx, cuSrch->sSpec->fftInf.nor, cand->r * hn, cand->z * hn, cand->z * hn * 2 + 4, &real, &imag);
-
-	      printf("\n\n\n");
-
-	      pSum  += pow;
-	      pSum2 += sqrt(pow);
 	    }
 
 	  }
 
-	  printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
+	  slog.csvWrite("idx","%i",ii);
+
+	  slog.csvWrite("int freq","%9.7f",cand->init_r/T);
+	  slog.csvWrite("opt freq","%9.7f",cand->r/T);
+
+	  slog.csvWrite("int z   ","%9.6f",cand->init_z);
+	  slog.csvWrite("opt z   ","%9.6f",cand->z);
+
+	  slog.csvWrite("int harm","%9i",cand->init_numharm);
+	  slog.csvWrite("opt harm","%9i",cand->numharm);
+
+	  slog.csvWrite("int pow ","%9.5f",cand->init_power);
+	  slog.csvWrite("opt pow ","%9.5f",cand->power);
+
+	  slog.csvWrite("int sigma","%9.4f",cand->init_sigma);
+	  slog.csvWrite("opt sigma","%9.4f",cand->sigma);
+
+	  slog.csvEndLine();
+
+
+	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
 	}
       }
 #endif

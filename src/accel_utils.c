@@ -1514,12 +1514,6 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
         obs->fft        = (fcomplex *) ftmp;
         obs->numbins    = filelen / 2;
         obs->dat_input  = 1;
-
-        /* De-redden it */
-        printf("Removing red-noise... ");
-        fflush(stdout);
-        deredden(obs->fft, obs->numbins);
-        printf("done.\n");
       }
       else
 #endif
@@ -1589,7 +1583,8 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
       /* De-redden it */
       if ( !obs->mmap_file )
       {
-	printf("Removing red-noise...");
+	printf("Removing red-noise ...");
+	fflush(stdout);
 	deredden(obs->fft, obs->numbins);
 	printf("done.\n\n");
       }
