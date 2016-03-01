@@ -232,7 +232,7 @@ typedef struct ptr128
 typedef struct vHarmList
 {
     void* __restrict__ val[MAX_HARM_NO];
-    __host__ __device__ inline void* __restrict__ operator [](const int idx) { return val[idx]; }
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } vHarmList;
 
 typedef struct iHarmList
@@ -250,7 +250,7 @@ typedef struct fHarmList
 typedef struct fsHarmList
 {
     float* __restrict__ val[MAX_HARM_NO];
-    __host__ __device__ inline float* __restrict__ operator [](const int idx) { return val[idx]; }
+    __host__ __device__ inline float* operator [](const int idx) { return val[idx]; }
 } fsHarmList;
 
 typedef struct dHarmList
@@ -466,6 +466,11 @@ __device__ inline float get(float* __restrict__ adress, int offset)
   return adress[offset];
 }
 
+__device__ inline float getLong(float* __restrict__ adress, unsigned long long offset)
+{
+  return adress[offset];
+}
+
 __device__ inline void set(float* adress, uint offset, float value)
 {
   adress[offset] = value;
@@ -480,6 +485,13 @@ __device__ inline fcomplexcu get(fcomplexcu* __restrict__ adress, int offset)
 {
   return adress[offset];
 }
+
+__device__ inline fcomplexcu getLong(fcomplexcu* __restrict__ adress, unsigned long long offset)
+{
+  return adress[offset];
+}
+
+
 
 __device__ inline void set(fcomplexcu* adress, uint offset, fcomplexcu value)
 {
@@ -500,6 +512,11 @@ __device__ inline float get(half* __restrict__ adress, int offset)
   return __half2float(adress[offset]);
 }
 
+__device__ inline float getLong(half* __restrict__ adress, unsigned long long offset)
+{
+  return __half2float(adress[offset]);
+}
+
 __device__ inline void set(half* adress, uint offset, float value)
 {
   adress[offset] = __float2half(value);
@@ -508,7 +525,6 @@ __device__ inline void set(half* adress, uint offset, float value)
 __device__ inline float getPower(half* adress, uint offset)
 {
   return __half2float(adress[offset]);
-  //return 0;
 }
 #endif
 
@@ -715,8 +731,7 @@ void convolveBatch(cuFFdotBatch* batch );
 
 int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long long *numindep );
 
-__host__ __device__ double incdf (double p, double q );
-__host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
+
 
 void processSearchResults(cuFFdotBatch* batch );
 
@@ -736,6 +751,13 @@ void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
 //////////////////////////////////////// Optimisation \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn = 0 );
+
+
+
+//////////////////////////////////////////// Stats \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+__host__ __device__ double incdf (double p, double q );
+double candidate_sigma_cu(double poww, int numharm, long long numindep);
 
 
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

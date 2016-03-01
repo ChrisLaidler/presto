@@ -92,305 +92,6 @@ __device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t
   }
 }
 
-//double gammp(const Doub a, const Doub x)
-//{
-//  //Returns the incomplete gamma function P .a; x/.
-//  if (x < 0.0 || a <= 0.0)
-//    throw("bad args in gammp");
-//  if (x == 0.0)
-//    return 0.0;
-//  else if ((Int)a >= ASWITCH)
-//    return gammpapprox(a,x,1);    //  Quadrature.
-//  else if (x < a+1.0)
-//    return gser(a,x);             //  Use the series representation.
-//  else
-//    return 1.0-gcf(a,x);          //  Use the continued fraction representation.
-//}
-
-/** Calculate the CDF of a gamma distribution
- */
-__host__ __device__ void cdfgam_d(double x, int n, double *p, double* q)
-{
-  if ( x <= 0 )
-  {
-    *p = 0;
-    *q = 1;
-    return;
-  }
-
-  if      ( n == 1  )
-  {
-    *q = exp(-x);
-  }
-  else if ( n == 2  )
-  {
-    *q = exp(-x)*( x + 1.0 );
-  }
-  else if ( n == 4  )
-  {
-    *q = exp(-x)*( x*(x*(x/6.0 + 0.5) + 1.0 ) + 1.0 );
-  }
-  else if ( n == 8  )
-  {
-    *q = exp(-x)*( x*(x*(x*(x*(x*(x*(x/5040.0 + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 ) + 1.0 );
-  }
-  else if ( n == 16 )
-  {
-    *q = exp(-x)*( x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x/1.307674368e12 +  1.0/8.71782912e10 ) \
-        + 1.0/6227020800.0 )+ 1.0/479001600.0 ) \
-        + 1.0/39916800.0 )+ 1.0/3628800.0 )     \
-        + 1.0/362880.0 ) + 1.0/40320.0 )        \
-        + 1.0/5040.0 ) + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 )  + 1.0 );
-  }
-  else
-  {
-    *q = 1.0 + x ;
-    double numerator    = x;
-    double denominator  = 1.0;
-
-    for ( int i = 2 ; i < n ; i ++ )
-    {
-      denominator *= i;
-      numerator   *= x;
-      *q += numerator/denominator;
-    }
-  }
-
-  *p = 1-*q;
-}
-
-/** Calculate the CDF of a gamma distribution
- */
-template<int n>
-__host__ __device__ void cdfgam_d(double x, double *p, double* q)
-{
-  if ( x <= 0 )
-  {
-    *p = 0;
-    *q = 1;
-    return;
-  }
-
-  if      ( n == 1  )
-  {
-    *q = exp(-x);
-  }
-  else if ( n == 2  )
-  {
-    *q = exp(-x)*( x + 1.0 );
-  }
-  else if ( n == 4  )
-  {
-    *q = exp(-x)*( x*(x*(x/6.0 + 0.5) + 1.0 ) + 1.0 );
-  }
-  else if ( n == 8  )
-  {
-    *q = exp(-x)*( x*(x*(x*(x*(x*(x*(x/5040.0 + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 ) + 1.0 );
-  }
-  else if ( n == 16 )
-  {
-    *q = exp(-x)*( x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x*(x/1.307674368e12 +  1.0/8.71782912e10 ) \
-        + 1.0/6227020800.0 )+ 1.0/479001600.0 ) \
-        + 1.0/39916800.0 )+ 1.0/3628800.0 )     \
-        + 1.0/362880.0 ) + 1.0/40320.0 )        \
-        + 1.0/5040.0 ) + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 )  + 1.0 );
-  }
-  else
-  {
-    *q = 1.0 + x ;
-    double numerator    = x;
-    double denominator  = 1.0;
-
-#pragma unroll
-    for ( int i = 2 ; i < n ; i ++ )
-    {
-      denominator *= i;
-      numerator   *= x;
-      *q += numerator/denominator;
-    }
-  }
-  *p = 1-*q;
-}
-
-/** Inverse normal CDF - ie calculate σ from p and/or q
- * We include p and q because if p is close to 1 or -1 , q can hold more precision
- */
-__host__ __device__ double incdf (double p, double q )
-{
-  double a[] = {              \
-      -3.969683028665376e+01, \
-      2.209460984245205e+02,  \
-      -2.759285104469687e+02, \
-      1.383577518672690e+02,  \
-      -3.066479806614716e+01, \
-      2.506628277459239e+00   };
-
-  double b[] = {              \
-      -5.447609879822406e+01, \
-      1.615858368580409e+02,  \
-      -1.556989798598866e+02, \
-      6.680131188771972e+01,  \
-      -1.328068155288572e+01  };
-
-  double c[] = {              \
-      -7.784894002430293e-03, \
-      -3.223964580411365e-01, \
-      -2.400758277161838e+00, \
-      -2.549732539343734e+00, \
-      4.374664141464968e+00, \
-      2.938163982698783e+00 };
-
-  double d[] = {            \
-      7.784695709041462e-03, \
-      3.224671290700398e-01, \
-      2.445134137142996e+00, \
-      3.754408661907416e+00 };
-
-  double l, ll, x, e, u;
-  double sighn = 1.0;
-
-  // More precision in q so use it
-  if ( p > 0.99 || p < -0.99 )
-  {
-    if ( q < 1.0 )
-    {
-      sighn = -1.0;
-      double hold = p;
-      p = q;
-      q = hold;
-    }
-  }
-
-  // Make an initial estimate for x
-  // The algorithm taken from: http://home.online.no/~pjacklam/notes/invnorm/#The_algorithm
-  if ( 0.02425 <= p && p <= 0.97575 )
-  {
-    l    =  p - 0.5;
-    ll   = l*l;
-    x    = (((((a[0]*ll+a[1])*ll+a[2])*ll+a[3])*ll+a[4])*ll+a[5])*l / (((((b[0]*ll+b[1])*ll+b[2])*ll+b[3])*ll+b[4])*ll+1.0);
-  }
-  else
-  {
-    if ( p == 0 )
-      return 0;
-
-    if ( 0.02425 > p )
-    {
-      l = sqrt(-2.0*log(p));
-    }
-    else if ( 0.97575 < p )
-    {
-      l = sqrt(-2.0*log( 1.0 - p ));
-    }
-    x = (((((c[0]*l+c[1])*l+c[2])*l+c[3])*l+c[4])*l+c[5]) / ((((d[0]*l+d[1])*l+d[2])*l+d[3])*l+1.0);
-
-    if ( 0.97575 < p )
-    {
-      x *= -1.0;
-    }
-  }
-
-  // Now do a Newton Raphson recursion to refine the answer.
-  // Using erfc and exp to calculate  f(x) = Φ(x)-p  and  f'(x) = Φ'(x)
-  double f = 0.5 * erfc(-x/1.414213562373095048801688724209) - p ;
-  double xOld = x;
-  for ( int i = 0; i < 10 ; i++ ) // Note: only doing 10 recursions this could be pushed up
-  {
-    u = 0.398942*exp(-x*x/2.0);
-    x = x - f / u ;
-
-    f = 0.5 * erfc(-x/1.414213562373095048801688724209) - p;
-    e = f / p;
-
-    if ( fabs(e) < 1e-15 || ( x == xOld ) )
-      break ;
-
-    xOld = x;
-  }
-
-  return sighn*x;
-}
-
-/** Calculate a sigma value
- */
-__host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep)
-{
-  int n = numharm;
-  double gpu_p, gpu_q, sigc ;
-
-  if ( poww > 100)
-  {
-    cdfgam_d(poww, n*2, &gpu_p, &gpu_q );
-
-    double logQ;
-    if      ( n == 1 )
-    {
-      logQ = -poww;
-    }
-    else if ( n == 2 )
-    {
-      logQ = -poww+log( poww + 1.0 );
-    }
-    else if ( n == 4 )
-    {
-      logQ = -poww + log( poww*(poww*(poww/6.0 + 0.5) + 1.0 ) + 1.0 );
-    }
-    else if ( n == 8 )
-    {
-      logQ = -poww + log( poww*(poww*(poww*(poww*(poww*(poww*(poww/5040.0 + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 ) + 1.0 );
-    }
-    else if ( n == 16 )
-    {
-      logQ = -poww + log( poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww*(poww/1.307674368e12 +  1.0/8.71782912e10 ) \
-          + 1.0/6227020800.0 )+ 1.0/479001600.0 ) \
-          + 1.0/39916800.0 )+ 1.0/3628800.0 ) \
-          + 1.0/362880.0 ) + 1.0/40320.0 ) \
-          + 1.0/5040.0 ) + 1.0/720.0 ) + 1.0/120.0 ) + 1.0/24.0 ) + 1.0/6.0 ) + 0.5 ) + 1.0 )  + 1.0 );
-    }
-
-    logQ += log( (double)numindep );
-
-    double l = sqrt(-2.0*logQ);
-
-    double sigc = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) ) ;
-
-    return sigc;
-
-  }
-  else
-  {
-    if      (numharm==1)
-      cdfgam_d<1>(poww, &gpu_p, &gpu_q );
-    else if (numharm==2)
-      cdfgam_d<2>(poww, &gpu_p, &gpu_q );
-    else if (numharm==4)
-      cdfgam_d<4>(poww, &gpu_p, &gpu_q );
-    else if (numharm==8)
-      cdfgam_d<8>(poww, &gpu_p, &gpu_q );
-    else if (numharm==16)
-      cdfgam_d<16>(poww, &gpu_p, &gpu_q );
-
-    if (gpu_p == 1.0)
-      gpu_q *= numindep;
-    else
-    {
-      double lq = log(gpu_q * numindep);
-      double q2 = exp(lq);
-
-      double pp = pow((1.0-gpu_q),1.0/(double)numindep);
-      double qq = 1 - pp;
-      sigc = incdf(pp, qq);
-
-      gpu_q = 1.0 - pow(gpu_p, (double)numindep);
-    }
-    gpu_p = 1.0 - gpu_q;
-
-    sigc = incdf(gpu_p, gpu_q);
-
-    return sigc;
-  }
-}
-
 /** Main loop down call
  *
  * This will asses and call the correct templated kernel
@@ -444,16 +145,16 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
 
   FOLD // Calculate Y coefficients and copy to constant memory  .
   {
-    int noHarms         = batch->sInf->noSrchHarms;
+    int noHarms         = batch->cuSrch->noSrchHarms;
 
     if ( ((batch->hInfos->height + INDS_BUFF) * noHarms) > MAX_YINDS)
     {
       printf("ERROR! YINDS to small!");
     }
 
-    freeNull(batch->sInf->yInds);
-    batch->sInf->yInds    = (int*) malloc( (batch->hInfos->height + INDS_BUFF) * noHarms * sizeof(int));
-    int *indsY            = batch->sInf->yInds;
+    freeNull(batch->cuSrch->yInds);
+    batch->cuSrch->yInds    = (int*) malloc( (batch->hInfos->height + INDS_BUFF) * noHarms * sizeof(int));
+    int *indsY            = batch->cuSrch->yInds;
     int bace              = 0;
 
     batch->hInfos->yInds  = 0;
@@ -480,7 +181,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
         }
         else
         {
-          int sIdx  = batch->sInf->sIdx[ii];
+          int sIdx  = batch->cuSrch->sIdx[ii];
           sZmax = batch->hInfos[sIdx].zmax;
         }
 
@@ -567,10 +268,10 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     if ( batch->flags & FLAG_SS_INMEM  )
     {
       cudaGetSymbolAddress((void **)&dcoeffs, PLN_START);
-      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &(batch->sInf->d_planeFull),  sizeof(void*),  cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &(batch->cuSrch->d_planeFull),  sizeof(void*),  cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
 
       cudaGetSymbolAddress((void **)&dcoeffs, PLN_STRIDE);
-      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &(batch->sInf->inmemStride),  sizeof(uint),   cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
+      CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, &(batch->cuSrch->inmemStride),  sizeof(uint),   cudaMemcpyHostToDevice, batch->stacks->initStream),  "Copying accelLen");
     }
   }
 
@@ -584,7 +285,7 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
     {
       for (int i = 0; i < batch->noGenHarms; i++)
       {
-        int sIdx  = batch->sInf->sIdx[i];
+        int sIdx  = batch->cuSrch->sIdx[i];
         height[i] = batch->hInfos[sIdx].height;
         stride[i] = batch->hInfos[sIdx].width;
         pStart[i] = batch->hInfos[sIdx].kerStart;
@@ -702,40 +403,42 @@ void SSKer(cuFFdotBatch* batch)
  */
 int procesCanidate(resultData* res, double rr, double zz, double poww, double sig, int stage, int numharm)
 {
+  cuSearch*	cuSrch	= res->cuSrch;
+
   // Adjust r and z for the number of harmonics
   rr    /=  (double)numharm ;
   zz    =   ( zz * ACCEL_DZ - res->zMax ) / (double)numharm ;
 
-  if ( rr < res->SrchSz->searchRHigh )
+  if ( rr < cuSrch->SrchSz->searchRHigh )
   {
     if ( !(res->flags & FLAG_SIG_GPU) ) // Do the sigma calculation  .
     {
-      sig     = candidate_sigma_cl(poww, numharm, res->numindep[stage]);
+      sig     = candidate_sigma_cu(poww, numharm, cuSrch->numindep[stage]);
     }
 
     if      ( res->cndType & CU_STR_LST     )
     {
-      if ( res->threasdInfo )
+      if ( res->flags & FLAG_THREAD )
       {
         // Thread safe
-	pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
-	GSList *candsGPU	= (GSList*)res->cndData;
+	pthread_mutex_lock(&cuSrch->threasdInfo->candAdd_mutex);
+	GSList *candsGPU	= (GSList*)cuSrch->h_candidates;
 	int     added		= 0;
-        res->cndData		= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+	cuSrch->h_candidates	= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
         (*res->noResults)++;
-        pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
+        pthread_mutex_unlock(&cuSrch->threasdInfo->candAdd_mutex);
       }
       else
       {
-	GSList *candsGPU	= (GSList*)res->cndData;
+	GSList *candsGPU	= (GSList*)cuSrch->h_candidates;
 	int     added		= 0;
-        res->cndData		= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
+	cuSrch->h_candidates	= insert_new_accelcand(candsGPU, poww, sig, numharm, rr, zz, &added );
         (*res->noResults)++;
       }
     }
     else if ( res->cndType & CU_STR_ARR     )
     {
-      double  rDiff = rr - res->SrchSz->searchRLow ;
+      double  rDiff = rr - cuSrch->SrchSz->searchRLow ;
       long    grIdx;   /// The index of the candidate in the global list
 
       if ( res->flags & FLAG_STORE_EXP )
@@ -747,23 +450,23 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
         grIdx = floor(rDiff);
       }
 
-      if ( grIdx >= 0 && grIdx < res->SrchSz->noOutpR )  // Valid index  .
+      if ( grIdx >= 0 && grIdx < cuSrch->SrchSz->noOutpR )  // Valid index  .
       {
         if ( res->flags & FLAG_STORE_ALL )               // Store all stages  .
         {
-          grIdx += stage * (res->SrchSz->noOutpR);      // Stride by size
+          grIdx += stage * (cuSrch->SrchSz->noOutpR);      // Stride by size
         }
 
         if ( res->cndType & CU_CANDFULL )
         {
-          initCand* candidate = &((initCand*)res->cndData)[grIdx];
+          initCand* candidate = &((initCand*)cuSrch->h_candidates)[grIdx];
 
           // this sigma is greater than the current sigma for this r value
           if ( candidate->sig < sig )
           {
-            if ( res->threasdInfo )
+            if ( res->flags & FLAG_THREAD )
             {
-              pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
+              pthread_mutex_lock(&cuSrch->threasdInfo->candAdd_mutex);
               if ( candidate->sig < sig ) // Check again
               {
                 if ( candidate->sig == 0 )
@@ -775,7 +478,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
                 candidate->r        = rr;
                 candidate->z        = zz;
               }
-              pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
+              pthread_mutex_unlock(&cuSrch->threasdInfo->candAdd_mutex);
             }
             else
             {
@@ -799,15 +502,15 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
     }
     else if ( res->cndType & CU_STR_QUAD    )
     {
-      candTree* qt = (candTree*)res->cndData;
+      candTree* qt = (candTree*)cuSrch->h_candidates;
 
-      initCand* candidate     = new initCand;
+      initCand* candidate     	= new initCand;
 
-      candidate->sig      = sig;
-      candidate->power    = poww;
-      candidate->numharm  = numharm;
-      candidate->r        = rr;
-      candidate->z        = zz;
+      candidate->sig      	= sig;
+      candidate->power    	= poww;
+      candidate->numharm  	= numharm;
+      candidate->r        	= rr;
+      candidate->z        	= zz;
 
       (*res->noResults)++;
 
@@ -830,8 +533,10 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
  */
 void* processSearchResults(void* ptr)
 {
-  resultData* res = (resultData*)ptr;
-  struct timeval start, end;      // Timing variables
+  resultData*	res	= (resultData*)ptr;
+  cuSearch*	cuSrch	= res->cuSrch;
+
+  struct timeval start, end;      		// Timing variables
 
   if ( res->flags & FLAG_TIME ) 		// Timing  .
   {
@@ -843,10 +548,10 @@ void* processSearchResults(void* ptr)
   int numharm;
   int idx;
 
-  for ( int stage = 0; stage < res->noStages; stage++ )
+  for ( int stage = 0; stage < cuSrch->noHarmStages; stage++ )
   {
     numharm       = (1<<stage);
-    float cutoff  = res->powerCut[stage];
+    float cutoff  = cuSrch->powerCut[stage];
 
     for ( int y = res->y0; y < res->y1; y++ )
     {
@@ -916,9 +621,9 @@ void* processSearchResults(void* ptr)
         else
         {
           fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-          if ( res->threasdInfo )
+          if ( res->flags & FLAG_THREAD )
           {
-            sem_trywait(&res->threasdInfo->running_threads);
+            sem_trywait(&(cuSrch->threasdInfo->running_threads));
           }
           exit(EXIT_FAILURE);
         }
@@ -938,7 +643,7 @@ void* processSearchResults(void* ptr)
               {
                 poww          = 6.55e4;      // Max 16 bit float value
                 double rPos   = res->rLow + x * ACCEL_DR / numharm ;
-                fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", poww, rPos);
+                fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", rPos, poww);
               }
               else
               {
@@ -970,11 +675,11 @@ void* processSearchResults(void* ptr)
     gettimeofday(&end, NULL);
     float time =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
 
-    if ( res->threasdInfo )
+    if ( res->flags & FLAG_THREAD )
     {
-      pthread_mutex_lock(&res->threasdInfo->candAdd_mutex);
+      pthread_mutex_lock(&cuSrch->threasdInfo->candAdd_mutex);
       res->resultTime[0] += time;
-      pthread_mutex_unlock(&res->threasdInfo->candAdd_mutex);
+      pthread_mutex_unlock(&cuSrch->threasdInfo->candAdd_mutex);
     }
     else
     {
@@ -983,9 +688,9 @@ void* processSearchResults(void* ptr)
   }
 
   // Decrease the count number of running threads
-  if ( res->threasdInfo )
+  if ( res->flags & FLAG_THREAD )
   {
-    sem_trywait(&res->threasdInfo->running_threads);
+    sem_trywait(&(cuSrch->threasdInfo->running_threads));
   }
 
   FOLD // Free memory
@@ -1038,49 +743,39 @@ void processSearchResults(cuFFdotBatch* batch)
 
       infoMSG(3,3,"Initialise data structure\n");
 
-      thrdDat->SrchSz       = batch->sInf->SrchSz;
-      thrdDat->cndData      = batch->sInf->h_candidates;
-      thrdDat->cndType      = batch->cndType;
-      thrdDat->noStages     = batch->sInf->noHarmStages;
-      thrdDat->numindep     = batch->sInf->numindep;
-      thrdDat->powerCut     = batch->sInf->powerCut;
-      thrdDat->rLow         = rVal->drlo;
-      thrdDat->retType      = batch->retType;
-      thrdDat->threasdInfo  = batch->sInf->threasdInfo;
-      thrdDat->flags        = batch->flags;
-      thrdDat->zMax         = batch->hInfos->zmax;
-      thrdDat->resultTime   = batch->resultTime;
-      thrdDat->noResults    = &batch->noResults;
+      thrdDat->cuSrch		= batch->cuSrch;
+      thrdDat->cndType  	= batch->cndType;
+      thrdDat->rLow       	= rVal->drlo;
+      thrdDat->retType  	= batch->retType;
+      thrdDat->flags    	= batch->flags;
+      thrdDat->zMax      	= batch->hInfos->zmax;
+      thrdDat->resultTime 	= batch->resultTime;
+      thrdDat->noResults  	= &batch->noResults;
 
-      thrdDat->x0           = 0;
-      thrdDat->x1           = 0;
-      thrdDat->y0           = 0;
-      thrdDat->y1           = batch->ssSlices;
+      thrdDat->x0      		= 0;
+      thrdDat->x1		= 0;
+      thrdDat->y0		= 0;
+      thrdDat->y1		= batch->ssSlices;
 
-      thrdDat->xStride      = batch->strideOut;
-      thrdDat->yStride      = batch->ssSlices;
-
-      if ( !(batch->flags & FLAG_THREAD) && (batch->flags & FLAG_SYNCH ) )
-      {
-        thrdDat->threasdInfo = NULL;
-      }
+      thrdDat->xStride		= batch->strideOut;
+      thrdDat->yStride		= batch->ssSlices;
 
       if ( !(batch->flags & FLAG_SS_INMEM) )
       {
         // Multi-step
 
-        thrdDat->xStride    *= batch->noSteps;
+        thrdDat->xStride	*= batch->noSteps;
 
         for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
         {
-          rVals* rVal       = &(*batch->rAraays)[batch->rActive][step][0];
-          thrdDat->x1       += rVal->numrs;                 // These should all be Acelllen but there may be the case of the last step!
+          rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][0];
+          thrdDat->x1		+= rVal->numrs;                 // These should all be Acelllen but there may be the case of the last step!
         }
       }
       else
       {
         // NB: In-mem has only one step
-        thrdDat->x1         = rVal->numrs;
+        thrdDat->x1		= rVal->numrs;
       }
 
       if ( thrdDat->x1 > thrdDat->xStride )
@@ -1090,7 +785,7 @@ void processSearchResults(cuFFdotBatch* batch)
       }
     }
 
-    FOLD // Timing 0  .
+    FOLD // Timing  .
     {
       if ( batch->flags & FLAG_TIME )
       {
@@ -1098,9 +793,9 @@ void processSearchResults(cuFFdotBatch* batch)
         float time = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
         int idx = MIN(2, batch->noStacks-1);
 
-        pthread_mutex_lock(&batch->sInf->threasdInfo->candAdd_mutex);
+        pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
         batch->resultTime[idx] += time;
-        pthread_mutex_unlock(&batch->sInf->threasdInfo->candAdd_mutex);
+        pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
       }
     }
 
@@ -1168,18 +863,15 @@ void processSearchResults(cuFFdotBatch* batch)
           float time =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
           int idx = MIN(1, batch->noStacks-1);
 
-          pthread_mutex_lock(&batch->sInf->threasdInfo->candAdd_mutex);
+          pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
           batch->resultTime[idx] += time;
-          pthread_mutex_unlock(&batch->sInf->threasdInfo->candAdd_mutex);
+          pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
         }
       }
     }
 
     FOLD // ADD candidates to global list potently in a separate thread  .
     {
-      if ( thrdDat->threasdInfo )// Increase the count number of running threads, processSearchResults will decrease it when its finished
-        sem_post(&batch->sInf->threasdInfo->running_threads);
-
       if ( batch->flags & FLAG_SYNCH )
       {
         nvtxRangePush("Thread");
@@ -1188,6 +880,8 @@ void processSearchResults(cuFFdotBatch* batch)
       if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
       {
         infoMSG(3,4,"create thread\n");
+
+        sem_post(&batch->cuSrch->threasdInfo->running_threads); // Increase the count number of running threads, processSearchResults will decrease it when its finished
 
         pthread_t thread;
         int  iret1 = pthread_create( &thread, NULL, processSearchResults, (void*) thrdDat);
@@ -1418,9 +1112,9 @@ void sumAndMax(cuFFdotBatch* batch)
 
 void inMem(cuFFdotBatch* batch)
 {
-  long long noX = batch->accelLen * batch->sInf->SrchSz->noSteps ;
+  long long noX = batch->accelLen * batch->cuSrch->SrchSz->noSteps ;
   int       noY = batch->hInfos->height;
-  float*    pln = (float*)batch->sInf->h_candidates;
+  float*    pln = (float*)batch->cuSrch->h_candidates;
 
   //for ( int stage = 0; stage < batch->noHarmStages; stage++ )
   for ( int stage = 0; stage < 5 ; stage++ )
@@ -1457,16 +1151,6 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
   setActiveBatch(batch, 0);
   setSearchRVals(batch, drlo, len);
-
-//  if ( msgLevel >= 3 )
-//  {
-//    for ( int i = 0 ; i < batch->noRArryas; i++ )
-//    {
-//      rVals* rVal = &(*batch->rAraays)[i][0][0];
-//
-//      printf("%i  step: %03i  r-low: %8.1f  numrs: %06ld\n", i, rVal->step, rVal->drlo, rVal->numrs );
-//    }
-//  }
 
   if ( batch->flags & FLAG_SYNCH )
   {
@@ -1597,7 +1281,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
         if ( msgLevel == 0  )
         {
           int noTrd;
-          sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+          sem_getvalue(&master->cuSrch->threasdInfo->running_threads, &noTrd );
           printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+currentBin)/totaBinsl*100.0, noTrd );
           fflush(stdout);
         }
@@ -1619,7 +1303,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   FOLD // Wait for all processing threads to terminate
   {
-    waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
+    waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
   }
 
   nvtxRangePop();

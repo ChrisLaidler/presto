@@ -21,6 +21,12 @@ FLAG_KER_HIGH			# Choose larger half-width for higher accuracy of value of z clo
 
 FLAG_CENTER			# Centre the kernels
 
+FLAG_KER_RESP_DOUBLE		# Calculate kernel response values using double precision (generally A good idea)
+#FLAG_KER_RESP_FLOAT		# Calculate kernel response values using double precision (generally A good idea)
+
+#FLAG_KER_FFT_DOUBLE		# FFT the kernel elements using double precision (final results still stored as floats)
+#FLAG_KER_FFT_FLOAT		# FFT the kernel elements using double precision (final results still stored as floats)
+
 ########## Input #########
 
 # Normalise input in the CPU or the GPU
@@ -107,7 +113,7 @@ CU_CAND_ARR			# Use an array 			(Fast access, but requires more CPU memory)
 ###### Optimisation ########
 
 #FLAG_OPT_MEDIAN  		# [ Default ] Use 1D median power for normalisation
-#FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation 
+FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation 
 
 FLAG_OPT_BEST			# Report the harmonic with the highest sigma value rather than the number of harmonic found with
 
@@ -120,8 +126,8 @@ OPT_MIN_REP_HARMS	24	#
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
-optPlnDim01 50			# The number of elements in the 1st optimisation plane
-optPlnDim02 30			# The number of elements in the 2nd optimisation plane
+optPlnDim01 40			# The number of elements in the 1st optimisation plane
+optPlnDim02 20			# The number of elements in the 2nd optimisation plane
 optPlnDim03 20			# The number of elements in the 3rd optimisation plane
 optPlnDim04 10			# The number of elements in the 4th optimisation plane
 optPlnDim05 0			# The number of elements in the 5th optimisation plane
@@ -129,11 +135,11 @@ optPlnDim06 5			# The number of elements in the 6th optimisation plane (this is 
 
 # The Numbers below dictate the size in bins of the incremental planes used to refine the location of the maximum f-fdot value
 # Lager numbers will explore the f-fdot plane faster but will reduce resolution
-#optSz01 4
-#optSz02 4
-#optSz04 4
-#optSz08 4
-#optSz16 4
+optPlnSiz01 4
+optPlnSiz02 4
+optPlnSiz04 4
+optPlnSiz08 4
+optPlnSiz16 4
 
 
 ###### Debug ########
@@ -149,9 +155,11 @@ DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with i
 #FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 #FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
 #FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
+#FLAG_DPG_PRNT_CAND		# [ Debug ]	Print CSV of candidates at various stages
+
 #FLAG_DBG_SYNCH			# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_TIMING   		# [ Debug ]	Perform advanced timing the search
-#FLAG_DPG_PRNT_CAND		# [ Debug ]	Print CSV of candidates at various stages
+
 
 
 

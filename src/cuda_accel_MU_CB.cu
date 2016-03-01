@@ -501,7 +501,7 @@ void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack)
     if ( batch->flags &  FLAG_HALF )
     {
 #if CUDA_VERSION >= 7050
-      dst    = ((half*)batch->sInf->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
+      dst    = ((half*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
 #else
       fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
       exit(EXIT_FAILURE);
@@ -509,7 +509,7 @@ void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack)
     }
     else
     {
-      dst    = ((float*)batch->sInf->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
+      dst    = ((float*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
     }
 #else
     fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
@@ -540,7 +540,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
       if ( batch->flags &  FLAG_HALF )
       {
 #if CUDA_VERSION >= 7050
-        dst    = ((half*)batch->sInf->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
+        dst    = ((half*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
 #else
         fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
         exit(EXIT_FAILURE);
@@ -548,7 +548,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
       }
       else
       {
-        dst    = ((float*)batch->sInf->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
+        dst    = ((float*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
       }
     }
     else

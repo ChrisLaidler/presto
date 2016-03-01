@@ -212,7 +212,7 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   for (int i = 0; i < noHarms; i++)
   {
-    int sIdx        = batch->sInf->sIdx[i];
+    int sIdx        = batch->cuSrch->sIdx[i];
     texs.val[i]     = batch->planes[sIdx].datTex;
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }

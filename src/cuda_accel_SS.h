@@ -22,10 +22,6 @@ extern  __device__ const float FRAC_HARM[16]        ;
 extern  __device__ const short STAGE[5][2]          ;
 extern  __device__ const short CHUNKSZE[5]          ;
 
-
-
-__host__ __device__ double candidate_sigma_cu(double poww, int numharm, long long numindep);
-
 __host__ void add_and_searchCU00  ( cudaStream_t stream, cuFFdotBatch* batch );
 
 __host__ void add_and_searchCU31  ( cudaStream_t stream, cuFFdotBatch* batch );

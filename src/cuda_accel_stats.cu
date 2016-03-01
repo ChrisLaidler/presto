@@ -16,6 +16,11 @@
 const double EPS    = std::numeric_limits<double>::epsilon();
 const double FPMIN  = std::numeric_limits<double>::min()/EPS;
 
+static const int ngau = 18;
+const double y[18] = {0.0021695375159141994,0.011413521097787704,0.027972308950302116,0.051727015600492421,0.082502225484340941,0.12007019910960293, 0.16415283300752470, 0.21442376986779355, 0.27051082840644336, 0.33199876341447887, 0.39843234186401943, 0.46931971407375483, 0.54413605556657973, 0.62232745288031077, 0.70331500465597174, 0.78649910768313447, 0.87126389619061517, 0.95698180152629142  };
+const double w[18] = {0.0055657196642445571,0.012915947284065419,0.020181515297735382,0.027298621498568734,0.034213810770299537,0.040875750923643261,0.047235083490265582,0.053244713977759692,0.058860144245324798,0.064039797355015485,0.068745323835736408,0.072941885005653087,0.076598410645870640,0.079687828912071670,0.082187266704339706,0.084078218979661945,0.085346685739338721,0.085983275670394821 };
+
+
 template<int n>
 void cdfgam_d(double x, double *p, double* q)
 {
@@ -80,11 +85,104 @@ double gammln(double xx)
   return -tmp + log(2.50662827465*ser);
 }
 
-static const int ngau = 18;
+/** Inverse normal CDF - ie calculate σ from p and/or q
+ * We include p and q because if p is close to 1 or -1 , q can hold more precision
+ */
+__host__ __device__ double incdf (double p, double q )
+{
+  double a[] = {              \
+      -3.969683028665376e+01, \
+      2.209460984245205e+02,  \
+      -2.759285104469687e+02, \
+      1.383577518672690e+02,  \
+      -3.066479806614716e+01, \
+      2.506628277459239e+00   };
 
-const double y[18] = {0.0021695375159141994,0.011413521097787704,0.027972308950302116,0.051727015600492421,0.082502225484340941,0.12007019910960293, 0.16415283300752470, 0.21442376986779355, 0.27051082840644336, 0.33199876341447887, 0.39843234186401943, 0.46931971407375483, 0.54413605556657973, 0.62232745288031077, 0.70331500465597174, 0.78649910768313447, 0.87126389619061517, 0.95698180152629142  };
-const double w[18] = {0.0055657196642445571,0.012915947284065419,0.020181515297735382,0.027298621498568734,0.034213810770299537,0.040875750923643261,0.047235083490265582,0.053244713977759692,0.058860144245324798,0.064039797355015485,0.068745323835736408,0.072941885005653087,0.076598410645870640,0.079687828912071670,0.082187266704339706,0.084078218979661945,0.085346685739338721,0.085983275670394821 };
+  double b[] = {              \
+      -5.447609879822406e+01, \
+      1.615858368580409e+02,  \
+      -1.556989798598866e+02, \
+      6.680131188771972e+01,  \
+      -1.328068155288572e+01  };
 
+  double c[] = {              \
+      -7.784894002430293e-03, \
+      -3.223964580411365e-01, \
+      -2.400758277161838e+00, \
+      -2.549732539343734e+00, \
+      4.374664141464968e+00, \
+      2.938163982698783e+00 };
+
+  double d[] = {            \
+      7.784695709041462e-03, \
+      3.224671290700398e-01, \
+      2.445134137142996e+00, \
+      3.754408661907416e+00 };
+
+  double l, ll, x, e, u;
+  double sighn = 1.0;
+
+  // More precision in q so use it
+  if ( p > 0.99 || p < -0.99 )
+  {
+    if ( q < 1.0 )
+    {
+      sighn = -1.0;
+      double hold = p;
+      p = q;
+      q = hold;
+    }
+  }
+
+  // Make an initial estimate for x
+  // The algorithm taken from: http://home.online.no/~pjacklam/notes/invnorm/#The_algorithm
+  if ( 0.02425 <= p && p <= 0.97575 )
+  {
+    l    =  p - 0.5;
+    ll   = l*l;
+    x    = (((((a[0]*ll+a[1])*ll+a[2])*ll+a[3])*ll+a[4])*ll+a[5])*l / (((((b[0]*ll+b[1])*ll+b[2])*ll+b[3])*ll+b[4])*ll+1.0);
+  }
+  else
+  {
+    if ( p == 0 )
+      return 0;
+
+    if ( 0.02425 > p )
+    {
+      l = sqrt(-2.0*log(p));
+    }
+    else if ( 0.97575 < p )
+    {
+      l = sqrt(-2.0*log( 1.0 - p ));
+    }
+    x = (((((c[0]*l+c[1])*l+c[2])*l+c[3])*l+c[4])*l+c[5]) / ((((d[0]*l+d[1])*l+d[2])*l+d[3])*l+1.0);
+
+    if ( 0.97575 < p )
+    {
+      x *= -1.0;
+    }
+  }
+
+  // Now do a Newton Raphson recursion to refine the answer.
+  // Using erfc and exp to calculate  f(x) = Φ(x)-p  and  f'(x) = Φ'(x)
+  double f = 0.5 * erfc(-x/1.414213562373095048801688724209) - p ;
+  double xOld = x;
+  for ( int i = 0; i < 10 ; i++ ) // Note: only doing 10 recursions this could be pushed up
+  {
+    u = 0.398942*exp(-x*x/2.0);
+    x = x - f / u ;
+
+    f = 0.5 * erfc(-x/1.414213562373095048801688724209) - p;
+    e = f / p;
+
+    if ( fabs(e) < 1e-15 || ( x == xOld ) )
+      break ;
+
+    xOld = x;
+  }
+
+  return sighn*x;
+}
 //Incomplete gamma by quadrature. Returns P .a; x/ or Q.a; x/, when psig is 1 or 0,
 //respectively. User should not call directly.
 double gammpapprox(double a, double x, int psig)
@@ -341,7 +439,7 @@ void calcNQ(double qOrr, long long n, double* p, double* q)
  * @param numindep	The total number of powers the given powers were sampled from
  * @return
  */
-double candidate_sigma_cl(double poww, int numharm, long long numindep)
+double candidate_sigma_cu(double poww, int numharm, long long numindep)
 {
   double logQ, gpu_p, gpu_q, sigc ;
 
@@ -380,6 +478,7 @@ double candidate_sigma_cl(double poww, int numharm, long long numindep)
       logQ = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
     }
 
+    // Correct q for number of trials
     logQ    += log( (double)numindep );
 
     double l = sqrt(-2.0*logQ);

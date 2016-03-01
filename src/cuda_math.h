@@ -83,6 +83,24 @@ __host__ __device__ inline double fabs_t(double x )
   return fabs(x);
 }
 
+__host__ __device__ inline float  ceil_t(float  x )
+{
+  return ceilf(x);
+}
+__host__ __device__ inline double ceil_t(double x )
+{
+  return ceil(x);
+}
+
+__host__ __device__ inline float  floor_t(float  x )
+{
+  return floorf(x);
+}
+__host__ __device__ inline double floor_t(double x )
+{
+  return floor(x);
+}
+
 __host__ __device__ inline float  fmod_t ( float  x, float   y )
 {
   return fmodf(x, y);

@@ -36,7 +36,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
             if ( norm_type== 0 )  // Normal normalise  .
             {
               int start = rVal->lobin < 0 ? -rVal->lobin : 0 ;
-              int end   = rVal->lobin + rVal->numdata >= batch->sInf->SrchSz->searchRHigh ? rVal->lobin + rVal->numdata - batch->sInf->SrchSz->searchRHigh : rVal->numdata ;
+              int end   = rVal->lobin + rVal->numdata >= batch->cuSrch->SrchSz->searchRHigh ? rVal->lobin + rVal->numdata - batch->cuSrch->SrchSz->searchRHigh : rVal->numdata ;
 
               if ( rVal->norm == 0.0 )
               {
@@ -45,7 +45,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                   nvtxRangePush("Powers");
                   for (int ii = 0; ii < rVal->numdata; ii++)
                   {
-                    if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->sInf->SrchSz->searchRHigh ) // Zero Pad
+                    if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh ) // Zero Pad
                     {
                       batch->h_normPowers[ii] = 0;
                     }
@@ -77,7 +77,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                 nvtxRangePush("Write");
                 for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
                 {
-                  if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->sInf->SrchSz->searchRHigh )  // Zero Pad
+                  if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh )  // Zero Pad
                   {
                     cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = 0;
                     cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = 0;
@@ -246,11 +246,11 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
 
         if ( (step != 0) || (len == 0) )
         {
-//          rVal->drlo          = 0;
-//          rVal->lobin         = 0;
-//          rVal->numrs         = 0;
-//          rVal->numdata       = 0;
-//          rVal->expBin        = 0;
+          rVal->drlo          = 0;
+          rVal->lobin         = 0;
+          rVal->numrs         = 0;
+          rVal->numdata       = 0;
+          rVal->expBin        = 0;
           rVal->step          = -1; // Invalid step!
         }
         else
@@ -316,7 +316,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
     nvtxRangePush("Input");
 
-    fcomplexcu* fft = (fcomplexcu*)batch->sInf->sSpec->fftInf.fft;
+    fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->sSpec->fftInf.fft;
 
     FOLD  // Normalise and spread and copy to device memory  .
     {

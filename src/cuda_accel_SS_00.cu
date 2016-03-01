@@ -249,7 +249,7 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   for (int i = 0; i < batch->noGenHarms; i++)
   {
-    int sIdx        = batch->sInf->sIdx[i]; // Stage order
+    int sIdx        = batch->cuSrch->sIdx[i]; // Stage order
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
@@ -279,7 +279,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   for (int i = 0; i < batch->noGenHarms; i++)
   {
-    int sIdx        = batch->sInf->sIdx[i]; // Stage order
+    int sIdx        = batch->cuSrch->sIdx[i]; // Stage order
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 

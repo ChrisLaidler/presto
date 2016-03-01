@@ -17,6 +17,161 @@ extern "C"
 #include "accel.h"
 }
 
+#ifdef CBL
+template<typename T>
+__global__ void ffdotPlnSM_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int smLen, int32 loR, int32 hw)
+{
+  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
+  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+
+  const int	blkSz	= blockDim.x * blockDim.y;
+  const int	tid	= blockDim.x * threadIdx.y + threadIdx.x;
+  const int	bid 	= blockIdx.y * gridDim.x + blockIdx.x;
+
+  extern __shared__ float2 smmm[];
+
+  float2* sm = smmm;
+
+  int halfW;
+  double r            = firstR + ix/(double)(noR-1) * rSZ ;
+  double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+  T total_power  = 0;
+  T real = 0;
+  T imag = 0;
+
+  int width;
+  int first;
+  int last;
+  int noStp;
+  int	bOff;
+
+  double bwidth = (blockDim.x) / (double)(noR-1) * rSZ ;
+
+  int buff = 2;
+
+  double fP = firstR + (blockIdx.x * blockDim.x) /(double)(noR-1) * rSZ ;
+  double lP = firstR + MIN(noR, ((blockIdx.x+1) * blockDim.x - 1 ) ) /(double)(noR-1) * rSZ ;
+
+  for( int i = 1; i <= noHarms; i++ )
+  {
+    //float2* 	sm = &smmm[(i-1)*smLen];
+
+    //      __syncthreads(); // Make sure data is written before doing the convolutions
+    //
+    //      FOLD // Zero
+    //      {
+    //	noStp	= ceil_t( smLen / (float)blkSz );
+    //	float2 zz;
+    //	zz.x = 0;
+    //	zz.y = 0;
+    //
+    //	for ( int stp = 0; stp < noStp ; stp++)
+    //	{
+    //	  int odd = stp*blkSz + tid;
+    //	  if ( odd < smLen /* && odd < smLen */ )
+    //	  {
+    //	    sm[odd] = zz;
+    //	  }
+    //	}
+    //      }
+
+    //__syncthreads(); // Make sure data is written before doing the convolutions
+
+    FOLD // Load input into SM  .
+    {
+      halfW	= hw.val[i-1];
+      //first	= MAX(loR.val[i-1], floor_t( (firstR + blockIdx.x * bwidth )*i ));
+      double fR = (fP)*i;
+      //first	= MAX(loR.val[i-1], floor_t(fR) - halfW - buff );
+      //first	= MAX(loR.val[i-1], floor_t(fP*i) - halfW - buff );
+      first	= floor(fP*i) - halfW - buff ;
+      last	= ceil(lP*i)  + halfW + buff ;
+      //first	= floor(fR) - halfW ;
+      bOff	= first - loR.val[i-1];
+      //width	= halfW*2 + ceil_t(bwidth*i) + buff*2 ;
+      //width	= halfW*2 + rSZ*i + 5;
+      width 	= last - first;
+      noStp	= ceil_t( width / (float)blkSz );
+
+//      if ( width > smLen )
+//      {
+//	printf(" width > smLen  %i > %i   tid %i  \n", width, smLen, tid );
+//      }
+
+//      if ( ix == 16 && iy == 16 )
+//      {
+//	printf("h: %2i  smLen: %4i  width: %4i  halfW: %4i  bwidth: %8.4f  first: %7i  loR: %7i  bOff: %3i  len: %3i r: %10.4f fr: %10.4f\n", i, smLen, width, halfW, bwidth*i, first, loR.val[i-1], bOff, bOff + width, r*i, fR );
+//      }
+
+      //__syncthreads();
+
+      for ( int stp = 0; stp < noStp ; stp++)
+      {
+	int odd = stp*blkSz + tid;
+	if ( odd < width /* && odd < smLen */ )
+	{
+	  int o2 = bOff + odd;
+	  //if ( o2 < iStride )
+	  {
+	    //	      int tmp = 0;
+	    //	    }
+	    //	    else
+	    //	    {
+//	    if ( bid == 0 && i == 16 )
+//	    {
+//	      printf("tid: %i odd: %i \n",tid,odd);
+//	    }
+
+	    sm[odd] = fft[(i-1)*iStride + o2 ];
+	  }
+	}
+      }
+
+      //	noStp	= ceil_t(iStride / (float)blkSz);
+      //	for ( int stp = 0; stp < noStp ; stp++)
+      //	{
+      //	  int odd = stp*blkSz + tid;
+      //
+      //	  if ( odd < iStride )
+      //	    sm[odd] = fft[(i-1)*iStride + odd ];
+      //	}
+
+      //__syncthreads(); // Make sure data is written before doing the convolutions
+
+    }
+
+    __syncthreads(); // Make sure data is written before doing the convolutions
+
+    if ( ix < noR && iy < noZ)
+    {
+      //__threadfence_block();
+
+      //halfW	= z_resp_halfwidth_cu_high<float>(z*i);
+
+      //rz_convolution_cu<T, float2>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, &real, &imag);
+      //rz_convolution_cu<T, float2>(&fft[iStride*(i-1)+bOff], first, width, r*i, z*i, halfW, &real, &imag);
+      rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
+
+      total_power     += POWERCU(real, imag);
+    }
+
+    __syncthreads(); // Make sure has all been read before writing
+  }
+
+  //__syncthreads(); // Make sure has all been read before writing
+
+  //if ( ix < noR && iy < noZ)
+  if( total_power != 0 )
+  {
+    //      if ( blockIdx.y == 0 )
+    powers[iy*oStride + ix] = total_power;
+    //      else
+    //	powers[iy*oStride + ix] = 172 ;
+  }
+}
+#endif
+
 template<typename T>
 __global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
 {
@@ -40,7 +195,7 @@ __global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwi
 	if ( hw.val[i-1] )
 	  halfW	= hw.val[i-1];
 	else
-	  halfW	= z_resp_halfwidth_cu_high<double>(z*i);
+	  halfW	= z_resp_halfwidth_cu_high<float>(z*i);
       }
 
       rz_convolution_cu<T, float2>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, &real, &imag);
@@ -83,7 +238,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int h
 	  if ( hw.val[i-1] )
 	    halfW	= hw.val[i-1];
 	  else
-	    halfW	= z_resp_halfwidth_cu_high<double>(z*i)*1.2;
+	    halfW	= z_resp_halfwidth_cu_high<float>(z*i+4);
 	}
 
 	// Set complex values to 0 for this harmonic
@@ -245,14 +400,13 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     datEnd		= ceil(  maxR*(h+1) + pln->halfWidth );
 
     rOff.val[h]		= pln->loR[h];
-
-    if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
-      hw.val[h] 	= 0;
-    else
-      hw.val[h]		= z_resp_halfwidth(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))) + 4, HIGHACC);
+    hw.val[h]		= z_resp_halfwidth(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))) + 4, HIGHACC);
 
     if ( hw.val[h] > pln->halfWidth )
+    {
+      fprintf(stderr, "ERROR: Harmonic half-width is greater than plain maximum.\n");
       hw.val[h] = pln->halfWidth;
+    }
 
     if ( newInp ) // Normalise input and Write data to host memory  .
     {
@@ -299,6 +453,14 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     if ( blkKer )      	  // Use normal kernel
     {
       infoMSG(4,5,"Block kernel [ No threads %i  Width %i no Blocks %i]\n", (int)noR, blkWidth, noBlk);
+
+      if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
+      {
+	for( int h = 0; h < pln->noHarms; h++)
+	{
+	  hw.val[h] 	= 0;
+	}
+      }
 
       // Thread blocks
       dimBlock.x = noR;
@@ -348,19 +510,50 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     }
     else                  // Use block kernel
     {
-      infoMSG(3,5,"Flat kernel\n");
-
-      // Blocks of 1024 threads ( the maximum number of threads per block )
       dimBlock.x = 16;
       dimBlock.y = 16;
       dimBlock.z = 1;
 
-      // One block per harmonic, thus we can sort input powers in Shared memory
-      dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
-      dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+#ifdef CBL
+      float smSz;
 
-      // Call the kernel to normalise and spread the input data
-      ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm, hw);
+      smSz = pln->inpStride ; // TMP test
+      smSz = ( ceil(hw.val[pln->noHarms-1]*2 + pln->rSize*pln->noHarms) + 10) ;
+
+      if ( smSz < 6144*0.1 ) // ~% of SM	10: 4915
+      {
+
+	infoMSG(3,5,"Flat kernel\n");
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	int noTB = dimGrid.x * dimGrid.y ;
+
+	// Call the kernel to normalise and spread the input data
+	ffdotPlnSM_ker<T><<<dimGrid, dimBlock, smSz*sizeof(float2)*pln->noHarms, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+      }
+      else
+#endif
+      {
+	infoMSG(3,5,"Flat kernel\n");
+
+	if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
+	{
+	  for( int h = 0; h < pln->noHarms; h++)
+	  {
+	    hw.val[h] 	= 0;
+	  }
+	}
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	// Call the kernel to normalise and spread the input data
+	ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm, hw);
+      }
     }
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
@@ -433,7 +626,6 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
 //
 //  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 //  initCand* iCand 	= (initCand*)cont->data;
-
 
 //
 //  optInitCandLocPlns(iCand, pln, nn );
@@ -674,6 +866,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
 //
 //  nvtxRangePop();
 //  return thisOpt;
+  return NULL;
 }
 
 template<typename T>
@@ -681,7 +874,6 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
 {
   infoMSG(3,2,"Gen plain\n");
 
-  //searchSpecs*  sSpec	= pln->cuSrch->sSpec;
   fftInfo*	fft	= &pln->cuSrch->sSpec->fftInf;
 
   FOLD // Large points  .
@@ -713,6 +905,8 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
   FOLD // Write CVS & plot output  .
   {
 #ifdef CBL
+    searchSpecs*  sSpec	= pln->cuSrch->sSpec;
+
     if ( sSpec->flags & FLAG_DPG_PLT_OPT ) // Write CVS & plot output  .
     {
       infoMSG(4,4,"Write CVS\n");
@@ -850,7 +1044,6 @@ void* optCandDerivs(void* ptr)
 
       infoMSG(5,5,"Harm %i\n",ii );
 
-      infoMSG(6,6,"Scale Factor %i\n",ii );
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
       {
 	locpow = get_localpower3d(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
@@ -859,26 +1052,26 @@ void* optCandDerivs(void* ptr)
       {
 	locpow = get_scaleFactorZ(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
       }
+      //infoMSG(6,6,"locpow %.5f \n", locpow );
 
       if ( locpow )
       {
 	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii) + 4.0, HIGHACC);
 
-	infoMSG(6,6,"rz_convolution_cu, hw %i\n", kern_half_width );
 	rz_convolution_cu<double, float2>((float2*)fft->fft, fft->idx, fft->nor, cand->r*ii, cand->z*ii, kern_half_width, &real, &imag);
 
-	power = POWERCU(real, imag);
+	power = POWERCU(real, imag) / locpow ;
 
 	cand->pows[ii-1] = power;
 
-	infoMSG(6,6,"get_derivs3d\n", kern_half_width );
 	get_derivs3d(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0, locpow, &res->cand->derivs[ii-1] );
 
 	cand->power	+= power;
 	numindep	= (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (ACCEL_DZ / 6.95) / (ii) ;
 
-	infoMSG(6,6,"candidate_sigma_cl\n", kern_half_width );
-	sig		= candidate_sigma_cl(cand->power, (ii), numindep );
+	sig		= candidate_sigma_cu(cand->power, (ii), numindep );
+
+	//infoMSG(6,6,"Power %7.3f  Sig: %6.3f  Sum: Power %7.3f  Sig: %6.3f\n", power, candidate_sigma_cu(power, 1, 1 ), cand->power, sig );
 
 	if ( sig > maxSig || ii == 1 )
 	{
@@ -890,6 +1083,7 @@ void* optCandDerivs(void* ptr)
 	if ( ii == cand->numharm )
 	{
 	  candHPower    = cand->power;
+
 	  if ( !(srch->sSpec->flags & FLAG_OPT_BEST) )
 	  {
 	    break;
@@ -898,7 +1092,7 @@ void* optCandDerivs(void* ptr)
       }
     }
 
-    if ( bestP && (srch->sSpec->flags & FLAG_OPT_BEST) )
+    if ( bestP && (srch->sSpec->flags & FLAG_OPT_BEST) && ( maxSig > 0.001 ) )
     {
       cand->numharm	= bestH;
       cand->sigma	= maxSig;
@@ -908,9 +1102,10 @@ void* optCandDerivs(void* ptr)
     }
     else
     {
+      cand->power	= candHPower;
       noStages		= log2((double)cand->numharm);
       numindep		= srch->numindep[noStages];
-      cand->sigma	= candidate_sigma_cl(candHPower, cand->numharm, numindep);
+      cand->sigma	= candidate_sigma_cu(candHPower, cand->numharm, numindep);
 
       infoMSG(4,4,"Cand harm val Sigma: %5.2f Power: %6.4f\n", cand->sigma, cand->power);
     }
@@ -1085,7 +1280,7 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int no)
 
   if ( sSpec->flags & FLAG_OPT_SWARM )
   {
-    fprintf(stderr,"ERROR: partical swarm has been removed.\n");
+    fprintf(stderr,"ERROR: partial swarm has been removed.\n");
     exit(EXIT_FAILURE);
   }
   else
@@ -1191,6 +1386,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
       {
 	infoMSG(2,2,"\nOptimising initial candidate %i/%i, Power: %.3f  Sigma %.2f  Harm %i at (%.3f %.3f)\n", ti, numcands, candGPUP->power, candGPUP->sigma, candGPUP->numharm, candGPUP->r, candGPUP->z );
 
+	//if ( ti == 4 )
 	opt_accelcand(candGPUP, oPlnPln, ti);
 
 #pragma omp atomic

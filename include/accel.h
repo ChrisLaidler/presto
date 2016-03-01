@@ -19,7 +19,7 @@
 // #define ACCEL_USELEN 1820	// This works up to zmax=100 to use 2K FFTs
 
 //#undef  ACCEL_USELEN
-//#define ACCEL_USELEN  16032 // TMP added 16k
+//#define ACCEL_USELEN  7456 // TMP added 16k
 
 #undef FOLD
 #undef FOUT
@@ -95,14 +95,14 @@ typedef struct accelcand{
   double *hizs;        /* Optimized fdots for the harmonics */
   rderivs *derivs;     /* An rderivs structure for each harmonic */
 
-#ifdef CBL
-  //TMP Remove the vars
+//#ifdef CBL
+  //TMP Remove these vars
   float   init_power;
   float   init_sigma;
   int     init_numharm;
   double  init_r;
   double  init_z;
-#endif
+//#endif
 } accelcand;
 
 typedef struct kernel{
