@@ -3,13 +3,15 @@
 #include "cuda_accel_utils.h"
 #include "cuda_response.h"
 
+#define KR_DIM_X	16
+#define KR_DIM_Y	16
 
 template<typename readT, typename writeT>
 __global__ void typeChangeKer(readT* read, writeT* write, size_t stride, size_t height)
 {
 
-  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
+  const int bidx = threadIdx.y * KR_DIM_X + threadIdx.x;          /// Block ID - flat index
+  const int tid  = blockIdx.x  * KR_DIM_X * KR_DIM_Y + bidx;      /// Global thread ID - flat index ie column index of stack
   size_t offset;
 
   if ( tid < stride )  // Valid thread  .
@@ -37,14 +39,14 @@ __global__ void typeChangeKer(readT* read, writeT* write, size_t stride, size_t 
 template<typename genT, typename storeT>
 __global__ void init_kernels(storeT* response, int maxZ, int width, int half_width,  float zSteps, float rSteps)
 {
-  int cx, cy;                                   /// The x and y index of this thread in the array
-  int rx = -1;                                  /// The x index of the value in the kernel
+  int cx, cy;							/// The x and y index of this thread in the array
+  int rx = -1;							/// The x index of the value in the kernel
 
   // Calculate the 2D index of this thread
-  cx = blockDim.x * blockIdx.x + threadIdx.x;   /// use BLOCKSIZE rather (its constant)
-  cy = blockDim.y * blockIdx.y + threadIdx.y;   /// use BLOCKSIZE rather (its constant)
+  cx = blockDim.x * blockIdx.x + threadIdx.x;			/// use BLOCKSIZE rather (its constant)
+  cy = blockDim.y * blockIdx.y + threadIdx.y;			/// use BLOCKSIZE rather (its constant)
 
-  float z = -maxZ + cy * 1.0/zSteps;            /// The Fourier Frequency derivative
+  float z = -maxZ + cy * (float)1.0/zSteps;			/// The Fourier Frequency derivative
 
   if ( z < -maxZ || z > maxZ || cx >= width || cx < 0 )
   {
@@ -54,11 +56,11 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   
   if      ( half_width == 0  )
   {
-    half_width    = z_resp_halfwidth_cu<double>(z);
+    half_width    = z_resp_halfwidth_cu<float>(z);
   }
   else if ( half_width == 1  )  // Use high accuracy kernels
   {
-    half_width    = z_resp_halfwidth_cu_high<double>(z);
+    half_width    = z_resp_halfwidth_cu_high<float>(z);
   }
   else
   {
@@ -74,14 +76,14 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   float offset;						// The distance of the response value from 0 (negative to the leaf)
 
   // Calculate the kernel index for this thread (centred on zero and wrapped)
-  if ( cx < noResp )
+  if		( cx < noResp )
   {
     offset = cx * rSteps;
     rx = 1;
   }
-  else if  (cx >= width - noResp )
+  else if	(cx >= width - noResp )
   {
-    offset = ( cx - width ) * rSteps; // This is the negative side of the response function
+    offset = ( cx - width ) * rSteps;			// This is the negative side of the response function
     rx = 1;
   }
 
@@ -93,7 +95,7 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   {
     if (rx != -1)
     {
-      calc_response_off<genT> ((float)offset, (float)z, &real, &imag);
+      calc_response_off<genT> ((genT)offset, (genT)z, &real, &imag);
     }
   }
 
@@ -110,8 +112,8 @@ int createStackKernel(cuFfdotStack* cStack)
 {
   dim3 dimBlock, dimGrid;
 
-  dimBlock.x          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-  dimBlock.y          = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+  dimBlock.x          = KR_DIM_X;  // in my experience 16 is almost always best (half warp)
+  dimBlock.y          = KR_DIM_Y;  // in my experience 16 is almost always best (half warp)
 
   // Set up grid
   dimGrid.x = ceil(  cStack->width     / ( float ) dimBlock.x );
@@ -165,8 +167,8 @@ int copyKerDoubleToFloat(cuFfdotStack* cStack, float* d_orrKer)
 {
   dim3 dimBlock, dimGrid;
 
-  dimBlock.x     = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
-  dimBlock.y     = BLOCKSIZE;  // in my experience 16 is almost always best (half warp)
+  dimBlock.x     = KR_DIM_X;  // in my experience 16 is almost always best (half warp)
+  dimBlock.y     = KR_DIM_Y;  // in my experience 16 is almost always best (half warp)
 
   size_t width   = cStack->strideCmplx * 2 ;
 

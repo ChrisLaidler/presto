@@ -139,7 +139,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   inSz  = sizeof(Tin);
   outSz = sizeof(Tout);
 
-  dpitch  = batch->sInf->inmemStride * outSz;
+  dpitch  = batch->cuSrch->inmemStride * outSz;
   width   = batch->accelLen * outSz;
   height  = cStack->height;
   spitch  = cStack->stridePower * inSz;
@@ -163,7 +163,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
     if ( rVal->numrs )
     {
-      dst     = ((Tout*)batch->sInf->d_planeFull)    + rVal->step * batch->accelLen;
+      dst     = ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
@@ -192,7 +192,7 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   size_t        width;
   size_t        height;
 
-  dpitch  = batch->sInf->inmemStride;
+  dpitch  = batch->cuSrch->inmemStride;
   width   = batch->accelLen;
   height  = cStack->height;
   spitch  = cStack->strideCmplx;
@@ -234,7 +234,7 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
       {
 #if CUDA_VERSION >= 7050
         // Each Step has its own start location in the inmem plane
-        half *dst = ((half*)batch->sInf->d_planeFull)        + rVal->step * batch->accelLen;
+        half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
         // Call kernel
         cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
@@ -246,7 +246,7 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
       else
       {
         // Each Step has its own start location in the inmem plane
-        float *dst  = ((float*)batch->sInf->d_planeFull)        + rVal->step * batch->accelLen;
+        float *dst  = ((float*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
         // Call kernel
         cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );

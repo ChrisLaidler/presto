@@ -727,7 +727,6 @@ int main(int argc, char *argv[])
   sSpec.flags        |= FLAG_SEPSRCH;
   sSpec.flags        |= FLAG_SEPRVAL;
   sSpec.flags        |= FLAG_SYNCH;			// Synchronous
-  sSpec.flags        |= FLAG_KER_DOUBGEN;		// FLAG_KER_DOUBFFT
 
   iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
   if ( iret1 )
@@ -993,6 +992,7 @@ int main(int argc, char *argv[])
             {
               nDarray<2, float> CPU_kernels;
               nDarray<2, float> GPU_kernels;
+              nDarray<2, float> CPU_diff;
 
               float frac  = (float)(harm)/(float)harmtosum;
               int idx     = noHarms - frac * noHarms;
@@ -1023,9 +1023,13 @@ int main(int argc, char *argv[])
 
               basicStats statG = GPU_kernels.getStats(true);
               basicStats statC = CPU_kernels.getStats(true);
+
+              CPU_diff = CPU_kernels - GPU_kernels;
+              basicStats statD = CPU_diff.getStats(true);
+
               double RMSE = GPU_kernels.RMSE(CPU_kernels);
               double ERR =  RMSE / statG.sigma ;
-              printf("   Cmplx: %02i (%.2f)  RMSE: %10.3e    μ: %10.3e    σ: %10.3e    RMSE/σ: %9.2e ", idx, frac, RMSE, statG.mean, statG.sigma, ERR );
+              printf("   Cmplx: %02i (%.2f)  RMSE: %10.3e    μ: %10.3e    σ: %10.3e    RMSE/σ: %9.2e  Max: %8.2e ", idx, frac, RMSE, statG.mean, statG.sigma, ERR, MAX(fabs(statD.min),fabs(statD.max)) );
 
               if      ( ERR > buckets[0] )
                 printf("  BAD!    Not even in the same realm.\n");
@@ -1043,7 +1047,6 @@ int main(int argc, char *argv[])
                 printf("  GOOD  Very good.\n"  );
               else
                 printf("  Great \n");
-
 
               FOLD //
               {
@@ -2029,7 +2032,7 @@ int main(int argc, char *argv[])
 
           FOLD // Wait for CPU threads to complete  .
           {
-            waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
+            waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
           }
 
           free(tmpRow);

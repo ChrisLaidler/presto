@@ -149,7 +149,7 @@ extern "C"
 #define     CU_STR_PLN          (1<<21)
 #define     CU_STR_LST          (1<<22)     ///< Candidates are stored in a list  (usually a dynamic linked list)
 #define     CU_STR_QUAD         (1<<23)     ///< Candidates are stored in a dynamic quadtree
-#define     CU_SRT_ALL          (CU_STR_ARR    | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
+#define     CU_SRT_ALL          (CU_STR_ARR | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
 // ----------- This is a list of the data types that and storage structures
 
@@ -515,7 +515,7 @@ typedef struct gpuSpecs
  */
 typedef struct cuFFdotBatch
 {
-    cuSearch*       sInf;               ///< A pointer to the parent search info
+    cuSearch*       cuSrch;               ///< A pointer to the parent search info
 
     ////////////////// Batch parameters \\\\\\\\\\\\\\\\\\
 
@@ -788,36 +788,31 @@ struct resThrds
  */
 typedef struct resultData
 {
-    resThrds*       threasdInfo;
-    void*           retData;
-    void*           cndData;
+    cuSearch*		cuSrch;			///< Details of the search
 
-    uint            retType;
-    uint            cndType;
-    int64_t         flags;                 ///< CUDA accel search bit flags
+    void*           	retData;
 
-    uint            x0;
-    uint            x1;
+    uint            	retType;
+    uint            	cndType;
+    int64_t         	flags;                 ///< CUDA accel search bit flags
 
-    uint            y0;
-    uint            y1;
+    uint            	x0;
+    uint            	x1;
 
-    uint            xStride;
-    uint            yStride;
-    uint            noStages;
+    uint            	y0;
+    uint            	y1;
 
-    uint            zMax;
+    uint            	xStride;
+    uint            	yStride;
 
-    double          rLow;
+    uint            	zMax;
 
-    rVals           rVal;
+    double          	rLow;
 
-    float*          powerCut;
-    long long*      numindep;
-    searchScale*    SrchSz;
+    rVals           	rVal;
 
-    uint*           noResults;
-    float*          resultTime;
+    uint*           	noResults;
+    float*          	resultTime;
 
 } resultData;
 
@@ -828,7 +823,7 @@ typedef struct candSrch
 {
     cuSearch*		cuSrch;			///< Details of the search
     accelcand*		cand;			///< The candidate to optimise
-    cuOptCand*		optPln;			///< The plane data used for optemisation
+    cuOptCand*		optPln;			///< The plane data used for optimisation
     int			candNo;			///< The 0 based index of this candidate
     double*		norms;			///< Normalisation values for each harmonic
 } candSrch;
@@ -940,8 +935,6 @@ ExternC void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, l
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList* cands );
 
 ExternC void calcNQ(double qOrr, long long n, double* p, double* q);
-
-ExternC double candidate_sigma_cl(double poww, int numharm, long long numindep);
 
 ExternC void inMem(cuFFdotBatch* batch);
 

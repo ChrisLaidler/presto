@@ -200,7 +200,7 @@ uint calcAccellen(float width, float zmax, presto_interp_acc accuracy)
   return accelLen;
 }
 
-/** Allocate R value array
+/** Allocate R value array  .
  *
  */
 void createRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
@@ -448,7 +448,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 #else
         plnElsSZ = sizeof(float);
         fprintf(stderr, "WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
-        sInf->sSpec->flags &= ~FLAG_HALF;
+        cuSrch->sSpec->flags &= ~FLAG_HALF;
 #endif
       }
       else
@@ -495,7 +495,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
 #else
           fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal. Try upgrading to CUDA 6.5 or later.\n");
-          sInf->sSpec->flags &= ~FLAG_CUFFT_ALL;
+          cuSrch->sSpec->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
 #if CUDA_VERSION >= 7050
@@ -549,7 +549,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       // CUFFT callbacks
 #if CUDA_VERSION < 6050
-      sInf->sSpec->flags &= ~FLAG_CUFFT_ALL;
+      cuSrch->sSpec->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
       if ( (sInf->sSpec->flags & FLAG_HALF) && !(sInf->sSpec->flags & FLAG_SS_INMEM) && !(sInf->sSpec->flags & FLAG_CUFFT_CB_POW) )
@@ -622,7 +622,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 #else
         plnElsSZ = sizeof(float);
         fprintf(stderr, "WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
-        sInf->sSpec->flags &= ~FLAG_HALF;
+        cuSrch->sSpec->flags &= ~FLAG_HALF;
 #endif
       }
       else
@@ -668,7 +668,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     FOLD // Set the device specific parameters  .
     {
-      kernel->sInf          = sInf;
+      kernel->cuSrch        = sInf;
       kernel->device        = device;
       kernel->isKernel      = 1;                // This is the device master
       kernel->capability    = gInf->capability;
@@ -1351,7 +1351,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 	    void* hold;
 	    hold 		= cStack->d_kerData;
 	    cStack->d_kerData 	= d_kerHold[i];
-	    d_kerHold[i] 	= hold;
+	    d_kerHold[i] 	= hold;				// d_kerHold now points to the double data
 	  }
 	}
       }
@@ -1857,14 +1857,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         nvtxRangePush("host alloc");
 
-        if      ( kernel->cndType & CU_STR_ARR  )
+        if 	( kernel->cndType & CU_STR_ARR	)
         {
           if ( sInf->sSpec->outData == NULL   )
           {
             // Have to allocate the array!
 
             freeRam  = getFreeRamCU();
-            if ( fullCSize < freeRam*0.90 )
+            if ( fullCSize < freeRam*0.9 )
             {
               // Same host candidates for all devices
               // This can use a lot of memory for long searches!
@@ -1877,9 +1877,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               fprintf(stderr, "ERROR: Not enough host memory for candidate list array. Need %.2fGiB there is %.2fGiB.\n", fullCSize / 1073741824.0, freeRam / 1073741824.0 );
               fprintf(stderr, "       Try set -fhi to a lower value. ie: numharm*1000. ( or buy more RAM, or close Chrome ;)\n");
               fprintf(stderr, "       Will continue trying to use a dynamic list.\n");
-
-//              kernel->cndType &= ~CU_SRT_ALL ;
-//              kernel->cndType |= CU_STR_LST ;
 
               // Candidate type
               kernel->cndType &= ~CU_TYPE_ALLL ;
@@ -1896,7 +1893,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             memset(sInf->h_candidates, 0, fullCSize ); // NOTE: this may error if the preallocated memory int karge enough!
           }
         }
-        else if ( kernel->cndType & CU_STR_QUAD )
+        else if ( kernel->cndType & CU_STR_QUAD	)
         {
           if ( sInf->sSpec->outData == NULL )
           {
@@ -1908,14 +1905,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
             sInf->h_candidates = sInf->sSpec->outData;
           }
         }
-        else if ( kernel->cndType & CU_STR_LST  )
+        else if ( kernel->cndType & CU_STR_LST	)
         {
-          // Nothing really to do here =/
-          GSList* lst = g_slist_alloc();
-          lst->data = NULL;
-          lst->next = NULL;
-
-          sInf->h_candidates    = lst;
+          // Nothing here
         }
         else if ( kernel->cndType & CU_STR_PLN  )
         {
@@ -2056,7 +2048,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
 	for (int i = 0; i < kernel->noStacks; i++)
 	{
-	  cudaFreeNull( d_kerHold[i] );
+	  cudaFreeNull( d_kerHold[i] );			// Free the temporary double data
 	}
       }
     }
@@ -3928,6 +3920,25 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_CENTER;
       }
 
+      else if ( strCom(line, "FLAG_KER_RESP_DOUBLE"   ) )
+      {
+        (*flags) |= FLAG_KER_DOUBGEN;
+      }
+      else if ( strCom(line, "FLAG_KER_RESP_FLOAT"   ) )
+      {
+        (*flags) &= ~FLAG_KER_DOUBGEN;
+      }
+
+      else if ( strCom(line, "FLAG_KER_FFT_DOUBLE"   ) )
+      {
+        (*flags) |= FLAG_KER_DOUBFFT;
+      }
+      else if ( strCom(line, "FLAG_KER_FFT_FLOAT"   ) )
+      {
+        (*flags) &= ~FLAG_KER_DOUBFFT;
+      }
+
+
       else if ( strCom(line, "CU_NORM_CPU" ) || strCom(line, "NORM_CPU" ) )
       {
         (*flags) |= CU_NORM_CPU;
@@ -4635,62 +4646,62 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   FOLD // Defaults for accel search  .
   {
-    sSpec.retType       |= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
-    sSpec.flags         |= FLAG_RET_STAGES  ;
-    sSpec.flags         |= FLAG_ITLV_ROW    ;
+    sSpec.flags		|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
+    sSpec.flags		|= FLAG_RET_STAGES  ;
+    sSpec.flags		|= FLAG_ITLV_ROW    ;
 
 #ifndef DEBUG
-    sSpec.flags         |= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
+    sSpec.flags		|= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
 #endif
 
 #if CUDA_VERSION >= 6050
-    sSpec.flags         |= FLAG_CUFFT_CB_POW; 	// CUFFT callback to calculate powers, very efficient so on by default
+    sSpec.flags		|= FLAG_CUFFT_CB_POW; 	// CUFFT callback to calculate powers, very efficient so on by default
 #endif
 
 #if CUDA_VERSION >= 7050
-    sSpec.flags         |= FLAG_HALF;
+    sSpec.flags		|= FLAG_HALF;
 #endif
 
     if ( obs->inmem )
     {
-      sSpec.flags       |= FLAG_SS_INMEM;
+      sSpec.flags	|= FLAG_SS_INMEM;
     }
 
-    sSpec.cndType       |= CU_CANDFULL    ;   	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
-    sSpec.cndType       |= CU_STR_ARR     ;   	// Candidate storage structure - CU_STR_ARR    is generally the fastest
+    sSpec.cndType	|= CU_CANDFULL    ;   	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
+    sSpec.cndType	|= CU_STR_ARR     ;   	// Candidate storage structure - CU_STR_ARR    is generally the fastest
 
-    sSpec.retType       |= CU_POWERZ_S    ;   	// Return type
-    sSpec.retType       |= CU_STR_ARR     ;   	// Candidate storage structure
+    sSpec.retType	|= CU_POWERZ_S    ;   	// Return type
+    sSpec.retType	|= CU_STR_ARR     ;   	// Candidate storage structure
 
+    sSpec.fftInf.fft	= obs->fft;
+    sSpec.fftInf.nor	= obs->numbins;
+    sSpec.fftInf.rlo	= obs->rlo;
+    sSpec.fftInf.rhi	= obs->rhi;
 
-    sSpec.fftInf.fft    	= obs->fft;
-    sSpec.fftInf.nor    	= obs->numbins;
-    sSpec.fftInf.rlo    	= obs->rlo;
-    sSpec.fftInf.rhi    	= obs->rhi;
+    sSpec.noHarmStages	= obs->numharmstages;
+    sSpec.zMax		= obs->zhi;
+    sSpec.sigma		= cmd->sigma;
+    sSpec.pWidth	= cmd->width;
 
-    sSpec.noHarmStages  	= obs->numharmstages;
-    sSpec.zMax          	= obs->zhi;
-    sSpec.sigma         	= cmd->sigma;
-    sSpec.pWidth        	= cmd->width;
+    sSpec.optPlnDim[0]	= 40;
+    sSpec.optPlnDim[1]	= 20;
+    sSpec.optPlnDim[2]	= 20;
+    sSpec.optPlnDim[3]	= 10;
+    sSpec.optPlnDim[4]	= 0;
+    sSpec.optPlnDim[5]	= 5;
 
-    for ( int idx = 0; idx < NO_OPT_LEVS; idx++)
-      sSpec.optPlnDim[idx] 	= 0;
-    sSpec.optPlnDim[0]		= 50;
-    sSpec.optPlnDim[1]		= 30;
-    sSpec.optPlnDim[2]		= 20;
-    sSpec.optPlnDim[3]		= 20;
-    sSpec.optPlnDim[4]		= 10;
+    sSpec.optPlnSiz[0]	= 8;
+    sSpec.optPlnSiz[1]	= 7;
+    sSpec.optPlnSiz[2]	= 6;
+    sSpec.optPlnSiz[3]	= 5;
+    sSpec.optPlnSiz[4]	= 4;
 
-    sSpec.optPlnSiz[0]		= 16;
-    sSpec.optPlnSiz[1]		= 14;
-    sSpec.optPlnSiz[2]		= 12;
-    sSpec.optPlnSiz[3]		= 10;
-    sSpec.optPlnSiz[4]		= 8;
+    sSpec.optPlnScale	= 10;
+    sSpec.optMinLocHarms = 1;
+    sSpec.optMinRepHarms = 1;
 
-    sSpec.optPlnScale		= 6;
-
-    sSpec.optMinLocHarms	= 1;
-    sSpec.optMinRepHarms	= 1;
+    sSpec.mulSlices	= 5 ;
+    sSpec.ssSlices	= 5 ;
   }
 
   // Now read the
@@ -5055,9 +5066,6 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     srch->sIdx            = (int*)malloc(srch->noGenHarms * sizeof(int));
     srch->powerCut        = (float*)malloc(srch->noHarmStages * sizeof(float));
     srch->numindep        = (long long*)malloc(srch->noHarmStages * sizeof(long long));
-
-    //srch->timings	  = (long long*)malloc( TIME_END * sizeof(long long));
-    //memset(srch->timings, 0, TIME_END * sizeof(long long) );
   }
   else
   {
@@ -5097,14 +5105,10 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
         {
 	  if ( sSpec->flags & FLAG_HALF )
 	  {
-	    // TODO: Check if using half precision may affect this
 	    float noP = log10( srch->powerCut[ii] );
 	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
 	
 	    srch->powerCut[ii] -= dp*(1<<ii);			// Subtract one significant value for each harmonic
-
-	    float sig2 = candidate_sigma_cl(srch->powerCut[ii], (1<<ii), srch->numindep[ii] ); // TMP remove
-	    int tmp = 0;
 	  }
         }
       }
@@ -5851,7 +5855,7 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
 //
 //      if ( cont->flag & OPTIMISED_CONTAINER )
 //      {
-//        candidate->sig = candidate_sigma_cl(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
+//        candidate->sig = candidate_sigma_cu(candidate->power, candidate->numharm,  batch->sInf->numindep[stg] );
 //        container* cont = optemised.insert(candidate, 0.1);
 //
 //        if ( cont )

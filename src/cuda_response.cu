@@ -15,13 +15,13 @@ __host__ __device__ int z_resp_halfwidth_cu(T z)
 
   z = fabs_t(z);
 
-  m = (long) (z * (0.00089 * z + 0.3131) + NUMFINTBINS);
+  m = (long) (z * ((T)0.00089 * z + (T)0.3131) + NUMFINTBINS);
   m = (m < NUMFINTBINS) ? NUMFINTBINS : m;
 
   // Prevent the equation from blowing up in large z cases
 
-  if (z > 100 && m > 0.6 * z)
-    m = 0.6 * z;
+  if (z > (T)100 && m > (T)0.6 * z)
+    m = (T)0.6 * z;
 
   return m;
 }
@@ -33,13 +33,13 @@ __host__ __device__ int z_resp_halfwidth_cu_high(T z)
 
   z = fabs_t(z);
 
-  m = (long) (z * (0.002057 * z + 0.0377) + NUMFINTBINS * 3);
+  m = (long) (z * ((T)0.002057 * z + (T)0.0377) + NUMFINTBINS * 3);
   m += ((NUMLOCPOWAVG >> 1) + DELTAAVGBINS);
 
   /* Prevent the equation from blowing up in large z cases */
 
-  if (z > 100 && m > 1.2 * z)
-     m = 1.2 * z;
+  if (z > (T)100 && m > (T)1.2 * z)
+     m = (T)1.2 * z;
 
   return m;
 }
@@ -67,10 +67,9 @@ __host__ __device__ inline double getFIlim(double nothing)
 {
   return FILIM_D;
 }
-
 __host__ __device__ inline void sinecos_fres(double x, float x2, float* sin, float* cos)
 {
-  double trigT 	= fmod_t(x * x, 4.0);
+  float trigT 	= fmod_t(x * x, 4.0);
   trigT 	= trigT*(float)PIBYTWO;
   sincos_t(trigT, sin, cos);
 
@@ -168,16 +167,16 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
   }
   else if ( absX > (T)FREESLIM2  )	// Asymptotic behaviour  .
   {
-    *cc   = 0.5;
-    *ss   = 0.5;
+    *cc   = (T)0.5;
+    *ss   = (T)0.5;
   }
   else					// Auxiliary functions for large argument  .
   {
     T x2	= absX * absX;		// x * x ( Standard precision value of x squared )
 
     t		= (T)PI * x2;
-    u		= 1.0 / (t * t);
-    t		= 1.0 / t;
+    u		= (T)1.0 / (t * t);
+    t		= (T)1.0 / t;
 
     T u01 = u;
     T u02 = u01*u;
@@ -208,7 +207,7 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
 
   }
 
-  if ( x < 0.0 )              // Swap as function is antisymmetric  .
+  if ( x < (idxT)0.0 )				// Swap as function is antisymmetric  .
   {
     *cc   = -*cc;
     *ss   = -*ss;
@@ -289,7 +288,7 @@ __host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T 
   FOLD // Fresnel stuff  .
   {
     Yk = sq2overAbsZ * Qk ;
-    if ( Yk > FRES_DOUBLE || Yk < -FRES_DOUBLE )
+    if ( Yk > (T)FRES_DOUBLE || Yk < -(T)FRES_DOUBLE )
     {
       // Yk and will be squared so they need to be double if they are large
       double Ykd = (double)sq2overAbsZ *   (double)Qk;
@@ -301,7 +300,7 @@ __host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T 
     }
 
     Zk = sq2overAbsZ * ( Qk + z) ;
-    if ( Zk > FRES_DOUBLE || Zk < -FRES_DOUBLE )
+    if ( Zk > (T)FRES_DOUBLE || Zk < -(T)FRES_DOUBLE )
     {
       // Zk and will be squared so they need to be double if they are large
       double Zkd = (double)sq2overAbsZ * ( (double)Qk + z ) ;
@@ -445,13 +444,14 @@ __host__ __device__ void calc_response_off(T offset, T z,  T* real, T* imag)
   }
   else
   {
-    int signZ       = (z < 0.0) ? -1 : 1;
-    T Qk            = (-offset) - z / (T)2.0;			// Adjust for acceleration
+    // Calculate all the constants
+    int signZ       = (z < (T)0.0) ? -1 : 1;
     T absZ          = fabs_t(z);
     T sqrtAbsZ      = sqrt_t(absZ);
-    T sq2overAbsZ   = SQRT2 / sqrtAbsZ;
-    T PIoverZ       = PI / z;
-    T overSq2AbsZ   = 1.0 / SQRT2 / sqrtAbsZ ;
+    T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
+    T PIoverZ       = (T)PI / z;
+    T overSq2AbsZ   = (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
+    T Qk            = (-offset) - z / (T)2.0;			// Adjust for acceleration
 
     calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, real, imag);
   }
@@ -517,7 +517,7 @@ __host__ __device__ void rz_response_cu(double r, T z, int kern_half_width, outT
   else								// Use a correlation kernel  .
   {
     // Calculate all the constants
-    int signZ       = (z < 0.0) ? -1 : 1;
+    int signZ       = (z < (T)0.0) ? -1 : 1;
     T absZ          = fabs_t(z);
     T sqrtAbsZ      = sqrt_t(absZ);
     T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
@@ -574,7 +574,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
   FOLD 								// Calculate the reference bin (closes integer bin to r)  .
   {
     fracfreq	= modf_t(r, &dintfreq);				// This is always double precision because - r needs to be r
-    start	= dintfreq + 1 - kern_half_width ;		// TODO check this +1????
+    start	= dintfreq + 1 - kern_half_width ;
 
     if ( fracfreq > 0.5 ) // Adjust to closest bin
     {
@@ -657,7 +657,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
   else								// Use a correlation kernel  .
   {
     // Calculate all the constants
-    int signZ       = (z < 0.0) ? -1 : 1;
+    int signZ       = (z < (T)0.0) ? -1 : 1;
     T absZ          = fabs_t(z);
     T sqrtAbsZ      = sqrt_t(absZ);
     T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
@@ -724,8 +724,8 @@ __host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inS
   long    start;						// The first bin to use
   T       offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
   int     numkern;						// The actual number of kernel values to use
-  T 	  resReal 	= 0;					// Response value - real
-  T 	  resImag 	= 0;					// Response value - imaginary
+  T 	  resReal 	= (T)0.0;				// Response value - real
+  T 	  resImag 	= (T)0.0;				// Response value - imaginary
 
   FOLD 								// Calculate the reference bin (closes integer bin to r)  .
   {
@@ -805,7 +805,7 @@ __host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inS
   else								// Use a correlation kernel  .
   {
     // Calculate all the constants
-    int signZ       = (z < 0.0) ? -1 : 1;
+    int signZ       = (z < (T)0.0) ? -1 : 1;
     T absZ          = fabs_t(z);
     T sqrtAbsZ      = sqrt_t(absZ);
     T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
@@ -864,20 +864,20 @@ __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long 
   double  fracfreq;						// Fractional part of r   - double precision
   double  dintfreq;						// Integer part of r      - double precision
 
-  T 	  resReal 	= 0;					// Response value - real
-  T 	  resImag 	= 0;					// Response value - imaginary
+  T 	  resReal 	= (T)0.0;				// Response value - real
+  T 	  resImag 	= (T)0.0;				// Response value - imaginary
 
-  T 	  respRealSum 	= 0;					//
-  T 	  respImagSum 	= 0;					//
+  T 	  respRealSum 	= (T)0.0;				//
+  T 	  respImagSum 	= (T)0.0;				//
 
-  T 	  inRealSum 	= 0;					//
-  T 	  inImagSum 	= 0;					//
+  T 	  inRealSum 	= (T)0.0;				//
+  T 	  inImagSum 	= (T)0.0;				//
 
-  T 	  mathRealSum 	= 0;					//
-  T 	  mathImagSum 	= 0;					//
+  T 	  mathRealSum 	= (T)0.0;				//
+  T 	  mathImagSum 	= (T)0.0;				//
 
-  T 	  accelRealSum 	= 0;					//
-  T 	  accelImagSum 	= 0;					//
+  T 	  accelRealSum 	= (T)0.0;				//
+  T 	  accelImagSum 	= (T)0.0;				//
 
   FOLD // Calculate the reference bin (closes integer bin to r)  .
   {
@@ -950,12 +950,12 @@ __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long 
   else								// Use a correlation kernel  .
   {
     // Calculate all the constants
-    int signZ       = (z < 0.0) ? -1 : 1;
+    int signZ       = (z < (T)0.0) ? -1 : 1;
     T absZ          = fabs_t(z);
     T sqrtAbsZ      = sqrt_t(absZ);
-    T sq2overAbsZ   = SQRT2 / sqrtAbsZ;
-    T PIoverZ       = PI / z;
-    T overSq2AbsZ   = 1.0 / SQRT2 / sqrtAbsZ ;
+    T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
+    T PIoverZ       = (T)PI / z;
+    T overSq2AbsZ   = (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
 
     //for ( int i = 0 ; i <= kern_half_width; i++ )		// Loop over the kernel elements
     for ( int i = 0 ; i <= kern_half_width*2; i++ )		// Loop over the kernel elements

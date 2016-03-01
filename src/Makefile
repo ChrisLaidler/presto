@@ -9,7 +9,7 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHCBL    = yes
+WITHCBL    = no
 
 # CUDA_ARCH needs to be set to the artitech of the device(s) you wnat to run the search on
 # CUDA_ARCH should be a space seperated list consisting to numbers ie "30 50" 
@@ -19,7 +19,7 @@ CUDA_ARCH  =
 #CUDA_ARCH += 20
 #CUDA_ARCH += 30
 #CUDA_ARCH += 35
-CUDA_ARCH += 50
+#CUDA_ARCH += 50
 
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
@@ -153,7 +153,7 @@ ifeq ($(WITH_CUDA),yes)
 endif
 #
 # Very recent Intel CPUs might see a few percent speedup using -mavx
-CFLAGS 				= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -g -Wall -W -fPIC
+BASEFLAGS 			= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -g -Wall -W -fPIC
 #	 -march=native
 #       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
 
@@ -164,7 +164,8 @@ CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-par
 
 CWARN				  = -Wno-implicit-function-declaration
 
-CFLAGS			 += $(CWARN) $(CXXWARN)
+CFLAGS			 	= $(BASEFLAGS) $(CWARN) $(CXXWARN)
+CXXFLAGS			= $(BASEFLAGS) $(CXXWARN)
 
 CLINKFLAGS 		= $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
@@ -198,14 +199,16 @@ NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 GPUOUTP		=
 
+
 $(info)
+
+OPT_FLAGS =
 
 #Settings dependent on release or debug build
 ifeq ($(DEBUG),1)
   $(info Compiling in debug mode)
 
-  CFLAGS        += -O0 -ggdb  -DDEBUG
-  LFLAGS        += -O0 -ggdb  -DDEBUG
+  OPT_FLAGS     += -O0 -ggdb  -DDEBUG
 
   NVCCFLAGS     += -g -G -O0 -DDEBUG
   NVCLFLAGS     += -g -G -O0 -DDEBUG
@@ -218,10 +221,10 @@ else
   $(info Compileing in release mode)
 
   # CPU optimisations
-  CFLAGS		+= -O3 -ffast-math
+  OPT_FLAGS		+= -O3 -ffast-math
 
   # Additional CPU optimisations
-  CFLAGS		+= -unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
+  OPT_FLAGS		+= -unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32
   
   # vectorisation output
@@ -245,46 +248,51 @@ else
   OBJDIR         =build/release/
 endif
 
+CFLAGS 		+= $(OPT_FLAGS)
+CXXFLAGS	+= $(OPT_FLAGS)
+
+
 $(info )
+
+OMP_FLAGS		=
 
 # With open MP
 ifeq ($(WITHOMP),yes)
   $(info • Compileing with OpenMP)
 
-  CFLAGS      += -fopenmp -DWITHOMP
-  FLAGS       += -fopenmp -DWITHOMP
+  OMP_FLAGS   += -fopenmp -DWITHOMP
 
-  CXXFLAGS    += -fopenmp -DWITHOMP
-  LDFLAGS     += -fopenmp -DWITHOMP
-
-  FFTLINK     +=
   NVCCFLAGS   += -Xcompiler -fopenmp -DWITHOMP
   NVCLFLAGS   += -Xcompiler -fopenmp -DWITHOMP
 endif
+
+CFLAGS				+= $(OMP_FLAGS)
+CXXFLAGS			+= $(OMP_FLAGS)
+LDFLAGS				+= $(OMP_FLAGS)
+
 
 ifeq ($(WITHCBL),yes)
   $(info • Compileing with Chris utility libraries)
 
   # Include and link information for FreeType
-  FTCFLG     = $(shell freetype-config --cflags)
-  FTLINK     = $(shell freetype-config --libs)
+  FTCFLG     	 = $(shell freetype-config --cflags)
+  FTLINK     	 = $(shell freetype-config --libs)
 
-  LNDARR     += -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
-  INDARR     += -I$(SRC)/libs/build/include/ $(FTCFLG)
+  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)
 
-  NVCCFLAGS  += -DCBL $(INDARR)
-  NVCLFLAGS  += -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  NVCCFLAGS  	+= -DCBL $(INDARR)
+  NVCLFLAGS  	+= -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
 
   CFLAGS     	+= -DCBL
-  FLAGS      	+= -DCBL
-  
-  CXXFLAGS   += -DCBL $(INDARR)
+  CXXFLAGS   	+= -DCBL $(INDARR) -Wno-unknown-pragmas
 
-  GPUOUTP    += $(BINPATH)/test_GPUaccel$(POSTFIX)
+  GPUOUTP    	+= $(BINPATH)/test_GPUaccel$(POSTFIX)
 else
   LNDARR     =
   INDARR     =
 endif
+
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
@@ -295,9 +303,6 @@ ifeq ($(WITH_CUDA),yes)
 
   NVCC_SRCS  	= $(wildcard *.cu)
   NVCC_OBS   	= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
-
-#  CPP_SRCS  	= $(wildcard *.cpp)
-#  NVCC_OBS		+= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(CPP_SRCS)  )
 
   NVCCFLAGS  	+= -DCUDA -Xcompiler -fPIC
   NVCLFLAGS  	+= -DCUDA -Xcompiler -fPIC
@@ -633,7 +638,7 @@ $(OBJDIR)%.o: %.c
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
-	$(CPP) $(CFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+	$(CPP) $(CXXFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 	
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)

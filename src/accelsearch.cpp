@@ -28,6 +28,9 @@ extern "C"
 #include "dmalloc.h"
 #endif
 
+#ifdef WITHOMP
+#include <omp.h>
+#endif
 
 static void print_percent_complete(int current, int number, const char *what, int reset)
 {
@@ -520,8 +523,7 @@ int main(int argc, char *argv[])
         }
 
         if ( master->flags & FLAG_SYNCH )
-          fprintf(stderr, "WARNING: Running synchronous search, this will slow things down and should only be used for testing.\n");
-
+          fprintf(stderr, "WARNING: Running synchronous search, this will slow things down and should only be used for debug and testing.\n");
 
         FOLD //                                 ---===== Main Loop =====---  .
         {
@@ -651,7 +653,7 @@ int main(int argc, char *argv[])
                     else
                     {
                       int noTrd;
-                      sem_getvalue(&master->sInf->threasdInfo->running_threads, &noTrd );
+                      sem_getvalue(&master->cuSrch->threasdInfo->running_threads, &noTrd );
                       printf("\rGPU search  %5.1f%% ( %3i Active CPU threads processing initial candidates)  ", firstStep/(float)maxxx*100.0, noTrd);
                     }
 
@@ -693,7 +695,7 @@ int main(int argc, char *argv[])
 
             FOLD // Wait for CPU threads to complete  .
             {
-              waitForThreads(&master->sInf->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
+              waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
             }
 
             nvtxRangePop();
@@ -996,6 +998,7 @@ int main(int argc, char *argv[])
 
       printf("\n\n");
 
+#ifdef CBL
       FOLD // TMP
       {
 	Logger slog(stdout);
@@ -1033,6 +1036,7 @@ int main(int argc, char *argv[])
 	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
 	}
       }
+#endif
 
       // Re sort with new sigma values
       cands = sort_accelcands(cands);
@@ -1208,11 +1212,11 @@ int main(int argc, char *argv[])
 
 		double factor = sqrt(norm);
 		double pow2   = pow / factor / factor ;
-		double sigma  = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+		double sigma  = candidate_sigma_cu(pow2, 1, obs.numindep[0] );
 
 		if ( sigma < 0  )
 		{
-		  sigma = candidate_sigma_cl(pow2, 1, obs.numindep[0] );
+		  sigma = candidate_sigma_cu(pow2, 1, obs.numindep[0] );
 		}
 
 		//printf("%2i\t%.4f\t%lli\t%10.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );

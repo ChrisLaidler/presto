@@ -51,7 +51,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       int bace = 0;
       for ( int harm = 0; harm < noHarms; harm++ )                  // loop over harmonic  .
       {
-        int stgIDX = batch->sInf->sIdx[harm];
+        int stgIDX = batch->cuSrch->sIdx[harm];
 
         pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
         pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
@@ -66,7 +66,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       {
         for ( int harm = 0; harm < noHarms; harm++ )                // loop over harmonic  .
         {
-          int stgIDX        = batch->sInf->sIdx[harm];
+          int stgIDX        = batch->cuSrch->sIdx[harm];
           cuHarmInfo* hInf  = &batch->hInfos[stgIDX];
 
           //// NOTE: the indexing below assume each plane starts on a multiple of noHarms
@@ -81,7 +81,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
         {
           for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
           {
-            candLists[stage][step].value = batch->sInf->powerCut[stage] ;
+            candLists[stage][step].value = batch->cuSrch->powerCut[stage] ;
           }
         }
       }
@@ -111,12 +111,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 
             for ( int harm = start; harm <= end; harm++ )         	// Loop over harmonics (batch) in this stage  .
             {
-              int stgIDX            = batch->sInf->sIdx[harm];
+              int stgIDX            = batch->cuSrch->sIdx[harm];
               cuHarmInfo* hInf      = &batch->hInfos[stgIDX];
               cuFfdotStack* cStack  = &batch->stacks[ batch->hInfos[stgIDX].stackNo ];
               int     ix1           = inds[harm] ;
               int     ix2           = ix1;
-              short   iy1           = batch->sInf->yInds[ (zeroHeight+INDS_BUFF)*harm + y ];
+              short   iy1           = batch->cuSrch->yInds[ (zeroHeight+INDS_BUFF)*harm + y ];
 
               if ( iyP[harm] != iy1 ) // Only read power if it is not the same as the previous  .
               {
@@ -179,7 +179,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
               {
                 for ( int step = 0; step < noSteps; step++)         // Loop over steps  .
                 {
-                  if ( candLists[stage][step].value > batch->sInf->powerCut[stage] )
+                  if ( candLists[stage][step].value > batch->cuSrch->powerCut[stage] )
                   {
                     rVals* rVal = &(*batch->rAraays)[batch->rActive][step][0];
 

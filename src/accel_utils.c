@@ -1466,10 +1466,10 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     obs->numbins = filelen / 2;
     printf("done.\n");
 
-    /* De-redden it */
-    printf("Removing red-noise...");
-    deredden(obs->fft, obs->numbins);
-    printf("done.\n\n");
+//    /* De-redden it */
+//    printf("Removing red-noise...");
+//    deredden(obs->fft, obs->numbins);
+//    printf("done.\n\n");
   }
 
   /* Determine the output filenames */
