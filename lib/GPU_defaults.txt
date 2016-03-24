@@ -14,15 +14,15 @@
 
 ######### Kernel #########
 
-#FLAG_KER_STD			# Standard low accuracy method of choosing the half-width
-FLAG_KER_HIGH			# Choose larger half-width for higher accuracy of value of z close to 0
+FLAG_KER_STD			# Standard low accuracy method of choosing the half-width
+#FLAG_KER_HIGH			# Choose larger half-width for higher accuracy of value of z close to 0
 
 #FLAG_KER_MAX			# Choose largest possible response function width
 
 FLAG_CENTER			# Centre the kernels
 
 FLAG_KER_RESP_DOUBLE		# Calculate kernel response values using double precision (generally A good idea)
-#FLAG_KER_RESP_FLOAT		# Calculate kernel response values using double precision (generally A good idea)
+#FLAG_KER_RESP_FLOAT		# Calculate kernel response values using single precision (generally A good idea)
 
 #FLAG_KER_FFT_DOUBLE		# FFT the kernel elements using double precision (final results still stored as floats)
 #FLAG_KER_FFT_FLOAT		# FFT the kernel elements using double precision (final results still stored as floats)
@@ -35,7 +35,7 @@ NORM_CPU			# Do the input Normalisation on the CPU
 
 # FFT input in the CPU or the GPU
 #FFT_CPU  			# Do the input FFT's on the CPU
-#FFT_GPU  			# Do the input FFT's on the GPU
+FFT_GPU  			# Do the input FFT's on the GPU
 
 # cuMedianBuffSz		# This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
 
@@ -112,10 +112,10 @@ CU_CAND_ARR			# Use an array 			(Fast access, but requires more CPU memory)
 
 ###### Optimisation ########
 
-#FLAG_OPT_MEDIAN  		# [ Default ] Use 1D median power for normalisation
-FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation 
+FLAG_OPT_MEDIAN  		# [ Default ] Use 1D median power for normalisation
+#FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation 
 
-FLAG_OPT_BEST			# Report the harmonic with the highest sigma value rather than the number of harmonic found with
+#FLAG_OPT_BEST			# Report the harmonic with the highest sigma value rather than the number of harmonic found with
 
 optPlnScale		10	# Optimisation step down
 
@@ -126,25 +126,25 @@ OPT_MIN_REP_HARMS	24	#
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
-optPlnDim01 40			# The number of elements in the 1st optimisation plane
-optPlnDim02 20			# The number of elements in the 2nd optimisation plane
-optPlnDim03 20			# The number of elements in the 3rd optimisation plane
-optPlnDim04 10			# The number of elements in the 4th optimisation plane
+optPlnDim01 100			# The number of elements in the 1st optimisation plane
+optPlnDim02 0			# The number of elements in the 2nd optimisation plane
+optPlnDim03 0			# The number of elements in the 3rd optimisation plane
+optPlnDim04 0			# The number of elements in the 4th optimisation plane
 optPlnDim05 0			# The number of elements in the 5th optimisation plane
-optPlnDim06 5			# The number of elements in the 6th optimisation plane (this is a double preseason plane)
+optPlnDim06 0			# The number of elements in the 6th optimisation plane (this is a double preseason plane)
 
 # The Numbers below dictate the size in bins of the incremental planes used to refine the location of the maximum f-fdot value
 # Lager numbers will explore the f-fdot plane faster but will reduce resolution
-optPlnSiz01 4
-optPlnSiz02 4
-optPlnSiz04 4
-optPlnSiz08 4
-optPlnSiz16 4
+optPlnSiz01 100
+optPlnSiz02 100
+optPlnSiz04 100
+optPlnSiz08 100
+optPlnSiz16 100
 
 
 ###### Debug ########
 
-DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with increasing number
+DBG_LEV 4			# [Debug]	The level of debug messages to print 0 -> non  more with increasing number
 #	0			# None [default]
 #	1			# Info
 #	2			# Debug 1
@@ -152,12 +152,12 @@ DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with i
 #	4			# Debug 3
 #	5			# Debug 4
 
-#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
+FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 #FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
 #FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
 #FLAG_DPG_PRNT_CAND		# [ Debug ]	Print CSV of candidates at various stages
 
-#FLAG_DBG_SYNCH			# [ Debug ]	Perform a synchronous search
+FLAG_DBG_SYNCH			# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_TIMING   		# [ Debug ]	Perform advanced timing the search
 
 

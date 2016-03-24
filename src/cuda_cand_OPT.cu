@@ -18,8 +18,8 @@ extern "C"
 }
 
 #ifdef CBL
-template<typename T>
-__global__ void ffdotPlnSM_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int smLen, int32 loR, int32 hw)
+template<typename T, int noHarms>
+__global__ void ffdotPlnSM_ker(float* powers, float2* fft /*, int noHarms*/, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int smLen, int32 loR, int32 hw)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -30,6 +30,15 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int noHarms, int half
 
   extern __shared__ float2 smmm[];
 
+  __shared__ unsigned int sSum;
+
+  __syncthreads();
+
+  if ( tid == 0 )
+    sSum = 0;
+
+  __syncthreads();
+
   float2* sm = smmm;
 
   int halfW;
@@ -37,74 +46,73 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int noHarms, int half
   double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
 
   T total_power  = 0;
-  T real = 0;
-  T imag = 0;
+  T real = (T)0;
+  T imag = (T)0;
 
-  int width;
-  int first;
-  int last;
-  int noStp;
+  T real_O = (T)0;
+  T imag_O = (T)0;
+
+  int 	width;
+  long	first;
+  long	last;
+  int	noStp;
   int	bOff;
 
   double bwidth = (blockDim.x) / (double)(noR-1) * rSZ ;
 
-  int buff = 2;
+  int buff = 1;
 
   double fP = firstR + (blockIdx.x * blockDim.x) /(double)(noR-1) * rSZ ;
   double lP = firstR + MIN(noR, ((blockIdx.x+1) * blockDim.x - 1 ) ) /(double)(noR-1) * rSZ ;
 
+//  if ( ix < noR && iy < noZ)
+//    //if( total_power != 0 )
+//  {
+//    //      if ( blockIdx.y == 0 )
+//    powers[iy*oStride + ix] = 0;
+//    //      else
+//    //	powers[iy*oStride + ix] = 172 ;
+//  }
+
+  int nno = 0;
+
+  int bIdx = 0;
   for( int i = 1; i <= noHarms; i++ )
   {
-    //float2* 	sm = &smmm[(i-1)*smLen];
+    sm = &smmm[bIdx];
 
-    //      __syncthreads(); // Make sure data is written before doing the convolutions
-    //
-    //      FOLD // Zero
-    //      {
-    //	noStp	= ceil_t( smLen / (float)blkSz );
-    //	float2 zz;
-    //	zz.x = 0;
-    //	zz.y = 0;
-    //
-    //	for ( int stp = 0; stp < noStp ; stp++)
-    //	{
-    //	  int odd = stp*blkSz + tid;
-    //	  if ( odd < smLen /* && odd < smLen */ )
-    //	  {
-    //	    sm[odd] = zz;
-    //	  }
-    //	}
-    //      }
-
-    //__syncthreads(); // Make sure data is written before doing the convolutions
-
-    FOLD // Load input into SM  .
+    FOLD // Calc vlas
     {
       halfW	= hw.val[i-1];
       //first	= MAX(loR.val[i-1], floor_t( (firstR + blockIdx.x * bwidth )*i ));
-      double fR = (fP)*i;
+      //double fR = (fP)*i;
       //first	= MAX(loR.val[i-1], floor_t(fR) - halfW - buff );
       //first	= MAX(loR.val[i-1], floor_t(fP*i) - halfW - buff );
       first	= floor(fP*i) - halfW - buff ;
       last	= ceil(lP*i)  + halfW + buff ;
       //first	= floor(fR) - halfW ;
-      bOff	= first - loR.val[i-1];
       //width	= halfW*2 + ceil_t(bwidth*i) + buff*2 ;
       //width	= halfW*2 + rSZ*i + 5;
       width 	= last - first;
-      noStp	= ceil_t( width / (float)blkSz );
+      bOff	= first - loR.val[i-1];
+      noStp	= ceilf( width / (float)blkSz );
+      //nno	+= width;
+      bIdx	+= width;
+    }
 
-//      if ( width > smLen )
-//      {
-//	printf(" width > smLen  %i > %i   tid %i  \n", width, smLen, tid );
-//      }
+    FOLD // // Load input into SM  .
+    {
+      //      if ( width > smLen )
+      //      {
+      //	printf(" width > smLen  %i > %i   tid %i  \n", width, smLen, tid );
+      //      }
 
-//      if ( ix == 16 && iy == 16 )
-//      {
-//	printf("h: %2i  smLen: %4i  width: %4i  halfW: %4i  bwidth: %8.4f  first: %7i  loR: %7i  bOff: %3i  len: %3i r: %10.4f fr: %10.4f\n", i, smLen, width, halfW, bwidth*i, first, loR.val[i-1], bOff, bOff + width, r*i, fR );
-//      }
+      //      if ( ix == 16 && iy == 16 )
+      //      {
+      //	printf("h: %2i  smLen: %4i  width: %4i  halfW: %4i  bwidth: %8.4f  first: %7i  loR: %7i  bOff: %3i  len: %3i r: %10.4f fr: %10.4f\n", i, smLen, width, halfW, bwidth*i, first, loR.val[i-1], bOff, bOff + width, r*i, fR );
+      //      }
 
-      //__syncthreads();
+      __syncthreads();
 
       for ( int stp = 0; stp < noStp ; stp++)
       {
@@ -118,12 +126,14 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int noHarms, int half
 	    //	    }
 	    //	    else
 	    //	    {
-//	    if ( bid == 0 && i == 16 )
-//	    {
-//	      printf("tid: %i odd: %i \n",tid,odd);
-//	    }
+	    //	    if ( bid == 0 && i == 16 )
+	    //	    {
+	    //	      printf("tid: %i odd: %i \n",tid,odd);
+	    //	    }
 
 	    sm[odd] = fft[(i-1)*iStride + o2 ];
+
+	    //atomicInc(&sSum, 1000000 );
 	  }
 	}
       }
@@ -137,33 +147,141 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int noHarms, int half
       //	    sm[odd] = fft[(i-1)*iStride + odd ];
       //	}
 
-      //__syncthreads(); // Make sure data is written before doing the convolutions
+//      if ( ix == 20 )
+//      {
+//	printf(" %03i %2i %8li %4i %4i \n", iy, i, first, width, halfW );
+//      }
+
+      __syncthreads(); // Make sure data is written before doing the convolutions
+
+//      if ( ix < noR && iy < noZ)
+//      {
+//	__syncthreads(); // Make sure data is written before doing the convolutions
+//	rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
+//	total_power     += POWERCU(real, imag);
+//      }
+//
+//      __syncthreads(); // Make sure data is written before doing the convolutions
 
     }
+  }
 
-    __syncthreads(); // Make sure data is written before doing the convolutions
+  __syncthreads(); // Make sure data is written before doing the convolutions
 
-    if ( ix < noR && iy < noZ)
+
+  if ( ix < noR && iy < noZ)
+  {
+
+    bIdx = 0;
+    //#pragma unroll
+    for( int i = 1; i <= noHarms; i++ )
     {
+      sm = &smmm[bIdx];
+
+      FOLD // Calc vlas
+      {
+	halfW	= hw.val[i-1];
+	//first	= MAX(loR.val[i-1], floor_t( (firstR + blockIdx.x * bwidth )*i ));
+	//double fR = (fP)*i;
+	//first	= MAX(loR.val[i-1], floor_t(fR) - halfW - buff );
+	//first	= MAX(loR.val[i-1], floor_t(fP*i) - halfW - buff );
+	first	= floor(fP*i) - halfW - buff ;
+	last	= ceil(lP*i)  + halfW + buff ;
+	//first	= floor(fR) - halfW ;
+	//width	= halfW*2 + ceil_t(bwidth*i) + buff*2 ;
+	//width	= halfW*2 + rSZ*i + 5;
+	width 	= last - first;
+	bOff	= first - loR.val[i-1];
+	noStp	= ceilf( width / (float)blkSz );
+	//nno	+= width;
+	bIdx	+= width;
+      }
+
+      //    if ( i != 8 )
+      //      continue;
+
+      //sm = &smmm[(i-1)*smLen];
+
+      //      __syncthreads(); // Make sure data is written before doing the convolutions
+      //
+      //      FOLD // Zero
+      //      {
+      //	noStp	= ceil_t( smLen / (float)blkSz );
+      //	float2 zz;
+      //	zz.x = 0;
+      //	zz.y = 0;
+      //
+      //	for ( int stp = 0; stp < noStp ; stp++)
+      //	{
+      //	  int odd = stp*blkSz + tid;
+      //	  if ( odd < smLen /* && odd < smLen */ )
+      //	  {
+      //	    sm[odd] = zz;
+      //	  }
+      //	}
+      //      }
+      //
+      //__syncthreads(); // Make sure data is written before doing the convolutions
       //__threadfence_block();
+      //__threadfence();
+
+      //    if ( ix >= noR || iy >= noZ)
+      //      continue;
+
+      //    real = (T)0.0;
+      //    imag = (T)0.0;
+
+      //__syncblocks_atomic();
+
+      //    if ( sSum != nno )
+      //    {
+      //      printf("Bad2 h: %2i  tid: %3i  %5i %5i\n", i, tid, sSum, nno);
+      //    }
+
+
 
       //halfW	= z_resp_halfwidth_cu_high<float>(z*i);
 
+
+
+
+      rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
+
       //rz_convolution_cu<T, float2>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, &real, &imag);
       //rz_convolution_cu<T, float2>(&fft[iStride*(i-1)+bOff], first, width, r*i, z*i, halfW, &real, &imag);
-      rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
+
+      //      for ( int ic = 0; ic < width; ic++)
+      //      {
+      //	real += sm[ic].x;
+      //	imag += sm[ic].y;
+      //      }
+
+      //      rz_convolution_cu<T, float2>(&fft[iStride*(i-1)+bOff], first, width, r*i, z*i, halfW, &real_O, &imag_O);
+      //      if ( real != real_O || imag != imag_O )
+      //      {
+      //	int tmp = 0;
+      //      }
+
+      __syncthreads(); // Make sure data is written before doing the convolutions
 
       total_power     += POWERCU(real, imag);
     }
 
-    __syncthreads(); // Make sure has all been read before writing
-  }
+    //    if ( ix < noR && iy < noZ)
+    //    {}
+    //    else
+    //    {
+    //      real = (T)0.0;
+    //      imag = (T)0.0;
+    //    }
 
-  //__syncthreads(); // Make sure has all been read before writing
+    //__syncthreads(); // Make sure has all been read before writing
 
-  //if ( ix < noR && iy < noZ)
-  if( total_power != 0 )
-  {
+    //__syncthreads(); // Make sure has all been read before writing
+
+    //if ( ix < noR && iy < noZ)
+    //if( total_power != 0 )
+    //{
     //      if ( blockIdx.y == 0 )
     powers[iy*oStride + ix] = total_power;
     //      else
@@ -419,18 +537,18 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
       for ( int i = 0; i < pln->inpStride; i++ ) // Normalise input  .
       {
-        off = rOff.val[h] - fft->idx + i;
+	off = rOff.val[h] - fft->idx + i;
 
-        if ( off >= 0 && off < fft->nor )
-        {
-          pln->h_inp[h*pln->inpStride + i].r = fft->fft[off].r / factor ;
-          pln->h_inp[h*pln->inpStride + i].i = fft->fft[off].i / factor ;
-        }
-        else
-        {
-          pln->h_inp[h*pln->inpStride + i].r = 0;
-          pln->h_inp[h*pln->inpStride + i].i = 0;
-        }
+	if ( off >= 0 && off < fft->nor )
+	{
+	  pln->h_inp[h*pln->inpStride + i].r = fft->fft[off].r / factor ;
+	  pln->h_inp[h*pln->inpStride + i].i = fft->fft[off].i / factor ;
+	}
+	else
+	{
+	  pln->h_inp[h*pln->inpStride + i].r = 0;
+	  pln->h_inp[h*pln->inpStride + i].i = 0;
+	}
       }
     }
   }
@@ -474,38 +592,38 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
       // Call the kernel to normalise and spread the input data
       switch (noBlk)
       {
-        case 2:
-          ffdotPlnByBlk_ker<T,2> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 3:
-          ffdotPlnByBlk_ker<T,3> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 4:
-          ffdotPlnByBlk_ker<T,4> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 5:
-          ffdotPlnByBlk_ker<T,5> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 6:
-          ffdotPlnByBlk_ker<T,6> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 7:
-          ffdotPlnByBlk_ker<T,7> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 8:
-          ffdotPlnByBlk_ker<T,8> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 9:
-          ffdotPlnByBlk_ker<T,9> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        case 10:
-          ffdotPlnByBlk_ker<T,10><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-          break;
-        default:
-        {
-          fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, noBlk );
-          exit(EXIT_FAILURE);
-        }
+	case 2:
+	  ffdotPlnByBlk_ker<T,2> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 3:
+	  ffdotPlnByBlk_ker<T,3> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 4:
+	  ffdotPlnByBlk_ker<T,4> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 5:
+	  ffdotPlnByBlk_ker<T,5> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 6:
+	  ffdotPlnByBlk_ker<T,6> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 7:
+	  ffdotPlnByBlk_ker<T,7> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 8:
+	  ffdotPlnByBlk_ker<T,8> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 9:
+	  ffdotPlnByBlk_ker<T,9> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	case 10:
+	  ffdotPlnByBlk_ker<T,10><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
+	  break;
+	default:
+	{
+	  fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, noBlk );
+	  exit(EXIT_FAILURE);
+	}
       }
     }
     else                  // Use block kernel
@@ -514,28 +632,50 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
       dimBlock.y = 16;
       dimBlock.z = 1;
 
-#ifdef CBL
-      float smSz;
-
-      smSz = pln->inpStride ; // TMP test
-      smSz = ( ceil(hw.val[pln->noHarms-1]*2 + pln->rSize*pln->noHarms) + 10) ;
-
-      if ( smSz < 6144*0.1 ) // ~% of SM	10: 4915
-      {
-
-	infoMSG(3,5,"Flat kernel\n");
-
-	// One block per harmonic, thus we can sort input powers in Shared memory
-	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
-	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-	int noTB = dimGrid.x * dimGrid.y ;
-
-	// Call the kernel to normalise and spread the input data
-	ffdotPlnSM_ker<T><<<dimGrid, dimBlock, smSz*sizeof(float2)*pln->noHarms, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-      }
-      else
-#endif
+//#ifdef CBL
+//      float smSz = 0 ;
+//
+//      //smSz = pln->inpStride ; // TMP test
+//      //smSz = ( ceil(hw.val[pln->noHarms-1]*2 + pln->rSize*pln->noHarms) + 10) ;
+//      for( int h = 0; h < pln->noHarms; h++)
+//      {
+//	smSz += ceil(hw.val[h]*2 + pln->rSize*(h+1) + 4 );
+//      }
+//
+//      if ( smSz < 6144*0.9 ) // ~% of SM	10: 4915
+//      {
+//
+//	infoMSG(3,5,"Flat kernel\n");
+//
+//	// One block per harmonic, thus we can sort input powers in Shared memory
+//	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
+//	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+//
+//	int noTB = dimGrid.x * dimGrid.y ;
+//
+//	// Call the kernel to normalise and spread the input data
+//	switch (pln->noHarms)
+//	{
+//	  case 1:
+//	    ffdotPlnSM_ker<T,1><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+//	    break;
+//	  case 2:
+//	    ffdotPlnSM_ker<T,2><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+//	    break;
+//	  case 4:
+//	    ffdotPlnSM_ker<T,4><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+//	    break;
+//	  case 8:
+//	    ffdotPlnSM_ker<T,8><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+//	    break;
+//	  case 16:
+//	    ffdotPlnSM_ker<T,16><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+//	    break;
+//	}
+//	//ffdotPlnSM_ker<T><<<dimGrid, dimBlock, smSz*sizeof(float2)*pln->noHarms*1.2, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
+//      }
+//      else
+//#endif
       {
 	infoMSG(3,5,"Flat kernel\n");
 
@@ -551,22 +691,25 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
 	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
-	// Call the kernel to normalise and spread the input data
+	// Call the kernel create a section of the f-fdot plane
 	ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm, hw);
       }
     }
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
-
     if ( sSpec->flags & FLAG_SYNCH )
-      CUDA_SAFE_CALL(cudaEventRecord(pln->compCmp, pln->stream),"Recording event: compCmp");
+      CUDA_SAFE_CALL(cudaEventRecord(pln->compCmp, pln->stream), "Recording event: compCmp");
 
   }
 
   FOLD // Copy data back to host  .
   {
     infoMSG(3,4,"Copy data back\n");
+
+    // TMP
+    CUDA_SAFE_CALL(cudaEventSynchronize(pln->compCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
 
     CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
     CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
@@ -597,20 +740,20 @@ int addPlnToTree(candTree* tree, cuOptCand* pln)
     {
       for (int indx = 0; indx < pln->noR ; indx++ )
       {
-        float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
-        {
-          initCand* canidate = new initCand;
+	float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
+	{
+	  initCand* canidate = new initCand;
 
-          canidate->numharm = pln->noHarms;
-          canidate->power   = yy2;
-          canidate->r       = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
-          canidate->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
-          canidate->sig     = yy2;
+	  canidate->numharm = pln->noHarms;
+	  canidate->power   = yy2;
+	  canidate->r       = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+	  canidate->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+	  canidate->sig     = yy2;
 
-          ggr++;
+	  ggr++;
 
-          tree->insert(canidate, 0.2 );
-        }
+	  tree->insert(canidate, 0.2 );
+	}
       }
     }
   }
@@ -622,250 +765,250 @@ int addPlnToTree(candTree* tree, cuOptCand* pln)
 
 candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn)
 {
-//  nvtxRangePush("opt_cont");
-//
-//  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
-//  initCand* iCand 	= (initCand*)cont->data;
+  //  nvtxRangePush("opt_cont");
+  //
+  //  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
+  //  initCand* iCand 	= (initCand*)cont->data;
 
-//
-//  optInitCandLocPlns(iCand, pln, nn );
-//
-//  accelcand* cand = new accelcand;
-//  memset(cand, 0, sizeof(accelcand));
-//
-//  int lrep      = 0;
-//  int noP       = 30;
-//  float snoop   = 0.3;
-//  float sz;
-//  float v1, v2;
-//
-//  const int mxRep = 10;
-//
-//  initCand* canidate = (initCand*)cont->data;
-//
-//  candTree* thisOpt = new candTree;
-//
-//  if ( canidate->numharm == 1  )
-//    sz = sSpec->optPlnSiz[0];
-//  if ( canidate->numharm == 2  )
-//    sz = sSpec->optPlnSiz[1];
-//  if ( canidate->numharm == 4  )
-//    sz = sSpec->optPlnSiz[2];
-//  if ( canidate->numharm == 8  )
-//    sz = sSpec->optPlnSiz[3];
-//  if ( canidate->numharm == 16 )
-//    sz = sSpec->optPlnSiz[4];
-//
-//  //int numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / pln->noHarms ;
-//
-//  //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
-//
-//  pln->halfWidth = 0;
-//
-//  int plt = 0;
-//
-//  if ( optpln01 > 0 )
-//  {
-//    noP               = optpln01 ;
-//    lrep              = 0;
-//    canidate->power   = 0;     // Set initial power to zero
-//    do
-//    {
-//      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
-//
-//      container* optC =  oTree->getLargest(canidate, 1);
-//
-//      if ( optC )
-//      {
-//        // This has feature has already been optimised!
-//        cont->flag |= REMOVE_CONTAINER;
-//        nvtxRangePop();
-//        return thisOpt;
-//      }
-//
-//      //addPlnToTree(thisOpt, pln);
-//
-//      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
-//      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
-//
-//      if ( ++lrep > mxRep )
-//      {
-//        break;
-//      }
-//    }
-//    while ( v1 > snoop || v2 > snoop );
-//    sz /= downScale;
-//  }
-//
-//  if ( optpln02 > 0 )
-//  {
-//    noP               = optpln02 ;
-//    lrep              = 0;
-//    canidate->power   = 0;     // Set initial power to zero
-//    do
-//    {
-//      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
-//
-//      container* optC =  oTree->getLargest(canidate, 1);
-//
-//      if ( optC )
-//      {
-//        // This has feature has already been optimised!
-//        cont->flag |= REMOVE_CONTAINER;
-//        nvtxRangePop();
-//        return thisOpt;
-//      }
-//
-//      //addPlnToTree(thisOpt, pln);
-//
-//      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
-//      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
-//
-//      if ( ++lrep > mxRep )
-//      {
-//        break;
-//      }
-//    }
-//    while ( v1 > snoop || v2 > snoop );
-//    sz /= downScale;
-//  }
-//
-//  if ( optpln03 > 0 )
-//  {
-//    noP               = optpln03 ;
-//    lrep              = 0;
-//    canidate->power   = 0;     // Set initial power to zero
-//    do
-//    {
-//      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
-//
-//      container* optC =  oTree->getLargest(canidate, 1);
-//
-//      if ( optC )
-//      {
-//        // This has feature has already been optimised!
-//        cont->flag |= REMOVE_CONTAINER;
-//        nvtxRangePop();
-//        return thisOpt;
-//      }
-//
-//      //addPlnToTree(thisOpt, pln);
-//
-//      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
-//      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
-//
-//      if ( ++lrep > mxRep )
-//      {
-//        break;
-//      }
-//    }
-//    while ( v1 > snoop || v2 > snoop );
-//    sz /= downScale*2;
-//  }
-//
-//  if ( optpln04 > 0 )
-//  {
-//    noP               = optpln04 ;
-//    lrep              = 0;
-//    canidate->power   = 0;     // Set initial power to zero
-//    do
-//    {
-//      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
-//
-//      container* optC =  oTree->getLargest(canidate, 1);
-//
-//      if ( optC )
-//      {
-//        // This has feature has already been optimised!
-//        cont->flag |= REMOVE_CONTAINER;
-//        nvtxRangePop();
-//        return thisOpt;
-//      }
-//
-//      //addPlnToTree(thisOpt, pln);
-//
-//      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
-//      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
-//
-//      if ( ++lrep > mxRep )
-//      {
-//        break;
-//      }
-//    }
-//    while ( v1 > snoop || v2 > snoop );
-//    sz /= downScale*2;
-//  }
-//
-//  if ( optpln05 > 0 )
-//  {
-//    noP               = optpln05 ;
-//    lrep              = 0;
-//    canidate->power   = 0;     // Set initial power to zero
-//    do
-//    {
-//      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
-//
-//      container* optC =  oTree->getLargest(canidate, 1);
-//
-//      if ( optC )
-//      {
-//        // This has feature has already been optimised!
-//        cont->flag |= REMOVE_CONTAINER;
-//        nvtxRangePop();
-//        return thisOpt;
-//      }
-//
-//      //addPlnToTree(thisOpt, pln);
-//
-//      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
-//      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
-//
-//      if ( ++lrep > mxRep )
-//      {
-//        break;
-//      }
-//    }
-//    while ( v1 > snoop || v2 > snoop );
-//    sz /= downScale*2;
-//  }
-//
-//  if ( optpln06 > 0 )
-//  {
-//    noP               = optpln06 ;
-//    lrep              = 0;
-//    canidate->power   = 0;     // Set initial power to zero
-//    do
-//    {
-//      generatePln<double>(canidate, fft, pln, noP, sz, plt++, nn );
-//
-//      container* optC =  oTree->getLargest(canidate, 1);
-//
-//      if ( optC )
-//      {
-//        // This has feature has already been optimised!
-//        cont->flag |= REMOVE_CONTAINER;
-//        nvtxRangePop();
-//        return thisOpt;
-//      }
-//
-//      //addPlnToTree(thisOpt, pln);
-//
-//      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
-//      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
-//
-//      if ( ++lrep > mxRep )
-//      {
-//        break;
-//      }
-//    }
-//    while ( v1 > snoop || v2 > snoop );
-//    sz /= downScale*2;
-//  }
-//
-//  cont->flag |= OPTIMISED_CONTAINER;
-//
-//  nvtxRangePop();
-//  return thisOpt;
+  //
+  //  optInitCandLocPlns(iCand, pln, nn );
+  //
+  //  accelcand* cand = new accelcand;
+  //  memset(cand, 0, sizeof(accelcand));
+  //
+  //  int lrep      = 0;
+  //  int noP       = 30;
+  //  float snoop   = 0.3;
+  //  float sz;
+  //  float v1, v2;
+  //
+  //  const int mxRep = 10;
+  //
+  //  initCand* canidate = (initCand*)cont->data;
+  //
+  //  candTree* thisOpt = new candTree;
+  //
+  //  if ( canidate->numharm == 1  )
+  //    sz = sSpec->optPlnSiz[0];
+  //  if ( canidate->numharm == 2  )
+  //    sz = sSpec->optPlnSiz[1];
+  //  if ( canidate->numharm == 4  )
+  //    sz = sSpec->optPlnSiz[2];
+  //  if ( canidate->numharm == 8  )
+  //    sz = sSpec->optPlnSiz[3];
+  //  if ( canidate->numharm == 16 )
+  //    sz = sSpec->optPlnSiz[4];
+  //
+  //  //int numindep        = (obs->rhi - obs->rlo ) * (obs->zhi +1 ) * (ACCEL_DZ / 6.95) / pln->noHarms ;
+  //
+  //  //printf("\n%03i  r: %15.6f   z: %12.6f \n", nn, cand->r, cand->z);
+  //
+  //  pln->halfWidth = 0;
+  //
+  //  int plt = 0;
+  //
+  //  if ( optpln01 > 0 )
+  //  {
+  //    noP               = optpln01 ;
+  //    lrep              = 0;
+  //    canidate->power   = 0;     // Set initial power to zero
+  //    do
+  //    {
+  //      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+  //
+  //      container* optC =  oTree->getLargest(canidate, 1);
+  //
+  //      if ( optC )
+  //      {
+  //        // This has feature has already been optimised!
+  //        cont->flag |= REMOVE_CONTAINER;
+  //        nvtxRangePop();
+  //        return thisOpt;
+  //      }
+  //
+  //      //addPlnToTree(thisOpt, pln);
+  //
+  //      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+  //      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+  //
+  //      if ( ++lrep > mxRep )
+  //      {
+  //        break;
+  //      }
+  //    }
+  //    while ( v1 > snoop || v2 > snoop );
+  //    sz /= downScale;
+  //  }
+  //
+  //  if ( optpln02 > 0 )
+  //  {
+  //    noP               = optpln02 ;
+  //    lrep              = 0;
+  //    canidate->power   = 0;     // Set initial power to zero
+  //    do
+  //    {
+  //      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+  //
+  //      container* optC =  oTree->getLargest(canidate, 1);
+  //
+  //      if ( optC )
+  //      {
+  //        // This has feature has already been optimised!
+  //        cont->flag |= REMOVE_CONTAINER;
+  //        nvtxRangePop();
+  //        return thisOpt;
+  //      }
+  //
+  //      //addPlnToTree(thisOpt, pln);
+  //
+  //      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+  //      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+  //
+  //      if ( ++lrep > mxRep )
+  //      {
+  //        break;
+  //      }
+  //    }
+  //    while ( v1 > snoop || v2 > snoop );
+  //    sz /= downScale;
+  //  }
+  //
+  //  if ( optpln03 > 0 )
+  //  {
+  //    noP               = optpln03 ;
+  //    lrep              = 0;
+  //    canidate->power   = 0;     // Set initial power to zero
+  //    do
+  //    {
+  //      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+  //
+  //      container* optC =  oTree->getLargest(canidate, 1);
+  //
+  //      if ( optC )
+  //      {
+  //        // This has feature has already been optimised!
+  //        cont->flag |= REMOVE_CONTAINER;
+  //        nvtxRangePop();
+  //        return thisOpt;
+  //      }
+  //
+  //      //addPlnToTree(thisOpt, pln);
+  //
+  //      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+  //      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+  //
+  //      if ( ++lrep > mxRep )
+  //      {
+  //        break;
+  //      }
+  //    }
+  //    while ( v1 > snoop || v2 > snoop );
+  //    sz /= downScale*2;
+  //  }
+  //
+  //  if ( optpln04 > 0 )
+  //  {
+  //    noP               = optpln04 ;
+  //    lrep              = 0;
+  //    canidate->power   = 0;     // Set initial power to zero
+  //    do
+  //    {
+  //      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+  //
+  //      container* optC =  oTree->getLargest(canidate, 1);
+  //
+  //      if ( optC )
+  //      {
+  //        // This has feature has already been optimised!
+  //        cont->flag |= REMOVE_CONTAINER;
+  //        nvtxRangePop();
+  //        return thisOpt;
+  //      }
+  //
+  //      //addPlnToTree(thisOpt, pln);
+  //
+  //      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+  //      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+  //
+  //      if ( ++lrep > mxRep )
+  //      {
+  //        break;
+  //      }
+  //    }
+  //    while ( v1 > snoop || v2 > snoop );
+  //    sz /= downScale*2;
+  //  }
+  //
+  //  if ( optpln05 > 0 )
+  //  {
+  //    noP               = optpln05 ;
+  //    lrep              = 0;
+  //    canidate->power   = 0;     // Set initial power to zero
+  //    do
+  //    {
+  //      generatePln<float>(canidate, fft, pln, noP, sz, plt++, nn );
+  //
+  //      container* optC =  oTree->getLargest(canidate, 1);
+  //
+  //      if ( optC )
+  //      {
+  //        // This has feature has already been optimised!
+  //        cont->flag |= REMOVE_CONTAINER;
+  //        nvtxRangePop();
+  //        return thisOpt;
+  //      }
+  //
+  //      //addPlnToTree(thisOpt, pln);
+  //
+  //      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+  //      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+  //
+  //      if ( ++lrep > mxRep )
+  //      {
+  //        break;
+  //      }
+  //    }
+  //    while ( v1 > snoop || v2 > snoop );
+  //    sz /= downScale*2;
+  //  }
+  //
+  //  if ( optpln06 > 0 )
+  //  {
+  //    noP               = optpln06 ;
+  //    lrep              = 0;
+  //    canidate->power   = 0;     // Set initial power to zero
+  //    do
+  //    {
+  //      generatePln<double>(canidate, fft, pln, noP, sz, plt++, nn );
+  //
+  //      container* optC =  oTree->getLargest(canidate, 1);
+  //
+  //      if ( optC )
+  //      {
+  //        // This has feature has already been optimised!
+  //        cont->flag |= REMOVE_CONTAINER;
+  //        nvtxRangePop();
+  //        return thisOpt;
+  //      }
+  //
+  //      //addPlnToTree(thisOpt, pln);
+  //
+  //      v1 = fabs(( pln->centR - canidate->r )/(pln->rSize/2.0));
+  //      v2 = fabs(( pln->centZ - canidate->z )/(pln->zSize/2.0));
+  //
+  //      if ( ++lrep > mxRep )
+  //      {
+  //        break;
+  //      }
+  //    }
+  //    while ( v1 > snoop || v2 > snoop );
+  //    sz /= downScale*2;
+  //  }
+  //
+  //  cont->flag |= OPTIMISED_CONTAINER;
+  //
+  //  nvtxRangePop();
+  //  return thisOpt;
   return NULL;
 }
 
@@ -883,7 +1026,8 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
     pln->noZ            = noP*2 + 1;
     pln->noR            = noP*2 + 1;
     pln->rSize          = scale;
-    pln->zSize          = scale*4.0;
+    //pln->zSize          = scale*4.0;
+    pln->zSize          = scale;
 
     if ( ffdotPln<T>(pln, fft) )
     {
@@ -1071,7 +1215,7 @@ void* optCandDerivs(void* ptr)
 
 	sig		= candidate_sigma_cu(cand->power, (ii), numindep );
 
-	//infoMSG(6,6,"Power %7.3f  Sig: %6.3f  Sum: Power %7.3f  Sig: %6.3f\n", power, candidate_sigma_cu(power, 1, 1 ), cand->power, sig );
+	//infoMSG(6,6,"Power %7.3f  Sig: %6.3f  Sum: Power %7.3f  Sig: %6.3f\n", power, candidate_sigma_cu(power, 1, 1 ), cand->power, sig ); // TMP
 
 	if ( sig > maxSig || ii == 1 )
 	{
@@ -1233,34 +1377,34 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int no )
     {
       if ( sSpec->optPlnDim[idx] > 0 )
       {
-        noP		= sSpec->optPlnDim[idx] ;
-        lrep		= 0;
-        cand->power	= 0;				// Set initial power to zero
+	noP		= sSpec->optPlnDim[idx] ;
+	lrep		= 0;
+	cand->power	= 0;				// Set initial power to zero
 
-        do
-        {
-          pln->centR	= cand->r ;
-          pln->centZ	= cand->z ;
-          if ( idx == NO_OPT_LEVS-1 )
-          {
-            // Last if last plane is not 0, it will be done with double precision
-            optInitCandPosPln<double>(cand, pln, noP, sz,  rep++, no );
-          }
-          else
-          {
-            // Standard single precision
-            optInitCandPosPln<float>(cand, pln, noP, sz,  rep++, no );
-          }
-          v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
-          v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+	do
+	{
+	  pln->centR	= cand->r ;
+	  pln->centZ	= cand->z ;
+	  if ( idx == NO_OPT_LEVS-1 )
+	  {
+	    // Last if last plane is not 0, it will be done with double precision
+	    optInitCandPosPln<double>(cand, pln, noP, sz,  rep++, no );
+	  }
+	  else
+	  {
+	    // Standard single precision
+	    optInitCandPosPln<float>(cand, pln, noP, sz,  rep++, no );
+	  }
+	  v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+	  v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-          if ( ++lrep > mxRep )
-          {
-            break;
-          }
-        }
-        while ( v1 > snoop || v2 > snoop );
-        sz /= sSpec->optPlnScale;
+	  if ( ++lrep > mxRep )
+	  {
+	    break;
+	  }
+	}
+	while ( v1 > snoop || v2 > snoop );
+	sz /= sSpec->optPlnScale;
       }
     }
   }
@@ -1386,7 +1530,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
       {
 	infoMSG(2,2,"\nOptimising initial candidate %i/%i, Power: %.3f  Sigma %.2f  Harm %i at (%.3f %.3f)\n", ti, numcands, candGPUP->power, candGPUP->sigma, candGPUP->numharm, candGPUP->r, candGPUP->z );
 
-	//if ( ti == 4 )
+	//	if ( ti == 13 )
 	opt_accelcand(candGPUP, oPlnPln, ti);
 
 #pragma omp atomic

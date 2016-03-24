@@ -59,7 +59,6 @@ int main(int argc, char *argv[])
 
       read_mak_input(&mdata);
       write_mak_file(&mdata);
-
    }
 
    sprintf(datafilenm, "%s.dat", mdata.basefilenm);

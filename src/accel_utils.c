@@ -509,6 +509,39 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
         rat = other_cand->r / (float)current_cand->r ;
         remove = 1;
       }
+
+      /* Check */
+      float inc = fabs( (current_cand->z - other_cand->z) / (float)(current_cand->r - other_cand->r) );
+      //inc = fabs(inc) - 1.0;
+
+      if ( inc > 1 )
+      {
+	printf("%10.4f\t%10.4f\t%10.4f\t%10.4f\t%10.4f\t \n", current_cand->z, other_cand->z, current_cand->r, other_cand->r, inc );
+	int tmp = 0;
+      }
+
+//      if ( ( current_cand->z == 40 || other_cand->z == 40 ) && ( current_cand->r > 10095 && other_cand->r > 10095 && current_cand->r < 10125 && other_cand->r < 10125 ) )
+//      {
+//	if (inc < 30 )
+//	{
+//	  int tmp = 0;
+//	  printf("%10.4f\n",inc);
+//	}
+//      }
+//      if ( ( current_cand->z == 40 || other_cand->z == 40 ) )
+//      {
+//	if (inc < 30 )
+//	{
+//	  int tmp = 0;
+//	  printf("%10.4f\n",inc);
+//	}
+//      }
+//
+//      if (/*remove == 0 &&*/ (inc < 1.1) && (inc > 0.9) )
+//      {
+//	remove = 1;
+//      }
+
       /* Remove the "other" cand */
       if (remove) {
         fprintf(pFile, "remove %15.2f h[%02i] (%6.2f)  - x %5.2f -  %15.2f h[%02i] (%6.2f) \n", current_cand->r, current_cand->numharm, current_cand->sigma, rat, other_cand->r, other_cand->numharm, other_cand->sigma );

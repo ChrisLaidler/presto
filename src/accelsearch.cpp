@@ -262,7 +262,7 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef CBL
-  if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		// Read candidates from previous search  . // TMP
+  if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		// DEBUG: Read candidates from previous search  .
   {
     int numcands;
     fread( &numcands, sizeof(numcands), 1, file );
@@ -918,7 +918,7 @@ int main(int argc, char *argv[])
     {
       /* Sort the candidates according to the optimized sigmas */
 
-      cands = sort_accelcands(cands);
+      //cands = sort_accelcands(cands);
 
 #ifdef CUDA
       if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
@@ -931,7 +931,7 @@ int main(int argc, char *argv[])
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
       {
-	eliminate_harmonics(cands, &numcands);
+	//eliminate_harmonics(cands, &numcands);
       }
 
       // Update the number of candidates
@@ -999,6 +999,8 @@ int main(int argc, char *argv[])
       printf("\n\n");
 
 #ifdef CBL
+      //exit(0); // TMP
+
       FOLD // TMP
       {
 	Logger slog(stdout);

@@ -589,6 +589,8 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
 
     if ( start < 0 )
     {
+      //printf("Start < 0\n"); // TMP
+      
       numkern += start;						// Decrease number of kernel values
       start    = 0;
     }
@@ -605,13 +607,18 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
     }
     else
     {
+      printf("start >= loR\n"); // TMP
+
       // Start is below beginning of available data so start at available data
       numkern -= loR - start;
       offset = ( r - loR);					// This is rc-k for the first bin
       start = 0;
     }
+
     if ( start + numkern >= noBins )
     {
+      printf("start + numkern >= noBins\n"); // TMP
+      
       numkern = noBins - start;
     }
   }

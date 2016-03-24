@@ -384,8 +384,8 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
 
-#ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is
-      if ( batch->flags & FLAG_SYNCH ) // TMP
+#ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is. In debug mode extra synchronisation is necessary
+      if ( batch->flags & FLAG_SYNCH )
       {
         infoMSG(4,4,"DEBUG synchronisation blocking.\n");
 

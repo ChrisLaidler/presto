@@ -9,7 +9,7 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHCBL    = no
+WITHCBL    = yes
 
 # CUDA_ARCH needs to be set to the artitech of the device(s) you wnat to run the search on
 # CUDA_ARCH should be a space seperated list consisting to numbers ie "30 50" 
@@ -19,7 +19,7 @@ CUDA_ARCH  =
 #CUDA_ARCH += 20
 #CUDA_ARCH += 30
 #CUDA_ARCH += 35
-#CUDA_ARCH += 50
+CUDA_ARCH += 50
 
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
