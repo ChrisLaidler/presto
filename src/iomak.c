@@ -205,6 +205,18 @@ void read_mak_input(makedata * mdata)
       mdata->onoff[0] = 0.0;
       mdata->onoff[1] = 1.0;
    }
+
+   srand(time(NULL));
+   printf("Enter first random seed, 0 to automatically generate: ");
+   scanf("%ul", &mdata->rand1 );
+   if ( !mdata->rand1 )
+     mdata->rand1 = rand();
+
+   printf("Enter second random seed, 0 to automatically generate: ");
+   scanf("%ul", &mdata->rand2 );
+   if ( !mdata->rand2 )
+     mdata->rand2 = rand();
+
    printf("\n");
 }
 
@@ -374,6 +386,18 @@ void read_mak_file(char basefilenm[], makedata * mdata)
       mdata->onoff[2 * i] = tmponoff[2 * i];
       mdata->onoff[2 * i + 1] = tmponoff[2 * i + 1];
    }
+
+   srand(time(NULL));
+   mdata->rand1 = 0;
+   fscanf(makefile, "%*[^=]= %ul", &mdata->rand1);
+   if(!mdata->rand1)
+     mdata->rand1 = rand();
+
+   mdata->rand2 = 0;
+   fscanf(makefile, "%*[^=]= %ul", &mdata->rand2);
+   if(!mdata->rand2)
+        mdata->rand2 = rand();
+
    fclose(makefile);
 }
 
@@ -427,6 +451,8 @@ void write_mak_file(makedata * mdata)
       i++;
    }
    while (mdata->onoff[2 * i - 1] != 1.0);
+   fprintf(makefile, "Rand1             = %lu\n",  mdata->rand1);
+   fprintf(makefile, "Rand2             = %lu\n",  mdata->rand2);
 
    fclose(makefile);
 }

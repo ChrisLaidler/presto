@@ -918,7 +918,7 @@ int main(int argc, char *argv[])
     {
       /* Sort the candidates according to the optimized sigmas */
 
-      //cands = sort_accelcands(cands);
+      cands = sort_accelcands(cands);
 
 #ifdef CUDA
       if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
@@ -931,7 +931,7 @@ int main(int argc, char *argv[])
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
       {
-	//eliminate_harmonics(cands, &numcands);
+	eliminate_harmonics(cands, &numcands);
       }
 
       // Update the number of candidates
@@ -949,7 +949,7 @@ int main(int argc, char *argv[])
 
       printf("Optimising the remaining %i initial candidates.\n\n", numcands);
 
-      if ( cmd->cpuP ) 	  	  // --=== The CPU Optimisation == --  .
+      if ( cmd->cpuP ) 	 	// --=== The CPU Optimisation == --  .
       {
 #ifdef CUDA // Profiling  .
 
@@ -980,7 +980,7 @@ int main(int argc, char *argv[])
 
       }
 
-      if ( cmd->gpuP )        // --=== The GPU Optimisation == --  .
+      if ( cmd->gpuP )        	// --=== The GPU Optimisation == --  .
       {
 #ifdef CUDA
 	//cands = candsGPU; // This is the original unoptimised list
@@ -1115,6 +1115,8 @@ int main(int argc, char *argv[])
 
       /* Write the fundamental fourierprops to the cand file */
 
+      printf("\nZZZZZZZZZZ\n\n");
+
       obs.workfile = chkfopen(obs.candnm, "wb");
       chkfwrite(props, sizeof(fourierprops), numcands, obs.workfile);
       fclose(obs.workfile);
@@ -1125,7 +1127,7 @@ int main(int argc, char *argv[])
       double N =   obs.N;
 
 #ifdef CBL // Chris: This is some temporary output to generate data for my thesis,
-      Fout // TMP
+      FOLD // TMP
       {
 	Fout // Test sigma calculations  .
 	{
@@ -1257,8 +1259,7 @@ int main(int argc, char *argv[])
 
 	  slog.csvEndLine();
 
-
-	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
+	  printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
 	}
       }
 #endif

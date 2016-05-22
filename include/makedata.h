@@ -61,6 +61,8 @@ typedef struct MAKEDATA {
   double noisesig;              /* Noise standard deviation              */
   int numonoff;			/* The number of onoff pairs in the data */
   double *onoff;		/* Bin number pairs where obs is "on"    */
+  ulong rand1;			/* First random seed 			 */
+  ulong rand2;			/* Second random seed 			 */
 } makedata;
 
 /*  Function Prototypes */

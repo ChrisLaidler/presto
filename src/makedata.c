@@ -123,15 +123,94 @@ int main(int argc, char *argv[])
    ont            = (*onoffpt++) * mdata.T;
    offt           = (*onoffpt++) * mdata.T;
 
-   // Seed the random generator (TODO: this could be a parameter)- added by Chris Laidler
-   srand(time(NULL));
-   setall(rand(),rand());
+   // Seed the random generator
+   setall(mdata.rand1, mdata.rand2);
 
    double pPower = 0;
    double dPower = 0;
 
    double SS1    = 0;
    double SS2    = 0;
+
+   // Write noise to file
+
+//   for (ct = 0, buffloc = 1; ct < mdata.N; ct++, buffloc++)
+//   {
+//
+//     /* Calculate percentage complete */
+//
+//     tb = ct * mdata.dt;
+//
+//     newper = (int) (tb / mdata.T * 100.0) + 1;
+//     if (newper > oldper)
+//     {
+//       printf("\rAmount Complete = %3d%%", newper);
+//       fflush(stdout);
+//       oldper = newper;
+//     }
+//     /*  Advance onoff pointers when signal turns off */
+//
+//     if (tb >= offt)
+//     {
+//       do
+//       {
+//	 ont   = (*onoffpt++) * mdata.T;
+//	 offt  = (*onoffpt++) * mdata.T;
+//       }
+//       while (tb >= offt);
+//     }
+//
+//     /*  Add Poissonian noise  */
+//
+//     if (mdata.noise == 1)
+//     {
+//       //	Fout
+//       //	{
+//       //	  // This is a method for testing - added by Chris Laidler
+//       //	  float dcSig = ignpoi(mdata.dc);
+//       //	  float psSig = ignpoi(signal);
+//       //
+//       //	  float p1 = dcSig*dcSig;
+//       //	  float p2 = (dcSig+psSig)*(dcSig+psSig);
+//       //
+//       //	  dPower += dcSig;
+//       //	  pPower += psSig;
+//       //
+//       //	  SS1     += p2;
+//       //	  SS2     += p2-p1;
+//       //
+//       //	  signal = dcSig + psSig;
+//       //	}
+//       //	else
+//       {
+//	 // This is the more efficient method
+//	 signal = (float)ignpoi(mdata.dc + signal);
+//       }
+//     }
+//
+//     /*  Add Gaussian noise or no noise */
+//
+//     else if (mdata.noisesig != 0.0)
+//     {
+//       signal = gennor(mdata.dc + signal, mdata.noisesig);
+//
+//       /*  Rounds if needed */
+//
+//       if (mdata.roundnum)
+//	 signal = floor(signal + 0.5);
+//     }
+//
+//     /*  Save data in buffer */
+//
+//     tempsig[buffloc - 1] = (float) signal;
+//
+//     /*  Write the data when needed */
+//
+//     if ((buffloc == BUFFSIZE) || (ct == mdata.N - 1)) {
+//       chkfwrite(&tempsig, sizeof(float), (unsigned long) buffloc, datfile);
+//       buffloc = 0;
+//     }
+//   }
 
    /* Main data loop */
 
