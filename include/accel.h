@@ -18,8 +18,8 @@
 // #define ACCEL_USELEN 3850	// This works up to zmax=100 to use 4K FFTs
 // #define ACCEL_USELEN 1820	// This works up to zmax=100 to use 2K FFTs
 
-//#undef  ACCEL_USELEN
-//#define ACCEL_USELEN  7456 // TMP added 16k
+#undef  ACCEL_USELEN
+#define ACCEL_USELEN  7456 // TMP added 8k
 
 #undef FOLD
 #undef FOUT
