@@ -377,8 +377,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   int noInStack[MAX_HARM_NO];
   void* d_kerHold[MAX_STACKS];			///< Temporary memory for kernels if we are doing double precision FFT's
 
-  //int noSrchHarms     = noGenHarms;
-
   noInStack[0]        = 0;
   size_t batchSize    = 0;                      ///< Total size (in bytes) of all the data need by a family (ie one step) excluding FFT temporary
   size_t fffTotSize   = 0;                      ///< Total size (in bytes) of FFT temporary memory
@@ -394,6 +392,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   int alignment       = gInf->alignment;
 
   presto_interp_acc  accuracy = LOWACC;
+
+  assert(sizeof(size_t) == 8);			// Check the compiler implimentation of size_t is 64 bits
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initKernel.");
 
@@ -437,8 +437,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       infoMSG(3,4,"in-mem?\n");
 
       int noarms        = (1 << (sInf->noHarmStages - 1) );
-
-      double plnX       = ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo/(double)noarms ) / (double)( ACCEL_DR ) ; // The number of bins
       int    plnY       = calc_required_z(1.0, (float)sInf->sSpec->zMax );
 
       if ( sInf->sSpec->flags & FLAG_HALF )
@@ -460,7 +458,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         accuracy = HIGHACC;
 
       // Calculate "approximate" plane width
-      uint accelLen     = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
+      size_t accelLen   = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
       accelLen          = floor( accelLen/(float)(sInf->noSrchHarms*ACCEL_RDR) ) * (sInf->noSrchHarms*ACCEL_RDR);	// Adjust to be divisible by number of harmonics
       float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, accelLen, accuracy );
       int noStepsP    	= ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo / (double)sInf->noSrchHarms ) / (double)( accelLen * ACCEL_DR ) ; // The number of planes to make
@@ -1693,10 +1691,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
         {
-          uint noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
-          uint nX             = noStepsP * kernel->accelLen;
-          uint nY             = kernel->hInfos->height;
-          planeSize          += nX * nY * plnElsSZ ;
+          size_t noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
+          size_t nX             = noStepsP * kernel->accelLen;
+          size_t nY             = kernel->hInfos->height;
+          planeSize	       += nX * nY * plnElsSZ;
         }
       }
 
@@ -1782,7 +1780,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
           if ( kernel->flags & FLAG_HALF )
           {
-            printf(" (using half precision)\n");
+            printf(" ( using half precision )\n");
           }
           else
           {
@@ -1837,13 +1835,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         nvtxRangePush("in-mem alloc");
 
-        uint    noStepsP =  ceil(sInf->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
-        uint    nX       = noStepsP * kernel->accelLen;
-        uint    nY       = kernel->hInfos->height;
-        size_t  stride;
+        size_t noStepsP =  ceil(sInf->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
+        size_t nX       = noStepsP * kernel->accelLen;
+        size_t nY       = kernel->hInfos->height;
+        size_t stride;
 
-        CUDA_SAFE_CALL(cudaMallocPitch(&sInf->d_planeFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate device memory for getMemAlignment.");
-        CUDA_SAFE_CALL(cudaMemsetAsync(sInf->d_planeFull, 0, stride*nY, kernel->stacks->initStream),"Failed to initiate plane memory to zero");
+        CUDA_SAFE_CALL(cudaMallocPitch(&sInf->d_planeFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate strided memory for in-memory plane.");
+        CUDA_SAFE_CALL(cudaMemsetAsync(sInf->d_planeFull, 0, stride*nY, kernel->stacks->initStream),"Failed to initiate in-memory plane to zero");
 
         sInf->inmemStride = stride / plnElsSZ;
 
@@ -4698,7 +4696,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.optPlnSiz[3]	= 5;
     sSpec.optPlnSiz[4]	= 4;
 
-    sSpec.optPlnScale	= 10;
+    sSpec.optPlnScale	 = 10;
     sSpec.optMinLocHarms = 1;
     sSpec.optMinRepHarms = 1;
 
@@ -5109,7 +5107,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 	  {
 	    float noP = log10( srch->powerCut[ii] );
 	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
-	
+
 	    srch->powerCut[ii] -= dp*(1<<ii);			// Subtract one significant value for each harmonic
 	  }
         }

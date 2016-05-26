@@ -17,7 +17,7 @@ WITHCBL    = yes
 # You can use multiple values, just uncomment the specific lines below, or add youre own
 CUDA_ARCH  =
 #CUDA_ARCH += 20
-#CUDA_ARCH += 30
+CUDA_ARCH += 30
 #CUDA_ARCH += 35
 CUDA_ARCH += 50
 
@@ -319,7 +319,7 @@ ifeq ($(WITH_CUDA),yes)
 
   CUACCL     	= -lcuaccel$(POSTFIX)
 
-  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX) $(BINPATH)/getAccelLen$(POSTFIX)
+  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/getAccelLen$(POSTFIX) # $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
 	# Check for CUDA 6.5 for CUFFT callbacks 
 	ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
@@ -374,7 +374,7 @@ SLA_SRCS	= $(wildcard slalib/*.f)
 SLA_SRCS	:= $(filter-out slalib/sla_test.f, $(SLA_SRCS))
 SLA_OBS		= $(patsubst %.f, %.o,  $(SLA_SRCS)  )
 
-libpresto		= $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
+libpresto	= $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
 libcuaccel	= $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
 all: libpresto slalib binaries $(GPUOUTP)
@@ -495,7 +495,7 @@ $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearc
 $(BINPATH)/getAccelLen$(POSTFIX): $(OBJDIR)accel_utils.o $(OBJDIR)getAccelLen.o $(NVCC_OBS) $(libpresto) 
 	@echo ""
 	@echo "Linking getAccelLen"${POSTFIX}
-	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm # -lcuaccel$(POSTFIX) 
+	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),getAccelLen${POSTFIX})
 
 check_parkes_raw: $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(libpresto)
@@ -706,7 +706,7 @@ cleancubasics:
 	rm -f build/*/cuda_accel_SS.cu.o
 	rm -f build/*/cuda_accel_utils.cu.o
 	rm -f build/*/cuda_cand_OPT.cu.o
-	rm -f build/*/cuda_utils.cu.cu.o
+	rm -f build/*/cuda_utils.cu.cu.oF
 	rm -f build/*/accelsearch.o
 	rm -f build/*/test_GPUaccel.o
 	

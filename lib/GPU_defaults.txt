@@ -57,8 +57,8 @@ MUL_CHUNK	9		# The number of values to buffer in the multiplication kernel (this
 #FLAG_CONV			# Do the multiplication and iFFT "together"	ie multiply and iFFT each stack one after the other
 
 # Which order to call stacks
-#FLAG_STK_DOWN			# larges to smallest
-#FLAG_STK_UP			# smallest to larges
+#FLAG_STK_DOWN			# largest to smallest
+#FLAG_STK_UP			# smallest to largest
 
 ######### FFT ############
 
@@ -112,8 +112,8 @@ CU_CAND_ARR			# Use an array 			(Fast access, but requires more CPU memory)
 
 ###### Optimisation ########
 
-FLAG_OPT_MEDIAN  		# [ Default ] Use 1D median power for normalisation
-#FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation
+#FLAG_OPT_MEDIAN  		# [ Default ] Use 1D median power for normalisation
+FLAG_OPT_LOCAVE  		# Use Local 3D power average for normalisation
 
 #FLAG_OPT_BEST			# Report the harmonic with the highest sigma value rather than the number of harmonic found with
 
@@ -126,20 +126,20 @@ OPT_MIN_REP_HARMS	24	#
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
-optPlnDim01 100			# The number of elements in the 1st optimisation plane
-optPlnDim02 0			# The number of elements in the 2nd optimisation plane
-optPlnDim03 0			# The number of elements in the 3rd optimisation plane
-optPlnDim04 0			# The number of elements in the 4th optimisation plane
+optPlnDim01 40			# The number of elements in the 1st optimisation plane
+optPlnDim02 20			# The number of elements in the 2nd optimisation plane
+optPlnDim03 20			# The number of elements in the 3rd optimisation plane
+optPlnDim04 10			# The number of elements in the 4th optimisation plane
 optPlnDim05 0			# The number of elements in the 5th optimisation plane
-optPlnDim06 0			# The number of elements in the 6th optimisation plane (this is a double preseason plane)
+optPlnDim06 5			# The number of elements in the 6th optimisation plane (this is a double precision plane)
 
 # The Numbers below dictate the size in bins of the incremental planes used to refine the location of the maximum f-fdot value
 # Lager numbers will explore the f-fdot plane faster but will reduce resolution
-optPlnSiz01 100
-optPlnSiz02 100
-optPlnSiz04 100
-optPlnSiz08 100
-optPlnSiz16 100
+optPlnSiz01 8
+optPlnSiz02 7
+optPlnSiz04 6
+optPlnSiz08 5
+optPlnSiz16 4
 
 
 ###### Debug ########
@@ -152,12 +152,12 @@ DBG_LEV 0			# [Debug]	The level of debug messages to print 0 -> non  more with i
 #	4			# Debug 3
 #	5			# Debug 4
 
-FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
+#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 #FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
 #FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
 #FLAG_DPG_PRNT_CAND		# [ Debug ]	Print CSV of candidates at various stages
 
-FLAG_DBG_SYNCH			# [ Debug ]	Perform a synchronous search
+#FLAG_DBG_SYNCH			# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_TIMING   		# [ Debug ]	Perform advanced timing the search
 
 
