@@ -931,7 +931,7 @@ int main(int argc, char *argv[])
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
       {
-	eliminate_harmonics(cands, &numcands);
+	//eliminate_harmonics(cands, &numcands);
       }
 
       // Update the number of candidates
@@ -999,8 +999,6 @@ int main(int argc, char *argv[])
       printf("\n\n");
 
 #ifdef CBL
-      //exit(0); // TMP
-
       FOLD // TMP
       {
 	Logger slog(stdout);
@@ -1013,9 +1011,9 @@ int main(int argc, char *argv[])
 	  cand    = (accelcand *) (listptr->data);
 	  listptr = listptr->next;
 
-	  Fout
+//	  Fout
 
-	  slog.csvWrite("idx","%i",ii);
+	  slog.csvWrite("TAG","cnd");
 
 	  slog.csvWrite("int freq","%9.7f",cand->init_r/T);
 	  slog.csvWrite("opt freq","%9.7f",cand->r/T);
@@ -1035,9 +1033,10 @@ int main(int argc, char *argv[])
 	  slog.csvEndLine();
 
 
-	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
+	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma /*,pSum, pSum2*/  );
 	}
       }
+      exit(0); // TMP;
 #endif
 
       // Re sort with new sigma values

@@ -208,12 +208,12 @@ void read_mak_input(makedata * mdata)
 
    srand(time(NULL));
    printf("Enter first random seed, 0 to automatically generate: ");
-   scanf("%ul", &mdata->rand1 );
+   scanf("%lu", &mdata->rand1 );
    if ( !mdata->rand1 )
      mdata->rand1 = rand();
 
    printf("Enter second random seed, 0 to automatically generate: ");
-   scanf("%ul", &mdata->rand2 );
+   scanf("%lu", &mdata->rand2 );
    if ( !mdata->rand2 )
      mdata->rand2 = rand();
 
@@ -389,12 +389,12 @@ void read_mak_file(char basefilenm[], makedata * mdata)
 
    srand(time(NULL));
    mdata->rand1 = 0;
-   fscanf(makefile, "%*[^=]= %ul", &mdata->rand1);
+   fscanf(makefile, "%*[^=]= %lu", &mdata->rand1);
    if(!mdata->rand1)
      mdata->rand1 = rand();
 
    mdata->rand2 = 0;
-   fscanf(makefile, "%*[^=]= %ul", &mdata->rand2);
+   fscanf(makefile, "%*[^=]= %lu", &mdata->rand2);
    if(!mdata->rand2)
         mdata->rand2 = rand();
 

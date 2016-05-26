@@ -9,16 +9,25 @@ extern "C"
 #include "accel.h"
 }
 
-#include "cuda_accel.h"
-#include "cuda_utils.h"
+//#include "cuda_accel.h"
+//#include "cuda_utils.h"
 #include "cuda_accel_utils.h"
-#include "cuda_accel_IN.h"
+//#include "cuda_accel_IN.h"
 
 int main(int argc, char *argv[])
 {
   bool usage = 0 ;
 
-  int accelLen = 0;
+  uint accelLen = 0;
+
+  if ( argc != 4 )
+    usage = true;
+
+  if (usage )
+  {
+    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 10 <= zmanx <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
+    return(1);
+  }
 
   float zmax    = atof(argv[1]);
   float width   = atof(argv[2]);
@@ -38,14 +47,7 @@ int main(int argc, char *argv[])
     usage = true;
   }
 
-  if ( argc != 4 )
-    usage = true;
 
-  if (usage )
-  {
-    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 10 <= zmanx <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
-    return(1);
-  }
 
   presto_interp_acc  accuracy = LOWACC;
 
@@ -106,7 +108,7 @@ int main(int argc, char *argv[])
     accelLen = calcAccellen(width, zmax, accuracy);
   }
 
-  printf("%.0f\n", accelLen);
+  printf("%u\n", accelLen);
 
 //  {
 //    float szzz = pow(2 , idx );

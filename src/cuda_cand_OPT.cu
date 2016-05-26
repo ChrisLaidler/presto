@@ -26,16 +26,16 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft /*, int noHarms*/, int
 
   const int	blkSz	= blockDim.x * blockDim.y;
   const int	tid	= blockDim.x * threadIdx.y + threadIdx.x;
-  const int	bid 	= blockIdx.y * gridDim.x + blockIdx.x;
+  //const int	bid 	= blockIdx.y * gridDim.x + blockIdx.x;
 
   extern __shared__ float2 smmm[];
 
-  __shared__ unsigned int sSum;
+  //__shared__ unsigned int sSum;
 
   __syncthreads();
 
-  if ( tid == 0 )
-    sSum = 0;
+//  if ( tid == 0 )
+//    sSum = 0;
 
   __syncthreads();
 
@@ -58,7 +58,7 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft /*, int noHarms*/, int
   int	noStp;
   int	bOff;
 
-  double bwidth = (blockDim.x) / (double)(noR-1) * rSZ ;
+  //double bwidth = (blockDim.x) / (double)(noR-1) * rSZ ;
 
   int buff = 1;
 
@@ -74,7 +74,7 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft /*, int noHarms*/, int
 //    //	powers[iy*oStride + ix] = 172 ;
 //  }
 
-  int nno = 0;
+  //int nno = 0;
 
   int bIdx = 0;
   for( int i = 1; i <= noHarms; i++ )

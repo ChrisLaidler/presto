@@ -105,6 +105,7 @@ CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
 PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(FFTLINK)
+CUACCELLINK = ""
 
 CC 	= gcc
 CPP = g++
@@ -318,7 +319,7 @@ ifeq ($(WITH_CUDA),yes)
 
   CUACCL     	= -lcuaccel$(POSTFIX)
 
-  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX) $(BINPATH)/getAccelLen$(POSTFIX)
 
 	# Check for CUDA 6.5 for CUFFT callbacks 
 	ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
@@ -419,6 +420,9 @@ slalib: slalib/sla_test test_sla
 test_GPUaccel: $(BINPATH)/test_GPUaccel$(POSTFIX)
 	@ # Make file cant handle blank targets so here is a random comment =/
 
+getAccelLen: $(BINPATH)/getAccelLen$(POSTFIX)
+	@ # Make file cant handle blank targets so here is a random comment =/
+
 accelsearch: $(BINPATH)/accelsearch$(POSTFIX)
 	@ # Make file cant handle blank targets so here is a random comment =/
 
@@ -487,6 +491,13 @@ $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearc
 	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),test_GPUaccel${POSTFIX})
 
+
+$(BINPATH)/getAccelLen$(POSTFIX): $(OBJDIR)accel_utils.o $(OBJDIR)getAccelLen.o $(NVCC_OBS) $(libpresto) 
+	@echo ""
+	@echo "Linking getAccelLen"${POSTFIX}
+	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm # -lcuaccel$(POSTFIX) 
+	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),getAccelLen${POSTFIX})
+
 check_parkes_raw: $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(PRESTOLINK) -lm
 
@@ -541,7 +552,7 @@ cal2mjd: $(OBJDIR)cldj.o $(OBJDIR)cal2mjd.o
 plotbincand: $(OBJDIR)plotbincand.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) $(OBJDIR)plotbincand.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-profile: profile_cmd.c $(OBJDIR)profile_cmd.o $(OBJDIR)profile.o $(PLOT2DOBJS) $(libpresto)
+profile: profile_cmd.c $(OBJDIR)profile_cmd.o $(OBJDIR)profile.o $(PLOT2DOBJS) ${POSTFIX}
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) $(OBJDIR)profile.o $(OBJDIR)profile_cmd.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
 psrorbit: $(OBJDIR)psrorbit.o $(PLOT2DOBJS) $(libpresto)
@@ -656,6 +667,10 @@ mpiprepsubband.o: mpiprepsubband.c
 	mpicc $(CLINKFLAGS) -o $@ -c $<
 
 $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
+	@mkdir -p $(OBJDIR)
+	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+
+$(OBJDIR)getAccelLen.o: getAccelLen.cpp
 	@mkdir -p $(OBJDIR)
 	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 

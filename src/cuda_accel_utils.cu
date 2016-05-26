@@ -461,10 +461,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       // Calculate "approximate" plane width
       uint accelLen     = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
+      accelLen          = floor( accelLen/(float)(sInf->noSrchHarms*ACCEL_RDR) ) * (sInf->noSrchHarms*ACCEL_RDR);	// Adjust to be divisible by number of harmonics
       float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, accelLen, accuracy );
+      int noStepsP    	= ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo / (double)sInf->noSrchHarms ) / (double)( accelLen * ACCEL_DR ) ; // The number of planes to make
+      noStepsP		= ceil(noStepsP/(float)noSteps)*noSteps;
 
-      double totalSize  = plnX * plnY * plnElsSZ ;
-      double appRoxWrk  = plnY * fftLen * ( 4 * 3 + 1) ; // 4 planes * ( input + CUFFT )
+      double totalSize  = (noStepsP * accelLen) * plnY * plnElsSZ ;
+      double appRoxWrk	= fftLen * sizeof(fcomplexcu) * noSteps * ( plnY * 3 + 4 ) ; // 3 planes: fft, pln, powers  and  some input and output
 
       if ( totalSize + appRoxWrk < free )
       {
@@ -639,7 +642,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         powElsSZ = sizeof(fcomplexcu);
       }
-
     }
   }
 
@@ -1004,7 +1006,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           kernel->plnDataSize +=  cStack->strideCmplx * cStack->height    * cmpElsSZ;
 
           if ( !(kernel->flags & FLAG_CUFFT_CB_INMEM) )
-            kernel->pwrDataSize +=  cStack->stridePower * cStack->height    * powElsSZ;
+            kernel->pwrDataSize +=  cStack->stridePower * cStack->height  * powElsSZ;
         }
       }
     }
@@ -1736,9 +1738,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else
         {
-          printf("      There is not enough memory to crate %i batches with one plane each.\n", noBatches);
+          printf("      There is not enough memory to create %i batches with one plane each.\n", noBatches);
 
-          float noSteps1    = ( free ) / (double) ( fffTotSize + batchSize ) ;
+          float noSteps1    = ( free - planeSize ) / (double) ( fffTotSize + batchSize ) ;
           noSteps           = MIN(MAX_STEPS, floor(noSteps1));
           kernel->noSteps   = noSteps;
           noBatches         = 1;
