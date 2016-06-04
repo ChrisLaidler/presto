@@ -1715,7 +1715,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
       freeRam = getFreeRamCU();
 
-      printf("   There is a total of %.2f GiB of device memory of which there is %.2f GiB free and %.2f GiB free host memory.\n",total / 1073741824.0, (free )  / 1073741824.0, freeRam / 1073741824.0 );
+      printf("   There is a total of %.2f GiB of device memory, %.2f GiB is free. There is %.2f GiB free host memory.\n",total / 1073741824.0, (free ) / 1073741824.0, freeRam / 1073741824.0 );
 
       FOLD // Calculate size of various memory's'  .
       {
@@ -2309,7 +2309,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
         cuFfdotStack* cStack  = &batch->stacks[i];
 
-        FOLD // multiplication kernel  .
+        FOLD // Multiplication kernel  .
         {
           if ( !(cStack->flags & FLAG_MUL_ALL ) )   // Default to multiplication  .
           {
@@ -2396,7 +2396,15 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           }
 
           // Clamp to size of kernel (ie height of the largest plane)
-          cStack->mulSlices = MIN(cStack->mulSlices,cStack->kerHeigth/2.0);
+          MINN(cStack->mulSlices, cStack->kerHeigth/2.0);
+          MAXX(cStack->mulSlices, 1);
+
+          infoMSG(5,5,"stack %i  mulSlices %2i \n",i, cStack->mulSlices);
+
+          if ( i == 0 && batch->mulSlices == 0 )
+          {
+            batch->mulSlices = cStack->mulSlices;
+          }
         }
 
         FOLD // Chunk size  .
@@ -2408,8 +2416,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
           // Clamp to size of kernel (ie height of the largest plane)
           cStack->mulChunk = MIN( cStack->mulChunk, ceil(cStack->kerHeigth/2.0) );
+
+          if ( i == 0 )
+            batch->mulChunk = cStack->mulChunk;
         }
       }
+
     }
 
     FOLD // Sum and search flags  .
@@ -2422,7 +2434,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       if ( batch->ssChunk <= 0 )
       {
         //kernel->ssChunk         = 8 ;
-        float val = 30.0 / (float) batch->noSteps ;
+        float val = 30.0 / (float) batch->noSteps ; // TODO: Where did I get these values from?
 
         batch->ssChunk = MAX(MIN(floor(val), 9),1);
       }
@@ -3838,6 +3850,7 @@ gpuSpecs gSpec(int devID = -1 )
 gpuSpecs readGPUcmd(Cmdline *cmd)
 {
   gpuSpecs gpul;
+  memset(&gpul, 0 , sizeof(gpuSpecs));
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering readGPUcmd.");
 
@@ -4737,8 +4750,9 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.optMinLocHarms = 1;
     sSpec.optMinRepHarms = 1;
 
-    sSpec.mulSlices	= 5 ;
-    sSpec.ssSlices	= 5 ;
+    // Ddefault: Auto chose best!
+    sSpec.mulSlices	= 0 ;
+    sSpec.ssSlices	= 0 ;
   }
 
   // Now read the
@@ -4772,6 +4786,9 @@ void initPlanes(cuSearch* sSrch )
 
   FOLD // Create the primary stack on each device, this contains the kernel  .
   {
+    // Wait for cuda context to complete
+    compltCudaContext(sSrch->gSpec);
+
     infoMSG(2,2,"Create the primary stack/kernel on each device\n");
 
     nvtxRangePush("Initialise Kernels");
@@ -4830,8 +4847,6 @@ void initPlanes(cuSearch* sSrch )
 
     int bNo = 0;
     int ker = 0;
-
-
 
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
     {
@@ -5176,6 +5191,8 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   infoMSG(1,0,"Initialise CU search data structures\n");
+
+
 
   if ( !srch )
   {
@@ -6133,4 +6150,99 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
   }
 
   return (0);
+}
+
+void* contextInitTrd(void* ptr)
+{
+  //long long* contextInit = (long long*)malloc(sizeof(long long));
+  //*contextInit = 0;
+
+  struct timeval start, end;
+  gpuSpecs* gSpec = (gpuSpecs*)ptr;
+
+  // Start the timer
+  gettimeofday(&start, NULL);
+
+  nvtxRangePush("Context");
+  initGPUs(gSpec);
+  nvtxRangePop();
+
+  gettimeofday(&end, NULL);
+  gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+  pthread_exit(&gSpec->nctxTime);
+
+  return (NULL);
+}
+
+long long initCudaContext(gpuSpecs* gSpec)
+{
+  if (gSpec)
+  {
+    infoMSG(4, 4, "Creating context pthread for CUDA context initialisation.\n");
+
+    int iret1 = pthread_create( &gSpec->cntxThread, NULL, contextInitTrd, (void*) gSpec);
+
+    if ( iret1 )
+    {
+      struct timeval start, end;
+
+      fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
+      gSpec->cntxThread = 0;
+
+      // Start the timer
+      gettimeofday(&start, NULL);
+
+      nvtxRangePush("Context");
+      printf("Initializing CUDA context's\n");
+      initGPUs(gSpec);
+      nvtxRangePop();
+
+      gettimeofday(&end, NULL);
+      gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    }
+  }
+
+  return 0;
+}
+
+long long compltCudaContext(gpuSpecs* gSpec)
+{
+  if ( gSpec)
+  {
+    if ( gSpec->cntxThread )
+    {
+      nvtxRangePush("Wait on context thread");
+      infoMSG(4, 4, "Wait on CUDA context thread\n");
+
+      printf("Waiting for CUDA context initialisation complete ...");
+      fflush(stdout);
+
+      void *status;
+      if ( !pthread_join(gSpec->cntxThread, &status) )
+      {
+        gSpec->nctxTime += *(long long *)(status);
+      }
+      else
+      {
+        fprintf(stderr,"ERROR: Failed to join context thread.\n");
+      }
+
+      printf("\r                                                          ");
+      fflush(stdout);
+
+      gSpec->cntxThread = 0;
+
+      infoMSG(4, 4, "Done\n");
+      nvtxRangePop();
+    }
+
+    return gSpec->nctxTime;
+  }
+  else
+  {
+    fprintf(stderr,"ERROR: Called %s with NULL pointer.\n", __FUNCTION__ );
+  }
+
+  return 0;
 }

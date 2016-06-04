@@ -1198,6 +1198,8 @@ void* optCandDerivs(void* ptr)
       }
       //infoMSG(6,6,"locpow %.5f \n", locpow );
 
+      locpow = 1.0 ; //RODO: Remove this!!!!!!!!!!
+
       if ( locpow )
       {
 	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii) + 4.0, HIGHACC);

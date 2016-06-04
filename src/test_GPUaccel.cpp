@@ -597,26 +597,6 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
   printf("\n");
 }
 
-void* contextInitTrd(void* ptr)
-{
-  long long* contextInit = (long long*)malloc(sizeof(long long));
-  struct timeval start, end;
-  *contextInit = 0;
-  gpuSpecs* gSpec = (gpuSpecs*)ptr;
-
-  // Start the timer
-  gettimeofday(&start, NULL);
-
-  nvtxRangePush("Context");
-  initGPUs(gSpec);
-  nvtxRangePop();
-
-  gettimeofday(&end, NULL);
-  *contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-
-  pthread_exit(contextInit);
-}
-
 int main(int argc, char *argv[])
 {
   int ii;
@@ -659,7 +639,15 @@ int main(int argc, char *argv[])
   showOptionValues();
 #endif
 
+
   cmd = parseCmdline(argc, argv);
+
+#ifdef CUDA
+  if (cmd->lsgpuP) // List GPU's  .
+  {
+    listDevices();
+  }
+#endif
 
   printf("\n\n");
   printf("    Fourier-Domain Acceleration Search Routine\n");
@@ -728,23 +716,7 @@ int main(int argc, char *argv[])
   sSpec.flags        |= FLAG_SEPRVAL;
   sSpec.flags        |= FLAG_SYNCH;			// Synchronous
 
-  iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
-  if ( iret1 )
-  {
-    fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
-    cntxThread = 0;
-
-    // Start the timer
-    gettimeofday(&start, NULL);
-
-    nvtxRangePush("Context");
-    printf("Initializing CUDA context's\n");
-    initGPUs(&gSpec);
-    nvtxRangePop();
-
-    gettimeofday(&end, NULL);
-    contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-  }
+  contextInit        += initCudaContext(&gSpec);
 #endif
 
   char fname[1024];
@@ -814,18 +786,8 @@ int main(int argc, char *argv[])
       gettimeofday(&start, NULL); // Note could start the timer after kernel init
 #endif
 
-      if ( cntxThread ) // Wait for context thread to finish  .
-      {
-        void *status;
-        if ( !pthread_join(cntxThread, &status) )
-        {
-          contextInit = *(long long *)(status);
-        }
-        else
-        {
-          fprintf(stderr,"ERROR: Failed to join context thread.\n");
-        }
-      }
+      // Wait for context thread to finish  .
+      contextInit += compltCudaContext(&gSpec);
 
       //cudaDeviceSynchronize();          // This is only necessary for timing
       gettimeofday(&start, NULL);       // Profiling
@@ -841,10 +803,10 @@ int main(int argc, char *argv[])
 	float real;
 	float imag;
 
-	calc_response_off<double>(0.5, 0, &realD, &imagD);
-
 	Fout // TMP testing stuff response  .
 	{
+	  //calc_response_off<double>(0.5, 0, &realD, &imagD);
+
 	  double r 	= 100.0;
 	  double z 	= 1e-7;
 	  float hm 	= 10;
@@ -954,9 +916,8 @@ int main(int argc, char *argv[])
               obs.ffdotplane = gen_fvect(memuse / sizeof(float));
             }
           }
-          else
+          else  // Set the CPU search to be in-mem
           {
-            // Set the CPU search to be in-mem
             if ( obs.inmem ) // Force to standard search  .
             {
               obs.inmem = 0;

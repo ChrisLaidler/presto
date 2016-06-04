@@ -14,73 +14,91 @@ __global__ void mult30_k(const __restrict__ fcomplexcu* kernels, const __restric
   ffdot   += ix;
   datas   += ix;
 
+  int pHeight = 0;
+
   for (int n = 0; n < noPlanes; n++)                  // Loop over planes  .
   {
-    const int stride   = STRIDE_HARM[n];
-    const int height   = HEIGHT_HARM[n];
-    fcomplexcu* ker    = (fcomplexcu*)KERNEL_HARM[n] + ix;
+    const int stride      = STRIDE_HARM[n];
 
     if ( ix < stride )
     {
+      const int plnHeight = HEIGHT_HARM[n];
+      const int plnStride = plnHeight*stride;
+      const short lDepth  = ceilf(plnHeight/(float)gridDim.y);
+      const short y0      = lDepth*blockIdx.y;
+      const short y1      = MIN(y0+lDepth, plnHeight);
+      fcomplexcu* ker     = (fcomplexcu*)KERNEL_HARM[n] + y0 * stride + ix;
+
       // read input for each step into registers
       for (int step = 0; step < noSteps; step++)      // Loop over planes  .
       {
-        input[step]      = datas[step*stride];
+        input[step]       = datas[step*stride];
 
         // Normalise
-        input[step].r   /= (float) stride ;
-        input[step].i   /= (float) stride ;
+        input[step].r    /= (float) stride ;
+        input[step].i    /= (float) stride ;
       }
 
       // Stride input data
-      datas        += stride*noSteps;
+      datas              += stride*noSteps;
 
-      short   lDepth  = ceilf(height/(float)gridDim.y);
-      short   y0      = lDepth*blockIdx.y;
-      short   y1      = MIN(y0+lDepth, height);
-
-      //for (int iy = 0; iy < height; iy++)           // Loop over individual plane  .
-      for (int iy = y0; iy < y1; iy++)              // Loop over individual plane  .
+      for (int planeY = y0; planeY < y1; planeY++)              // Loop over individual plane  .
       {
-        const int plnOffset = iy*stride;
-        const int PlnStride = height*stride;
+        int off1;
+        FOLD // Calculate partial offset  .
+        {
+          if      ( FLAGS & FLAG_ITLV_ROW )
+          {
+            off1  = pHeight + planeY*noSteps*stride;
+          }
+          else
+          {
+            off1  = pHeight + planeY*stride;
+          }
+        }
 
         // Multiply and write data
         for (int step = 0; step < noSteps; step++)  // Loop over steps  .
         {
-          // Multiply
-          fcomplexcu val;
+          // 
+          fcomplexcu out;
+          fcomplexcu ipd = input[step];
 
+          // Calculate index
+          int idx = 0;
+          FOLD // Calculate indices  .
+          {
+            if      ( FLAGS & FLAG_ITLV_ROW )
+            {
+              idx  = off1 + step * stride;
+            }
+            else
+            {
+              idx  = off1 + step * plnStride;
+            }
+          }
+
+	  // Multiply
 #if CORRECT_MULT
           // This is the "correct" version
-          val.r = (input[step].r * ker->r - input[step].i * ker->i);
-          val.i = (input[step].r * ker->i + input[step].i * ker->r);
+          out.r = (ipd.r * ker->r - ipd.i * ker->i);
+          out.i = (ipd.r * ker->i + ipd.i * ker->r);
 #else
           // This is the version accelsearch uses, ( added for comparison )
-          val.r = (input[step].r * ker->r + input[step].i * ker->i);
-          val.i = (input[step].i * ker->r - input[step].r * ker->i);
+          out.r = (ipd.r * ker->r + ipd.i * ker->i);
+          out.i = (ipd.i * ker->r - ipd.r * ker->i);
 #endif
 
-          if      ( FLAGS & FLAG_ITLV_ROW )
-          {
-            *ffdot = val;
-            ffdot += stride;  // Stride output pointer to next plane
-          }
-          else
-          {
-            ffdot[plnOffset + step*PlnStride ] = val;
-          }
+          // Write the actual value
+          ffdot[idx] = out;
         }
 
         // Stride kernel to next row
         ker += stride;
       }
-
-      if ( !(FLAGS & FLAG_ITLV_ROW) ) 	                // Stride output pointer to next plane  .
-      {
-        ffdot += noSteps*height*stride;
-      }
-
+      
+      // Track plane offsett
+      pHeight += noSteps*plnHeight*stride;
     }
   }
 }

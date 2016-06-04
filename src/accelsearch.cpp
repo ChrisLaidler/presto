@@ -65,30 +65,6 @@ inline int twon_to_index(int n) // TODO: fix this to be called from one place (i
   return x;
 }
 
-#ifdef CUDA
-void* contextInitTrd(void* ptr)
-{
-  long long* contextInit = (long long*)malloc(sizeof(long long));
-  struct timeval start, end;
-  *contextInit = 0;
-  gpuSpecs* gSpec = (gpuSpecs*)ptr;
-
-  // Start the timer
-  gettimeofday(&start, NULL);
-
-  nvtxRangePush("Context");
-  initGPUs(gSpec);
-  nvtxRangePop();
-
-  gettimeofday(&end, NULL);
-  *contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-
-  pthread_exit(contextInit);
-
-  return (NULL);
-}
-#endif
-
 int main(int argc, char *argv[])
 {
   int ii;
@@ -175,32 +151,15 @@ int main(int argc, char *argv[])
 
   if ( cmd->gpuP ) // Initialises CUDA context(s)  .
   {
-    int  iret1 = 1;
-
     printf("      with GPU additions by Chris Laidler\n\n");
     printf("      The GPU version is still under development.\n");
     printf("      If you find any bugs pleas report to:\n");
     printf("            chris.laidler@gmail.com\n\n");
 
     gSpec         = readGPUcmd(cmd);
-    iret1         = pthread_create( &cntxThread, NULL, contextInitTrd, (void*) &gSpec);
 
-    if ( iret1 )
-    {
-      fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
-      cntxThread = 0;
-
-      // Start the timer
-      gettimeofday(&start, NULL);
-
-      nvtxRangePush("Context");
-      printf("Initializing CUDA context's\n");
-      initGPUs(&gSpec);
-      nvtxRangePop();
-
-      gettimeofday(&end, NULL);
-      contextInit += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-    }
+    // Initalise coda context
+    contextInit += initCudaContext(&gSpec);
   }
 
   nvtxRangePush("Prep");
@@ -279,36 +238,8 @@ int main(int argc, char *argv[])
     }
     fclose(file);
 
-    FOLD // Wait for the context thread to complete
-    {
-      if ( cntxThread )
-      {
-	nvtxRangePush("Wait on context thread");
-
-	printf("Waiting for CUDA context initialisation complete ...");
-	fflush(stdout);
-
-	void *status;
-	if ( !pthread_join(cntxThread, &status) )
-	{
-	  cuSrch->timings[TIME_CONTEXT] += *(long long *)(status);
-	}
-	else
-	{
-	  fprintf(stderr,"ERROR: Failed to join context thread.\n");
-	}
-
-	printf("\r                                                          ");
-	fflush(stdout);
-
-	nvtxRangePop();
-      }
-      else
-      {
-	cuSrch->timings[TIME_CONTEXT] += contextInit;
-      }
-    }
-
+    // Wait for the context thread to complete
+    cuSrch->timings[TIME_CONTEXT] += compltCudaContext(&gSpec);
   }
   else								// Run Search  .
 #endif
@@ -432,32 +363,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA
 
         // Wait for the context thread to complete
-        if ( cntxThread )
-        {
-          nvtxRangePush("Wait on context thread");
-
-          printf("Waiting for CUDA context initialisation complete ...");
-          fflush(stdout);
-
-          void *status;
-          if ( !pthread_join(cntxThread, &status) )
-          {
-            cuSrch->timings[TIME_CONTEXT] += *(long long *)(status);
-          }
-          else
-          {
-            fprintf(stderr,"ERROR: Failed to join context thread.\n");
-          }
-
-          printf("\r                                                          ");
-          fflush(stdout);
-
-          nvtxRangePop();
-        }
-        else
-        {
-          cuSrch->timings[TIME_CONTEXT] += contextInit;
-        }
+        cuSrch->timings[TIME_CONTEXT] += compltCudaContext(&gSpec);
 
 #ifdef NVVP // Start profiler
         cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
@@ -931,7 +837,7 @@ int main(int argc, char *argv[])
       /* Eliminate (most of) the harmonically related candidates */
       if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
       {
-	//eliminate_harmonics(cands, &numcands);
+	eliminate_harmonics(cands, &numcands);
       }
 
       // Update the number of candidates
@@ -999,7 +905,7 @@ int main(int argc, char *argv[])
       printf("\n\n");
 
 #ifdef CBL
-      FOLD // TMP
+      Fout // TMP
       {
 	Logger slog(stdout);
 	slog.sedCsvDeliminator('\t');
@@ -1035,8 +941,9 @@ int main(int argc, char *argv[])
 
 	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma /*,pSum, pSum2*/  );
 	}
+
+	exit(0); // TMP;
       }
-      exit(0); // TMP;
 #endif
 
       // Re sort with new sigma values
@@ -1070,7 +977,6 @@ int main(int argc, char *argv[])
 	/* send the originally determined r and z from the       */
 	/* harmonic sum in the search.  Note that the derivs are */
 	/* not used for the computations with the fundamental.   */
-
 	{
 	  calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
 	  /* Override the error estimates based on power */
@@ -1114,8 +1020,6 @@ int main(int argc, char *argv[])
 
       /* Write the fundamental fourierprops to the cand file */
 
-      printf("\nZZZZZZZZZZ\n\n");
-
       obs.workfile = chkfopen(obs.candnm, "wb");
       chkfwrite(props, sizeof(fourierprops), numcands, obs.workfile);
       fclose(obs.workfile);
@@ -1126,7 +1030,7 @@ int main(int argc, char *argv[])
       double N =   obs.N;
 
 #ifdef CBL // Chris: This is some temporary output to generate data for my thesis,
-      FOLD // TMP
+      Fout // TMP
       {
 	Fout // Test sigma calculations  .
 	{
@@ -1296,7 +1200,7 @@ int main(int argc, char *argv[])
 
   }
 
-  FOLD // Timing message  .
+  FOLD 	// Timing message  .
   {
 #ifdef CUDA
     if (cuSrch)
