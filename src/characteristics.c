@@ -131,24 +131,15 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
       count++;
-
-      printf("%5.2f ", POWER(ans.r, ans.i) );
    }
-
-   printf(" | ");
 
    // Above
    for (freq = lo2; freq < hi2; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
       count++;
-
-      printf("%5.2f ", POWER(ans.r, ans.i) );
    }
    
-   printf("\n");
-
-   //sum /= (double) NUMLOCPOWAVG; // Average
    sum /= count; // Average
 
    return sum;
