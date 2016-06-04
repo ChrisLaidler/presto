@@ -207,15 +207,26 @@ void read_mak_input(makedata * mdata)
    }
 
    srand(time(NULL));
-   printf("Enter first random seed, 0 to automatically generate: ");
-   scanf("%lu", &mdata->rand1 );
-   if ( !mdata->rand1 )
-     mdata->rand1 = rand();
 
-   printf("Enter second random seed, 0 to automatically generate: ");
-   scanf("%lu", &mdata->rand2 );
-   if ( !mdata->rand2 )
-     mdata->rand2 = rand();
+   printf("Enter first random seed for noise, 0 to automatically generate: ");
+   scanf("%lu", &mdata->noiseRand1 );
+   if ( !mdata->noiseRand1 )
+     mdata->noiseRand1 = rand();
+
+   printf("Enter second random seed for noise, 0 to automatically generate: ");
+   scanf("%lu", &mdata->noiseRand2 );
+   if ( !mdata->noiseRand2 )
+     mdata->noiseRand2 = rand();
+
+   printf("Enter first random seed for signal, 0 to automatically generate: ");
+   scanf("%lu", &mdata->signalRand1 );
+   if ( !mdata->signalRand1 )
+     mdata->signalRand1 = rand();
+
+   printf("Enter second random seed for signal, 0 to automatically generate: ");
+   scanf("%lu", &mdata->signalRand2 );
+   if ( !mdata->signalRand2 )
+     mdata->signalRand2 = rand();
 
    printf("\n");
 }
@@ -388,15 +399,26 @@ void read_mak_file(char basefilenm[], makedata * mdata)
    }
 
    srand(time(NULL));
-   mdata->rand1 = 0;
-   fscanf(makefile, "%*[^=]= %lu", &mdata->rand1);
-   if(!mdata->rand1)
-     mdata->rand1 = rand();
 
-   mdata->rand2 = 0;
-   fscanf(makefile, "%*[^=]= %lu", &mdata->rand2);
-   if(!mdata->rand2)
-        mdata->rand2 = rand();
+   mdata->noiseRand1 = 0;
+   fscanf(makefile, "%*[^=]= %lu", &mdata->noiseRand1);
+   if(!mdata->noiseRand1)
+     mdata->noiseRand1 = rand();
+
+   mdata->noiseRand2 = 0;
+   fscanf(makefile, "%*[^=]= %lu", &mdata->noiseRand2);
+   if(!mdata->noiseRand2)
+     mdata->noiseRand2 = rand();
+
+   mdata->signalRand1 = 0;
+   fscanf(makefile, "%*[^=]= %lu", &mdata->signalRand1);
+   if(!mdata->signalRand1)
+     mdata->signalRand1 = rand();
+
+   mdata->signalRand2 = 0;
+   fscanf(makefile, "%*[^=]= %lu", &mdata->signalRand2);
+   if(!mdata->signalRand2)
+     mdata->signalRand2 = rand();
 
    fclose(makefile);
 }
@@ -451,8 +473,12 @@ void write_mak_file(makedata * mdata)
       i++;
    }
    while (mdata->onoff[2 * i - 1] != 1.0);
-   fprintf(makefile, "Rand1             = %lu\n",  mdata->rand1);
-   fprintf(makefile, "Rand2             = %lu\n",  mdata->rand2);
+
+   fprintf(makefile, "Noise seed 1      = %lu\n",  mdata->noiseRand1);
+   fprintf(makefile, "Noise seed 2      = %lu\n",  mdata->noiseRand2);
+
+   fprintf(makefile, "Signal seed 1     = %lu\n",  mdata->signalRand1);
+   fprintf(makefile, "Signal seed 2     = %lu\n",  mdata->signalRand2);
 
    fclose(makefile);
 }

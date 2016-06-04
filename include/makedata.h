@@ -27,16 +27,16 @@
 #define BUFFSIZE 16384		/* Number of floats to write at a time */
 
 typedef struct MAKEDATA {
-  char basefilenm[200];	        /* Data file name without suffix         */
-  char description[200];	/* Data description                      */
-  long N;		        /* Number of bins in the time series     */
+  char basefilenm[200];         /* Data file name without suffix         */
+  char description[200];        /* Data description                      */
+  long N;                       /* Number of bins in the time series     */
   long next2_to_n;              /* The next power-of-2 >= N              */
-  double dt;	 	        /* Width of each time series bin (sec)   */
+  double dt;                    /* Width of each time series bin (sec)   */
   double T;                     /* Total length of time series (sec)     */
-  char ptype[20];		/* Pulsetype (Sine, Crab, Spike, Gauss)  */
+  char ptype[20];               /* Pulsetype (Sine, Crab, Spike, Gauss)  */
   int pnum;                     /* 1=Sine, 2=Crab-like, 3=Spike, 4=Gauss */
   double fwhm;                  /* FWHM Phase (0-1) if ptype is Spike    */
-  char round[20];		/* Rounding Format (Whole, Fractional)   */
+  char round[20];               /* Rounding Format (Whole, Fractional)   */
   int roundnum;                 /* 1=Whole Numbers, 0=Fractional         */
   double f;                     /* Pulsar frequency (hz)                 */
   double fd;                    /* Pulsar frequency deriv (hz/s)         */
@@ -50,19 +50,24 @@ typedef struct MAKEDATA {
   double amp;                   /* Pulse amplitude                       */
   double phs;                   /* Pulse phase (deg)                     */
   double dc;                    /* Average DC background level           */
-  int binary;			/* Binary pulsar?  (1=Yes, 0=No)         */
+  int binary;                   /* Binary pulsar?  (1=Yes, 0=No)         */
   orbitparams orb;              /* Binary pulsar data                    */
   int ampmod;                   /* Amplitude modulation? (1=Yes, 0=No)   */
   double ampmoda;               /* Amplitude modulation amplitude        */
   double ampmodf;               /* Amplitude modulation frequency (hz)   */
   double ampmodp;               /* Amplitude modulation phase (deg)      */
-  char noisetype[20];		/* Noise type (Standard, Other)          */
+  char noisetype[20];           /* Noise type (Standard, Other)          */
   int noise;                    /* 1=Standard, 0=Other                   */
   double noisesig;              /* Noise standard deviation              */
-  int numonoff;			/* The number of onoff pairs in the data */
-  double *onoff;		/* Bin number pairs where obs is "on"    */
-  ulong rand1;			/* First random seed 			 */
-  ulong rand2;			/* Second random seed 			 */
+  int numonoff;                 /* The number of onoff pairs in the data */
+  double *onoff;                /* Bin number pairs where obs is "on"    */
+
+  ulong noiseRand1;             /* First random seed                     */
+  ulong noiseRand2;             /* Second random seed                    */
+
+  ulong signalRand1;            /* First random seed                     */
+  ulong signalRand2;            /* Second random seed                    */
+
 } makedata;
 
 /*  Function Prototypes */
