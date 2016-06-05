@@ -247,7 +247,7 @@ typedef struct initCand
 {
     double          r;                  ///< Real bin index
     double          z;                  ///< First derivative - This could be float?
-    float           power;              ///< Power ( r^2 + i^2 )
+    double          power;              ///< Power ( r^2 + i^2 )
     float           sig;                ///< Gaussian sigma equivalent
     int             numharm;            ///< Number of numbers summed
 } initCand;
@@ -694,6 +694,7 @@ typedef struct cuOptCand
 
     double          norm[32];
     int             loR[32];
+    int             hw[32];
 
     int             maxHalfWidth;
     int             inpSz;              ///< The size in bytes of device input buffer
