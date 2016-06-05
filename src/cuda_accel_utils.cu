@@ -76,6 +76,9 @@ double ratioARR[] = {
     2.0 / 15.0
 };
 
+
+///////////////////////// Function prototypes ////////////////////////////////////
+
 __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, int sY = 0)
 {
   //printf("\n");

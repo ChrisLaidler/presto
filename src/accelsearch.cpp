@@ -804,13 +804,10 @@ int main(int argc, char *argv[])
       sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pre", timeMsg );
       mkdir(dirname, 0755);
 
-      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/ 2> /dev/null", dirname );
+      sprintf(scmd,"mv /home/chris/accel/*.png %s/ 2> /dev/null", dirname );
       system(scmd);
 
-      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.png %s/ 2> /dev/null", dirname );
-      system(scmd);
-
-      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/*.csv %s/ 2> /dev/null", dirname );
+      sprintf(scmd,"mv /home/chris/accel/*.csv %s/ 2> /dev/null", dirname );
       system(scmd);
     }
 #endif
@@ -1184,9 +1181,6 @@ int main(int argc, char *argv[])
     {
       sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
       mkdir(dirname, 0755);
-
-      sprintf(scmd,"mv /home/chris/accel/Nelder_Mead/n* %s/     2>/dev/null", dirname );
-      system(scmd);
 
       sprintf(scmd,"mv /home/chris/accel/*.png %s/              2>/dev/null", dirname );
       system(scmd);

@@ -450,11 +450,11 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
         grIdx = floor(rDiff);
       }
 
-      if ( grIdx >= 0 && grIdx < cuSrch->SrchSz->noOutpR )  // Valid index  .
+      if ( grIdx >= 0 && grIdx < cuSrch->SrchSz->noOutpR )      // Valid index  .
       {
-        if ( res->flags & FLAG_STORE_ALL )               // Store all stages  .
+        if ( res->flags & FLAG_STORE_ALL )                      // Store all stages  .
         {
-          grIdx += stage * (cuSrch->SrchSz->noOutpR);      // Stride by size
+          grIdx += stage * (cuSrch->SrchSz->noOutpR);           // Stride by size
         }
 
         if ( res->cndType & CU_CANDFULL )
