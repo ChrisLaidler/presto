@@ -5493,7 +5493,7 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
   gethostname(hostname, 1024);
 
   Logger* cvsLog = new Logger((char*)fname, 1);
-  cvsLog->sedCsvDeliminator('\t');
+  cvsLog->setCsvDeliminator('\t');
 
   // Get the current time
   time_t rawtime;
@@ -6222,11 +6222,7 @@ long long compltCudaContext(gpuSpecs* gSpec)
       fflush(stdout);
 
       void *status;
-      if ( !pthread_join(gSpec->cntxThread, &status) )
-      {
-        gSpec->nctxTime += *(long long *)(status);
-      }
-      else
+      if ( pthread_join(gSpec->cntxThread, &status) )
       {
         fprintf(stderr,"ERROR: Failed to join context thread.\n");
       }

@@ -170,12 +170,8 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA
   sSpec       = readSrchSpecs(cmd, &obs);
-
-  if ( cmd->gpuP ) // Read CUDA search specifications  .
-  {
-    cuSrch      = initSearchInf(&sSpec, &gSpec, cuSrch);
-    printf("\n");
-  }
+  cuSrch      = initSearchInf(&sSpec, &gSpec, cuSrch);
+  printf("\n");
 #endif
 
   /* Zap birdies if requested and if in memory */
@@ -239,7 +235,7 @@ int main(int argc, char *argv[])
     fclose(file);
 
     // Wait for the context thread to complete
-    cuSrch->timings[TIME_CONTEXT] += compltCudaContext(&gSpec);
+    cuSrch->timings[TIME_CONTEXT] = compltCudaContext(&gSpec);
   }
   else								// Run Search  .
 #endif
@@ -361,10 +357,10 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP )            // --=== The GPU Search == --  .
       {
 #ifdef CUDA
-
+        
         // Wait for the context thread to complete
-        cuSrch->timings[TIME_CONTEXT] += compltCudaContext(&gSpec);
-
+        cuSrch->timings[TIME_CONTEXT] = compltCudaContext(&gSpec);
+        
 #ifdef NVVP // Start profiler
         cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
 #endif
@@ -856,6 +852,7 @@ int main(int argc, char *argv[])
       {
 #ifdef CUDA // Profiling  .
 
+        // Doing a GPU search as well so duplicate candidates
 	if (cmd->gpuP)
 	  candsGPU = duplicate_accelcands(cands);
 
@@ -886,14 +883,13 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP )        	// --=== The GPU Optimisation == --  .
       {
 #ifdef CUDA
-	//cands = candsGPU; // This is the original unoptimised list
 
-	FOLD // Initialise optimisation details!
-	{
-	  cuSrch = initCuOpt(&sSpec, &gSpec, cuSrch);
-	}
+        // Initialise optimisation details!
+        cuSrch = initCuOpt(&sSpec, &gSpec, cuSrch);
 
+        // Optimise all the candidates
 	optList(cands, cuSrch);
+
 #else
 	fprintf(stderr,"ERROR: not compiled with CUDA!\n");
 #endif
@@ -905,7 +901,7 @@ int main(int argc, char *argv[])
       Fout // TMP
       {
 	Logger slog(stdout);
-	slog.sedCsvDeliminator('\t');
+	slog.setCsvDeliminator('\t');
 	listptr 	= cands;
 	double T	= obs.T;
 
@@ -1085,7 +1081,7 @@ int main(int argc, char *argv[])
 	pSum2  = 0;
 
 	Logger slog(stdout);
-	slog.sedCsvDeliminator('\t');
+	slog.setCsvDeliminator('\t');
 
 	for (ii = 0; ii < numcands; ii++)
 	{
@@ -1202,8 +1198,33 @@ int main(int argc, char *argv[])
       printf("\n*************************************************************************************************\n                            Timing\n*************************************************************************************************\n");
 
 #ifdef CBL
-      printf("\nTiming: Context:\t%9.06f\tPrep:\t%9.06f\tCPU ker:\t%9.06f\tCPU:\t%9.06f\tGPU ker:\t%9.06f\tGPU:\t%9.06f\t[%6.2f x]\tOptimization:\t%9.06f\tCandate:\t%9.06f\n\n", cuSrch->timings[TIME_CONTEXT] * 1e-6, cuSrch->timings[TIME_PREP] * 1e-6, cuSrch->timings[TIME_CPU_KER] * 1e-6, cuSrch->timings[TIME_CPU_SRCH] * 1e-6, cuSrch->timings[TIME_GPU_KER] * 1e-6, cuSrch->timings[TIME_GPU_SRCH] * 1e-6, cuSrch->timings[TIME_CPU_SRCH] / (double) cuSrch->timings[TIME_GPU_SRCH], cuSrch->timings[TIME_ALL_OPT] * 1e-6, cuSrch->timings[TIME_CPU_SRCH]*1e-6 );
-      writeLogEntry("/home/chris/accelsearch_log.csv", &obs, cuSrch, cuSrch->timings[TIME_PREP], cuSrch->timings[TIME_CPU_KER], cuSrch->timings[TIME_CPU_SRCH], cuSrch->timings[TIME_GPU_KER], cuSrch->timings[TIME_GPU_SRCH], cuSrch->timings[TIME_ALL_OPT], cuSrch->timings[TIME_CPU_OPT], cuSrch->timings[TIME_GPU_OPT] );
+      printf("\n");
+
+      Logger slog(stdout);
+      slog.setCsvDeliminator('\t');
+      slog.setCsvLineNums(false);
+
+      slog.csvWrite("Timing:","<secs>");
+      slog.csvWrite(" Context",  "%9.06f", cuSrch->timings[TIME_CONTEXT]  * 1e-6 );
+      slog.csvWrite("  Prep  ",  "%9.06f", cuSrch->timings[TIME_PREP]     * 1e-6 );
+
+      slog.csvWrite(" CPU Ker",  "%9.06f", cuSrch->timings[TIME_CPU_KER]  * 1e-6 );
+      slog.csvWrite(" CPU Srch", "%9.06f", cuSrch->timings[TIME_CPU_SRCH] * 1e-6 );
+      slog.csvWrite(" CPU Opt",  "%9.06f", cuSrch->timings[TIME_CPU_OPT]  * 1e-6 );
+
+      slog.csvWrite(" GPU ker",  "%9.06f", cuSrch->timings[TIME_GPU_KER]  * 1e-6 );
+      slog.csvWrite(" GPU Srch", "%9.06f", cuSrch->timings[TIME_GPU_SRCH] * 1e-6 );
+      slog.csvWrite(" GPU Cand", "%9.06f", cuSrch->timings[TIME_CND]      * 1e-6 );
+      slog.csvWrite(" GPU opt",  "%9.06f", cuSrch->timings[TIME_GPU_OPT]  * 1e-6 );
+
+      //slog.csvWrite(" Srch All", "%9.06f", cuSrch->timings[TIME_ALL_SRCH] * 1e-6 );
+      slog.csvWrite(" Opt All",  "%9.06f", cuSrch->timings[TIME_ALL_OPT]  * 1e-6 );
+
+      slog.csvWrite("    x    ", "%9.06f", ( cuSrch->timings[TIME_CPU_SRCH] + cuSrch->timings[TIME_CPU_OPT] )/ (float)( cuSrch->timings[TIME_GPU_SRCH] + cuSrch->timings[TIME_GPU_OPT] ) );
+
+      slog.csvEndLine();
+
+      printf("\n\n");
 #endif
 
       if ( sSpec.flags & FLAG_TIME )  // Advanced timing massage  .
@@ -1384,6 +1405,7 @@ int main(int argc, char *argv[])
   free_accelobs(&obs);
   g_slist_foreach(cands, free_accelcand, NULL);
   g_slist_free(cands);
+
   return (0);
 }
 

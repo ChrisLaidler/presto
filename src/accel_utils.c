@@ -510,15 +510,15 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
         remove = 1;
       }
 
-      /* Check */
-      float inc = fabs( (current_cand->z - other_cand->z) / (float)(current_cand->r - other_cand->r) );
-      //inc = fabs(inc) - 1.0;
-
-      if ( inc > 1 )
-      {
-	printf("%10.4f\t%10.4f\t%10.4f\t%10.4f\t%10.4f\t \n", current_cand->z, other_cand->z, current_cand->r, other_cand->r, inc );
-	int tmp = 0;
-      }
+//      /* Check */
+//      float inc = fabs( (current_cand->z - other_cand->z) / (float)(current_cand->r - other_cand->r) );
+//      //inc = fabs(inc) - 1.0;
+//
+//      if ( inc > 1 )
+//      {
+//	printf("%10.4f\t%10.4f\t%10.4f\t%10.4f\t%10.4f\t \n", current_cand->z, other_cand->z, current_cand->r, other_cand->r, inc );
+//	int tmp = 0;
+//      }
 
 //      if ( ( current_cand->z == 40 || other_cand->z == 40 ) && ( current_cand->r > 10095 && other_cand->r > 10095 && current_cand->r < 10125 && other_cand->r < 10125 ) )
 //      {
