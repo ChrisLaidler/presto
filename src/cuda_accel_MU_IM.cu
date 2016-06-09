@@ -358,9 +358,9 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
           cuFfdotStack* cStack = &batch->stacks[0];
 
-          nvtxRangePush("EventSynch");
+          NV_RANGE_PUSH("EventSynch");
           CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
       }
     }

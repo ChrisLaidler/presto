@@ -12,8 +12,10 @@
 #include <cuda_fp16.h>
 #endif
 
+#ifdef CUDA_PROF
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
+#endif
 
 #ifdef WITHOMP
 #include <omp.h>
@@ -37,7 +39,10 @@ extern "C"
 
 
 #undef  NVVP
-#define NVVP                // Uncomment to allow CUDA profiling
+//#define NVVP                // Uncomment to allow CUDA profiling
+
+#undef  CUDA_PROF
+#define CUDA_PROF
 
 //=========================================== Defines ====================================================
 
@@ -180,6 +185,17 @@ extern "C"
 ///< Defines for safe calling usable in C
 #define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
 #define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
+
+
+#ifdef  CUDA_PROF
+#define NV_RANGE_POP(x)         nvtxRangePop()
+#define NV_RANGE_PUSH(x)        nvtxRangePush(x)
+#define NV_NAME_STREAM(x,y)     nvtxNameCudaStreamA(x,y)
+#else
+#define NV_RANGE_POP(x)
+#define NV_RANGE_PUSH(x)
+#define NV_NAME_STREAM(x,y)
+#endif
 
 //====================================== Global variables ================================================
 

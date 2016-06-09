@@ -5,8 +5,12 @@
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
+
+#ifdef CUDA_PROF
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
+#endif
+
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
@@ -41,7 +45,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 
   FOLD // Sum search data  .
   {
-    nvtxRangePush("CPU Sum & search");
+    NV_RANGE_PUSH("CPU Sum & search");
 
     if ( batch->flags & FLAG_TIME ) // Timing  .
       gettimeofday(&start, NULL);
@@ -222,12 +226,12 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       batch->searchTime[0] += v1;
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Process candidates  .
   {
-    nvtxRangePush("CPU Process results");
+    NV_RANGE_PUSH("CPU Process results");
 
     if ( batch->flags & FLAG_TIME ) // Timing  .
       gettimeofday(&start, NULL);
@@ -245,7 +249,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       batch->resultTime[0] += v2;
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   free(cnd);

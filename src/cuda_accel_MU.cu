@@ -225,7 +225,7 @@ void multiplyBatch(cuFFdotBatch* batch)
   {
     infoMSG(1,2,"Multiply\n");
 
-    nvtxRangePush("Multiply");
+    NV_RANGE_PUSH("Multiply");
 
     if    	( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
     {
@@ -328,7 +328,7 @@ void multiplyBatch(cuFFdotBatch* batch)
       exit(EXIT_FAILURE);
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }
 
@@ -476,7 +476,7 @@ void IFFTBatch(cuFFdotBatch* batch)
     {
       infoMSG(1,2,"Inverse FFT Batch\n");
 
-      nvtxRangePush("IFFT");
+      NV_RANGE_PUSH("IFFT");
 
       cuFfdotStack* pStack = NULL;  // Previous stack
 
@@ -505,7 +505,7 @@ void IFFTBatch(cuFFdotBatch* batch)
         pStack = cStack;
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
   }
 }

@@ -14,9 +14,13 @@ extern "C"
 #ifdef CUDA
 #include "cuda_accel.h"
 #include "cuda_accel_utils.h"
+
+#ifdef CUDA_PROF
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
 #include <cuda_profiler_api.h>
+#endif
+
 #include "cuda_response.h"
 #endif
 
@@ -620,7 +624,7 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA // Profiling  .
   gettimeofday(&start, NULL);       // Profiling
-  nvtxRangePush("Prep");
+  NV_RANGE_PUSH("Prep");
   gettimeofday(&start, NULL);       // Note could start the timer after kernel init
 #endif
 
@@ -696,7 +700,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA     // Profiling  .
   int  iret1 = 1;
 
-  nvtxRangePop();
+  NV_RANGE_POP();
   gettimeofday(&end, NULL);
   prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
@@ -782,7 +786,7 @@ int main(int argc, char *argv[])
       };
 
 #ifdef CUDA
-      nvtxRangePush("CPU");
+      NV_RANGE_PUSH("CPU");
       gettimeofday(&start, NULL); // Note could start the timer after kernel init
 #endif
 
@@ -2007,7 +2011,7 @@ int main(int argc, char *argv[])
         {
           printf("\nCopying candidates from array to list.\n");
 
-          nvtxRangePush("Add to list");
+          NV_RANGE_PUSH("Add to list");
           int cdx;
 
           long long numindep;
@@ -2043,7 +2047,7 @@ int main(int argc, char *argv[])
           }
 
           fclose (pFile);
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
         else if ( master->cndType & CU_STR_LST   )
         {
@@ -2073,7 +2077,9 @@ int main(int argc, char *argv[])
           exit(EXIT_FAILURE);
         }
 
+#ifdef NVVP
         cudaProfilerStop();
+#endif
 
         //cudaDeviceSynchronize();
         gettimeofday(&end, NULL);
@@ -2128,7 +2134,7 @@ int main(int argc, char *argv[])
     system(scmd);
 
     gettimeofday(&start, NULL);			// Profiling
-    nvtxRangePush("Optimisation");
+    NV_RANGE_PUSH("Optimisation");
     gettimeofday(&start, NULL);			// Note could start the timer after kernel init
     //cudaProfilerStart();              	// TMP Start profiling, only really necessary for debug and profiling, surprise surprise
 #endif
@@ -2162,7 +2168,7 @@ int main(int argc, char *argv[])
       FOLD //       --=== Dual Optimisation ===--  .
       {
 #ifdef CUDA // Profiling  .
-        nvtxRangePush("CPU");
+        NV_RANGE_PUSH("CPU");
         gettimeofday(&start, NULL);		// Note could start the timer after kernel init
 #endif
 
@@ -2227,13 +2233,13 @@ int main(int argc, char *argv[])
 
             FOLD // CPU optimisation  .
             {
-              nvtxRangePush("CPU opt");
+              NV_RANGE_PUSH("CPU opt");
               gettimeofday(&startL, NULL);       // Profiling
               optimize_accelcand(candCPU, &obs, ii+1);
               gettimeofday(&endL, NULL);
               cTime = ((endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec));
               cSum += cTime;
-              nvtxRangePop();
+              NV_RANGE_POP();
               //printf("CPU Opt point      r: %13.5f   z: %10.5f   power: %20.6f             sigma: %9.3f \n", candCPU->r, candCPU->z, candCPU->power, candCPU->sigma);
             }
 
@@ -2242,14 +2248,14 @@ int main(int argc, char *argv[])
 
             FOLD // GPU optimisation  .
             {
-              nvtxRangePush("Pln opt");
+              NV_RANGE_PUSH("Pln opt");
               gettimeofday(&startL, NULL);       // Profiling
               //opt_candPlns(candGPU, cuSrch, &obs, ii+1, oPlnPln);
               opt_accelcand(candGPU, oPlnPln, ii+1);
               gettimeofday(&endL, NULL);
               gTime = ((endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec));
               gSum += gTime;
-              nvtxRangePop();
+              NV_RANGE_POP();
               //printf("GPU Pln            r: %13.5f   z: %10.5f   power: %20.6f   %7.3fx  sigma: %9.3f ", candGPU->r, candGPU->z, candGPU->power, cTime/(float)gTime, candGPU->sigma);
               dist = sqrt( (candCPU->r-candGPU->r)*(candCPU->r-candGPU->r) + (candCPU->z-candGPU->z)*(candCPU->z-candGPU->z) );
               //printf(" Dist %10.6f   ", dist );
@@ -2335,7 +2341,7 @@ int main(int argc, char *argv[])
     }
 
 #ifdef CUDA
-    nvtxRangePop();
+    NV_RANGE_POP();
     gettimeofday(&end, NULL);
     optTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 

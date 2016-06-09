@@ -3,8 +3,11 @@
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
+
+#ifdef CUDA_PROF
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
+#endif
 
 extern "C"
 {
@@ -258,7 +261,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
 {
   char msg[1024];
 
-  nvtxRangePush("FFT plans");
+  NV_RANGE_PUSH("FFT plans");
 
   // Note creating the plans is the most expensive task in the GPU init, I tried doing it in parallel but it was slower
   for (int i = 0; i < kernel->noStacks; i++)
@@ -266,7 +269,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
     cuFfdotStack* cStack  = &kernel->stacks[i];
 
     sprintf(msg,"Stack %i",i);
-    nvtxRangePush(msg);
+    NV_RANGE_PUSH(msg);
 
     FOLD // Input FFT's  .
     {
@@ -284,15 +287,15 @@ void createFFTPlans(cuFFdotBatch* kernel)
       {
         if ( kernel->flags & CU_INPT_FFT_CPU )
         {
-          nvtxRangePush("FFTW");
+          NV_RANGE_PUSH("FFTW");
           cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
         else
         {
-          nvtxRangePush("CUFFT Inp");
+          NV_RANGE_PUSH("CUFFT Inp");
           CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps), "Creating plan for input data of stack.");
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
       }
     }
@@ -313,9 +316,9 @@ void createFFTPlans(cuFFdotBatch* kernel)
 
         FOLD // Create the stack iFFT plan  .
         {
-          nvtxRangePush("CUFFT Pln");
+          NV_RANGE_PUSH("CUFFT Pln");
           CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
       }
       else
@@ -332,20 +335,20 @@ void createFFTPlans(cuFFdotBatch* kernel)
 
         FOLD // Create the stack iFFT plan  .
         {
-          nvtxRangePush("CUFFT Pln");
+          NV_RANGE_PUSH("CUFFT Pln");
           CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
 
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
 
 /** Initialise a kernel data structure and values on a given device  .
@@ -406,13 +409,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
   char msg[1024];
   sprintf(msg, "Dev %02i", device );
-  nvtxRangePush(msg);
+  NV_RANGE_PUSH(msg);
 
   FOLD // See if we can use the cuda device and whether it may be possible to do GPU in-mem search .
   {
     infoMSG(4,4,"access device %i\n", device);
 
-    nvtxRangePush("Get Device");
+    NV_RANGE_PUSH("Get Device");
 
     if ( device >= getGPUCount() )
     {
@@ -432,7 +435,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Now see if this device could do a GPU in-mem search  .
@@ -1048,7 +1051,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
   FOLD // Batch specific streams  .
   {
-    nvtxRangePush("streams");
+    NV_RANGE_PUSH("streams");
 
     infoMSG(4,4,"Batch streams\n");
 
@@ -1061,7 +1064,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       CUDA_SAFE_CALL(cudaStreamCreate(&fStack->initStream),"Creating CUDA stream for initialisation");
 
       sprintf(strBuff,"%i.0.0.0 Initialisation", device );
-      nvtxNameCudaStreamA(fStack->initStream, strBuff);
+      NV_NAME_STREAM(fStack->initStream, strBuff);
       //printf("cudaStreamCreate: %s\n", strBuff);
 
       for (int i = 0; i < kernel->noStacks; i++)
@@ -1080,7 +1083,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->initStream),"Creating CUDA stream for initialisation");
 
         sprintf(strBuff,"%i.0.0.%i Initialisation", device, i);
-        nvtxNameCudaStreamA(cStack->initStream, strBuff);
+        NV_NAME_STREAM(cStack->initStream, strBuff);
         //printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
@@ -1095,7 +1098,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
           CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
           sprintf(strBuff,"%i.0.2.%i FFT Input Dev", device, i);
-          nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+          NV_NAME_STREAM(cStack->fftIStream, strBuff);
           //printf("cudaStreamCreate: %s\n", strBuff);
         }
       }
@@ -1106,17 +1109,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
         sprintf(strBuff,"%i.0.4.%i FFT Plane Dev", device, i);
-        nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+        NV_NAME_STREAM(cStack->fftPStream, strBuff);
         //printf("cudaStreamCreate: %s\n", strBuff);
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Allocate device memory for all the kernels data  .
   {
-    nvtxRangePush("kernel malloc");
+    NV_RANGE_PUSH("kernel malloc");
 
     infoMSG(4,4,"Allocate device memory for all the kernels data\n");
 
@@ -1132,7 +1135,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       CUDA_SAFE_CALL(cudaGetLastError(), "Allocation of device memory for kernel?.\n");
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Set the sizes values of the harmonics and kernels and pointers to kernel data  .
@@ -1214,7 +1217,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         infoMSG(4,5,"Calculate the response values\n");
 
-        nvtxRangePush("Calc response");
+        NV_RANGE_PUSH("Calc response");
 
         int hh      = 1;
         for (int i = 0; i < kernel->noStacks; i++)
@@ -1239,14 +1242,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           }
         }
 
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
 
       FOLD // FFT the kernels  .
       {
         infoMSG(4,5,"FFT the  response values\n");
 
-        nvtxRangePush("FFT kernels");
+        NV_RANGE_PUSH("FFT kernels");
 
         fflush(stdout);
         printf("  FFT'ing the kernels ");
@@ -1265,7 +1268,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               infoMSG(4,6,"Create plan\n");
 
               sprintf(msg,"Plan %i",i);
-              nvtxRangePush(msg);
+              NV_RANGE_PUSH(msg);
 
               int n[]             = {cStack->width};
               int inembed[]       = {cStack->strideCmplx* sizeof(double2)};
@@ -1280,7 +1283,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, height), "Creating plan for FFT'ing the kernel.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
 
             FOLD // Call the plan  .
@@ -1288,13 +1291,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               infoMSG(4,6,"Call the plan\n");
 
               sprintf(msg,"Call %i",i);
-              nvtxRangePush(msg);
+              NV_RANGE_PUSH(msg);
 
               CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
               CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_kerData, (cufftDoubleComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
               CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
 
             FOLD // Destroy the plan  .
@@ -1302,12 +1305,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               infoMSG(4,6,"Destroy the plan\n");
 
               sprintf(msg,"Dest %i",i);
-              nvtxRangePush(msg);
+              NV_RANGE_PUSH(msg);
 
               CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
               CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
           }
           else
@@ -1317,7 +1320,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               infoMSG(4,6,"Create plan\n");
 
               sprintf(msg,"Plan %i",i);
-              nvtxRangePush(msg);
+              NV_RANGE_PUSH(msg);
 
               int n[]             = {cStack->width};
               int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
@@ -1332,7 +1335,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
               CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
 
             FOLD // Call the plan  .
@@ -1340,13 +1343,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               infoMSG(4,6,"Call the plan\n");
 
               sprintf(msg,"Call %i",i);
-              nvtxRangePush(msg);
+              NV_RANGE_PUSH(msg);
 
               CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
               CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_kerData, (cufftComplex *) cStack->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
               CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
 
             FOLD // Destroy the plan  .
@@ -1354,12 +1357,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               infoMSG(4,6,"Destroy the plan\n");
 
               sprintf(msg,"Dest %i",i);
-              nvtxRangePush(msg);
+              NV_RANGE_PUSH(msg);
 
               CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
               CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
           }
 
@@ -1371,7 +1374,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         printf("\n");
 
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
 
       FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
@@ -1408,7 +1411,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   {
     infoMSG(4,4,"Input and output.\n");
 
-    nvtxRangePush("data");
+    NV_RANGE_PUSH("data");
 
     printf("\nInitializing GPU %i (%s)\n", device, sInf->gSpec->devInfo[devID].name );
 
@@ -1713,7 +1716,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
     {
-      nvtxRangePush("Calc steps");
+      NV_RANGE_PUSH("Calc steps");
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
       freeRam = getFreeRamCU();
@@ -1834,7 +1837,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         printf("                 Using: %5.2f GiB of %.2f [%.2f%%] of GPU memory for search.\n",  totUsed / 1073741824.0, total / 1073741824.0, totUsed / (float)total * 100.0f );
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     FOLD // Scale data sizes by number of steps  .
@@ -1876,7 +1879,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       if ( kernel->flags & FLAG_SS_INMEM  )
       {
-        nvtxRangePush("in-mem alloc");
+        NV_RANGE_PUSH("in-mem alloc");
 
         size_t noStepsP =  ceil(sInf->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
         size_t nX       = noStepsP * kernel->accelLen;
@@ -1888,7 +1891,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         sInf->inmemStride = stride / plnElsSZ;
 
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
 
     }
@@ -1898,7 +1901,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       // One set of global set of "candidates" for all devices
       if ( master == NULL )
       {
-        nvtxRangePush("host alloc");
+        NV_RANGE_PUSH("host alloc");
 
         if 	( kernel->cndType & CU_STR_ARR	)
         {
@@ -1960,7 +1963,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           sInf->h_candidates = sInf->sSpec->outData;
         }
 
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
     }
 
@@ -1976,20 +1979,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
     printf("  Done\n");
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Create FFT plans, ( 1 - set per device )  .
   {
-    nvtxRangePush("FFT plans");
+    NV_RANGE_PUSH("FFT plans");
 
     if ( ( kernel->flags & CU_INPT_FFT_CPU ) && master == NULL )
     {
-      nvtxRangePush("read_wisdom");
+      NV_RANGE_PUSH("read_wisdom");
 
       read_wisdom();
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     if ( !(kernel->flags & CU_FFT_SEP) )
@@ -1999,7 +2002,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       createFFTPlans(kernel);
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Create texture memory from kernels  .
@@ -2008,7 +2011,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
     {
       infoMSG(4,4,"Create texture memory\n");
 
-      nvtxRangePush("text mem");
+      NV_RANGE_PUSH("text mem");
 
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
 
@@ -2054,7 +2057,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
   }
 
@@ -2062,7 +2065,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   {
     infoMSG(4,4,"Set constant memory values\n");
 
-    nvtxRangePush("const mem");
+    NV_RANGE_PUSH("const mem");
 
     setConstVals( kernel,  sInf->noHarmStages, sInf->powerCut, sInf->numindep );
 
@@ -2080,7 +2083,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD //  Free temporary memory for kernel
@@ -2100,7 +2103,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
   printf("Done initializing GPU %i.\n",device);
 
   std::cout.flush();
-  nvtxRangePop();
+  NV_RANGE_POP();
 
   return noBatches;
 }
@@ -2267,7 +2270,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 {
   char msg[1024];
   sprintf(msg,"%i of %i", no, of);
-  nvtxRangePush(msg);
+  NV_RANGE_PUSH(msg);
 
   char strBuff[1024];
   size_t free, total;
@@ -2467,7 +2470,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Allocate page-locked host memory for input data  .
     {
-      nvtxRangePush("Host");
+      NV_RANGE_PUSH("Host");
 
       infoMSG(5,5,"Allocate page-locked for input data.  %p  %i Bytes \n", &batch->h_iData, batch->inpDataSize);
 
@@ -2479,7 +2482,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     FOLD // Allocate R value lists  .
@@ -2497,7 +2500,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Allocate device Memory for Planes, Stacks & Input data (steps)  .
     {
-      nvtxRangePush("device");
+      NV_RANGE_PUSH("device");
 
       size_t req = batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize;
 
@@ -2533,12 +2536,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         }
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     FOLD // Allocate device & page-locked host memory for return data  .
     {
-      nvtxRangePush("Host");
+      NV_RANGE_PUSH("Host");
 
       FOLD // Allocate device memory  .
       {
@@ -2602,7 +2605,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         }
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     FOLD // Create the planes structures
@@ -2666,7 +2669,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         // Batch input ( Always needed, for copying input to device )
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
         sprintf(strBuff,"%i.%i.1.0 Batch Input", batch->device, no);
-        nvtxNameCudaStreamA(batch->inpStream, strBuff);
+        NV_NAME_STREAM(batch->inpStream, strBuff);
         //printf("cudaStreamCreate: %s\n", strBuff);
 
         // Stack input
@@ -2678,7 +2681,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inptStream), "Creating input data multStream for stack");
             sprintf(strBuff,"%i.%i.1.%i Stack Input", batch->device, no, i);
-            nvtxNameCudaStreamA(cStack->inptStream, strBuff);
+            NV_NAME_STREAM(cStack->inptStream, strBuff);
             //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
@@ -2697,7 +2700,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
               CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for input fft's");
 
               sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->device, no, i);
-              nvtxNameCudaStreamA(cStack->fftIStream, strBuff);
+              NV_NAME_STREAM(cStack->fftIStream, strBuff);
               //printf("cudaStreamCreate: %s\n", strBuff);
             }
           }
@@ -2715,7 +2718,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         {
           CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
           sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->device, no);
-          nvtxNameCudaStreamA(batch->multStream, strBuff);
+          NV_NAME_STREAM(batch->multStream, strBuff);
           //printf("cudaStreamCreate: %s\n", strBuff);
         }
 
@@ -2727,7 +2730,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
             sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->device, no, i);
-            nvtxNameCudaStreamA(cStack->multStream, strBuff);
+            NV_NAME_STREAM(cStack->multStream, strBuff);
             //printf("cudaStreamCreate: %s\n", strBuff);
           }
         }
@@ -2744,7 +2747,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
 
             sprintf(strBuff,"%i.%i.4.%i Stack iFFT", batch->device, no, i);
-            nvtxNameCudaStreamA(cStack->fftPStream, strBuff);
+            NV_NAME_STREAM(cStack->fftPStream, strBuff);
             //printf("cudaStreamCreate: %s\n", strBuff);
           }
           else                                        // Copy stream of the kernel
@@ -2759,7 +2762,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->srchStream), "Creating strmSearch for batch.");
         sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->device, no);
-        nvtxNameCudaStreamA(batch->srchStream, strBuff);
+        NV_NAME_STREAM(batch->srchStream, strBuff);
         //printf("cudaStreamCreate: %s\n", strBuff);
       }
 
@@ -2768,7 +2771,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
         // Batch output ( Always needed, for copying results from device )
         CUDA_SAFE_CALL(cudaStreamCreate(&batch->resStream), "Creating strmSearch for batch.");
         sprintf(strBuff,"%i.%i.6.0 Batch result", batch->device, no);
-        nvtxNameCudaStreamA(batch->resStream, strBuff);
+        NV_NAME_STREAM(batch->resStream, strBuff);
         //printf("cudaStreamCreate: %s\n", strBuff);
       }
 
@@ -2929,7 +2932,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     }
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 
   return (batch->noSteps);
 }
@@ -3137,7 +3140,7 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
       CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
       char nmStr[1024];
       sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
-      nvtxNameCudaStreamA(oPln->stream, nmStr);
+      NV_NAME_STREAM(oPln->stream, nmStr);
     }
 
     FOLD // Events  .
@@ -3662,17 +3665,17 @@ void finish_Search(cuFFdotBatch* batch)
     {
       infoMSG(4,5,"Stack %i\n", ss);
 
-      nvtxRangePush("EventSynch");
+      NV_RANGE_PUSH("EventSynch");
       cuFfdotStack* cStack = &batch->stacks[ss];
       CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     infoMSG(3,4,"pre synchronisation [blocking] processComp\n");
 
-    nvtxRangePush("EventSynch");
+    NV_RANGE_PUSH("EventSynch");
     CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }
 
@@ -4794,7 +4797,7 @@ void initPlanes(cuSearch* sSrch )
 
     infoMSG(2,2,"Create the primary stack/kernel on each device\n");
 
-    nvtxRangePush("Initialise Kernels");
+    NV_RANGE_PUSH("Initialise Kernels");
 
     sSrch->pInf->kernels = (cuFFdotBatch*)malloc(sSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
 
@@ -4825,7 +4828,7 @@ void initPlanes(cuSearch* sSrch )
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
 
     if ( sSrch->pInf->noDevices <= 0 ) // Check if we got any devices  .
     {
@@ -4839,7 +4842,7 @@ void initPlanes(cuSearch* sSrch )
   {
     infoMSG(2,2,"Create planes\n");
 
-    nvtxRangePush("Initialise Batches");
+    NV_RANGE_PUSH("Initialise Batches");
 
     sSrch->pInf->noSteps       = 0;
     sSrch->pInf->batches       = (cuFFdotBatch*)malloc(sSrch->pInf->noBatches*sizeof(cuFFdotBatch));
@@ -4920,7 +4923,7 @@ void initPlanes(cuSearch* sSrch )
       sSrch->pInf->noBatches = bNo;
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }
 
@@ -4941,7 +4944,7 @@ void initOptimisers(cuSearch* sSrch )
 
   FOLD // Create the primary stack on each device, this contains the kernel  .
   {
-    nvtxRangePush("Initialise Optimisers");
+    NV_RANGE_PUSH("Initialise Optimisers");
 
     sSrch->oInf->noOpts = 0;
 
@@ -4970,7 +4973,7 @@ void initOptimisers(cuSearch* sSrch )
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }
 
@@ -6109,11 +6112,11 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
     char waitMsg[1024];
     int ite = 0;
 
-    nvtxRangePush("Wait on CPU threads");
+    NV_RANGE_PUSH("Wait on CPU threads");
 
     while ( noTrd > 0 )
     {
-      nvtxRangePush("Sleep");
+      NV_RANGE_PUSH("Sleep");
 
       ite++;
 
@@ -6141,13 +6144,13 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
       usleep(sleepMS);
       sem_getvalue(running_threads, &noTrd );
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     if (ite >= 10 )
       printf("\n\n");
 
-    nvtxRangePop();
+    NV_RANGE_POP();
 
     return (ite);
   }
@@ -6166,9 +6169,9 @@ void* contextInitTrd(void* ptr)
   // Start the timer
   gettimeofday(&start, NULL);
 
-  nvtxRangePush("Context");
+  NV_RANGE_PUSH("Context");
   initGPUs(gSpec);
-  nvtxRangePop();
+  NV_RANGE_POP();
 
   gettimeofday(&end, NULL);
   gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -6196,10 +6199,10 @@ long long initCudaContext(gpuSpecs* gSpec)
       // Start the timer
       gettimeofday(&start, NULL);
 
-      nvtxRangePush("Context");
+      NV_RANGE_PUSH("Context");
       printf("Initializing CUDA context's\n");
       initGPUs(gSpec);
-      nvtxRangePop();
+      NV_RANGE_POP();
 
       gettimeofday(&end, NULL);
       gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
@@ -6215,7 +6218,7 @@ long long compltCudaContext(gpuSpecs* gSpec)
   {
     if ( gSpec->cntxThread )
     {
-      nvtxRangePush("Wait on context thread");
+      NV_RANGE_PUSH("Wait on context thread");
       infoMSG(4, 4, "Wait on CUDA context thread\n");
 
       printf("Waiting for CUDA context initialisation complete ...");
@@ -6233,7 +6236,7 @@ long long compltCudaContext(gpuSpecs* gSpec)
       gSpec->cntxThread = 0;
 
       infoMSG(4, 4, "Done\n");
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     return gSpec->nctxTime;

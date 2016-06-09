@@ -10,8 +10,10 @@
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 
+#ifdef CUDA_PROF
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
+#endif
 
 extern "C"
 {

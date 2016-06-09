@@ -457,7 +457,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
     FOLD // Calculate normalisation factor  .
     {
-      nvtxRangePush("Calc Norm factor");
+      NV_RANGE_PUSH("Calc Norm factor");
 
       for ( int i = 1; i <= pln->noHarms; i++ )
       {
@@ -471,7 +471,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
         }
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
   }
 
@@ -751,7 +751,7 @@ void optemiseTree(candTree* tree, cuOptCand* oPlnPln)
 
 int addPlnToTree(candTree* tree, cuOptCand* pln)
 {
-  nvtxRangePush("addPlnToTree");
+  NV_RANGE_PUSH("addPlnToTree");
 
   FOLD // Get new max  .
   {
@@ -779,14 +779,14 @@ int addPlnToTree(candTree* tree, cuOptCand* pln)
     }
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 
   return 0;
 }
 
 candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn)
 {
-  //  nvtxRangePush("opt_cont");
+  //  NV_RANGE_PUSH("opt_cont");
   //
   //  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
   //  initCand* iCand 	= (initCand*)cont->data;
@@ -843,7 +843,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //      {
   //        // This has feature has already been optimised!
   //        cont->flag |= REMOVE_CONTAINER;
-  //        nvtxRangePop();
+  //        NV_RANGE_POP();
   //        return thisOpt;
   //      }
   //
@@ -876,7 +876,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //      {
   //        // This has feature has already been optimised!
   //        cont->flag |= REMOVE_CONTAINER;
-  //        nvtxRangePop();
+  //        NV_RANGE_POP();
   //        return thisOpt;
   //      }
   //
@@ -909,7 +909,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //      {
   //        // This has feature has already been optimised!
   //        cont->flag |= REMOVE_CONTAINER;
-  //        nvtxRangePop();
+  //        NV_RANGE_POP();
   //        return thisOpt;
   //      }
   //
@@ -942,7 +942,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //      {
   //        // This has feature has already been optimised!
   //        cont->flag |= REMOVE_CONTAINER;
-  //        nvtxRangePop();
+  //        NV_RANGE_POP();
   //        return thisOpt;
   //      }
   //
@@ -975,7 +975,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //      {
   //        // This has feature has already been optimised!
   //        cont->flag |= REMOVE_CONTAINER;
-  //        nvtxRangePop();
+  //        NV_RANGE_POP();
   //        return thisOpt;
   //      }
   //
@@ -1008,7 +1008,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //      {
   //        // This has feature has already been optimised!
   //        cont->flag |= REMOVE_CONTAINER;
-  //        nvtxRangePop();
+  //        NV_RANGE_POP();
   //        return thisOpt;
   //      }
   //
@@ -1028,7 +1028,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
   //
   //  cont->flag |= OPTIMISED_CONTAINER;
   //
-  //  nvtxRangePop();
+  //  NV_RANGE_POP();
   //  return thisOpt;
   return NULL;
 }
@@ -1060,9 +1060,9 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
   {
     infoMSG(3,4,"pre synchronisation [blocking]\n");
 
-    nvtxRangePush("EventSynch");
+    NV_RANGE_PUSH("EventSynch");
     CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 
   FOLD // Write CVS & plot output  .
@@ -1074,7 +1074,7 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
     {
       infoMSG(4,4,"Write CVS\n");
 
-      nvtxRangePush("Write CVS");
+      NV_RANGE_PUSH("Write CVS");
 
       char tName[1024];
       sprintf(tName,"/home/chris/accel/Cand_%05i_Lv_%i_Rep_%02i_h%02i.csv", nn, lv, plt, cand->numharm );
@@ -1111,21 +1111,21 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
       {
 	infoMSG(4,4,"Image\n");
 
-	nvtxRangePush("Image");
+	NV_RANGE_PUSH("Image");
 	char cmd[1024];
 	sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s > /dev/null 2>&1", tName);
 	system(cmd);
-	nvtxRangePop();
+	NV_RANGE_POP();
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 #endif
   }
 
   FOLD // Get new max  .
   {
-    nvtxRangePush("Get Max");
+    NV_RANGE_PUSH("Get Max");
 
     for (int indy = 0; indy < pln->noZ; indy++ )
     {
@@ -1143,7 +1143,7 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
 
     infoMSG(4,4,"Max Power %8.3f at (%.4f %.4f)\n", cand->power, cand->r, cand->z);
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }
 
@@ -1185,7 +1185,7 @@ void optInitCandPosSim(initCand* cand, cuOptCand* pln, int noP, double scale, in
 {
   fftInfo*      fft     = &pln->cuSrch->sSpec->fftInf;
 
-  nvtxRangePush("Simplex");
+  NV_RANGE_PUSH("Simplex");
 
   FOLD // Large points  .
   {
@@ -1338,7 +1338,7 @@ void optInitCandPosSim(initCand* cand, cuOptCand* pln, int noP, double scale, in
   cand->z = olst[0]->z;
   cand->power = olst[0]->power;
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
 
 /** Optimise derivatives of a candidate this is usually run in a separate CPU thread  .
@@ -1500,7 +1500,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
   thrdDat->cuSrch = srch;
   thrdDat->candNo = candNo;
 
-  nvtxRangePush("Opt derivs");
+  NV_RANGE_PUSH("Opt derivs");
 
   // Increase the count number of running threads
   sem_post(&srch->threasdInfo->running_threads);
@@ -1521,7 +1521,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
     optCandDerivs( (void*) thrdDat );
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 
   infoMSG(2,2,"Done");
 }
@@ -1543,7 +1543,7 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int no )
 
   char Txt[1024];
   sprintf(Txt, "Opt Cand %03i", no);
-  nvtxRangePush(Txt);
+  NV_RANGE_PUSH(Txt);
 
   // Number of harmonics to check, I think this could go up to 32!
   int maxHarms	= MAX(cand->numharm,sSpec->optMinLocHarms);
@@ -1624,7 +1624,7 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int no )
     }
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
 
 /** This is the main function called by external elements
@@ -1669,7 +1669,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 {
   struct timeval start01, end01;
 
-  nvtxRangePush("GPU Optimisation");
+  NV_RANGE_PUSH("GPU Optimisation");
   gettimeofday(&start01, NULL);       // Profiling
 
   int numcands = g_slist_length(listptr);
@@ -1760,7 +1760,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
   printf("\rGPU optimisation %5.1f%% complete                      \n", 100.0f );
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 
   // Wait for CPU derivative threads to finish
   waitForThreads(&cuSrch->threasdInfo->running_threads, "Waiting for CPU threads to complete.", 200 );

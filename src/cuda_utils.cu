@@ -232,7 +232,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 //  else // call something to initialise the device
 //  {
 //    sprintf(txt,"Init device %02i", device );
-//    nvtxRangePush(txt);
+//    NV_RANGE_PUSH(txt);
 //
 //    //size_t free, total;
 //    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
@@ -241,7 +241,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 //
 //    cudaFree(0);
 //
-//    nvtxRangePop();
+//    NV_RANGE_POP();
 //  }
 //
 //  return NULL;
@@ -274,7 +274,7 @@ void initGPUs(gpuSpecs* gSpec)
     else // call something to initialise the device
     {
       sprintf(txt,"Init device %02i", device );
-      nvtxRangePush(txt);
+      NV_RANGE_PUSH(txt);
 
       cudaDeviceProp deviceProp;
       CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
@@ -288,7 +288,7 @@ void initGPUs(gpuSpecs* gSpec)
 
       sprintf(gInf->name, "%s", deviceProp.name );
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
   }
 }
@@ -516,12 +516,12 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
     char msg2[1024];
     cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
     sprintf(msg2, "Blocking on %s", msg);
-    nvtxRangePush(msg2);
+    NV_RANGE_PUSH(msg2);
 
     sprintf(msg2, "At a timing blocking synchronisation \"%s\"", msg);
     CUDA_SAFE_CALL(cudaEventSynchronize(end), msg2 );
 
-    nvtxRangePop();
+    NV_RANGE_POP();
 
   }
 

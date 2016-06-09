@@ -1524,7 +1524,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      //nvtxRangePush("Read file");
+      //NV_RANGE_PUSH("Read file");
 
       unsigned long freeRam = getFreeRamCU();
 
@@ -1576,7 +1576,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
       }
 
 #ifdef CUDA
-      //nvtxRangePop();
+      //NV_RANGE_POP();
 #endif
 
     }

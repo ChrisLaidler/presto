@@ -409,7 +409,7 @@ __device__ void CB_InmemOutPln_h( void *dataOut, size_t offset, cufftComplex ele
  */
 void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 {
-  nvtxRangePush("CUFFT callbacks");
+  NV_RANGE_PUSH("CUFFT callbacks");
 
   if ( batch->flags & FLAG_MUL_CB )
   {
@@ -481,7 +481,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
     }
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
 
 #endif  // CUDA_VERSION >= 6050

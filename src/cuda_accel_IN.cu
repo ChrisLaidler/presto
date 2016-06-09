@@ -7,7 +7,7 @@ int    cuMedianBuffSz = -1;             ///< The size of the sub sections to use
 
 void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 {
-  nvtxRangePush("CPU_Norm_Spread");
+  NV_RANGE_PUSH("CPU_Norm_Spread");
 
   int harm = 0;
 
@@ -42,7 +42,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               {
                 FOLD // Calculate and store powers  .
                 {
-                  nvtxRangePush("Powers");
+                  NV_RANGE_PUSH("Powers");
                   for (int ii = 0; ii < rVal->numdata; ii++)
                   {
                     if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh ) // Zero Pad
@@ -54,12 +54,12 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                       batch->h_normPowers[ii] = POWERCU(fft[rVal->lobin+ii].r, fft[rVal->lobin+ii].i);
                     }
                   }
-                  nvtxRangePop();
+                  NV_RANGE_POP();
                 }
 
                 FOLD // Calculate normalisation factor from median  .
                 {
-                  nvtxRangePush("Median");
+                  NV_RANGE_PUSH("Median");
                   if ( batch->flags & CU_NORM_EQUIV )
                   {
                     rVal->norm = 1.0 / sqrt(median(batch->h_normPowers, (rVal->numdata)) / log(2.0));        /// NOTE: This is the same method as CPU version
@@ -68,13 +68,13 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                   {
                     rVal->norm = 1.0 / sqrt(median(&batch->h_normPowers[start], (end-start)) / log(2.0));    /// NOTE: This is a slightly better method (in my opinion)
                   }
-                  nvtxRangePop();
+                  NV_RANGE_POP();
                 }
               }
 
               FOLD // Normalise and spread  .
               {
-                nvtxRangePush("Write");
+                NV_RANGE_PUSH("Write");
                 for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
                 {
                   if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh )  // Zero Pad
@@ -94,7 +94,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                     cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * rVal->norm;
                   }
                 }
-                nvtxRangePop();
+                NV_RANGE_POP();
               }
             }
             else                  // or double-tophat normalisation
@@ -149,7 +149,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
     }
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
 
 /** Calculate the r bin values for this batch of steps and store them in planes->rInput
@@ -314,7 +314,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
   {
     infoMSG(1,2,"Input\n");
 
-    nvtxRangePush("Input");
+    NV_RANGE_PUSH("Input");
 
     fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->sSpec->fftInf.fft;
 
@@ -331,17 +331,17 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         {
           infoMSG(3,4,"pre synchronisation [blocking] iDataCpyComp\n");
 
-          nvtxRangePush("EventSynch");
+          NV_RANGE_PUSH("EventSynch");
           CUDA_SAFE_CALL(cudaGetLastError(), "Before Synchronising");
           CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
 
         FOLD // Zero pinned host memory  .
         {
-          nvtxRangePush("Zero");
+          NV_RANGE_PUSH("Zero");
           memset(batch->h_iData, 0, batch->inpDataSize);
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
 
         CPU_Norm_Spread(batch, norm_type, fft);
@@ -362,9 +362,9 @@ void initInput(cuFFdotBatch* batch, int norm_type )
                 gettimeofday(&start, NULL);
               }
 
-              nvtxRangePush("CPU FFT");
+              NV_RANGE_PUSH("CPU FFT");
               fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iData, (fftwf_complex*)cStack->h_iData);
-              nvtxRangePop();
+              NV_RANGE_POP();
 
               if ( batch->flags & FLAG_TIME ) // Timing  .
               {
@@ -429,18 +429,18 @@ void initInput(cuFFdotBatch* batch, int norm_type )
           infoMSG(3,4,"pre synchronisation [blocking] iDataCpyComp\n");
 
           // Make sure the previous thread has complete reading from page locked memory
-          nvtxRangePush("EventSynch");
+          NV_RANGE_PUSH("EventSynch");
           CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
 
         FOLD // Zero pinned host memory  .
         {
           infoMSG(3,4,"Zero pinned memory\n");
 
-          nvtxRangePush("Zero");
+          NV_RANGE_PUSH("Zero");
           memset(batch->h_iData, 0, batch->inpDataSize);
-          nvtxRangePop();
+          NV_RANGE_POP();
         }
 
         FOLD // Copy fft data to device  .
@@ -635,6 +635,6 @@ void initInput(cuFFdotBatch* batch, int norm_type )
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }

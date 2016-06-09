@@ -16,8 +16,11 @@ extern "C"
 #ifdef CUDA
 #include <sys/time.h>
 #include <time.h>
+
+#ifdef CUDA_PROF
 #include <cuda_profiler_api.h>
 #include <nvToolsExt.h>
+#endif
 
 #include "cuda_accel.h"
 #include "cuda_accel_utils.h"
@@ -162,7 +165,7 @@ int main(int argc, char *argv[])
     contextInit += initCudaContext(&gSpec);
   }
 
-  nvtxRangePush("Prep");
+  NV_RANGE_PUSH("Prep");
 #endif
 
   /* Create the accelobs structure */
@@ -210,7 +213,7 @@ int main(int argc, char *argv[])
   char candsFile[1024];
   sprintf(candsFile,"%s.unoptcands", fname );
 
-  nvtxRangePop();
+  NV_RANGE_POP();
   gettimeofday(&end, NULL);
   cuSrch->timings[TIME_PREP] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
@@ -252,7 +255,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA // Profiling  .
         printf("\n*************************************************************************************************\n                         Doing CPU Search\n*************************************************************************************************\n");
 
-        nvtxRangePush("CPU");
+        NV_RANGE_PUSH("CPU");
         gettimeofday(&start, NULL);
 #endif
 
@@ -342,7 +345,7 @@ int main(int argc, char *argv[])
 
         printf("\nCPU found %i initial candidates. In %.4f ms\n", g_slist_length(candsCPU), cuSrch->timings[TIME_CPU_SRCH]/1000.0 );
 
-        nvtxRangePop();
+        NV_RANGE_POP();
 
         if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
         {
@@ -434,9 +437,9 @@ int main(int argc, char *argv[])
             infoMSG(1,0,"Plane creation.\n");
 
             if      ( master->flags & FLAG_SS_INMEM     )
-              nvtxRangePush("In-Mem plane");
+              NV_RANGE_PUSH("In-Mem plane");
             else
-              nvtxRangePush("GPU Search");
+              NV_RANGE_PUSH("GPU Search");
 
             int iteration = 0;
 
@@ -600,7 +603,7 @@ int main(int argc, char *argv[])
               waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU,", 200 );
             }
 
-            nvtxRangePop();
+            NV_RANGE_POP();
 
           }
 
@@ -627,7 +630,7 @@ int main(int argc, char *argv[])
             {
               printf("\nCopying initial candidates from array to list for optimisation.\n");
 
-              nvtxRangePush("Add to list");
+              NV_RANGE_PUSH("Add to list");
 
               int     cdx;
               double  poww, sig;
@@ -666,7 +669,7 @@ int main(int argc, char *argv[])
               fclose (pFile);
 #endif
 
-              nvtxRangePop();
+              NV_RANGE_POP();
             }
             else if ( master->cndType & CU_STR_LST    )
             {
@@ -787,7 +790,7 @@ int main(int argc, char *argv[])
     time_t rawtime;
     struct tm* ptm;
 
-    nvtxRangePush("Optimisation");
+    NV_RANGE_PUSH("Optimisation");
     gettimeofday(&start, NULL);       // Note could start the timer after kernel init
 
 #ifdef CBL
@@ -856,7 +859,7 @@ int main(int argc, char *argv[])
 	if (cmd->gpuP)
 	  candsGPU = duplicate_accelcands(cands);
 
-	nvtxRangePush("CPU Optimisation");
+	NV_RANGE_PUSH("CPU Optimisation");
 	gettimeofday(&start01, NULL);       // Profiling
 #endif
 
@@ -873,7 +876,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef CUDA // Profiling  .
-	nvtxRangePop();
+	NV_RANGE_POP();
 	gettimeofday(&end01, NULL);
 	cuSrch->timings[TIME_CPU_OPT] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
 #endif
@@ -990,25 +993,25 @@ int main(int argc, char *argv[])
       /* Write the fundamentals to the output text file */
 
 #ifdef CUDA
-      nvtxRangePush("Fundamentals");
+      NV_RANGE_PUSH("Fundamentals");
 #endif
 
       output_fundamentals(props, cands, &obs, &idata);
 
 #ifdef CUDA
-      nvtxRangePop();
+      NV_RANGE_POP();
 #endif
 
       /* Write the harmonics to the output text file */
 
 #ifdef CUDA
-      nvtxRangePush("Harmonics");
+      NV_RANGE_PUSH("Harmonics");
 #endif
 
       output_harmonics(cands, &obs, &idata);
 
 #ifdef CUDA
-      nvtxRangePop();
+      NV_RANGE_POP();
 #endif
 
       /* Write the fundamental fourierprops to the cand file */
@@ -1167,7 +1170,7 @@ int main(int argc, char *argv[])
     }
 
 #ifdef CUDA
-    nvtxRangePop();
+    NV_RANGE_POP();
 
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_ALL_OPT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));

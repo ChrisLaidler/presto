@@ -7,8 +7,13 @@
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
+
+
+#ifdef CUDA_PROF
 #include <nvToolsExt.h>
 #include <nvToolsExtCudaRt.h>
+#endif
+
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
@@ -329,7 +334,7 @@ void SSKer(cuFFdotBatch* batch)
 {
   infoMSG(2,3,"Sum & Search\n");
 
-  nvtxRangePush("S&S Ker");
+  NV_RANGE_PUSH("S&S Ker");
 
   FOLD // Do synchronisations  .
   {
@@ -395,7 +400,7 @@ void SSKer(cuFFdotBatch* batch)
     CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
 
 /** Process an individual candidate  .
@@ -715,7 +720,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
     infoMSG(1,2,"Process previous results\n");
 
-    nvtxRangePush("CPU Process results");
+    NV_RANGE_PUSH("CPU Process results");
 
     if ( batch->flags & FLAG_TIME )    // Timing  .
     {
@@ -724,7 +729,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
     FOLD // Allocate temporary memory to copy results back to  .
     {
-      nvtxRangePush("malloc");
+      NV_RANGE_PUSH("malloc");
 
       thrdDat = new resultData;     // A data structure to hold info for the thread processing the results
       memset(thrdDat, 0, sizeof(resultData) );
@@ -734,7 +739,7 @@ void processSearchResults(cuFFdotBatch* batch)
         thrdDat->retData = (void*)malloc(batch->retDataSize);
       }
 
-      nvtxRangePop();
+      NV_RANGE_POP();
     }
 
     FOLD // Initialise data structure  .
@@ -805,9 +810,9 @@ void processSearchResults(cuFFdotBatch* batch)
       {
         infoMSG(3,4,"pre synchronisation [blocking] candCpyComp\n");
 
-        nvtxRangePush("EventSynch");
+        NV_RANGE_PUSH("EventSynch");
         CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
 
       FOLD // Timing  .
@@ -822,7 +827,7 @@ void processSearchResults(cuFFdotBatch* batch)
       {
         infoMSG(3,3,"copy to temporary memory\n");
 
-        nvtxRangePush("memcpy");
+        NV_RANGE_PUSH("memcpy");
 
         void *gpuOutput;
 
@@ -852,7 +857,7 @@ void processSearchResults(cuFFdotBatch* batch)
           thrdDat->retData = gpuOutput;
         }
 
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
 
       FOLD // Timing 1  .
@@ -874,7 +879,7 @@ void processSearchResults(cuFFdotBatch* batch)
     {
       if ( batch->flags & FLAG_SYNCH )
       {
-        nvtxRangePush("Thread");
+        NV_RANGE_PUSH("Thread");
       }
 
       if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
@@ -924,11 +929,11 @@ void processSearchResults(cuFFdotBatch* batch)
 
       if ( batch->flags & FLAG_SYNCH )
       {
-        nvtxRangePop();
+        NV_RANGE_POP();
       }
     }
 
-    nvtxRangePop();
+    NV_RANGE_POP();
   }
 }
 
@@ -1191,7 +1196,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   int iteration         = 0;
   uint currentBin       = startBin;
 
-  nvtxRangePush("Inmem Search");
+  NV_RANGE_PUSH("Inmem Search");
 
   FOLD // Set all r-values to zero  .
   {
@@ -1306,5 +1311,5 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
   }
 
-  nvtxRangePop();
+  NV_RANGE_POP();
 }
