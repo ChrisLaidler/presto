@@ -12,10 +12,7 @@
 #include <cuda_fp16.h>
 #endif
 
-#ifdef CUDA_PROF
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
-#endif
+
 
 #ifdef WITHOMP
 #include <omp.h>
@@ -43,6 +40,11 @@ extern "C"
 
 #undef  CUDA_PROF
 #define CUDA_PROF
+
+#ifdef CUDA_PROF
+#include <nvToolsExt.h>
+#include <nvToolsExtCudaRt.h>
+#endif
 
 //=========================================== Defines ====================================================
 

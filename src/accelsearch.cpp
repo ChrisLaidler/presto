@@ -360,10 +360,10 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP )            // --=== The GPU Search == --  .
       {
 #ifdef CUDA
-        
+
         // Wait for the context thread to complete
         cuSrch->timings[TIME_CONTEXT] = compltCudaContext(&gSpec);
-        
+
 #ifdef NVVP // Start profiler
         cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
 #endif
