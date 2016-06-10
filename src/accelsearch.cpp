@@ -1400,9 +1400,17 @@ int main(int argc, char *argv[])
 #ifdef CUDA
   freeCuSearch(cuSrch);
 
+  // Debug studff
+  for ( int i = 0; i < gSpec.noDevices; i++)
+  {
+    CUDA_SAFE_CALL(cudaSetDevice(gSpec.devId[i]), "ERROR in cudaSetDevice");
+    CUDA_SAFE_CALL(cudaDeviceReset(), "Error in device reset.");
+  }
+
 #ifdef NVVP // Stop profiler
   cudaProfilerStop();
 #endif
+  cudaDeviceReset();
 #endif
 
   free_accelobs(&obs);
