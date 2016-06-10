@@ -6225,9 +6225,29 @@ long long compltCudaContext(gpuSpecs* gSpec)
       fflush(stdout);
 
       void *status;
-      if ( pthread_join(gSpec->cntxThread, &status) )
+      struct timespec ts;
+      if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
       {
-        fprintf(stderr,"ERROR: Failed to join context thread.\n");
+	fprintf(stderr,"ERROR: Failed to get time.\n");
+      }
+      ts.tv_sec += 10;
+
+      int rr = pthread_timedjoin_np(gSpec->cntxThread, &status, &ts);
+      if ( rr )
+      {
+	fprintf(stderr,"ERROR: Failed to join context thread.\n");
+	if ( pthread_kill(gSpec->cntxThread, SIGALRM) )
+	{
+	  fprintf(stderr,"ERROR: Failed to kill context thread.\n");
+	}
+
+        for ( int i = 0; i < gSpec->noDevices; i++)
+        {
+          CUDA_SAFE_CALL(cudaSetDevice(gSpec->devId[i]), "ERROR in cudaSetDevice");
+          CUDA_SAFE_CALL(cudaDeviceReset(), "Error in device reset.");
+        }
+
+        exit(EXIT_FAILURE);
       }
 
       printf("\r                                                          ");
