@@ -1735,7 +1735,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           size_t noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
           size_t nX             = noStepsP * kernel->accelLen;
           size_t nY             = kernel->hInfos->height;
-          planeSize	           += nX * nY * plnElsSZ;
+          planeSize	       += nX * nY * plnElsSZ;
         }
       }
 
@@ -1747,8 +1747,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       FOLD // Calculate how many batches and steps to do  .
       {
         float possSteps;
-        char cufftType[1024];
+        char  cufftType[1024];
 
+        // No steps possible for given number of batches
         if ( kernel->flags & CU_FFT_SEP )
         {
           possSteps = ( free - planeSize ) / (double) ( (fffTotSize + batchSize) * noBatches ) ;
@@ -1765,6 +1766,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           {
             printf("      Requested %i steps per batch, but with %i batches we can only do %.2f steps per batch. \n", noSteps, noBatches, possSteps );
             noSteps = floor(possSteps);
+
+            // DBG TMP remove this
+            {
+#ifdef CBL
+              freeKernel(kernel);
+              return (0);
+#endif
+            }
           }
 
           if ( floor(possSteps) > noSteps + 1 && (noSteps < MAX_STEPS) )
@@ -1778,6 +1787,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
           {
             kernel->noSteps = MAX_STEPS;
             printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", kernel->noSteps );
+
+            // DBG TMP remove this
+            {
+#ifdef CBL
+              freeKernel(kernel);
+              return (0);
+#endif
+            }
           }
         }
         else
