@@ -20,24 +20,24 @@
 char *Program;
 
 /*@-null*/
-static int nbatchDefault[] = {2};
-static int nstepsDefault[] = {4};
-static int numoptDefault[] = {4};
+static int nbatchDefault[] = {0};
+static int nstepsDefault[] = {0};
+static int numoptDefault[] = {0};
 
 static Cmdline cmd = {
   /***** -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu */
   /* gpuP = */ 0,
   /* gpu = */ (int*)0,
   /* gpuC = */ 0,
-  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value. */
   /* nbatchP = */ 1,
   /* nbatch = */ nbatchDefault,
   /* nbatchC = */ 1,
-  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the aplication to determine a good value. */
   /* nstepsP = */ 1,
   /* nsteps = */ nstepsDefault,
   /* nstepsC = */ 1,
-  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value. */
   /* numoptP = */ 1,
   /* numopt = */ numoptDefault,
   /* numoptC = */ 1,
@@ -826,7 +826,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value. */
   if( !cmd.nbatchP ) {
     printf("-nbatch not found.\n");
   } else {
@@ -842,7 +842,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches */
+  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the aplication to determine a good value. */
   if( !cmd.nstepsP ) {
     printf("-nsteps not found.\n");
   } else {
@@ -858,7 +858,7 @@ showOptionValues(void)
     }
   }
 
-  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs */
+  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value. */
   if( !cmd.numoptP ) {
     printf("-numopt not found.\n");
   } else {
@@ -1099,15 +1099,15 @@ usage(void)
   fprintf(stderr,"      Search an FFT or short time series for pulsars using a Fourier domain acceleration search with harmonic summing.\n");
   fprintf(stderr,"             -gpu: A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu\n");
   fprintf(stderr,"                   0...32 int values between 0 and 32\n");
-  fprintf(stderr,"          -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
-  fprintf(stderr,"                   0...32 int values between 1 and 5\n");
-  fprintf(stderr,"                   default: `2'\n");
-  fprintf(stderr,"          -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches\n");
-  fprintf(stderr,"                   0...32 int values between 1 and 8\n");
-  fprintf(stderr,"                   default: `4'\n");
-  fprintf(stderr,"          -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs\n");
-  fprintf(stderr,"                   0...32 int values between 1 and 7\n");
-  fprintf(stderr,"                   default: `4'\n");
+  fprintf(stderr,"          -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value.\n");
+  fprintf(stderr,"                   0...32 int values between 0 and 5\n");
+  fprintf(stderr,"                   default: `0'\n");
+  fprintf(stderr,"          -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the aplication to determine a good value.\n");
+  fprintf(stderr,"                   0...32 int values between 0 and 8\n");
+  fprintf(stderr,"                   default: `0'\n");
+  fprintf(stderr,"          -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value.\n");
+  fprintf(stderr,"                   0...32 int values between 0 and 7\n");
+  fprintf(stderr,"                   default: `0'\n");
   fprintf(stderr,"           -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two.\n");
   fprintf(stderr,"                   1 int value between 1 and 65536\n");
   fprintf(stderr,"                   default: `4'\n");
@@ -1152,7 +1152,7 @@ usage(void)
   fprintf(stderr,"    -noharmremove: Do not remove harmonically related candidates (never removed for numharm = 1)\n");
   fprintf(stderr,"           infile: Input file name of the floating point .fft or .[s]dat file.  A '.inf' file of the same name must also exist\n");
   fprintf(stderr,"                   1 value\n");
-  fprintf(stderr,"  version: 22Feb16\n");
+  fprintf(stderr,"  version: 11Jun16\n");
   fprintf(stderr,"  ");
   exit(EXIT_FAILURE);
 }
@@ -1186,7 +1186,7 @@ parseCmdline(int argc, char **argv)
       i = getIntOpts(argc, argv, i, &cmd.nbatch, 0, 32);
       cmd.nbatchC = i-keep;
       checkIntLower("-nbatch", cmd.nbatch, cmd.nbatchC, 5);
-      checkIntHigher("-nbatch", cmd.nbatch, cmd.nbatchC, 1);
+      checkIntHigher("-nbatch", cmd.nbatch, cmd.nbatchC, 0);
       continue;
     }
 
@@ -1196,7 +1196,7 @@ parseCmdline(int argc, char **argv)
       i = getIntOpts(argc, argv, i, &cmd.nsteps, 0, 32);
       cmd.nstepsC = i-keep;
       checkIntLower("-nsteps", cmd.nsteps, cmd.nstepsC, 8);
-      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 1);
+      checkIntHigher("-nsteps", cmd.nsteps, cmd.nstepsC, 0);
       continue;
     }
 
@@ -1206,7 +1206,7 @@ parseCmdline(int argc, char **argv)
       i = getIntOpts(argc, argv, i, &cmd.numopt, 0, 32);
       cmd.numoptC = i-keep;
       checkIntLower("-numopt", cmd.numopt, cmd.numoptC, 7);
-      checkIntHigher("-numopt", cmd.numopt, cmd.numoptC, 1);
+      checkIntHigher("-numopt", cmd.numopt, cmd.numoptC, 0);
       continue;
     }
 

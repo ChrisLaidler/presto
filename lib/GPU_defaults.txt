@@ -9,8 +9,7 @@
 ######## Memory #########
 
 # Interleaving
-#IL_ROW				# Interleave steps row by row
-#IL_PLN				# Interleave steps row by plane
+IL_ROW			# Last Edited by run time script
 
 ######### Kernel #########
 
@@ -44,13 +43,13 @@ FFT_GPU  			# Do the input FFT's on the GPU
 # Which type of multiplication to do. Note MUL_00 is just a dummy kernel and will give incorrect values!
 # In my testing MUL_CB is very slow, like 7 times slower (FFT only)!
 # MUL_00  MUL_10  MUL_21  MUL_22  MUL_23  MUL_30  MUL_CB  MUL_AA
-MUL_AA
+FLAG_MUL_AA			# Last Edited by run time script
 
 #FLAG_TEX_MUL			# [Deprecated]	Use texture memory in the multiplication kernel
 
-MUL_SLICES	5		# The number of horizontal "slices" to break the multiplication kernel into
+MUL_SLICES	0			# Last Edited by run time script
 
-MUL_CHUNK	9		# The number of values to buffer in the multiplication kernel (this increases register use)
+MUL_CHUNK	0			# Last Edited by run time script
 
 # How to do convolution
 #FLAG_SEP			# Do the multiplication and iFFT "separately"	ie all multiplications followed by all iFFT's
@@ -91,11 +90,11 @@ FLAG_CUFFT_CB_POW		# Almost always a good option!
 
 # The type of Sum & Search to perform
 #  SS_CPU  SS_00  SS_10  SS_INMEM  SS_AA
-SS_AA
+FLAG_SS_10			# Last Edited by run time script
 
-SS_SLICES	5		# The number of horizontal "slices" to break the Sum & Search kernel into
+SS_SLICES	0			# Last Edited by run time script
 
-SS_CHUNK	9		# The number of values to buffer in the Sum & Search kernel (this increases register use)
+SS_CHUNK	0			# Last Edited by run time script
 
 SS_INMEM_SZ	32768		# The step size of the in-mem search, this can be any value good choices are powers of two: 2048 or 4096 or 8192 or 16384 or 32768
 
