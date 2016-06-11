@@ -54,8 +54,8 @@ extern "C"
 #define         MAX_NO_STAGES           5       ///< The maximum number of harmonics handled by a accel search
 #define         MAX_YINDS               8000    ///< The maximum number of y indices to store in constant memory
 #define         INDS_BUFF               20      ///< The maximum number of y indices to store in constant memory
-#define         MAX_STEPS               8       ///< The maximum number of steps
-#define         MAX_STKSZ               9       ///< The maximum number of planes in a stack
+#define         MAX_STEPS               8       ///< The maximum number of steps in a single batch
+#define         MAX_BATCHES             5       ///< The maximum number of batches on a single GPU
 #define         MAX_GPUS                32      ///< The maximum number GPU's
 #define         INMEM_FFT_WIDTH         4096    ///< The size of FFT planes for in-mem GPU search
 #define         CORRECT_MULT            1       ///< Generate the kernel values the correct way and do the
