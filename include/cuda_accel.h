@@ -67,7 +67,7 @@ extern "C"
 
 #define     FLAG_KER_HIGH       (1ULL<<1)       ///< Use increased response function width for higher accuracy at Z close to zero
 #define     FLAG_KER_MAX        (1ULL<<2)       ///< Use maximum   response function width for higher accuracy at Z close to zero
-#define     FLAG_CENTER         (1ULL<<3)       ///< Centre the kernel
+#define     FLAG_CENTER         (1ULL<<3)       ///< Centre and align the usable part of the convolution kernel
 #define     FLAG_KER_DOUBGEN    (1ULL<<4)       ///< Create kernel with double precision calculations
 #define     FLAG_KER_DOUBFFT    (1ULL<<5)       ///< Create kernel with double precision calculations and FFT's
 
@@ -90,10 +90,10 @@ extern "C"
 #define     FLAG_MUL_BATCH      ( FLAG_MUL_30 )
 #define     FLAG_MUL_ALL        ( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_TEX_MUL        (1ULL<<17)      ///< [ Deprecated ]  Use texture memory for multiplication                - May give some advantage on pre-Fermi generation which we don't really care about
+#define     FLAG_TEX_MUL        (1ULL<<17)      ///< [ Deprecated ]  Use texture memory for multiplication                              - May give some advantage on pre-Fermi generation which we don't really care about
 
-#define     FLAG_CUFFT_CB_POW   (1ULL<<18)      ///< Use an output callback to create powers              - This is a similar speed but speeds up SS
-#define     FLAG_CUFFT_CB_INMEM (1ULL<<19)      ///<
+#define     FLAG_CUFFT_CB_POW   (1ULL<<18)      ///< Use an output callback to create powers, this works in std or in-mem searches       - This is a similar iFFT speed but speeds up SS
+#define     FLAG_CUFFT_CB_INMEM (1ULL<<19)      ///< Use the in-mem FFT's to copy values strait back to in-mem plane
 #define     FLAG_CUFFT_CB_OUT   ( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM )   /// All output callbacks
 #define     FLAG_CUFFT_ALL      ( FLAG_CUFFT_CB_OUT | FLAG_MUL_CB )           /// All callbacks
 
@@ -101,9 +101,9 @@ extern "C"
 #define     FLAG_TEX_INTERP     (1ULL<<21)      ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
 #define     FLAG_SIG_GPU        (1ULL<<22)      ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     FLAG_SS_CPU         (1ULL<<23)      ///< Do the sum and searching on the CPU
-#define     FLAG_SS_00          (1ULL<<24)      ///<
-#define     FLAG_SS_10          (1ULL<<25)      ///<
+#define     FLAG_SS_CPU         (1ULL<<23)      ///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
+#define     FLAG_SS_00          (1ULL<<24)      ///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
+#define     FLAG_SS_10          (1ULL<<25)      ///< This is the standard sum and search kernel, there were others but they were deprecated
 #define     FLAG_SS_INMEM       (1ULL<<26)      ///< Do an in memory GPU search
 #define     FLAG_SS_STG         ( FLAG_SS_00  | FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
 #define     FLAG_SS_KERS        ( FLAG_SS_STG | FLAG_SS_INMEM  )
@@ -124,7 +124,7 @@ extern "C"
 #define     FLAG_OPT_LOCAVE     (1ULL<<35)      ///< Use local average normalisation instead of median in the optimisation
 #define     FLAG_OPT_BEST       (1ULL<<36)      ///< Use local average normalisation instead of median in the optimisation
 #define     FLAG_OPT_SWARM      (1ULL<<37)      ///< Use particle swarm to optimise candidate location
-#define     FLAG_OPT_DYN_HW     (1ULL<<46)      ///< Use
+#define     FLAG_OPT_DYN_HW     (1ULL<<46)      ///< Use Dynamic half-width in optimisation
 
 #define     FLAG_RAND_1         (1ULL<<38)      ///< Random Flag 1
 
@@ -136,6 +136,9 @@ extern "C"
 #define     FLAG_DPG_PLT_OPT    (1ULL<<44)      ///< Plot optimisation stages
 #define     FLAG_DPG_SKP_OPT    (1ULL<<45)      ///< Plot optimisation stages
 
+
+
+//================================== data types identifiers ==============================================
 
 // ----------- This is a list of the data types that and storage structures
 

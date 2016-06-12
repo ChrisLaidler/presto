@@ -251,7 +251,6 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
         // Call kernel
         cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
       }
-
     }
   }
 }

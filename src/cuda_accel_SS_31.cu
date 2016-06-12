@@ -315,16 +315,16 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    case 10:
-    {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
-    case 12:
-    {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
-      break;
-    }
+    //    case 10:
+    //    {
+    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
+    //    case 12:
+    //    {
+    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+    //      break;
+    //    }
     //    case 14:
     //    {
     //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);

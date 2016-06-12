@@ -19,7 +19,7 @@
 // #define ACCEL_USELEN 1820	// This works up to zmax=100 to use 2K FFTs
 
 #undef  ACCEL_USELEN
-#define ACCEL_USELEN	7966			// Added by run time script for 8K FFT's at a ZMAZ of 100
+#define ACCEL_USELEN	7470		// Temporary value to be overwritten by Chris' testing script
 
 #undef FOLD
 #undef FOUT

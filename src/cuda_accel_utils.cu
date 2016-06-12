@@ -449,6 +449,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       fffTotSize  = 0;
       planeSize   = 0;
 
+      int    plnStride  = sInf->sSpec->ssStepSize;
       int    plnY       = calc_required_z(1.0, (float)sInf->sSpec->zMax );
 
       if ( sInf->sSpec->flags & FLAG_HALF )
@@ -469,6 +470,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       if ( sInf->sSpec->flags & FLAG_KER_HIGH )
         accuracy = HIGHACC;
 
+
+      // Calculate stride
+      if ( plnStride <= 0 )
+      {
+        plnStride = 32768; // TODO: I need to check for a good default
+      }
+
       // Calculate "approximate" plane size
       size_t accelLen   = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
       accelLen          = floor( accelLen/(float)(sInf->noSrchHarms*ACCEL_RDR) ) * (sInf->noSrchHarms*ACCEL_RDR);	// Adjust to be divisible by number of harmonics
@@ -478,21 +486,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       planeSize         = (noStepsP * accelLen) * plnY * plnElsSZ ;
 
       // Kernel
-      kerSize          += fftLen * plnY * sizeof(cufftComplex);                                 // Kernel
+      kerSize          += fftLen * plnY * sizeof(cufftComplex);                                         // Kernel
       if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
-        kerSize        += fftLen * plnY * sizeof(double)*2;                                     // Kernel
+        kerSize        += fftLen * plnY * sizeof(double)*2;                                             // Kernel
 
       // Calculate the  "approximate" size of a single 1 step batch
-      batchSize        += fftLen * sizeof(cufftComplex);                                        // Input
-      batchSize        += sInf->sSpec->ssStepSize * sInf->noHarmStages * sInf->sSpec->ssSlices * sizeof(candPZs); // Output
-      batchSize        += fftLen * plnY * sizeof(cufftComplex);                                 // Complex plain
-      batchSize        += fftLen * plnY * sizeof(float);                                        // Powers plain
+      batchSize        += fftLen * sizeof(cufftComplex);                                                // Input
+      batchSize        += plnStride * sInf->noHarmStages * sInf->sSpec->ssSlices * sizeof(candPZs);     // Output
+      batchSize        += fftLen * plnY * sizeof(cufftComplex);                                         // Complex plain
+      batchSize        += fftLen * plnY * sizeof(float);                                                // Powers plain
 
       infoMSG(5,5,"inpDataSize: %.2f GB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - retDataSize: ~%.2f MB \n",
             ( fftLen * sizeof(cufftComplex) )*1e-6,
             ( fftLen * plnY * sizeof(cufftComplex) )*1e-6,
             ( fftLen * plnY * sizeof(float) )*1e-6,
-            ( sInf->sSpec->ssStepSize * sInf->noHarmStages * sInf->sSpec->ssSlices * sizeof(candPZs) )*1e-6 ); //  free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, singleBatchSz*1e-6 );
+            ( plnStride * sInf->noHarmStages * sInf->sSpec->ssSlices * sizeof(candPZs) )*1e-6 );        //  free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, singleBatchSz*1e-6 );
 
 
       fffTotSize        = fftLen * plnY * sizeof(cufftComplex);
@@ -1674,7 +1682,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       {
         if      ( kernel->flags & FLAG_SS_INMEM )
         {
-          kernel->strideOut = sInf->sSpec->ssStepSize;
+          if ( sInf->sSpec->ssStepSize <= 100 )
+          {
+            if ( sInf->sSpec->ssStepSize > 0 )
+              fprintf(stderr, "WARNING: In-mem plane search stride too small try 0 or something larger that 100 say 16384 or 32768.\n");
+
+            kernel->strideOut = 32768; // TODO: I need to check for a good default
+          }
+          else
+          {
+            kernel->strideOut = sInf->sSpec->ssStepSize;
+          }
         }
         else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
         {
@@ -4019,6 +4037,29 @@ bool strCom(const char* str1, const char* str2)
     return 0;
 }
 
+
+bool singleFlag ( int64_t*  flags, const char* str1, const char* str2, int64_t flagVal, const char* onVal, const char* offVal, int lineno, const char* fName )
+{
+  if      ( strCom("1", str2 ) || strCom(onVal, str2 ) )
+  {
+    (*flags) |=  flagVal;
+    return true;
+  }
+  else if ( strCom("0", str2 ) || strCom(offVal, str2 ) )
+  {
+    (*flags) &= ~flagVal;
+  }
+  else if ( strCom(str2, "#" ) || strCom("", str2 )  )
+  {
+    // Blank do nothing
+  }
+  else
+  {
+    fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+  }
+  return false;
+}
+
 /** Read accel search details from the text file
  *
  * @param sSpec
@@ -4037,6 +4078,9 @@ void readAccelDefalts(searchSpecs *sSpec)
     char* line;
     char  line2[1024];
     int   lineno = 0;
+
+    char str1[1024];
+    char str2[1024];
 
     char *rest;
 
@@ -4061,288 +4105,297 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       int ll = strlen(line);
 
-      if      ( strCom(line, "FLAG_ITLV_ROW" ) || strCom(line, "INTERLEAVE_ROW" ) ||  strCom(line, "IL_ROW" ) )
+      str2[0] = 0;
+      int pRead = sscanf(line, "%s %s", str1, str2 );
+      if ( str2[0] == '#' )
+        str2[0] = 0;
+
+      if ( strCom(str1, "#" ) || ( ll == 1 ) )                  // Comment line
       {
-        (*flags) |= FLAG_ITLV_ROW;
-      }
-      else if ( strCom(line, "FLAG_ITLV_PLN" ) || strCom(line, "INTERLEAVE_PLN" ) ||  strCom(line, "IL_PLN" ) )
-      {
-        (*flags) &= ~FLAG_ITLV_ROW;
+        continue;
       }
 
-      else if ( strCom(line, "FLAG_KER_STD"  ) )
+      else if ( strCom(str1, "DUMMY" ) )                        // Dummy parameter
       {
-        (*flags) &= ~FLAG_KER_HIGH;
-      }
-      else if ( strCom(line, "FLAG_KER_HIGH" ) )
-      {
-        (*flags) |= FLAG_KER_HIGH;
-      }
-      else if ( strCom(line, "FLAG_KER_MAX"  ) )
-      {
-        (*flags) |= FLAG_KER_MAX;
-      }
-      else if ( strCom(line, "FLAG_CENTER"   ) )
-      {
-        (*flags) |= FLAG_CENTER;
+        continue;
       }
 
-      else if ( strCom(line, "FLAG_KER_RESP_DOUBLE"   ) )
+      else if ( strCom("INTERLEAVE", str1 ) ||  strCom("IL", str1 ) )   // Interleaving
       {
-        (*flags) |= FLAG_KER_DOUBGEN;
-      }
-      else if ( strCom(line, "FLAG_KER_RESP_FLOAT"   ) )
-      {
-        (*flags) &= ~FLAG_KER_DOUBGEN;
+        singleFlag ( flags, str1, str2, FLAG_ITLV_ROW, "ROW", "PLN", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_KER_FFT_DOUBLE"   ) )
+      else if ( strCom("RESPONSE", str1 ) )                     // Response shape
       {
-        (*flags) |= FLAG_KER_DOUBFFT;
-      }
-      else if ( strCom(line, "FLAG_KER_FFT_FLOAT"   ) )
-      {
-        (*flags) &= ~FLAG_KER_DOUBFFT;
+        singleFlag ( flags, str1, str2, FLAG_KER_HIGH, "HIGH", "STD", lineno, fName );
       }
 
-
-      else if ( strCom(line, "CU_NORM_CPU" ) || strCom(line, "NORM_CPU" ) )
+      else if ( strCom("FLAG_KER_HIGH", str1 ) )
       {
-        (*flags) |= CU_NORM_CPU;
-      }
-      else if ( strCom(line, "CU_NORM_GPU" ) || strCom(line, "NORM_GPU" ) )
-      {
-        (*flags) &= ~CU_NORM_CPU;
+        singleFlag ( flags, str1, str2, FLAG_KER_HIGH, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "CU_INPT_FFT_CPU" ) || strCom(line, "CPU_FFT" ) || strCom(line, "FFT_CPU" ) )
+      else if ( strCom("FLAG_KER_MAX", str1 ) )                 // Kernel
       {
-        (*flags) |= CU_NORM_CPU;
-        (*flags) |= CU_INPT_FFT_CPU;
-      }
-      else if ( strCom(line, "CU_INPT_GPU_FFT" ) || strCom(line, "GPU_FFT" ) || strCom(line, "FFT_GPU" ) )
-      {
-        (*flags) &= ~CU_INPT_FFT_CPU;
+        singleFlag ( flags, str1, str2, FLAG_KER_MAX, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_MUL_00" ) || strCom(line, "MUL_00" ) )
+      else if ( strCom("CENTER_RESPONSE", str1 ) )
       {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_00;
-      }
-      else if ( strCom(line, "FLAG_MUL_11" ) || strCom(line, "MUL_11" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_11;
-      }
-      else if ( strCom(line, "FLAG_MUL_21" ) || strCom(line, "MUL_21" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_21;
-      }
-      else if ( strCom(line, "FLAG_MUL_22" ) || strCom(line, "MUL_22" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_22;
-      }
-      else if ( strCom(line, "FLAG_MUL_23" ) || strCom(line, "MUL_23" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_23;
-      }
-      else if ( strCom(line, "FLAG_MUL_30" ) || strCom(line, "MUL_30" ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_30;
-      }
-      else if ( strCom(line, "FLAG_MUL_CB" ) || strCom(line, "MUL_CB" ) )
-      {
-#if CUDA_VERSION >= 6050
-        (*flags) &= ~FLAG_MUL_ALL;
-        (*flags) |=  FLAG_MUL_CB;
-#else
-        line[flagLen] = 0;
-        fprintf(stderr, "WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-#endif
-      }
-      else if ( strCom(line, "FLAG_MUL_A"  ) || strCom(line, "MUL_A"  ) )
-      {
-        (*flags) &= ~FLAG_MUL_ALL;
+        singleFlag ( flags, str1, str2, FLAG_CENTER, "", "off", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_FFT_SEPERATE"  ) || strCom(line, "FLAG_FFT_SEP"  ) )
+      else if ( strCom("RESPONSE_PRECISION", str1 ) )
       {
-        (*flags) |= CU_FFT_SEP;
+        singleFlag ( flags, str1, str2, FLAG_KER_DOUBGEN, "DOUBLE", "SINGLE", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_TEX_MUL" ) )
+      else if ( strCom("KER_FFT_PRECISION", str1 ) )
       {
-        fprintf(stderr, "WARNING: The flag FLAG_TEX_MUL has been deprecated.\n");
-        //(*flags) |= FLAG_TEX_MUL;
+        singleFlag ( flags, str1, str2, FLAG_KER_DOUBFFT, "DOUBLE", "SINGLE", lineno, fName );
       }
 
-      else if ( strCom(line, "MUL_Chunk"  ) || strCom(line, "MUL_CHUNK"  ) )
+      else if ( strCom("INP_NORM", str1 ) )
       {
-        char str1[1024];
-        char str2[1024];
-        int no;
-        int read1 = sscanf(line, "%s %i ", str1, &no  );
-        int read2 = sscanf(line, "%s %s ", str1, str2 );
+        singleFlag ( flags, str1, str2, CU_NORM_CPU, "CPU", "GPU", lineno, fName );
+      }
 
-        if ( read1 == 2 )
+      else if ( strCom("INP_FFT", str1 ) )
+      {
+        if ( singleFlag ( flags, str1, str2, CU_INPT_FFT_CPU, "CPU", "GPU", lineno, fName ) )
         {
-          sSpec->mulChunk = no;
+          // IF we are doing CPU FFT's we need to do CPU normalisation
+          (*flags) |= CU_NORM_CPU;
         }
-        else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
+      }
+
+      else if ( strCom("MUL_KER", str1 ) )
+      {
+        if      ( strCom("00", str2 ) )
         {
-          sSpec->mulChunk = 0;
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_00;
+        }
+        else if ( strCom("11", str2 ) )
+        {
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_11;
+        }
+        else if ( strCom("21", str2 ) )
+        {
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_21;
+        }
+        else if ( strCom("22", str2 ) )
+        {
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_22;
+        }
+        else if ( strCom("23", str2 ) )
+        {
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_23;
+        }
+        else if ( strCom("30", str2 ) )
+        {
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_30;
+        }
+        else if ( strCom("CB", str2 ) )
+        {
+#if CUDA_VERSION >= 6050
+          (*flags) &= ~FLAG_MUL_ALL;
+          (*flags) |=  FLAG_MUL_CB;
+#else
+          line[flagLen] = 0;
+          fprintf(stderr, "WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif
+        }
+        else if ( strCom(str2, "A"  ) )
+        {
+          (*flags) &= ~FLAG_MUL_ALL;
         }
         else
         {
-          line[flagLen] = 0;
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
         }
       }
-      else if ( strCom(line, "MUL_Slices" ) || strCom(line, "MUL_SLICES" ) )
-      {
-        char str1[1024];
-        char str2[1024];
-        int no;
-        int read1 = sscanf(line, "%s %i ", str1, &no  );
-        int read2 = sscanf(line, "%s %s ", str1, str2 );
 
-        if ( read1 == 2 )
-        {
-          sSpec->mulSlices = no;
-        }
-        else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
+      else if ( strCom("MUL_TEXTURE", str1 ) )
+      {
+        fprintf(stderr, "WARNING: The flag %s has been deprecated.\n", str1);
+      }
+
+      else if ( strCom("MUL_SLICES", str1 ) )
+      {
+        if ( strCom(str2, "A"   ) )
         {
           sSpec->mulSlices = 0;
         }
         else
         {
-          line[flagLen] = 0;
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
+          int no;
+          int read1 = sscanf(str2, "%i", &no  );
+          if ( read1 == 1 )
+          {
+            sSpec->mulSlices = no;
+          }
+          else
+          {
+            line[flagLen] = 0;
+            fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+          }
         }
       }
 
-      else if ( strCom(line, "FLAG_CUFFT_CB_POW" ) 		|| strCom(line, "CB_POW"   ) )
+      else if ( strCom("MUL_CHUNK", str1 ) )
       {
-#if CUDA_VERSION >= 6050
-        (*flags) |= FLAG_CUFFT_CB_POW;
-#else
-        line[flagLen] = 0;
-        fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-#endif
+        if ( strCom(str2, "A"   ) )
+        {
+          sSpec->mulChunk = 0;
+        }
+        else
+        {
+          int no;
+          int read1 = sscanf(str2, "%i", &no  );
+          if ( read1 == 1 )
+          {
+            sSpec->mulChunk = no;
+          }
+          else
+          {
+            line[flagLen] = 0;
+            fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+          }
+        }
       }
-      else if ( strCom(line, "FLAG_CUFFT_CB_INMEM" )  || strCom(line, "CB_INMEM" ) )
+
+      else if ( strCom("CONVOLVE", str1 ) )
       {
-#if CUDA_VERSION >= 6050
-        (*flags) |= FLAG_CUFFT_CB_INMEM;
-#else
-        line[flagLen] = 0;
-        fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-#endif
+        singleFlag ( flags, str1, str2, FLAG_CONV, "SEP", "CONT", lineno, fName );
       }
-      else if ( strCom(line, "FLAG_NO_CB" )           || strCom(line, "NO_CB" 	 ) )
+
+      else if ( strCom("STACK", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_STK_UP, "UP", "DN", lineno, fName );
+      }
+
+      else if ( strCom("CUFFT_PLAN", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, CU_FFT_SEP, "SEPERATE", "SEPERATE", lineno, fName );
+      }
+
+      else if ( strCom("STD_POWERS", str1 ) )
+      {
+        if      ( strCom("CB", str2 ) )
+        {
+#if CUDA_VERSION >= 6050
+          (*flags) |=     FLAG_CUFFT_CB_POW;
+#else
+          line[flagLen] = 0;
+          fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif
+        }
+        else if ( strCom("SS", str2 ) )
+        {
+          (*flags) &= ~FLAG_CUFFT_CB_POW;
+        }
+        else if ( strCom(str2, "#" ) || strCom("", str2 ) || strCom(str2, "A" ) )
+        {
+          // Blank do nothing
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("IN_MEM_POWERS", str1 ) )
+      {
+        if      ( strCom("CB", str2 ) )
+        {
+#if CUDA_VERSION >= 6050
+          (*flags) |=     FLAG_CUFFT_CB_INMEM;
+#else
+          line[flagLen] = 0;
+          fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s %s line %i in %s)\n", str1, str2, lineno, fName);
+#endif
+        }
+        else if ( strCom("MEM_CPY", str2 ) || strCom("", str2 ))
+        {
+#if CUDA_VERSION >= 6050
+          (*flags) &=    ~FLAG_CUFFT_CB_INMEM;
+          (*flags) |=     FLAG_CUFFT_CB_POW;
+#else
+          line[flagLen] = 0;
+          fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s %s line %i in %s)\n", str1, str2, lineno, fName);
+#endif
+        }
+        else if ( strCom("KERNEL", str2 ) )
+        {
+          (*flags) &=    ~FLAG_CUFFT_CB_INMEM;
+          (*flags) &=    ~FLAG_CUFFT_CB_POW;
+        }
+        else if ( strCom(str2, "#" ) || strCom("", str2 ) || strCom(str2, "A" )  )
+        {
+          // Blank do nothing
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("FLAG_NO_CB", str1 ) )
       {
         (*flags) &= ~FLAG_CUFFT_ALL;
       }
 
-      else if ( strCom(line, "FLAG_SAS_TEX" ) )
+      else if ( strCom("POWER_PRECISION", str1 ) )
       {
-        (*flags) |= FLAG_SAS_TEX;
-      }
-
-      else if ( strCom(line, "FLAG_TEX_INTERP" ) )
-      {
-        (*flags) |= FLAG_SAS_TEX;
-        (*flags) |= FLAG_TEX_INTERP;
-      }
-
-      else if ( strCom(line, "FLAG_SIG_GPU" ) || strCom(line, "SIG_GPU" ) )
-      {
-        (*flags) |= FLAG_SIG_GPU;
-      }
-      else if ( strCom(line, "FLAG_SIG_CPU" ) || strCom(line, "SIG_CPU" ) )
-      {
-        (*flags) &= ~FLAG_SIG_GPU;
-      }
-
-      else if ( strCom(line, "SS_INMEM_SZ" ) )
-      {
-        rest                = &line[ strlen("inMemSrchSz")+1];
-        sSpec->ssStepSize   = atoi(rest);
-      }
-
-      else if ( strCom(line, "FLAG_SS_CPU" 	) || strCom(line, "SS_CPU" 	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_CPU;
-
-        // CPU Significance
-        (*flags) &= ~FLAG_SIG_GPU;
-
-        sSpec->retType &= ~CU_SRT_ALL   ;
-        sSpec->retType |= CU_STR_PLN    ;
-
-        if ( (*flags) & FLAG_CUFFT_CB_POW )
+        if      ( strCom("HALF", str2 ) )
         {
-          sSpec->retType &= ~CU_TYPE_ALLL   ;
-          sSpec->retType |= CU_FLOAT        ;
+#if CUDA_VERSION >= 7050
+        (*flags) |=  FLAG_HALF;
+#else
+        (*flags) &= ~FLAG_HALF;
+
+        line[flagLen] = 0;
+        fprintf(stderr,"WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision. (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif
+        }
+        else if ( strCom("SINGLE", str2 ) )
+        {
+          (*flags) &= ~FLAG_HALF;
+        }
+        else if ( strCom("DOUBLE", str2 ) )
+        {
+          fprintf(stderr,"ERROR: Cannot sore in-mem plane as double! Defaulting to float.\n");
+          (*flags) &= ~FLAG_HALF;
+        }
+        else if ( strCom(str2, "#" ) || strCom("", str2 ) || strCom(str2, "A" )  )
+        {
+          // Blank do nothing
         }
         else
         {
-          sSpec->retType &= ~CU_TYPE_ALLL   ;
-          sSpec->retType |= CU_CMPLXF       ;
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
         }
       }
-      else if ( strCom(line, "FLAG_SS_00"  	) || strCom(line, "SS_00"  	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_00;
-        (*flags) |= FLAG_RET_STAGES;
-      }
-      else if ( strCom(line, "FLAG_SS_10"  	) || strCom(line, "SS_10"  	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-        (*flags) |= FLAG_SS_10;
-        (*flags) |= FLAG_RET_STAGES;
-      }
-      else if ( strCom(line, "FLAG_SS_INMEM") || strCom(line, "SS_INMEM") )
-      {
-        (*flags) |= FLAG_SS_INMEM;
-      }
-      else if ( strCom(line, "FLAG_SS_A"    ) || strCom(line, "SS_A"   	) )
-      {
-        (*flags) &= ~FLAG_SS_ALL;
-      }
-      else if ( strCom(line, "FLAG_SS "    	) || strCom(line, "SS "     ) )
-      {
-        char str1[1024];
-        char str2[1024];
-        int no;
-        sscanf(line, "%s %i ", str1, &no  );
-        sscanf(line, "%s %s ", str1, str2 );
 
-        if      ( no == 0 )
+      else if ( strCom("SS_KER", str1 ) )
+      {
+        if      ( strCom("00", str2 ) )
         {
           (*flags) &= ~FLAG_SS_ALL;
           (*flags) |= FLAG_SS_00;
           (*flags) |= FLAG_RET_STAGES;
         }
-        else if ( no == 1 )
+        else if ( strCom("CPU", str2 ) )
         {
-          (*flags) &= ~FLAG_SS_ALL;
-          (*flags) |= FLAG_SS_10;
-          (*flags) |= FLAG_RET_STAGES;
-        }
-        else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
-        {
-          (*flags) &= ~FLAG_SS_ALL;
-        }
-        else if ( strCom(line, "CPU" ) || strCom(line, "cpu" ) )
-        {
+          fprintf(stderr, "ERROR: CPU Sum and search is no longer supported\n\n");
+          continue;
+
           (*flags) &= ~FLAG_SS_ALL;
           (*flags) |= FLAG_SS_CPU;
 
@@ -4363,194 +4416,308 @@ void readAccelDefalts(searchSpecs *sSpec)
             sSpec->retType |= CU_CMPLXF       ;
           }
         }
-        else if ( strCom(line, "INMEM" ) || strCom(line, "inmem" ) )
+        else if ( strCom("10", str2 ) )
+        {
+          (*flags) &= ~FLAG_SS_ALL;
+          (*flags) |= FLAG_SS_10;
+          (*flags) |= FLAG_RET_STAGES;
+        }
+        else if ( strCom("INMEM", str2 ) || strCom("IM", str2 ) )
         {
           (*flags) |= FLAG_SS_INMEM;
         }
-        else
+        else if ( strCom(str2, "A"  ) )
         {
-          line[flagLen] = 0;
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
-        }
-      }
-
-      else if ( strCom(line, "SS_Chunk"  ) || strCom(line, "SS_CHUNK"  ) )
-      {
-        char str1[1024];
-        char str2[1024];
-        int no;
-        int read1 = sscanf(line, "%s %i ", str1, &no  );
-        int read2 = sscanf(line, "%s %s ", str1, str2 );
-
-        if ( read1 == 2 )
-        {
-          sSpec->ssChunk = no;
-        }
-        else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
-        {
-          sSpec->ssChunk = 0;
+          (*flags) &= ~FLAG_SS_ALL;
         }
         else
         {
-          line[flagLen] = 0;
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
         }
       }
-      else if ( strCom(line, "SS_Slices" ) || strCom(line, "SS_SLICES" ) )
-      {
-        char str1[1024];
-        char str2[1024];
-        int no;
-        int read1 = sscanf(line, "%s %i ", str1, &no  );
-        int read2 = sscanf(line, "%s %s ", str1, str2 );
 
-        if ( read1 == 2 )
-        {
-          sSpec->ssSlices = no;
-        }
-        else if ( strCom(str2, "AA"  ) || strCom(str2, "A"   ) )
+      else if ( strCom("FLAG_SAS_TEX", str1 ) )
+      {
+        (*flags) |= FLAG_SAS_TEX;
+      }
+
+      else if ( strCom("FLAG_TEX_INTERP", str1 ) )
+      {
+        (*flags) |= FLAG_SAS_TEX;
+        (*flags) |= FLAG_TEX_INTERP;
+      }
+
+      else if ( strCom("SIGNIFICANCE", str1 ) )
+      {
+        fprintf(stderr, "WARNING: The flag %s has been deprecated.\n", str1);
+        //singleFlag ( flags, str1, str2, FLAG_SIG_GPU, "GPU", "CPU", lineno, fName );
+      }
+
+      else if ( strCom("RESULTS", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_THREAD, "THREAD", "SEQ", lineno, fName );
+      }
+
+      else if ( strCom("SS_SLICES", str1 ) )
+      {
+        if ( strCom(str2, "A"   ) )
         {
           sSpec->ssSlices = 0;
         }
         else
         {
-          line[flagLen] = 0;
-          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", line, lineno, fName);
+          int no;
+          int read1 = sscanf(str2, "%i", &no  );
+          if ( read1 == 1 )
+          {
+            sSpec->ssSlices = no;
+          }
+          else
+          {
+            line[flagLen] = 0;
+            fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+          }
         }
       }
 
-      else if ( strCom(line, "CU_CAND_ARR"  ) || strCom(line, "CAND_ARR"  ) )
+      else if ( strCom("SS_CHUNK", str1 ) )
       {
-        // Return type
-        sSpec->retType &= ~CU_TYPE_ALLL ;
+        if ( strCom(str2, "A"   ) )
+        {
+          sSpec->ssChunk = 0;
+        }
+        else
+        {
+          int no;
+          int read1 = sscanf(str2, "%i", &no  );
+          if ( read1 == 1 )
+          {
+            sSpec->ssChunk = no;
+          }
+          else
+          {
+            line[flagLen] = 0;
+            fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+          }
+        }
+      }
+
+      else if ( strCom("SS_INMEM_SZ", str1 ) )
+      {
+        if ( strCom(str2, "A"   ) )
+        {
+          sSpec->ssStepSize = 0;
+        }
+        else
+        {
+          int no;
+          int read1 = sscanf(str2, "%i", &no  );
+          if ( read1 == 1 )
+          {
+            sSpec->ssStepSize = no;
+          }
+          else
+          {
+            line[flagLen] = 0;
+            fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+          }
+        }
+      }
+
+      else if ( strCom("CAND_STORAGE", str1 ) )
+      {
+        if      ( strCom("ARR", str2 ) || strCom("", str2 ) )
+        {
+          // Return type
+          sSpec->retType &= ~CU_TYPE_ALLL ;
+          sSpec->retType &= ~CU_SRT_ALL   ;
+
+          sSpec->retType |= CU_POWERZ_S   ;
+          sSpec->retType |= CU_STR_ARR    ;
+
+          // Candidate type
+          sSpec->cndType &= ~CU_TYPE_ALLL ;
+          sSpec->cndType &= ~CU_SRT_ALL   ;
+
+          sSpec->cndType |= CU_CANDFULL   ;
+          sSpec->cndType |= CU_STR_ARR    ;
+        }
+        else if ( strCom("LST", str2 ) )
+        {
+          // Return type
+          sSpec->retType &= ~CU_TYPE_ALLL ;
+          sSpec->retType &= ~CU_SRT_ALL   ;
+
+          sSpec->retType |= CU_POWERZ_S   ;
+          sSpec->retType |= CU_STR_ARR    ;
+
+          // Candidate type
+          sSpec->cndType &= ~CU_TYPE_ALLL ;
+          sSpec->cndType &= ~CU_SRT_ALL   ;
+
+          sSpec->cndType |= CU_CANDFULL   ;
+          sSpec->cndType |= CU_STR_LST    ;
+        }
+        else if ( strCom("QUAD", str2 ) )
+        {
+          fprintf(stderr, "ERROR: quadtree storage not yet implemented. Doing nothing!\n");
+          continue;
+
+          // Candidate type
+          sSpec->cndType &= ~CU_TYPE_ALLL ;
+          sSpec->cndType &= ~CU_SRT_ALL   ;
+
+          sSpec->cndType |= CU_POWERZ_S   ;
+          sSpec->cndType |= CU_STR_QUAD   ;
+        }
+        else if ( strCom(str2, "#" ) || strCom("", str2 )  )
+        {
+          // Blank do nothing
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("RETURN", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_RET_STAGES, "STAGES", "FINAL", lineno, fName );
+      }
+
+      else if ( strCom("FLAG_RET_ARR", str1 ) )
+      {
         sSpec->retType &= ~CU_SRT_ALL   ;
-
-        sSpec->retType |= CU_POWERZ_S   ;
-        sSpec->retType |= CU_STR_ARR    ;
-
-        // Candidate type
-        sSpec->cndType &= ~CU_TYPE_ALLL ;
-        sSpec->cndType &= ~CU_SRT_ALL   ;
-
-        sSpec->cndType |= CU_CANDFULL   ;
-        sSpec->cndType |= CU_STR_ARR    ;
-      }
-      else if ( strCom(line, "CU_CAND_LST"  ) || strCom(line, "CAND_LST"  ) )
-      {
-        // Return type
-        sSpec->retType &= ~CU_TYPE_ALLL ;
-        sSpec->retType &= ~CU_SRT_ALL   ;
-
-        sSpec->retType |= CU_POWERZ_S   ;
-        sSpec->retType |= CU_STR_ARR    ;
-
-        // Candidate type
-        sSpec->cndType &= ~CU_TYPE_ALLL ;
-        sSpec->cndType &= ~CU_SRT_ALL   ;
-
-        sSpec->cndType |= CU_CANDFULL   ;
-        sSpec->cndType |= CU_STR_LST    ;
-      }
-      else if ( strCom(line, "CU_CAND_QUAD" ) || strCom(line, "CAND_QUAD" ) )
-      {
-        // Candidate type
-        sSpec->cndType &= ~CU_TYPE_ALLL ;
-        sSpec->cndType &= ~CU_SRT_ALL   ;
-
-        sSpec->cndType |= CU_POWERZ_S   ;
-        sSpec->cndType |= CU_STR_QUAD   ;
-      }
-
-      else if ( strCom(line, "FLAG_HALF" 	  ) )
-      {
-#if CUDA_VERSION >= 7050
-        (*flags) |=  FLAG_HALF;
-#else
-        (*flags) &= ~FLAG_HALF;
-
-        line[flagLen] = 0;
-        fprintf(stderr,"WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision. (FLAG: %s line %i in %s)\n", line, lineno, fName);
-#endif
-      }
-      else if ( strCom(line, "FLAG_SINGLE" 	) )
-      {
-        (*flags) &= ~FLAG_HALF;
-      }
-      else if ( strCom(line, "FLAG_DOUBLE"  ) )
-      {
-        fprintf(stderr,"ERROR: Cannot sore in-mem plane as double! Defaulting to float.\n");
-        (*flags) &= ~FLAG_HALF;
-      }
-
-      else if ( strCom(line, "FLAG_RET_STAGES" ) )
-      {
-        (*flags) |= FLAG_RET_STAGES;
-      }
-      else if ( strCom(line, "FLAG_RETURN_FINAL" ) )
-      {
-        (*flags) &= ~FLAG_RET_STAGES;
-      }
-
-      else if ( strCom(line, "FLAG_RET_ARR" ) )
-      {
-        sSpec->retType &= ~CU_SRT_ALL   ;
         sSpec->retType |= CU_STR_ARR    ;
       }
-      else if ( strCom(line, "FLAG_RET_PLN" ) )
+      else if ( strCom("FLAG_RET_PLN", str1 ) )
       {
         sSpec->retType &= ~CU_SRT_ALL   ;
         sSpec->retType |= CU_STR_PLN    ;
       }
 
-      else if ( strCom(line, "FLAG_STORE_ALL" ) )
+      else if ( strCom("FLAG_STORE_ALL", str1 ) )
       {
-        (*flags) |= FLAG_STORE_ALL;
+        singleFlag ( flags, str1, str2, FLAG_STORE_ALL, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_THREAD" ) )
+      else if ( strCom("FLAG_STORE_EXP", str1 ) )
       {
-        (*flags) |= FLAG_THREAD;
-      }
-      else if ( strCom(line, "FLAG_SEQ" ) )
-      {
-        (*flags) &= ~FLAG_THREAD;
+        singleFlag ( flags, str1, str2, FLAG_STORE_EXP, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_STK_UP" ) )
+      else if ( strCom("OPTI_NORM", str1 ) )
       {
-        (*flags) |= FLAG_STK_UP;
-      }
-      else if ( strCom(line, "FLAG_STK_DOWN" ) )
-      {
-        (*flags) &= ~FLAG_STK_UP;
+        singleFlag ( flags, str1, str2, FLAG_OPT_LOCAVE, "LOCAVE", "MEDIAN", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_CONV" ) )
+      else if ( strCom("OPT_BEST", str1 ) )
       {
-        (*flags) |= FLAG_CONV;
-      }
-      else if ( strCom(line, "FLAG_SEP" ) )
-      {
-        (*flags) &= ~FLAG_CONV;
+        singleFlag ( flags, str1, str2, FLAG_OPT_BEST, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_STORE_EXP" ) )
+      else if ( strCom("OPT_MIN_LOC_HARMS", str1 ) )
       {
-        (*flags) |= FLAG_STORE_EXP;
+        int no;
+        int read1 = sscanf(str2, "%i", &no  );
+        if ( read1 == 1 )
+        {
+          sSpec->optMinLocHarms = no;
+        }
+        else
+        {
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
       }
 
-      else if ( strCom(line, "FLAG_OPT_LOCAVE" ) )
+      else if ( strCom("OPT_MIN_REP_HARMS", str1 ) )
       {
-        (*flags) |= FLAG_OPT_LOCAVE;
-      }
-      else if ( strCom(line, "FLAG_OPT_MEDIAN" ) )
-      {
-        (*flags) &= ~FLAG_OPT_LOCAVE;
+        int no;
+        int read1 = sscanf(str2, "%i", &no  );
+        if ( read1 == 1 )
+        {
+          sSpec->optMinRepHarms = no;
+        }
+        else
+        {
+          line[flagLen] = 0;
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
       }
 
-      else if ( strCom(line, "FLAG_OPT_BEST" ) )
+      else if ( strCom("optPlnScale", str1 ) )
       {
-        (*flags) |= FLAG_OPT_BEST;
+        float no;
+        int read1 = sscanf(str2, "%f", &no  );
+        if ( read1 == 1 )
+        {
+          sSpec->optPlnScale = no;
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("optPlnSiz", str1 ) )
+      {
+        int no1;
+        int no2;
+        int read1 = sscanf(line, "%s %i %i", str1, &no1, &no2 );
+        if ( read1 == 3 )
+        {
+          if    ( no1 == 1 )
+          {
+            sSpec->optPlnSiz[0] = no2;
+          }
+          else if ( no1 == 2 )
+          {
+            sSpec->optPlnSiz[1] = no2;
+          }
+          else if ( no1 == 4 )
+          {
+            sSpec->optPlnSiz[2] = no2;
+          }
+          else if ( no1 == 8 )
+          {
+            sSpec->optPlnSiz[3] = no2;
+          }
+          else if ( no1 == 16 )
+          {
+            sSpec->optPlnSiz[4] = no2;
+          }
+          else
+          {
+            fprintf(stderr, "WARNING: expecting optplnSiz 01, optplnSiz 02, optplnSiz 04, optplnSiz 08 or optplnSiz 16 \n");
+          }
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("optPlnDim", str1 ) )
+      {
+        int no1;
+        int no2;
+        int read1 = sscanf(line, "%s %i %i", str1, &no1, &no2 );
+        if ( read1 == 3 )
+        {
+          if ( no1 >= 1 && no1 <= NO_OPT_LEVS )
+          {
+            sSpec->optPlnDim[no1-1] = no2;
+          }
+          else
+          {
+            fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 0 and %i \n", no1, NO_OPT_LEVS);
+          }
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
       }
 
       else if ( strCom(line, "FLAG_OPT_DYN_HW" ) )
@@ -4558,108 +4725,53 @@ void readAccelDefalts(searchSpecs *sSpec)
         (*flags) |= FLAG_OPT_DYN_HW;
       }
 
-      else if ( strCom(line, "OPT_MIN_LOC_HARMS" ) )
-      {
-        rest = &line[ strlen("OPT_MIN_LOC_HARMS")+1];
-        sSpec->optMinLocHarms = atoi(rest);
-      }
-
-      else if ( strCom(line, "OPT_MIN_REP_HARMS" ) )
-      {
-        rest = &line[ strlen("OPT_MIN_REP_HARMS")+1];
-        sSpec->optMinRepHarms = atoi(rest);
-      }
-
-      else if ( strCom(line, "optPlnSiz" ) )
-      {
-        rest = &line[ strlen("optPlnSiz")];
-        int idx = atoi(rest);
-        rest = &line[ strlen("optPlnSiz00")+1];
-
-        if 	( idx == 1 )
-        {
-          sSpec->optPlnSiz[0] = atoi(rest);
-        }
-        else if ( idx == 2 )
-        {
-          sSpec->optPlnSiz[1] = atoi(rest);
-        }
-        else if ( idx == 4 )
-        {
-          sSpec->optPlnSiz[2] = atoi(rest);
-        }
-        else if ( idx == 8 )
-        {
-          sSpec->optPlnSiz[3] = atoi(rest);
-        }
-        else if ( idx == 16 )
-        {
-          sSpec->optPlnSiz[4] = atoi(rest);
-        }
-        else
-        {
-          fprintf(stderr, "WARNING: expecting optplnSiz01, optplnSiz02, optplnSiz04, optplnSiz08 or optplnSiz16 \n");
-        }
-      }
-
-      else if ( strCom(line, "optPlnDim" ) || strCom(line, "OPTPLNDIM") )
-      {
-        rest = &line[ strlen("optPlnDim")];
-        int idx = atoi(rest);
-        if ( idx >= 1 && idx <= NO_OPT_LEVS )
-        {
-          rest = &line[ strlen("optPlnDim00")+1];
-          sSpec->optPlnDim[idx-1] = atoi(rest);
-        }
-        else
-        {
-          fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 0 and %i \n",idx, NO_OPT_LEVS);
-        }
-      }
-
-      else if ( strCom(line, "optPlnScale" ) )
-      {
-        rest      = &line[ strlen("optPlnScale")+1];
-        sSpec->optPlnScale = atof(rest);
-      }
-
       else if ( strCom(line, "FLAG_RAND_1" ) || strCom(line, "RAND_1" ) )
       {
         (*flags) |= FLAG_RAND_1;
       }
 
-      else if ( strCom(line, "FLAG_DBG_SYNCH" ) )
+      else if ( strCom("FLAG_DBG_SYNCH", str1 ) )
       {
-        (*flags) |= FLAG_SYNCH;
-      }
-      else if ( strCom(line, "FLAG_DBG_TIMING" ) )
-      {
-        //(*flags) |= FLAG_SYNCH; // Timing relies on synchronous search
-        (*flags) |= FLAG_TIME;
-      }
-      else if ( strCom(line, "FLAG_DPG_PRNT_CAND" ) )
-      {
-        (*flags) |= FLAG_DPG_PRNT_CAND;
-      }
-      else if ( strCom(line, "FLAG_DBG_SKIP_OPT" ) || strCom(line, "SKP_OPT" ) || strCom(line, "skpOpt"  ) )
-      {
-        (*flags) |= FLAG_DPG_SKP_OPT;
+        singleFlag ( flags, str1, str2, FLAG_SYNCH, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "pltOpt"  ) || strCom(line, "FLAG_DPG_PLT_OPT" ) )
+      else if ( strCom("FLAG_DBG_TIMING", str1 ) )
       {
-        (*flags) |= FLAG_DPG_PLT_OPT;
+        singleFlag ( flags, str1, str2, FLAG_TIME, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "FLAG_DPG_UNOPT" ) )
+      else if ( strCom("FLAG_DPG_PLT_OPT", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_DPG_PLT_OPT, "", "0", lineno, fName );
+      }
+
+      else if ( strCom("FLAG_DPG_UNOPT", str1 ) )
       {
         useUnopt    = 1;
       }
 
-      else if ( strCom(line, "DBG_LEV" ) )
+      else if ( strCom("FLAG_DBG_SKIP_OPT", str1 ) )
       {
-        rest      = &line[ strlen("DBG_LEV")+1];
-        msgLevel  = atoi(rest);
+        singleFlag ( flags, str1, str2, FLAG_DPG_SKP_OPT, "", "0", lineno, fName );
+      }
+
+      else if ( strCom("FLAG_DPG_PRNT_CAND", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_DPG_PRNT_CAND, "", "0", lineno, fName );
+      }
+
+      else if ( strCom("DBG_LEV", str1 ) )
+      {
+        int no;
+        int read1 = sscanf(str2, "%i", &no  );
+        if ( read1 == 1 )
+        {
+          msgLevel = no;
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
       }
 
       else if ( strCom(line, "cuMedianBuffSz" ) )             // The size of the sub sections to use in the cuda median selection algorithm
@@ -4720,75 +4832,6 @@ void readAccelDefalts(searchSpecs *sSpec)
         globalInt05 = atoi(rest);
       }
 
-      //      // Optimisation vars
-      //      else if ( strCom(line, "optpln01" ) )
-      //      {
-      //        rest      = &line[ strlen("optpln01")+1];
-      //        optpln01  = atoi(rest);
-      //      }
-      //      else if ( strCom(line, "optpln02" ) )
-      //      {
-      //        rest      = &line[ strlen("optpln02")+1];
-      //        optpln02  = atoi(rest);
-      //      }
-      //      else if ( strCom(line, "optpln03" ) )
-      //      {
-      //        rest      = &line[ strlen("optpln03")+1];
-      //        optpln03  = atoi(rest);
-      //      }
-      //      else if ( strCom(line, "optpln04" ) )
-      //      {
-      //        rest      = &line[ strlen("optpln04")+1];
-      //        optpln04  = atoi(rest);
-      //      }
-      //      else if ( strCom(line, "optpln05" ) )
-      //      {
-      //        rest      = &line[ strlen("optpln05")+1];
-      //        optpln05  = atoi(rest);
-      //      }
-      //      else if ( strCom(line, "optpln06" ) )
-      //      {
-      //        rest      = &line[ strlen("optpln06")+1];
-      //        optpln06  = atoi(rest);
-      //      }
-
-      else if ( strCom(line, "optSz01" ) )
-      {
-        rest			= &line[ strlen("optSz01")+1];
-        sSpec->optPlnSiz[0]	= atof(rest);
-      }
-      else if ( strCom(line, "optSz02" ) )
-      {
-        rest      		= &line[ strlen("optSz02")+1];
-        sSpec->optPlnSiz[1]	= atof(rest);
-      }
-      else if ( strCom(line, "optSz04" ) )
-      {
-        rest      		= &line[ strlen("optSz04")+1];
-        sSpec->optPlnSiz[2]	= atof(rest);
-      }
-      else if ( strCom(line, "optSz08" ) )
-      {
-        rest      		= &line[ strlen("optSz08")+1];
-        sSpec->optPlnSiz[3]	= atof(rest);
-      }
-      else if ( strCom(line, "optSz16" ) )
-      {
-        rest      		= &line[ strlen("optSz16")+1];
-        sSpec->optPlnSiz[4]	= atof(rest);
-      }
-
-      else if ( strCom(line, "#" ) || ll == 1 )
-      {
-        // Comment line !
-      }
-
-      else if ( strCom(line, "FLAG" ) || strCom(line, "CU_" ) )
-      {
-        line[flagLen] = 0;
-        fprintf(stderr, "ERROR: Found unknown flag %s on line %i of %s.\n", line, lineno, fName);
-      }
-
       else
       {
         line[flagLen] = 0;
@@ -4814,8 +4857,8 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   FOLD // Defaults for accel search  .
   {
     sSpec.flags		|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
-    sSpec.flags		|= FLAG_RET_STAGES  ;
     sSpec.flags		|= FLAG_ITLV_ROW    ;
+    sSpec.flags         |= FLAG_CENTER      ;   // Centre and align the usable part of the planes
 
 #ifndef DEBUG
     sSpec.flags		|= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
@@ -4834,11 +4877,13 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
       sSpec.flags	|= FLAG_SS_INMEM;
     }
 
-    sSpec.cndType	|= CU_CANDFULL    ;   	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
-    sSpec.cndType	|= CU_STR_ARR     ;   	// Candidate storage structure - CU_STR_ARR    is generally the fastest
+    sSpec.flags         |= FLAG_RET_STAGES;
 
-    sSpec.retType	|= CU_POWERZ_S    ;   	// Return type
-    sSpec.retType	|= CU_STR_ARR     ;   	// Candidate storage structure
+    sSpec.cndType	|= CU_CANDFULL;  	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
+    sSpec.cndType	|= CU_STR_ARR;  	// Candidate storage structure - CU_STR_ARR    is generally the fastest
+
+    sSpec.retType	|= CU_POWERZ_S;  	// Return type
+    sSpec.retType	|= CU_STR_ARR;  	// Candidate storage structure
 
     sSpec.fftInf.fft	= obs->fft;
     sSpec.fftInf.nor	= obs->numbins;
@@ -4867,9 +4912,11 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.optMinLocHarms = 1;
     sSpec.optMinRepHarms = 1;
 
-    // Ddefault: Auto chose best!
+    // Default: Auto chose best!
     sSpec.mulSlices	= 0 ;
+    sSpec.mulChunk      = 0 ;
     sSpec.ssSlices	= 0 ;
+    sSpec.ssChunk       = 0 ;
   }
 
   // Now read the
