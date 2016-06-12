@@ -140,9 +140,15 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
       count++;
    }
    
-   sum /= count; // Average
-
-   return sum;
+   if ( count )
+   {
+     sum /= count; // Average
+     return sum;
+   }
+   else
+   {
+     return 0;
+   }
 }
 
 

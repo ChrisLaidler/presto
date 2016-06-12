@@ -20,6 +20,8 @@ TAGS
 *.settings*
 *.tar.gz
 *.csv
+*.out
+*.log
 lib/fftw_wisdom.txt
 bin/*_debug*
 bin/GBT350filterbank
@@ -75,3 +77,4 @@ src/slalib/sla_test
 src/makewisdom
 src/fftw_wisdom.txt
 src/build*
+lib/GPU_defaults.txt.20*

@@ -358,7 +358,9 @@ __global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int h
 	  if ( hw.val[i-1] )
 	    halfW	= hw.val[i-1];
 	  else
-	    halfW	= z_resp_halfwidth_cu_high<float>(z*i+4);
+	  {
+	    halfW       = z_resp_halfwidth_cu_high<float>(z*i); // NB this was (z*i+4) I'm not sure why?
+	  }
 	}
 
 	// Set complex values to 0 for this harmonic
@@ -1411,11 +1413,10 @@ void* optCandDerivs(void* ptr)
       }
       //infoMSG(6,6,"locpow %.5f \n", locpow );
 
-      locpow = 1.0 ; //RODO: Remove this!!!!!!!!!!
-
       if ( locpow )
       {
-	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii) + 4.0, HIGHACC);
+	//kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii) + 4.0, HIGHACC);  // Why is this +4 ???? TODO: Check why this +4 was here it was in one of the kernels as well!
+	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii), HIGHACC);
 
 	rz_convolution_cu<double, float2>((float2*)fft->fft, fft->idx, fft->nor, cand->r*ii, cand->z*ii, kern_half_width, &real, &imag);
 

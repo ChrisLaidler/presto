@@ -536,6 +536,7 @@ __host__ __device__ void rz_response_cu(double r, T z, int kern_half_width, outT
   }
 }
 
+
 /** calculate a single point in the f-fdot plain from FFT values
  *
  * This calculation is done by direct application of a convolution
@@ -607,7 +608,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
     }
     else
     {
-      printf("start >= loR\n"); // TMP
+      //printf("start >= loR\n"); // TMP
 
       // Start is below beginning of available data so start at available data
       numkern -= loR - start;
@@ -617,7 +618,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
 
     if ( start + numkern >= noBins )
     {
-      printf("start + numkern >= noBins\n"); // TMP
+      //printf("start + numkern >= noBins\n"); // TMP
       
       numkern = noBins - start;
     }
@@ -700,6 +701,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
     }
   }
 }
+
 
 /**  Uses the correlation method to do a Fourier interpolation at a number integer spaced (r) points in the f-fdot plane.
  *
