@@ -592,7 +592,7 @@ typedef struct cuFFdotBatch
 
     // Stride information (only the results are specific to the batch)
 
-    uint            strideOut;          ///< The stride of the returned candidate data
+    uint            strideOut;          ///< The stride of the returned candidate data - The stride of one step
 
     fcomplexcu*     h_iData;            ///< Pointer to page locked host memory of Input data for t
     fcomplexcu*     d_iData;            ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud

@@ -1503,11 +1503,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         {
           if      ( kernel->stacks->width <= 1024 )
           {
-            kernel->ssSlices      = 8 ; // Default value
+            kernel->ssSlices      = 8 ;
           }
           else if ( kernel->stacks->width <= 2048 )
           {
-            kernel->ssSlices      = 4 ; // Default value
+            kernel->ssSlices      = 4 ;
           }
           else if ( kernel->stacks->width <= 4096 )
           {
@@ -1735,6 +1735,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       if ( kernel->flags & FLAG_RET_STAGES )
         kernel->retDataSize *= kernel->noHarmStages;
+
+      infoMSG(6,6,"retSZ: %i  alignment: %i  strideOut: %i  retDataSize: %i \n", retSZ, alignment, kernel->strideOut, kernel->retDataSize);
+
     }
 
     FOLD // Calculate batch size and number of steps and batches on this device  .

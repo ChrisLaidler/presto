@@ -437,9 +437,13 @@ int main(int argc, char *argv[])
             infoMSG(1,0,"Plane creation.\n");
 
             if      ( master->flags & FLAG_SS_INMEM     )
+            {
               NV_RANGE_PUSH("In-Mem plane");
+            }
             else
+            {
               NV_RANGE_PUSH("GPU Search");
+            }
 
             int iteration = 0;
 

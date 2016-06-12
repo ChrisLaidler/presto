@@ -110,7 +110,7 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int64_t FLAGS = batch->flags ;
 
-  if            ( (FLAGS & FLAG_CUFFT_CB_POW) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
+  if        ( (FLAGS & FLAG_CUFFT_CB_POW) && (FLAGS & FLAG_SAS_TEX) && (FLAGS & FLAG_TEX_INTERP) )
   {
     fprintf(stderr,"ERROR: Invalid sum and search kernel. Line %i in %s\n", __LINE__, __FILE__ );
     exit(EXIT_FAILURE);

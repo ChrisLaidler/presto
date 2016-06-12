@@ -7,6 +7,9 @@
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
+ * The first thread (tid 0) loops down the first "good" column of the plane and sums and searches
+ * It writes its results to the 0 spot in the results array
+ *
  * @param width       The width
  * @param d_cands
  * @param texs
@@ -115,7 +118,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
                         {
                           ix2     = ix1 + step    * STRIDE_STAGE[harm] ;
                           iy2     = iy1 * noSteps * STRIDE_STAGE[harm];
-
                         }
                         else
                         {
@@ -406,10 +408,10 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     {
       add_and_searchCU31_p<T, FLAG_ITLV_ROW>    (dimGrid, dimBlock, stream, batch);
     }
-    else
-    {
-      add_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, batch);
-    }
+//    else
+//    {
+//      add_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, batch);
+//    }
   }
 }
 
@@ -435,12 +437,12 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     exit(EXIT_FAILURE);
 #endif
   }
-  else if ( batch->flags & FLAG_CUFFT_CB_POW )
-  {
-    add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
-  }
-  else
-  {
-    add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
-  }
+//  else if ( batch->flags & FLAG_CUFFT_CB_POW )
+//  {
+//    add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
+//  }
+//  else
+//  {
+//    add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
+//  }
 }
