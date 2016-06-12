@@ -570,6 +570,16 @@ int main(int argc, char *argv[])
                   }
                 }
 
+                if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+                {
+                  printf("\n tid %i  cands %i  \n", tid, batch->noResults );
+
+                  if ( iteration > 1 && tid == 0 )
+                  {
+                    exit(EXIT_FAILURE);
+                  }
+                }
+
               }
 
               FOLD  // Finish off CUDA search  .
