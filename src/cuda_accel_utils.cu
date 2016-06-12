@@ -477,12 +477,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         plnStride = 32768; // TODO: I need to check for a good default
       }
 
+      if ( noSteps <= 0 )
+      {
+        noSteps = MAX_STEPS;
+      }
+
       // Calculate "approximate" plane size
       size_t accelLen   = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
       accelLen          = floor( accelLen/(float)(sInf->noSrchHarms*ACCEL_RDR) ) * (sInf->noSrchHarms*ACCEL_RDR);	// Adjust to be divisible by number of harmonics
       float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, accelLen, accuracy );
       int noStepsP    	= ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo / (double)sInf->noSrchHarms ) / (double)( accelLen * ACCEL_DR ) ; // The number of planes to make
-      noStepsP		      = ceil(noStepsP/(float)noSteps)*noSteps;
+      noStepsP		= ceil(noStepsP/(float)noSteps)*noSteps;
       planeSize         = (noStepsP * accelLen) * plnY * plnElsSZ ;
 
       // Kernel
@@ -513,7 +518,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         if ( !(sInf->sSpec->flags & FLAG_SS_ALL) || (sInf->sSpec->flags & FLAG_SS_INMEM) )
         {
           printf("Device %i can do a in-mem GPU search.\n", device);
-          printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
+          printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires ~%.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
         }
 
         if ( (sInf->sSpec->flags & FLAG_SS_ALL) && !(sInf->sSpec->flags & FLAG_SS_INMEM) )
@@ -1764,171 +1769,186 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       FOLD // Calculate how many batches and steps to do  .
       {
-        float possSteps[MAX_BATCHES];
-        bool trySomething = 0;
-
-        // Calculate the maximum number of steps for each possible number if steps
-        for ( int i = 0; i < MAX_BATCHES; i++)
+        FOLD // No steps possible for given number of batches
         {
-          // The number of
-          if ( kernel->flags & CU_FFT_SEP )
-          {
-            possSteps[i] = ( free - planeSize ) / (double) ( (fffTotSize + batchSize) * (i+1) ) ;
-          }
-          else
-          {
-            possSteps[i] = ( free - planeSize ) / (double) (  fffTotSize + batchSize  * (i+1) ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
-          }
-        }
+          float possSteps[MAX_BATCHES];
+          bool trySomething = 0;
 
-        // No steps possible for given number of batches
-        if ( noBatches == 0 )
-        {
-          if ( noSteps == 0 )
+          // Calculate the maximum number of steps for each possible number if steps
+          for ( int i = 0; i < MAX_BATCHES; i++)
           {
-            // We have free range to do what we want!
-            trySomething = 1;
-          }
-          else
-          {
-            int maxBatches = 0;
-
-            // Determine the maximum number batches for the given steps
-            for ( int i = 0; i < MAX_BATCHES; i++)
+            // The number of
+            if ( kernel->flags & CU_FFT_SEP )
             {
-              if ( possSteps[i] > noSteps )
-                maxBatches = i+1;
-              else
-                break;
-            }
-
-            if      (  maxBatches > 3 )
-            {
-              printf("     Requested %i steps per batch, could do up to %i batches, using 3.\n", noSteps, maxBatches);
-              // Lets just do 3 batches, more than that doesn't really help often
-              noBatches         = 3;
-              kernel->noSteps   = noSteps;
-            }
-            else if (  maxBatches > 2 )
-            {
-              printf("     Requested %i steps per batch, can do 2 batches.\n", noSteps);
-              // Lets do 2 batches
-              noBatches         = 2;
-              kernel->noSteps   = noSteps;
-            }
-            else if ( maxBatches > 1 )
-            {
-              // Lets just do 2 batches
-              printf("     Requested %i steps per batch, can only do 1 batch.\n", noSteps);
-              if ( noSteps >= 4 )
-                printf("       WARNING: Requested %i steps per batch, can only do 1 batch, perhaps consider using fewer steps.\n", noSteps );
-              noBatches         = 1;
-              kernel->noSteps   = noSteps;
+              possSteps[i] = ( free - planeSize ) / (double) ( (fffTotSize + batchSize) * (i+1) ) ;
             }
             else
             {
-              printf("       ERROR: Can't have 1 batch with the requested %i steps.\n", noSteps);
-              // Well we can't do one one batch with the desired steps
-              // Auto scale!
-              trySomething = 1;
+              possSteps[i] = ( free - planeSize ) / (double) (  fffTotSize + batchSize  * (i+1) ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
             }
           }
-        }
-        else
-        {
-          printf("     Requested %i batches.\n", noBatches);
 
-          if ( noSteps == 0 )
+          noBatches       = sInf->gSpec->noDevBatches[devID];
+          noSteps         = sInf->gSpec->noDevSteps[devID];
+
+          if ( noBatches == 0 )
           {
-            if ( possSteps[noBatches-1] >= 1 )
+            if ( noSteps == 0 )
             {
-              // do as many steps as possible!
-              kernel->noSteps   = floor(possSteps[noBatches-1]);
-              MINN(kernel->noSteps, MAX_STEPS );
-              printf("     With %i batches, can do %i steps.\n", noBatches, kernel->noSteps);
-              if ( noBatches >= 3 && kernel->noSteps < 3 )
+              // We have free range to do what we want!
+              trySomething = 1;
+            }
+            else
+            {
+              int maxBatches = 0;
+
+              // Determine the maximum number batches for the given steps
+              for ( int i = 0; i < MAX_BATCHES; i++)
               {
-                printf("       WARNING: %i steps is quite low, perhaps consider using fewer batches.\n", kernel->noSteps);
+                if ( possSteps[i] > noSteps )
+                  maxBatches = i+1;
+                else
+                  break;
+              }
+
+              if      ( maxBatches > 3 )
+              {
+                printf("     Requested %i steps per batch, could do up to %i batches, using 3.\n", noSteps, maxBatches);
+                // Lets just do 3 batches, more than that doesn't really help often
+                noBatches         = 3;
+                kernel->noSteps   = noSteps;
+              }
+              else if ( maxBatches > 2 )
+              {
+                printf("     Requested %i steps per batch, can do 2 batches.\n", noSteps);
+                // Lets do 2 batches
+                noBatches         = 2;
+                kernel->noSteps   = noSteps;
+              }
+              else if ( maxBatches > 1 )
+              {
+                // Lets just do 2 batches
+                printf("     Requested %i steps per batch, can only do 1 batch.\n", noSteps);
+                if ( noSteps >= 4 )
+                  printf("       WARNING: Requested %i steps per batch, can only do 1 batch, perhaps consider using fewer steps.\n", noSteps );
+                noBatches         = 1;
+                kernel->noSteps   = noSteps;
+              }
+              else
+              {
+                printf("       ERROR: Can't have 1 batch with the requested %i steps.\n", noSteps);
+                // Well we can't do one one batch with the desired steps
+                // Auto scale!
+                trySomething = 1;
+              }
+            }
+          }
+          else
+          {
+            printf("     Requested %i batches.\n", noBatches);
+
+            if ( noSteps == 0 )
+            {
+              if ( possSteps[noBatches-1] >= 1 )
+              {
+                // do as many steps as possible!
+                kernel->noSteps   = floor(possSteps[noBatches-1]);
+                MINN(kernel->noSteps, MAX_STEPS );
+                printf("     With %i batches, can do %i steps.\n", noBatches, kernel->noSteps);
+                if ( noBatches >= 3 && kernel->noSteps < 3 )
+                {
+                  printf("       WARNING: %i steps is quite low, perhaps consider using fewer batches.\n", kernel->noSteps);
+                }
+              }
+              else
+              {
+                printf("       ERROR: It is not possible to have %i batches with at least one step each on this device.\n", noBatches );
+                trySomething = 1;
               }
             }
             else
             {
-              printf("       ERROR: It is not possible to have %i batches with at least one step each on this device.\n", noBatches );
-              trySomething = 1;
+              if ( possSteps[noBatches-1] >= noSteps )
+              {
+                printf("     Requested %i steps per batch on this device.\n", noSteps);
+
+                // We can do what we asked for!
+                kernel->noSteps   = noSteps;
+              }
+              else
+              {
+                printf("     ERROR: Can't have %i batches with %i steps on this device.\n", noBatches, noSteps);
+                trySomething = 1;
+              }
             }
           }
-          else
-          {
-            if ( possSteps[noBatches-1] >= noSteps )
-            {
-              printf("     Requested %i steps per batch on this device.\n", noSteps);
 
-              // We can do what we asked for!
-              kernel->noSteps   = noSteps;
+          if ( trySomething )
+          {
+            printf("     Determining a combination of batches and steps.\n");
+            if      ( possSteps[2] >= 4 )
+            {
+              noBatches         = 3;
+              kernel->noSteps   = floor(possSteps[noBatches-1]);
+              printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+            }
+            else if ( possSteps[1] >= 2 )
+            {
+              // Lets do 2 batches and scale steps
+              noBatches         = 2;
+              kernel->noSteps   = floor(possSteps[noBatches-1]);
+              printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+            }
+            else if ( possSteps[0] > 1 )
+            {
+              // Lets do 2 batches and scale steps
+              noBatches         = 1;
+              kernel->noSteps   = floor(possSteps[noBatches-1]);
+              printf("       Can only have %0.1f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
             }
             else
             {
-              printf("     ERROR: Can't have %i batches with %i steps on this device.\n", noBatches, noSteps);
-              trySomething = 1;
+              // Well we can't really do anything!
+              noBatches = 0;
+              kernel->noSteps = 0;
+              printf("       ERROR: Can only have %0.1f steps with %i batch.\n", possSteps[0], noBatches );
             }
+            MINN(kernel->noSteps, MAX_STEPS );
           }
-        }
 
-        if ( trySomething )
-        {
-          printf("     Determining a combination of batches and steps.\n");
-          if      ( possSteps[2] >= 4 )
+          if ( kernel->noSteps > MAX_STEPS )
           {
-            noBatches         = 3;
-            kernel->noSteps   = floor(possSteps[noBatches-1]);
-            printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+            kernel->noSteps = MAX_STEPS;
+            printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", kernel->noSteps );
           }
-          else if ( possSteps[1] >= 2 )
-          {
-            // Lets do 2 batches and scale steps
-            noBatches         = 2;
-            kernel->noSteps   = floor(possSteps[noBatches-1]);
-            printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
-          }
-          else if ( possSteps[0] > 1 )
-          {
-            // Lets do 2 batches and scale steps
-            noBatches         = 1;
-            kernel->noSteps   = floor(possSteps[noBatches-1]);
-            printf("       Can only have %0.1f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
-          }
-          else
-          {
-            // Well we can't really do anything!
-            noBatches = 0;
-            kernel->noSteps = 0;
-            printf("       ERROR: Can only have %0.1f steps with %i batch.\n", possSteps[0], noBatches );
-          }
-          MINN(kernel->noSteps, MAX_STEPS );
-        }
 
-        if ( kernel->noSteps > MAX_STEPS )
-        {
-          kernel->noSteps = MAX_STEPS;
-          printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", kernel->noSteps );
-        }
+          if ( noBatches <= 0 || kernel->noSteps <= 0 )
+          {
+            fprintf(stderr, "ERROR: Insufficient memory to make make any planes. One step would require %.2fGiB of device memory.\n", ( fffTotSize + batchSize )/1073741824.0 );
 
-        if ( noBatches <= 0 || kernel->noSteps <= 0 )
-        {
-          fprintf(stderr, "ERROR: Insufficient memory to make make any planes. One step would require %.2fGiB of device memory.\n", ( fffTotSize + batchSize )/1073741824.0 );
-
-          freeKernel(kernel);
-          return (0);
-        }
+            freeKernel(kernel);
+            return (0);
+          }
 
 #ifdef CBL        // DBG TMP remove this
-        if ( (sInf->gSpec->noDevSteps[devID] && ( kernel->noSteps != sInf->gSpec->noDevSteps[devID]) ) || (sInf->gSpec->noDevBatches[devID] && ( noBatches != sInf->gSpec->noDevBatches[devID]) )  )
-        {
-          fprintf(stderr, "ERROR: Dropping out cos we can't have the requested steps and batches.\n");
-          freeKernel(kernel);
-          return (0);
-        }
+          if ( (sInf->gSpec->noDevSteps[devID] && ( kernel->noSteps != sInf->gSpec->noDevSteps[devID]) ) || (sInf->gSpec->noDevBatches[devID] && ( noBatches != sInf->gSpec->noDevBatches[devID]) )  )
+          {
+            fprintf(stderr, "ERROR: Dropping out cos we can't have the requested steps and batches.\n");
+            freeKernel(kernel);
+            return (0);
+          }
 #endif
+        }
+
+        // Recalculate planeSize (with new step count)
+        if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
+        {
+          size_t noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
+          size_t nX             = noStepsP * kernel->accelLen;
+          size_t nY             = kernel->hInfos->height;
+          planeSize            += nX * nY * plnElsSZ;
+        }
+
 
         char  cufftType[1024];
         if ( kernel->flags & CU_FFT_SEP )
@@ -4611,7 +4631,7 @@ void readAccelDefalts(searchSpecs *sSpec)
         singleFlag ( flags, str1, str2, FLAG_OPT_LOCAVE, "LOCAVE", "MEDIAN", lineno, fName );
       }
 
-      else if ( strCom("OPT_BEST", str1 ) )
+      else if ( strCom("FLAG_OPT_BEST", str1 ) )
       {
         singleFlag ( flags, str1, str2, FLAG_OPT_BEST, "", "0", lineno, fName );
       }
