@@ -317,41 +317,41 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    //    case 10:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 12:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 14:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 16:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 18:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 20:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 24:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
+//    case 10:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 12:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 14:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 16:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 18:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 20:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
+//    case 24:
+//    {
+//      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
+//      break;
+//    }
     default:
       fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
       exit(EXIT_FAILURE);
@@ -408,10 +408,10 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     {
       add_and_searchCU31_p<T, FLAG_ITLV_ROW>    (dimGrid, dimBlock, stream, batch);
     }
-//    else
-//    {
-//      add_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, batch);
-//    }
+    else
+    {
+      add_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, batch);
+    }
   }
 }
 
@@ -437,12 +437,12 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     exit(EXIT_FAILURE);
 #endif
   }
-//  else if ( batch->flags & FLAG_CUFFT_CB_POW )
-//  {
-//    add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
-//  }
-//  else
-//  {
-//    add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
-//  }
+  else if ( batch->flags & FLAG_CUFFT_CB_POW )
+  {
+    add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
+  }
+  else
+  {
+    add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
+  }
 }

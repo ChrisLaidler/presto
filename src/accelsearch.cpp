@@ -17,14 +17,14 @@ extern "C"
 #include <sys/time.h>
 #include <time.h>
 
-#ifdef CUDA_PROF
-#include <cuda_profiler_api.h>
-#include <nvToolsExt.h>
-#endif
-
 #include "cuda_accel.h"
 #include "cuda_accel_utils.h"
 #include "cuda_response.h"
+#endif
+
+#ifdef CUDA_PROF
+#include <cuda_profiler_api.h>
+#include <nvToolsExt.h>
 #endif
 
 #ifdef USEDMALLOC
@@ -569,17 +569,6 @@ int main(int argc, char *argv[])
                     fflush(stdout);
                   }
                 }
-
-                if ( cuSrch->sSpec->flags & FLAG_SYNCH )
-                {
-                  printf("\n tid %i  cands %i  \n", tid, batch->noResults );
-
-                  if ( iteration > 1 && tid == 0 )
-                  {
-                    exit(EXIT_FAILURE);
-                  }
-                }
-
               }
 
               FOLD  // Finish off CUDA search  .

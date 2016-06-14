@@ -22,6 +22,9 @@ TAGS
 *.csv
 *.out
 *.log
+*.old
+*.swp
+*.backup
 lib/fftw_wisdom.txt
 bin/*_debug*
 bin/GBT350filterbank

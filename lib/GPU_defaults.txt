@@ -1,3 +1,4 @@
+#!/bin/bash
 #	This file contains the settings to control how the GPU acceleration search is carried out
 #	#'s Comment out lines, blank lines are ignored
 #
@@ -24,7 +25,7 @@ DUMMY_PARAMETER	DUMMY_VALUE	# This uncomment line setts the actual value of the 
 DUMMY_FLAG_ONE
 DUMMY_FLAG_TWO off
 
-#	These flags often correspond to one of the bit flags used in "cuda_accel.h" used to configure the search, and 
+#	These flags often correspond to one of the bit flags used in "cuda_accel.h" used to configure the search, and
 
 ########################### Memory ############################
 
@@ -46,11 +47,11 @@ DUMMY_FLAG_TWO off
 
 
 # Choose largest possible response function width - Not really a good idea
-#FLAG_KER_MAX                   
+#FLAG_KER_MAX
 
 
 # Centre and align the usable part of the planes (this is on by default, it can be disabled with CENTER_RESPONSE 0 or CENTER_RESPONSE off )
-#CENTER_RESPONSE                 
+#CENTER_RESPONSE
 
 
 # RESPONSE_PRECISION:
@@ -110,21 +111,21 @@ MUL_KER		AA
 
 
 # [Deprecated]  Use texture memory in the multiplication kernel
-#MUL_TEXTURE                    
+#MUL_TEXTURE
 
 
 # The number of horizontal "slices" to break the Sum & Search kernel into
 # MUL_SLICES:
 # D	0       		# Let the application decide
 #	int     		# A number generally less than 7 and odd are "better"
-MUL_SLICES	0               
+MUL_SLICES	0
 
 
 # The number of values to buffer in the multiplication kernel (this increases register use)
 # MUL_CHUNK:
 # D	0       		# Let the application decide
 #	int     		# A number <= 8
-MUL_CHUNK	0               
+MUL_CHUNK	0
 
 
 # How to do convolution
@@ -204,8 +205,8 @@ SS_KER	AA
 
 # Use separate CPU threads to process results
 # RESULTS:
-# D	THREAD  		#		Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
-#	SEQ     		#		Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
+# D	THREAD  		# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
+#	SEQ     		# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
 RESULTS THREAD
 
 
@@ -213,14 +214,14 @@ RESULTS THREAD
 # SS_SLICES:
 #	int     		# A number generally less than 7 and odd are "better"
 # D	0       		# Let the application decide
-SS_SLICES       0               
+SS_SLICES		0
 
 
 # The number of values to buffer in the Sum & Search kernel (this increases register use)
 # SS_CHUNK:
 #	int     		# A number <= 8
 # D	0       		# Let the application decide
-SS_CHUNK        0               
+SS_CHUNK		0
 
 
 # The step size of the in-mem search, this can be any value good choices are powers of two: 2048 or 4096 or 8192 or 16384 or 32768
@@ -258,25 +259,25 @@ OPTI_NORM LOCAVE
 
 
 # FLAG_OPT_BEST:		# Report the harmonic with the highest sigma value rather than the number of harmonic found during the initial search, this generally wont hurt
-FLAG_OPT_BEST
+#FLAG_OPT_BEST
 
 
 # This is the minimum number of harmonics that will be summed when localising the initial candidate
 # OPT_MIN_LOC_HARMS:
-# D	1			# This means the optimisation of the position will be done using the number of harmonics the initial candidate was found with 
+# D	1			# This means the optimisation of the position will be done using the number of harmonics the initial candidate was found with
 OPT_MIN_LOC_HARMS	1
 
-# 
+#
 # OPT_MIN_REP_HARMS
 #	int     		# If this number is larger than the number of harmonics the initial candidate was found with, optimisation will check harmonics up to this number. use with "OPT_BEST" to report this value.
 #	24			# This is my preferred value this will sum up to 24 harmonics
-# D	1			# This means the optimisation of the candidate will check up to the number of harmonics the initial candidate was found with 
+# D	1			# This means the optimisation of the candidate will check up to the number of harmonics the initial candidate was found with
 OPT_MIN_REP_HARMS	1
 
 
 # Optimisation location finding step down
 # D	10			#
-optPlnScale             10      
+optPlnScale             10
 
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
@@ -304,12 +305,12 @@ optPlnSiz 16 4
 # DBG_LEV:
 # D	0       		# None
 #	1       		# Information	- Basic information
-#	2       		# Stage info	- Initialisation - Candidate generation - Candidate optimisation 
+#	2       		# Stage info	- Initialisation - Candidate generation - Candidate optimisation
 #	3       		# Sub-stages	- Input FT - Multiplication - Power calculation - sum & search - etc....
 #	4       		# Detail	- Info on what is being done
 #	5       		# Debug		- Full debug information
-#	5       		# Super		- Details on the values of actual variables
-DBG_LEV 0
+#	6       		# Super		- Details on the values of actual variables
+DBG_LEV		0
 
 #FLAG_DPG_PLT_OPT               # [ Debug ]	Plot optimisation planes
 #FLAG_DPG_UNOPT 		# [ Debug ]	Use saved initial search values

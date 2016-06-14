@@ -1737,7 +1737,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         kernel->retDataSize *= kernel->noHarmStages;
 
       infoMSG(6,6,"retSZ: %i  alignment: %i  strideOut: %i  retDataSize: %i \n", retSZ, alignment, kernel->strideOut, kernel->retDataSize);
-
     }
 
     FOLD // Calculate batch size and number of steps and batches on this device  .

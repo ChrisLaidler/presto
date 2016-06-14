@@ -694,6 +694,16 @@ cleanTIMING:
 	rm -rf build/*/cuda_cand_OPT.cu.o
 	rm -rf build/*/test_GPUaccel*.o
 
+cleanMULT:
+	rm -rf build/*/accelsearch*.o
+	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_accel_MU_21.cu.o
+	rm -rf build/*/cuda_accel_MU_22.cu.o
+	rm -rf build/*/cuda_accel_MU_23.cu.o
+	rm -rf build/*/cuda_accel_MU_31.cu.o
+	rm -rf build/*/cuda_response.cu.o
+
+	
 cleanGPU: cudaclean
 	rm -f ../lib/libpresto*
 	rm -f ../lib/libcuaccel*
