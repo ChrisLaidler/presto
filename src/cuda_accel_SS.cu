@@ -336,10 +336,11 @@ void SSKer(cuFFdotBatch* batch)
 
   NV_RANGE_PUSH("S&S Ker");
 
-  FOLD // Do synchronisations  .
+  FOLD // Synchronisations  .
   {
     infoMSG(3,4,"pre synchronisations\n");
 
+    // Current Synchronisations
     for (int ss = 0; ss < batch->noStacks; ss++)
     {
       cuFfdotStack* cStack = &batch->stacks[ss];
@@ -353,6 +354,9 @@ void SSKer(cuFFdotBatch* batch)
         cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,      0);
       }
     }
+
+    // Previous Synchronisations
+    cudaStreamWaitEvent(batch->srchStream, batch->candCpyComp,      0);
   }
 
   FOLD // Timing event  .
@@ -362,8 +366,6 @@ void SSKer(cuFFdotBatch* batch)
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->srchStream),"Recording event: searchInit");
     }
   }
-
-
 
   FOLD // Call the SS kernel  .
   {
@@ -637,7 +639,7 @@ void* processSearchResults(void* ptr)
         {
           if ( isnan(poww) )
           {
-            rr      = res->rLow + x * ACCEL_DR / numharm ;
+            rr      = ( res->rLow + x * ACCEL_DR ) / numharm ;
             fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
           }
           else
@@ -647,20 +649,20 @@ void* processSearchResults(void* ptr)
               if ( res->flags & FLAG_HALF )
               {
                 poww          = 6.55e4;      // Max 16 bit float value
-                double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+                double rPos   = ( res->rLow + x * ACCEL_DR ) / numharm ;
                 fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", rPos, poww);
               }
               else
               {
                 poww          = 3.402823e38; // Max 32 bit float value
-                double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+                double rPos   = ( res->rLow + x * ACCEL_DR ) / numharm ;
                 fprintf(stderr,"WARNING: Search return inf power at bin %.2f. This is probably an error as you are using single precision floats.\n", rPos);
               }
             }
 
             if ( zz < 0 || zz >= res->zMax+1)
             {
-              double rPos   = res->rLow + x * ACCEL_DR / numharm ;
+              double rPos   = ( res->rLow + x * ACCEL_DR ) / numharm ;
               fprintf(stderr,"ERROR: invalid z value found at bin %.2f.\n", rPos);
             }
             else
@@ -771,7 +773,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
         thrdDat->xStride	*= batch->noSteps;
 
-        for ( int step = 0; step < batch->noSteps; step++) // Loop over steps  .
+        for ( int step = 0; step < batch->noSteps; step++) 	// Loop over steps  .
         {
           rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][0];
           thrdDat->x1		+= rVal->numrs;                 // These should all be Acelllen but there may be the case of the last step!
@@ -1176,7 +1178,7 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
     setActiveBatch(batch, 0);
     getResults(batch);
   }
-  
+
   // Cycle r values
   cycleRlists(batch);
   setActiveBatch(batch, 1);
