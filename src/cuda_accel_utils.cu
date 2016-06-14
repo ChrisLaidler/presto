@@ -450,7 +450,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       planeSize   = 0;
 
       int    plnStride  = sInf->sSpec->ssStepSize;
-      int    plnY       = calc_required_z(1.0, (float)sInf->sSpec->zMax );
+      int    plnY       = calc_required_z(1.0, (float)sInf->sSpec->zMax ) + 1 ;
 
       if ( sInf->sSpec->flags & FLAG_HALF )
       {
@@ -486,9 +486,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
       size_t accelLen   = calcAccellen(sInf->sSpec->pWidth, sInf->sSpec->zMax, accuracy );
       accelLen          = floor( accelLen/(float)(sInf->noSrchHarms*ACCEL_RDR) ) * (sInf->noSrchHarms*ACCEL_RDR);	// Adjust to be divisible by number of harmonics
       float fftLen      = calc_fftlen3(1, sInf->sSpec->zMax, accelLen, accuracy );
-      int noStepsP    	= ( sInf->sSpec->fftInf.rhi - sInf->sSpec->fftInf.rlo / (double)sInf->noSrchHarms ) / (double)( accelLen * ACCEL_DR ) ; // The number of planes to make
+      int halfWidth     = z_resp_halfwidth(sInf->sSpec->zMax, accuracy);
+      int noStepsP    	= ( sInf->sSpec->fftInf.rhi + 2 * halfWidth  - sInf->sSpec->fftInf.rlo / (double)sInf->noSrchHarms ) / (double)( accelLen * ACCEL_DR ) ; // The number of planes to make
+      int nss = noStepsP;
       noStepsP		= ceil(noStepsP/(float)noSteps)*noSteps;
       planeSize         = (noStepsP * accelLen) * plnY * plnElsSZ ;
+      infoMSG(6,6,"in-mem plane: %.2f GB - %i X %i   noStepsP: %i  noSteps: %i  nss :%i \n", planeSize*1e-9, (noStepsP * accelLen), plnY, noStepsP, noSteps, nss);
 
       // Kernel
       kerSize          += fftLen * plnY * sizeof(cufftComplex);                                         // Kernel
@@ -1757,10 +1760,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
         if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
         {
-          size_t noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
+          size_t noStepsP       = ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
           size_t nX             = noStepsP * kernel->accelLen;
           size_t nY             = kernel->hInfos->height;
-          planeSize	       += nX * nY * plnElsSZ;
+          planeSize	        = nX * nY * plnElsSZ;
         }
       }
 
@@ -1901,7 +1904,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
               kernel->noSteps   = floor(possSteps[noBatches-1]);
               printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
             }
-            else if ( possSteps[0] > 1 )
+            else if ( possSteps[0] >  1 )
             {
               // Lets do 2 batches and scale steps
               noBatches         = 1;
@@ -1945,10 +1948,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         // Recalculate planeSize (with new step count)
         if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
         {
-          size_t noStepsP       =  ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
+          size_t noStepsP       = ceil(sInf->SrchSz->noSteps / (float)noSteps) * noSteps;
           size_t nX             = noStepsP * kernel->accelLen;
           size_t nY             = kernel->hInfos->height;
-          planeSize            += nX * nY * plnElsSZ;
+          planeSize             = nX * nY * plnElsSZ;
+
+          infoMSG(6,6,"in-mem plane: %.2f GB - %i X %i   noStepsP: %i  noSteps: %i  nss :%i \n", planeSize*1e-9, nX, nY, noStepsP, noSteps,sInf->SrchSz->noSteps );
         }
 
 
