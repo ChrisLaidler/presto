@@ -212,4 +212,4 @@ __host__  void mult24(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 /** Multiplication kernel - Multiply an entire batch with Multiplication kernel  .
  * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
-__host__  void mult30(cudaStream_t multStream, cuFFdotBatch* batch);
+__host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch);

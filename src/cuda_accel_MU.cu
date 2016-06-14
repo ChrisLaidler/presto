@@ -261,7 +261,7 @@ void multiplyBatch(cuFFdotBatch* batch)
           CUDA_SAFE_CALL(cudaEventRecord(batch->multInit, batch->multStream),"Recording event: multInit");
         }
 
-        mult30(batch->multStream, batch);
+        mult31(batch->multStream, batch);
 
         // Run message
         CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
