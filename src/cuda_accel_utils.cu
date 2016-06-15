@@ -1704,7 +1704,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         }
         else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
         {
-          kernel->strideOut = getStrie(kernel->accelLen, retSZ, alignment);
+          //kernel->strideOut = getStrie(kernel->accelLen, retSZ, alignment);
+          kernel->strideOut = kernel->accelLen;
         }
         else if (  kernel->retType & CU_STR_PLN  )
         {
