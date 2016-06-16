@@ -145,7 +145,7 @@ MUL_CHUNK	0
 ############################ FFT ###############################
 
 # CUFFT_PLAN:
-#	SEPERATE		Use separate CUFFT plans for each batch
+#	SEPARATE		Use separate CUFFT plans for each batch
 # D	SINGLE			Use one plan for all batches on a device - Saves a bit of memory and generally doesn't slow things down much
 #CUFFT_PLAN 	SINGLE
 
@@ -157,7 +157,7 @@ MUL_CHUNK	0
 #	CB      		# Use CUFFT callbacks to calculate powers. Almost always a good option!
 #	SS      		# Do the power calculations in the Sum and search step
 # D	AUTO			# Let the application decide
-STD_POWERS 	CB
+STD_POWERS 		CB
 
 
 # How to calculate powers in in-mem search
@@ -166,7 +166,7 @@ STD_POWERS 	CB
 #	MEM_CPY 		# Use a CUFFT callback with the in-mem iFFT's to calculate powers - write to separate powers plane, and the used asynch memory copy to move powers to in-mem plane. Uses more memory but fast
 #	KERNEL  		# Use a separate kernel to calculate powers and write to in-mem plane - slower but uses slightly less memory
 # D	AUTO			# Let the application decide
-IN_MEM_POWERS	AUTO
+IN_MEM_POWERS		AUTO
 
 
 # If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
@@ -175,7 +175,7 @@ IN_MEM_POWERS	AUTO
 #	SINGLE  		# Force single precision powers
 #	DOUBLE  		# Not yet implemented
 # D	AUTO			# Let the application decide
-POWER_PRECISION AUTO
+POWER_PRECISION		AUTO
 
 ########################### Return #############################
 
@@ -191,7 +191,7 @@ POWER_PRECISION AUTO
 #	10			# This is the standard sum and search kernel
 #	IM or INMEM		# Do a in-memory sum and search (if possible always try this!)
 # D	AA			# Automatically chose, this will do a in-mem search if possible
-SS_KER	AA
+SS_KER			AA
 
 
 #FLAG_SAS_TEX   		# [Deprecated]	Use texture memory in the sum and search kernel
@@ -224,7 +224,7 @@ SS_SLICES		0
 SS_CHUNK		0
 
 
-# The step size of the in-mem search, this can be any value good choices are powers of two: 2048 or 4096 or 8192 or 16384 or 32768
+# The step size of the in-mem search, this can be any value good choices are powers of two: 2048 or 4096 or 8192 or 16384 or 32768 or 65536 or 131072
 # SS_INMEM_SZ:
 # D	0       		# Let the application decide
 #	2048
@@ -232,7 +232,7 @@ SS_CHUNK		0
 #	8192
 #	16384
 #	32768
-SS_INMEM_SZ 0
+SS_INMEM_SZ 		0
 
 
 ##################### Initial Candidates #######################
@@ -246,7 +246,7 @@ SS_INMEM_SZ 0
 # D	ARR     		# Use an array		(Fast access, but requires more CPU memory)
 #	LST     		# Use a linked list	(Slower but requires less CPU memory)
 #	QUAD    		# Use a quad tree	(Better all round - But not yet properly implemented)
-CAND_STORAGE ARR
+CAND_STORAGE		ARR
 
 
 ######################### Optimisation ###########################
@@ -255,7 +255,7 @@ CAND_STORAGE ARR
 # OPTIMISATION_NORM:
 # D	MEDIAN  		# Use 1D median power for normalisation
 #	LOCAVE  		# Use Local 3D power average for normalisation
-OPTI_NORM LOCAVE
+OPTI_NORM 		LOCAVE
 
 
 # FLAG_OPT_BEST:		# Report the harmonic with the highest sigma value rather than the number of harmonic found during the initial search, this generally wont hurt
@@ -310,7 +310,7 @@ optPlnSiz 16 4
 #	4       		# Detail	- Info on what is being done
 #	5       		# Debug		- Full debug information
 #	6       		# Super		- Details on the values of actual variables
-DBG_LEV		0
+DBG_LEV			0
 
 #FLAG_DPG_PLT_OPT               # [ Debug ]	Plot optimisation planes
 #FLAG_DPG_UNOPT 		# [ Debug ]	Use saved initial search values

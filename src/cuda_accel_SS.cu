@@ -47,7 +47,6 @@ __device__ const short CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
 
 //======================================= Global variables  ================================================\\
 
-//int    inMemSrchSz = 32768; // Deprecated
 
 //========================================== Functions  ====================================================\\
 
@@ -731,17 +730,15 @@ void processSearchResults(cuFFdotBatch* batch)
 
     FOLD // Allocate temporary memory to copy results back to  .
     {
-      NV_RANGE_PUSH("malloc");
-
       thrdDat = new resultData;     // A data structure to hold info for the thread processing the results
       memset(thrdDat, 0, sizeof(resultData) );
 
       if ( batch->flags & FLAG_THREAD )
       {
+        NV_RANGE_PUSH("malloc");
         thrdDat->retData = (void*)malloc(batch->retDataSize);
+        NV_RANGE_POP();
       }
-
-      NV_RANGE_POP();
     }
 
     FOLD // Initialise data structure  .
@@ -959,7 +956,10 @@ void getResults(cuFFdotBatch* batch)
     {
       infoMSG(3,3,"pre synchronise\n");
 
+      // This iteration
       CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->searchComp,  0),"Waiting on event searchComp");
+
+      // Previous iteration
       CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->processComp, 0),"Waiting on event processComp");
     }
 
@@ -1034,122 +1034,9 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
   }
 }
 
-void sumAndSearchOrr(cuFFdotBatch* batch)     // Function to call to SS and process data in normal steps  .
-{
-  FOLD // Sum and search the IFFT'd data  .
-  {
-    infoMSG(2,1,"Sum & Search\n");
-
-    if      ( batch->retType & CU_STR_PLN )
-    {
-      // Nothing!
-    }
-    else if ( batch->flags & FLAG_SS_INMEM )
-    {
-      // NOTHING
-    }
-    else if ( batch->flags & FLAG_SS_CPU )
-    {
-      // NOTHING
-    }
-    else
-    {
-      SSKer(batch);
-    }
-  }
-
-  if ( batch->flags & FLAG_SYNCH )
-  {
-    FOLD // Copy results from device to host  .
-    {
-      if  ( batch->flags & FLAG_SS_INMEM )
-      {
-        // Nothing
-      }
-      else
-      {
-        getResults(batch);
-      }
-    }
-
-    FOLD // Process previous results  .
-    {
-      if  ( batch->flags & FLAG_SS_INMEM )
-      {
-        // Nothing
-      }
-      else
-      {
-        processSearchResults(batch);
-      }
-    }
-  }
-  else
-  {
-    FOLD // Process previous results  .
-    {
-      if  ( batch->flags & FLAG_SS_INMEM )
-      {
-        // Nothing
-      }
-      else
-      {
-        processSearchResults(batch);
-      }
-    }
-
-    FOLD // Copy results from device to host  .
-    {
-      if  ( batch->flags & FLAG_SS_INMEM )
-      {
-        // Nothing
-      }
-      else
-      {
-        getResults(batch);
-      }
-    }
-  }
-}
-
 void sumAndMax(cuFFdotBatch* batch)
 {
   // TODO write this
-}
-
-void inMem(cuFFdotBatch* batch)
-{
-  long long noX = batch->accelLen * batch->cuSrch->SrchSz->noSteps ;
-  int       noY = batch->hInfos->height;
-  float*    pln = (float*)batch->cuSrch->h_candidates;
-
-  //for ( int stage = 0; stage < batch->noHarmStages; stage++ )
-  for ( int stage = 0; stage < 5 ; stage++ )
-  {
-    omp_set_num_threads(8);
-
-#pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-
-      printf("inMem tid %02i \n", tid);
-
-#pragma omp for
-      for ( int iy = 0; iy < noY; iy++ )
-      {
-        int y1 = iy       * noX   ;
-        int y2 = (iy*0.5) * noX   ;
-
-        for ( int ix = noX -1; ix >= 0; ix-- )
-        {
-          int idx1 = y1 +  ix ;
-          int idx2 = y2 +  (ix*0.5) ;
-
-          pln[idx1] += pln[idx2];
-        }
-      }
-    }
-  }
 }
 
 void inmemSS(cuFFdotBatch* batch, double drlo, int len)
@@ -1300,6 +1187,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
     }
 
+    // Finish off the search
     for ( int step= 0 ; step < batch->noRArryas; step++ )
     {
       inmemSS(batch, 0, 0);

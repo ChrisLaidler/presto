@@ -23,7 +23,8 @@ void multiplyPlane(cuFFdotBatch* batch)
 
     FOLD // Synchronisation  .
     {
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,0),       "Waiting for GPU to be ready to copy data to device.");  // Need input data
+      // This iteration
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->inpFFTinitComp,0),       "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
       // CFF output callback has its own data so can start once FFT is complete
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),      "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
@@ -39,7 +40,7 @@ void multiplyPlane(cuFFdotBatch* batch)
         for (int ss = 0; ss< batch->noStacks; ss++)
         {
           cuFfdotStack* cStack2 = &batch->stacks[ss];
-          cudaStreamWaitEvent(cStack->multStream, cStack2->prepComp, 0);
+          cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0);
         }
 
         // Wait for the previous multiplication to complete
@@ -120,7 +121,8 @@ void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pSta
   {
     infoMSG(3,5,"Pre synchronisation\n");
 
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->prepComp,    0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
+    // This iteration
+    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->inpFFTinitComp,    0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
     // iFFT has its own data so can start once iFFT is complete
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp,    0),   "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
@@ -136,7 +138,7 @@ void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pSta
       for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
       {
         cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
-        cudaStreamWaitEvent(cStack->multStream, cStack2->prepComp, 0);
+        cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0);
       }
 
       // Wait for the previous multiplication to complete
@@ -227,7 +229,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
     NV_RANGE_PUSH("Multiply");
 
-    if    	( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
+    if      ( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
     {
       FOLD // Synchronisation  .
       {
@@ -236,10 +238,10 @@ void multiplyBatch(cuFFdotBatch* batch)
         {
           cuFfdotStack* cStack = &batch->stacks[synchIdx];
 
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->prepComp, 0),     "Waiting for GPU to be ready to copy data to device.");    // Need input data
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->inpFFTinitComp, 0),     "Waiting for input data to be FFT'ed.");    // Need input data
 
           // iFFT has its own data so can start once iFFT is complete
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),     "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),     "Waiting for iFFT.");  // This will overwrite the plane so search must be compete
         }
 
         if ( !(batch->flags & FLAG_CUFFT_CB_OUT) )
@@ -298,7 +300,7 @@ void multiplyBatch(cuFFdotBatch* batch)
           if ( batch->flags & FLAG_MUL_CB )
           {
             // Just synchronise, the iFFT will do the multiplication once the multComp event has been recorded
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->prepComp,0),   "Waiting for GPU to be ready to copy data to device.");
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->inpFFTinitComp,0),   "Waiting for GPU to be ready to copy data to device.");
             CUDA_SAFE_CALL(cudaEventRecord(cStack->multComp, cStack->fftPStream),         "Recording event: multComp");
           }
           else

@@ -661,6 +661,12 @@ void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
 
 void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len);
 
+void prepInputCPU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type );
+
+void copyInputToDevice(cuFFdotBatch* batch);
+
+void prepInputGPU(cuFFdotBatch* batch);
+
 /** Initialise input data for a f-∂f plane(s)  ready for multiplication  .
  * This:
  *  Normalises the chunk of input data
@@ -673,7 +679,7 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len);
  * @param norm_type   The type of normalisation to perform
  * @param fft         The fft
  */
-void initInput(cuFFdotBatch* batch, int norm_type );
+void prepInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type );
 
 
 

@@ -79,8 +79,8 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                 {
                   if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh )  // Zero Pad
                   {
-                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = 0;
-                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = 0;
+                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].r = 0;
+                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].i = 0;
                   }
                   else
                   {
@@ -90,8 +90,8 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
                       exit(EXIT_FAILURE);
                     }
 
-                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin + ii].r * rVal->norm;
-                    cStack->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * rVal->norm;
+                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin + ii].r * rVal->norm;
+                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * rVal->norm;
                   }
                 }
                 NV_RANGE_POP();
@@ -120,14 +120,14 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               }
               loc_powers = corr_loc_pow(batch->h_normPowers, nice_numdata);
 
-              //memcpy(&batch->h_iData[sz], &fft[lobin], nice_numdata * sizeof(fcomplexcu) );
+              //memcpy(&batch->h_iBuffer[sz], &fft[lobin], nice_numdata * sizeof(fcomplexcu) );
 
               for (int ii = 0; ii < rVal->numdata; ii++)
               {
                 float norm = invsqrt(loc_powers[ii]);
 
-                batch->h_iData[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin+ ii].r* norm;
-                batch->h_iData[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin+ ii].i* norm;
+                batch->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin+ ii].r* norm;
+                batch->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin+ ii].i* norm;
               }
 
               vect_free(loc_powers);  // I hate doing this!!!
@@ -163,6 +163,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
 {
   infoMSG(2,2,"Set Stack R-Vals\n");
+  NV_RANGE_PUSH("Set R-Valst");
 
   int       hibin;
   int       binoffset;  // The extra bins to add onto the start of the data
@@ -222,6 +223,8 @@ void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
       }
     }
   }
+
+  NV_RANGE_POP();
 }
 
 /** Calculate the r bin values for this batch of steps and store them in planes->rInput
@@ -276,8 +279,10 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
  * @param batch the batch to work with
  * @param norm_type   The type of normalisation to perform
  */
-void initInput(cuFFdotBatch* batch, int norm_type )
+void prepInputCPU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
 {
+  setGenRVals(batch, searchRLow, searchRHi);
+
   // Timing
   if ( batch->flags & FLAG_TIME )
   {
@@ -301,7 +306,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
         {
           cuFfdotStack* cStack = &batch->stacks[stack];
 
-          timeEvents( cStack->inpFFTinit, cStack->prepComp, &batch->InpFFTTime[stack],    "Stack input FFT");
+          timeEvents( cStack->inpFFTinit, cStack->inpFFTinitComp, &batch->InpFFTTime[stack],    "Stack input FFT");
         }
       }
 
@@ -312,45 +317,38 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
-    infoMSG(1,2,"Input\n");
+    infoMSG(1,2,"CPU prep input\n");
 
-    NV_RANGE_PUSH("Input");
+    NV_RANGE_PUSH("CPU prep input");
 
     fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->sSpec->fftInf.fft;
 
-    FOLD  // Normalise and spread and copy to device memory  .
+    if ( batch->flags & CU_NORM_CPU  ) // Copy chunks of FFT data and normalise and spread using the CPU  .
     {
-      if ( batch->flags & CU_NORM_CPU  ) // Copy chunks of FFT data and normalise and spread using the CPU  .
+      // Timing variables  .
+      struct timeval start, end;
+
+      infoMSG(2,3,"CPU normalisation\n");
+
+      FOLD // Zero pinned host memory  .
       {
-        // Timing variables  .
-        struct timeval start, end;
+        NV_RANGE_PUSH("Zero");
+        memset(batch->h_iBuffer, 0, batch->inpDataSize);
+        NV_RANGE_POP();
+      }
 
-        infoMSG(2,3,"CPU normalisation\n");
-
-        FOLD // Blocking synchronisation, Make sure the previous thread has complete reading from page locked memory
-        {
-          infoMSG(3,4,"pre synchronisation [blocking] iDataCpyComp\n");
-
-          NV_RANGE_PUSH("EventSynch");
-          CUDA_SAFE_CALL(cudaGetLastError(), "Before Synchronising");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          NV_RANGE_POP();
-        }
-
-        FOLD // Zero pinned host memory  .
-        {
-          NV_RANGE_PUSH("Zero");
-          memset(batch->h_iData, 0, batch->inpDataSize);
-          NV_RANGE_POP();
-        }
-
+      FOLD // CPU Normalise  .
+      {
         CPU_Norm_Spread(batch, norm_type, fft);
+      }
 
+      FOLD // FFT
+      {
         if ( batch->flags & CU_INPT_FFT_CPU ) // CPU FFT  .
         {
           infoMSG(2,3,"CPU FFT Input\n");
 
-#pragma omp critical
+  #pragma omp critical
           FOLD
           {
             for (int stack = 0; stack < batch->noStacks; stack++)
@@ -363,7 +361,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
               }
 
               NV_RANGE_PUSH("CPU FFT");
-              fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iData, (fftwf_complex*)cStack->h_iData);
+              fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iBuffer, (fftwf_complex*)cStack->h_iBuffer);
               NV_RANGE_POP();
 
               if ( batch->flags & FLAG_TIME ) // Timing  .
@@ -373,199 +371,202 @@ void initInput(cuFFdotBatch* batch, int norm_type )
                 float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
                 batch->InpFFTTime[stack] += v1;
               }
-
             }
-          }
-        }
-
-        FOLD // Synchronisation  .
-        {
-          // Wait for per stack multiplications to finish
-          for (int ss = 0; ss < batch->noStacks; ss++)
-          {
-            cuFfdotStack* cStack = &batch->stacks[ss];
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
-          }
-
-          // Wait for batch multiplications to finish
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
-
-          if ( batch->flags & FLAG_TIME ) // Timing  .
-          {
-            cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
-          }
-
-        }
-
-        FOLD // Copy pinned memory to device  .
-        {
-          infoMSG(2,3,"Copy to device\n");
-
-          CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
-          CUDA_SAFE_CALL(cudaGetLastError(), "Preparing the input data.");
-        }
-
-        FOLD // Synchronisation  .
-        {
-          cudaEventRecord(batch->normComp,      batch->inpStream);
-          cudaEventRecord(batch->iDataCpyComp,  batch->inpStream);
-
-          if ( batch->flags & CU_INPT_FFT_CPU )
-          {
-            for (int ss = 0; ss < batch->noStacks; ss++)
-            {
-              cuFfdotStack* cStack = &batch->stacks[ss];
-              cudaEventRecord(cStack->prepComp, batch->inpStream);
-            }
-          }
-        }
-      }
-      else                               // Copy chunks of FFT data and normalise and spread using the GPU  .
-      {
-        infoMSG(2,3,"GPU normalisation\n");
-
-        FOLD // Synchronisation  .
-        {
-          infoMSG(3,4,"pre synchronisation [blocking] iDataCpyComp\n");
-
-          // Make sure the previous thread has complete reading from page locked memory
-          NV_RANGE_PUSH("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          NV_RANGE_POP();
-        }
-
-        FOLD // Zero pinned host memory  .
-        {
-          infoMSG(3,4,"Zero pinned memory\n");
-
-          NV_RANGE_PUSH("Zero");
-          memset(batch->h_iData, 0, batch->inpDataSize);
-          NV_RANGE_POP();
-        }
-
-        FOLD // Copy fft data to device  .
-        {
-          infoMSG(3,4,"Copy data\n");
-
-          FOLD // Write fft data segments to contiguous page locked memory  .
-          {
-            infoMSG(3,5,"Write fft data segments to contiguous page locked memory\n");
-
-            int harm  = 0;
-            int sz    = 0;
-
-            for ( int stack = 0; stack< batch->noStacks; stack++)  // Loop over stack
-            {
-              cuFfdotStack* cStack = &batch->stacks[stack];
-
-              for ( int plane = 0; plane < cStack->noInStack; plane++)
-              {
-                for (int step = 0; step < batch->noSteps; step++)
-                {
-                  rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
-
-                  if ( rVal->numdata )
-                  {
-                    int start = 0;
-                    if ( rVal->lobin < 0 )
-                      start = -rVal->lobin;
-
-                    // Do the actual copy
-                    memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
-                  }
-                  sz += cStack->strideCmplx;
-                }
-                harm++;
-              }
-            }
-          }
-
-          FOLD // Synchronisation  .
-          {
-            infoMSG(3,5,"Synchronisation\n");
-
-            // Wait for per stack multiplications to finish
-            for (int ss = 0; ss< batch->noStacks; ss++)
-            {
-              cuFfdotStack* cStack = &batch->stacks[ss];
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "Waiting for GPU to be ready to copy data to device\n");
-            }
-
-            // Wait for batch multiplication to finish
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "Waiting for GPU to be ready to copy data to device\n");
-
-            if ( batch->flags & FLAG_TIME ) // Timing  .
-            {
-              cudaEventRecord(batch->iDataCpyInit, batch->inpStream);\
-            }
-          }
-
-          FOLD // Copy to device  .
-          {
-            infoMSG(3,5,"Copy to device\n");
-
-            CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy data to device");
-
-            // Synchronisation
-            cudaEventRecord(batch->iDataCpyComp, batch->inpStream);
-
-            CUDA_SAFE_CALL(cudaGetLastError(), "Copying a section of input FTD data to the device.");
-          }
-        }
-
-        FOLD // Normalise and spread on GPU  .
-        {
-          infoMSG(3,4,"Normalise on device\n");
-
-          cuFfdotStack* pStack = NULL;  // Previous stack
-
-          for ( int stack = 0; stack < batch->noStacks; stack++)  // Loop over stacks  .
-          {
-            infoMSG(3,5,"Stack %i\n", stack);
-
-            cuFfdotStack* cStack = &batch->stacks[stack];
-
-            FOLD // Synchronisation  .
-            {
-              CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inptStream, batch->iDataCpyComp, 0), "Waiting for GPU to be ready to copy data to device\n");
-
-              if ( batch->flags & FLAG_SYNCH )
-              {
-                // Wait for previous FFT to complete
-                if ( pStack != NULL )
-                  cudaStreamWaitEvent(cStack->inptStream, pStack->normComp, 0);
-              }
-
-              if ( batch->flags & FLAG_TIME ) // Timing  .
-              {
-                cudaEventRecord(cStack->normInit, cStack->inptStream);
-              }
-            }
-
-            FOLD // Call the kernel to normalise and spread the input data  .
-            {
-              normAndSpread(cStack->inptStream, batch, stack );
-            }
-
-            FOLD // Synchronisation  .
-            {
-              cudaEventRecord(cStack->normComp, cStack->inptStream);
-            }
-
-            pStack = cStack;
-          }
-
-          if ( batch->flags & FLAG_SYNCH ) // Wait for the last stack to complete normalisation  .
-          {
-            cuFfdotStack* lStack = &batch->stacks[batch->noStacks -1];
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(lStack->inptStream, lStack->normComp, 0), "Waiting for event normComp");
-            CUDA_SAFE_CALL(cudaEventRecord(batch->normComp, lStack->inptStream), "Recording for event inptStream");
           }
         }
       }
     }
 
-    FOLD  // FFT the input on the GPU data  .
+    FOLD  // Copy data to pinned memory  .
+    {
+      FOLD // Synchronisation [ blocking ]  .
+      {
+        infoMSG(3,4,"pre synchronisation [blocking] iDataCpyComp\n");
+
+        NV_RANGE_PUSH("EventSynch");
+        CUDA_SAFE_CALL(cudaGetLastError(), "Before Synchronising");
+        CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+        NV_RANGE_POP();
+      }
+
+      if ( batch->flags & CU_NORM_CPU  ) // Copy CPU prepped data to the pagelocked input data
+      {
+        NV_RANGE_PUSH("memcpy");
+        memcpy(batch->h_iData, batch->h_iBuffer, batch->inpDataSize );
+        NV_RANGE_POP();
+      }
+      else                               // Copy chunks of FFT data and normalise and spread using the GPU  .
+      {
+        infoMSG(2,3,"CPU prep input\n");
+
+        FOLD // Zero pinned host memory  .
+        {
+          NV_RANGE_PUSH("Zero");
+          memset(batch->h_iData, 0, batch->inpDataSize);
+          NV_RANGE_POP();
+        }
+
+        infoMSG(3,4,"Write to pinned\n");
+
+        FOLD // Write input data segments to contiguous page locked memory  .
+        {
+          infoMSG(3,5,"Write fft data segments to contiguous page locked memory\n");
+
+          int harm  = 0;
+          int sz    = 0;
+
+          for ( int stack = 0; stack< batch->noStacks; stack++)  // Loop over stack
+          {
+            cuFfdotStack* cStack = &batch->stacks[stack];
+
+            for ( int plane = 0; plane < cStack->noInStack; plane++)
+            {
+              for (int step = 0; step < batch->noSteps; step++)
+              {
+                rVals* rVal = &(*batch->rAraays)[batch->rActive][step][harm];
+
+                if ( rVal->numdata )
+                {
+                  int start = 0;
+                  if ( rVal->lobin < 0 )
+                    start = -rVal->lobin;
+
+                  // Do the actual copy
+                  memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
+                }
+                sz += cStack->strideCmplx;
+              }
+              harm++;
+            }
+          }
+        }
+      }
+    }
+
+    NV_RANGE_POP();
+  }
+}
+
+void copyInputToDevice(cuFFdotBatch* batch)
+{
+  if ( (*batch->rAraays)[batch->rActive][0][0].numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
+  {
+    FOLD // Synchronisation  .
+    {
+      FOLD // Previous
+      {
+        // Wait for previous per-stack multiplications to finish
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, cStack->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
+        }
+
+        // Wait for batch multiplications to finish
+        CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
+      }
+
+      // Note don't have to wait for GPU input work as it is done in the same stream
+
+      if ( batch->flags & FLAG_TIME ) // Timing  .
+      {
+        cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
+      }
+    }
+
+    FOLD // Copy pinned memory to device  .
+    {
+      infoMSG(2,3,"Copy to device\n");
+
+      CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
+      CUDA_SAFE_CALL(cudaGetLastError(), "Copying input data to the device.");
+    }
+
+    FOLD // Synchronisation  .
+    {
+      cudaEventRecord(batch->iDataCpyComp,  batch->inpStream);
+
+      if ( batch->flags & CU_NORM_CPU  )
+      {
+        // Data has been normalised by CPU
+        cudaEventRecord(batch->normComp,      batch->inpStream);
+      }
+
+      if ( batch->flags & CU_INPT_FFT_CPU )
+      {
+        // Data has been FFT'ed by CPU
+        for (int ss = 0; ss < batch->noStacks; ss++)
+        {
+          cuFfdotStack* cStack = &batch->stacks[ss];
+          cudaEventRecord(cStack->inpFFTinitComp, batch->inpStream);
+        }
+      }
+    }
+  }
+}
+
+void prepInputGPU(cuFFdotBatch* batch)
+{
+  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  {
+    infoMSG(1,2,"GPU prep input\n");
+    NV_RANGE_PUSH("GPU prep input");
+
+    FOLD // Normalise and spread on GPU  .
+    {
+      if ( !(batch->flags & CU_NORM_CPU) )
+      {
+        infoMSG(3,4,"Normalise on device\n");
+
+        cuFfdotStack* pStack = NULL;  // Previous stack
+
+        for ( int stack = 0; stack < batch->noStacks; stack++)  // Loop over stacks  .
+        {
+          infoMSG(3,5,"Stack %i\n", stack);
+
+          cuFfdotStack* cStack = &batch->stacks[stack];
+
+          FOLD // Synchronisation  .
+          {
+            // This iteration
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inptStream, batch->iDataCpyComp, 0), "Waiting for GPU to be ready to copy data to device\n");
+
+            if ( batch->flags & FLAG_SYNCH )
+            {
+              // Wait for previous FFT to complete
+              if ( pStack != NULL )
+                cudaStreamWaitEvent(cStack->inptStream, pStack->normComp, 0);
+            }
+
+            if ( batch->flags & FLAG_TIME ) // Timing  .
+            {
+              cudaEventRecord(cStack->normInit, cStack->inptStream);
+            }
+          }
+
+          FOLD // Call the kernel to normalise and spread the input data  .
+          {
+            normAndSpread(cStack->inptStream, batch, stack );
+          }
+
+          FOLD // Synchronisation  .
+          {
+            cudaEventRecord(cStack->normComp, cStack->inptStream);
+          }
+
+          pStack = cStack;
+        }
+
+        if ( batch->flags & FLAG_SYNCH ) // Wait for the last stack to complete normalisation  .
+        {
+          cuFfdotStack* lStack = &batch->stacks[batch->noStacks -1];
+          CUDA_SAFE_CALL(cudaStreamWaitEvent(lStack->inptStream, lStack->normComp, 0), "Waiting for event normComp");
+          CUDA_SAFE_CALL(cudaEventRecord(batch->normComp, lStack->inptStream), "Recording for event inptStream");
+        }
+      }
+    }
+
+    FOLD // FFT the input on the GPU  .
     {
       if ( !(batch->flags & CU_INPT_FFT_CPU) )
       {
@@ -583,8 +584,8 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
           FOLD // Synchronisation  .
           {
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, cStack->normComp,     0), "Waiting for event normComp");
-            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->normComp,      0), "Waiting for event normComp");
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, cStack->normComp,     0), "Waiting for event stack normComp");
+            CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->normComp,      0), "Waiting for event batch normComp");
             CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->iDataCpyComp,  0), "Waiting for event iDataCpyComp");
 
             if ( batch->flags & FLAG_SYNCH )
@@ -597,7 +598,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
               // Wait for previous FFT to complete
               if ( pStack != NULL )
-                cudaStreamWaitEvent(cStack->fftIStream, pStack->prepComp, 0);
+                cudaStreamWaitEvent(cStack->fftIStream, pStack->inpFFTinitComp, 0);
 
               // Wait for all GPU normalisations to complete
               for (int stack2Idx = 0; stack2Idx < batch->noStacks; stack2Idx++)
@@ -627,7 +628,7 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
           FOLD // Synchronisation  .
           {
-            cudaEventRecord(cStack->prepComp, cStack->fftIStream);
+            cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
           }
 
           pStack = cStack;
@@ -637,4 +638,20 @@ void initInput(cuFFdotBatch* batch, int norm_type )
 
     NV_RANGE_POP();
   }
+}
+
+/** Initialise input data for a f-∂f plane(s)  ready for convolution  .
+ * This:
+ *  Normalises the chunk of input data
+ *  Spreads it (interbinning)
+ *  FFT it ready for convolution
+ *
+ * @param batch the batch to work with
+ * @param norm_type   The type of normalisation to perform
+ */
+void prepInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
+{
+  prepInputCPU(batch, searchRLow, searchRHi, norm_type );
+  copyInputToDevice(batch);
+  prepInputGPU(batch);
 }

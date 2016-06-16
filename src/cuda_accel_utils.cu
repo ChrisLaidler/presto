@@ -1994,6 +1994,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
         printf("                 Using: %5.2f GiB of %.2f [%.2f%%] of GPU memory for search.\n",  totUsed / 1073741824.0, total / 1073741824.0, totUsed / (float)total * 100.0f );
       }
 
+
+
       NV_RANGE_POP();
     }
 
@@ -2151,6 +2153,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   sInf, int
 
       NV_RANGE_POP();
     }
+
+
 
     if ( !(kernel->flags & CU_FFT_SEP) )
     {
@@ -2366,6 +2370,8 @@ void setStkPointers(cuFFdotBatch* batch)
     cStack->h_iData       = &batch->h_iData[idSiz];
     cStack->planes        = &batch->planes[harm];
     cStack->kernels       = &batch->kernels[harm];
+    if ( batch->h_iBuffer )
+      cStack->h_iBuffer   = &batch->h_iBuffer[idSiz];
 
     if ( batch->flags & FLAG_DOUBLE )
       cStack->d_planeMult   = &((double2*)batch->d_planeMult)[cmplStart];
@@ -2625,18 +2631,24 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     infoMSG(4,4,"Allocate memory for the batch\n");
 
-    FOLD // Allocate page-locked host memory for input data  .
+    FOLD  // Allocate host input memory
     {
       NV_RANGE_PUSH("Host");
 
+      // Allocate page-locked host memory for input data  .
       infoMSG(5,5,"Allocate page-locked for input data.  %p  %i Bytes \n", &batch->h_iData, batch->inpDataSize);
 
       CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plane input data." );
 
-      if ( batch->flags & CU_NORM_CPU ) // Allocate memory for normalisation
+      if ( batch->flags & CU_NORM_CPU )
       {
         infoMSG(5,5,"Allocate host memory for normalisation powers.\n");
+
+        // Allocate CPU memory for normalisation
         batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
+
+        // Allocate buffer for CPU to work on input data
+        batch->h_iBuffer = (fcomplexcu*)malloc(batch->inpDataSize);
       }
 
       NV_RANGE_POP();
@@ -2646,7 +2658,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       infoMSG(5,5,"Allocate R value lists.\n");
 
-      batch->noRArryas        = 5; // This is just a convenient value
+      batch->noRArryas        = 7; // This is just a convenient value
 
       createRvals(batch, &batch->rArr1, &batch->rArraysPlane);
       batch->rAraays = &batch->rArraysPlane;
@@ -2856,9 +2868,16 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
             {
               CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for input fft's");
 
-              sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->device, no, i);
-              NV_NAME_STREAM(cStack->fftIStream, strBuff);
-              //printf("cudaStreamCreate: %s\n", strBuff);
+//              if ( !(batch->flags & CU_NORM_CPU)  )
+//              {
+//                cStack->fftIStream = cStack->inptStream;
+//              }
+//              else
+              {
+                sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->device, no, i);
+                NV_NAME_STREAM(cStack->fftIStream, strBuff);
+                //printf("cudaStreamCreate: %s\n", strBuff);
+              }
             }
           }
           else                                    // Copy stream of the kernel  .
@@ -2877,6 +2896,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->device, no);
           NV_NAME_STREAM(batch->multStream, strBuff);
           //printf("cudaStreamCreate: %s\n", strBuff);
+
         }
 
         if ( (batch->flags & FLAG_MUL_STK) || (batch->flags & FLAG_MUL_PLN)  )
@@ -2885,10 +2905,19 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           {
             cuFfdotStack* cStack  = &batch->stacks[i];
 
-            CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
-            sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->device, no, i);
-            NV_NAME_STREAM(cStack->multStream, strBuff);
-            //printf("cudaStreamCreate: %s\n", strBuff);
+//            if ( !(kernel->flags & CU_INPT_FFT_CPU) &&  (batch->flags & CU_FFT_SEP) )
+//            {
+//              cStack->multStream = cStack->fftIStream;
+//              sprintf(strBuff,"%i.%i.3.%i Stack", batch->device, no, i);
+//              NV_NAME_STREAM(cStack->multStream, strBuff);
+//            }
+//            else
+            {
+              CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
+              sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->device, no, i);
+              NV_NAME_STREAM(cStack->multStream, strBuff);
+              //printf("cudaStreamCreate: %s\n", strBuff);
+            }
           }
         }
       }
@@ -2901,11 +2930,17 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
           if ( batch->flags & CU_FFT_SEP )           // Create stream
           {
-            CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-
-            sprintf(strBuff,"%i.%i.4.%i Stack iFFT", batch->device, no, i);
-            NV_NAME_STREAM(cStack->fftPStream, strBuff);
-            //printf("cudaStreamCreate: %s\n", strBuff);
+//            if ( (batch->flags & FLAG_MUL_STK) || (batch->flags & FLAG_MUL_PLN)  )
+//            {
+//              cStack->fftPStream = cStack->multStream;
+//            }
+//            else
+            {
+              CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
+              sprintf(strBuff,"%i.%i.4.%i Stack iFFT", batch->device, no, i);
+              NV_NAME_STREAM(cStack->fftPStream, strBuff);
+              //printf("cudaStreamCreate: %s\n", strBuff);
+            }
           }
           else                                        // Copy stream of the kernel
           {
@@ -2981,7 +3016,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
             // out events (with timing)
             CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),    "Creating input normalisation event");
-            CUDA_SAFE_CALL(cudaEventCreate(&cStack->prepComp), 		"Creating input data preparation complete event");
+            CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinitComp), 		"Creating input data preparation complete event");
             CUDA_SAFE_CALL(cudaEventCreate(&cStack->multComp), 		"Creating multiplication complete event");
             CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftComp),    "Creating IFFT complete event");
             CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemComp), "Creating IFFT memory copy complete event");
@@ -2990,7 +3025,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
           {
             // out events (without timing)
             CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
-            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->prepComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
+            CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->inpFFTinitComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
             CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->multComp,    cudaEventDisableTiming), "Creating multiplication complete event");
             CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftComp,    cudaEventDisableTiming), "Creating IFFT complete event");
             CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftMemComp, cudaEventDisableTiming), "Creating IFFT memory copy complete event");
@@ -3116,6 +3151,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
     infoMSG(2,2,"Free pinned memory\n");
 
     cudaFreeHostNull(batch->h_iData);
+    freeNull(batch->h_iBuffer);
     cudaFreeHostNull(batch->h_outData1);
   }
 
@@ -3551,7 +3587,7 @@ void timeSynch(cuFFdotBatch* batch)
           {
             cuFfdotStack* cStack = &batch->stacks[ss];
 
-            ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->prepComp);
+            ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->inpFFTinitComp);
 
             if ( ret != cudaErrorNotReady )
             {
@@ -3748,14 +3784,12 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering search_ffdot_batch_CU.");
 
-  // Calculate R values
+  // Setup input
   setActiveBatch(batch, 0);
-  setGenRVals(batch, searchRLow, searchRHi );
+  prepInput(batch, searchRLow, searchRHi, norm_type );
 
   if ( batch->flags & FLAG_SYNCH )
   {
-    initInput(batch, norm_type);
-
     multiplyBatch(batch);
 
     IFFTBatch(batch);
@@ -3775,9 +3809,6 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
   }
   else
   {
-    setActiveBatch(batch, 0);
-    initInput(batch, norm_type);
-
     if  ( batch->flags & FLAG_SS_INMEM )
     {
       setActiveBatch(batch, 0);
@@ -3791,18 +3822,23 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch, double* searchRLow, double* sear
     }
     else
     {
+      // Sum and Search
       setActiveBatch(batch, 1);
       sumAndSearch(batch);
 
+      // Results
       setActiveBatch(batch, 2);
       processSearchResults(batch);
 
+      // Copy
       setActiveBatch(batch, 1);
       getResults(batch);
 
       setActiveBatch(batch, 0);
       convolveBatch(batch);
     }
+
+
   }
 
   // Change R-values
@@ -3842,8 +3878,8 @@ void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRH
 
   FOLD // Initialise input data  .
   {
-    setActiveBatch(batch, 0);
-    initInput(batch, norm_type);
+    //setActiveBatch(batch, 0);
+    //initInput(batch, norm_type);
   }
 
   if ( batch->flags & FLAG_SYNCH )
@@ -4064,7 +4100,6 @@ bool strCom(const char* str1, const char* str2)
   else
     return 0;
 }
-
 
 bool singleFlag ( int64_t*  flags, const char* str1, const char* str2, int64_t flagVal, const char* onVal, const char* offVal, int lineno, const char* fName )
 {
@@ -4310,7 +4345,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom("CUFFT_PLAN", str1 ) )
       {
-        singleFlag ( flags, str1, str2, CU_FFT_SEP, "SEPERATE", "SEPERATE", lineno, fName );
+        singleFlag ( flags, str1, str2, CU_FFT_SEP, "SEPARATE", "SINGLE", lineno, fName );
       }
 
       else if ( strCom("STD_POWERS", str1 ) )

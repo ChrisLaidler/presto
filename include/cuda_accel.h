@@ -193,7 +193,7 @@ extern "C"
 
 
 #ifdef  CUDA_PROF
-#define NV_RANGE_POP(x)         nvtxRangePop()
+#define NV_RANGE_POP()          nvtxRangePop()
 #define NV_RANGE_PUSH(x)        nvtxRangePush(x)
 #define NV_NAME_STREAM(x,y)     nvtxNameCudaStreamA(x,y)
 #else
@@ -416,8 +416,10 @@ typedef struct cuFfdotStack
 
     void*           d_kerData;          ///< Kernel data for this stack
 
-    fcomplexcu*     d_iData;            ///< Device       input data for this stack
+    fcomplexcu*     h_iBuffer;          ///< Pointer to host memory to do CPU "work" on the Input data for the batch
     fcomplexcu*     h_iData;            ///< Paged locked input data for this stack
+    fcomplexcu*     d_iData;            ///< Device       input data for this stack
+
 
     void*           d_planeMult;        ///< Plane of complex data for multiplication
     void*           d_planePowr;        ///< Plane of float data for the search
@@ -439,7 +441,7 @@ typedef struct cuFfdotStack
 
     // CUDA Events
     cudaEvent_t     normComp;           ///< Normalisation of input data
-    cudaEvent_t     prepComp;           ///< Preparation of the input data complete
+    cudaEvent_t     inpFFTinitComp;     ///< Preparation of the input data complete
     cudaEvent_t     multComp;           ///< Multiplication complete
     cudaEvent_t     ifftComp;           ///< Creation (multiplication and FFT) of the complex plane complete
     cudaEvent_t     ifftMemComp;        ///< IFFT memory copy
@@ -594,7 +596,8 @@ typedef struct cuFFdotBatch
 
     uint            strideOut;          ///< The stride of the returned candidate data - The stride of one step
 
-    fcomplexcu*     h_iData;            ///< Pointer to page locked host memory of Input data for t
+    fcomplexcu*     h_iBuffer;          ///< Pointer to host memory to do CPU "work" on the Input data for the batch
+    fcomplexcu*     h_iData;            ///< Pointer to page locked host memory of the input data for the batch
     fcomplexcu*     d_iData;            ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
     float*          h_normPowers;       ///< A array to store powers for running double-tophat local-power normalisation
@@ -960,8 +963,6 @@ ExternC void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, l
 ExternC GSList* getCanidates(cuFFdotBatch* batch, GSList* cands );
 
 ExternC void calcNQ(double qOrr, long long n, double* p, double* q);
-
-ExternC void inMem(cuFFdotBatch* batch);
 
 ExternC GSList* testTest(cuFFdotBatch* batch, GSList* candsGPU);
 
