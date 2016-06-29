@@ -40,11 +40,18 @@ __host__ __device__ void calc_response_bin(long bin, double r, T z,  T* real, T*
 template<typename T>
 __host__ __device__ void calc_response_off(T offset, T z, T* real, T* imag);
 
+__host__ __device__ double2 calc_response_off(double offset, double z);
+
+__host__ __device__ float2  calc_response_off(float  offset, float  z);
+
 template<typename T, typename outT>
 __host__ __device__ void gen_response_cu(double r, T z, int kern_half_width, outT* out);
 
 template<typename T, typename dataT>
 __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag);
+
+template<typename T, typename dataT>
+__host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag, int i);
 
 template<typename T, typename dataIn, typename dataOut, int noBlk>
 __host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth);

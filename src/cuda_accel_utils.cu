@@ -23,6 +23,7 @@ extern "C"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 #include "cuda_accel_IN.h"
+#include "cuda_cand_OPT.h"
 
 #ifdef CBL
 #include <unistd.h>
@@ -3263,16 +3264,20 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
 {
   searchSpecs* sSpec = sSrch->sSpec;
 
+  infoMSG(5,5,"Initialising optimiser.\n");
+
   FOLD // Get the possibly pre-initialised optimisation plane  .
   {
     if ( !oPln )
     {
+      infoMSG(5,5,"Allocating optimisation plane.\n");
+
       oPln = (cuOptCand*)malloc(sizeof(cuOptCand));
       memset(oPln,0,sizeof(cuOptCand));
 
       if ( devLstId < MAX_GPUS )
       {
-        oPln->device = sSrch->gSpec->devId[devLstId];
+	oPln->gInf = &sSrch->gSpec->devInfo[devLstId];
       }
       else
       {
@@ -3282,13 +3287,15 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
     }
     else
     {
-      if ( oPln->device != sSrch->gSpec->devId[devLstId] )
+      infoMSG(5,5,"Checking existing optimisation plane.\n");
+
+      if ( oPln->gInf != &sSrch->gSpec->devInfo[devLstId] )
       {
         bool found = false;
 
         for ( int lIdx = 0; lIdx < MAX_GPUS; lIdx++ )
         {
-          if ( sSrch->gSpec->devId[lIdx] == oPln->device )
+          if ( sSrch->gSpec->devInfo[lIdx].devid == oPln->gInf->devid )
           {
             devLstId 	= lIdx;
             found 	= true;
@@ -3300,7 +3307,7 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
         {
           if (devLstId < MAX_GPUS )
           {
-            oPln->device = sSrch->gSpec->devId[devLstId];
+            oPln->gInf = &sSrch->gSpec->devInfo[devLstId];
           }
           else
           {
@@ -3313,49 +3320,94 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
     }
   }
 
-  FOLD // Create stuff  .
+  FOLD // Create all stuff  .
   {
-    setDevice(oPln->device) ;
+    setDevice(oPln->gInf->devid) ;
 
-    int   noHarms       = (1<<(sSpec->noHarmStages-1));
-    float zMax          = MAX(sSpec->zMax+50, sSpec->zMax*2);
-    zMax                = MAX(zMax, 60 * noHarms );
-    zMax                = MAX(zMax, sSpec->zMax * 34 + 50 );  		// TMP: This may be a bit high!
+    int maxSz = 0;
+    int maxWidth = 0;
+    float zMax;
+
+    FOLD // Determin the largest zMax  .
+    {
+      zMax	= MAX(sSpec->zMax+50, sSpec->zMax*2);
+      zMax	= MAX(zMax, 60 * sSrch->noSrchHarms );
+      zMax	= MAX(zMax, sSpec->zMax * 34 + 50 );  		// TMP: This may be a bit high!
+    }
+
+    FOLD // Determine max plane size  .
+    {
+      for ( int i=0; i < sSpec->noHarmStages; i++ )
+      {
+	MAXX(maxWidth, sSpec->optPlnSiz[i] );
+      }
+      for ( int i=0; i < NO_OPT_LEVS; i++ )
+      {
+	MAXX(maxSz, sSpec->optPlnDim[i]);
+      }
+#ifdef WITH_OPT_BLK2
+      MAXX(maxSz, maxWidth * sSpec->optResolution);
+#endif
+      oPln->maxNoR	= maxSz*1.15;					// The maximum number of r points we can handle
+      oPln->maxNoZ 	= maxSz;					// The maximum number of z points we can handle
+    }
 
     oPln->cuSrch	= sSrch;					// Set the pointer t the search specifications
     oPln->maxHalfWidth  = z_resp_halfwidth( zMax, HIGHACC );		// The halfwidth of the largest plane we think we may handle
-    oPln->maxNoR        = 512;						// The maximum number of r points we can handle
-    oPln->maxNoZ        = 512;						// The maximum number of z points we can handle
-    oPln->alignment     = sSrch->gSpec->devInfo[devLstId].alignment;	// Read from GPU specs
 
     FOLD // Create streams  .
     {
+      infoMSG(5,6,"Create streams.\n");
+
       CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
       char nmStr[1024];
       sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
       NV_NAME_STREAM(oPln->stream, nmStr);
     }
 
-    FOLD // Events  .
+    FOLD // Create events  .
     {
+      infoMSG(5,6,"Create Events.\n");
+
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->compInit),    "Creating input event compInit.");
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->compCmp),     "Creating input event compCmp." );
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->outInit),     "Creating input event outInit." );
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->outCmp),      "Creating input event outCmp."  );
+
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tInit1),      "Creating input event tInit1."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tComp1),      "Creating input event tComp1."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tInit2),      "Creating input event tInit2."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tComp2),      "Creating input event tComp2."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tInit3),      "Creating input event tInit3."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tComp3),      "Creating input event tComp3."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tInit4),      "Creating input event tInit4."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&oPln->tComp4),      "Creating input event tComp4."  );
     }
 
     FOLD // Allocate device memory  .
     {
+      infoMSG(5,6,"Allocate device memory.\n");
+
       size_t freeMem, totalMem;
 
-      oPln->outSz         =  oPln->maxNoR    *oPln->maxNoZ *sizeof(float);
-      oPln->inpSz         = (oPln->maxNoR + 2*oPln->maxHalfWidth)*noHarms*sizeof(cufftComplex)*2;
+      int maxHarm = MAX(sSpec->optMinLocHarms, sSrch->noSrchHarms );
+
+      oPln->input = (cuHarmInput*)malloc(sizeof(cuHarmInput));
+
+      oPln->outSz   	= (oPln->maxNoR * oPln->maxNoZ ) * sizeof(float);
+#ifdef WITH_OPT_BLK2
+      oPln->outSz   	= (oPln->maxNoR * maxHarm * oPln->maxNoZ ) * sizeof(cufftComplex);
+#endif
+#ifdef WITH_OPT_PLN2
+      oPln->outSz   	= (oPln->maxNoR * maxHarm * oPln->maxNoZ ) * sizeof(cufftComplex);
+#endif
+      oPln->input->size	= (maxWidth*10 + 2*oPln->maxHalfWidth) * sSrch->noSrchHarms * sizeof(cufftComplex)*2; // The noR is oversized to allo for moves of the plane withought getting new input
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
 
-      if ( (oPln->inpSz + oPln->outSz) > freeMem )
+      if ( (oPln->input->size + oPln->outSz) > freeMem )
       {
         printf("Not enough GPU memory to create any more stacks.\n");
         free(oPln);
@@ -3363,16 +3415,19 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
       }
       else
       {
+	infoMSG(5,6,"Input %.1f MB output %.1f MB.\n", oPln->input->size/1e6, oPln->outSz/1e6 );
+
         // Allocate device memory
         CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
-        CUDA_SAFE_CALL(cudaMalloc(&oPln->d_inp,  oPln->inpSz),   "Failed to allocate device memory for kernel stack.");
+        CUDA_SAFE_CALL(cudaMalloc(&oPln->input->d_inp,  oPln->input->size),   "Failed to allocate device memory for kernel stack.");
 
         // Allocate host memory
         CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_out,  oPln->outSz), "Failed to allocate device memory for kernel stack.");
-        CUDA_SAFE_CALL(cudaMallocHost(&oPln->h_inp,  oPln->inpSz), "Failed to allocate device memory for kernel stack.");
+        CUDA_SAFE_CALL(cudaMallocHost(&oPln->input->h_inp,  oPln->input->size), "Failed to allocate device memory for kernel stack.");
       }
     }
   }
+
   return oPln;
 }
 
@@ -4669,7 +4724,71 @@ void readAccelDefalts(searchSpecs *sSpec)
         singleFlag ( flags, str1, str2, FLAG_STORE_EXP, "", "0", lineno, fName );
       }
 
-      else if ( strCom("OPTI_NORM", str1 ) )
+      else if ( strCom("OPT_METHOUD", str1 ) )
+      {
+        if      ( strCom("PLANE", str2 ) )
+        {
+          (*flags) &= ~FLAG_OPT_ALL;
+        }
+        else if ( strCom("SWARM", str2 ) )
+        {
+          (*flags) &= ~FLAG_OPT_ALL;
+          (*flags) |= FLAG_OPT_SWARM;
+        }
+        else if ( strCom("NM", str2 ) )
+        {
+          (*flags) &= ~FLAG_OPT_ALL;
+          (*flags) |= FLAG_OPT_NM;
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("OPT_Z_RATIO", str1 ) )
+      {
+        float no1;
+        int read1 = sscanf(line, "%s %f %s", str1, &no1, str2 );
+        if ( read1 >= 2 )
+        {
+          if ( no1 >= 0 && no1 <= 100 )
+          {
+            sSpec->zScale = no1;
+          }
+          else
+          {
+            fprintf(stderr,"WARNING: Invalid optimisation scale, it should range between 0 and 100 \n");
+          }
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("OPT_R_RES", str1 ) )
+      {
+        int no1;
+        int read1 = sscanf(line, "%s %i %s", str1, &no1, str2 );
+        if ( read1 >= 2 )
+        {
+          if ( no1 >= 1 && no1 <= 128 )
+          {
+            sSpec->optResolution = no1;
+          }
+          else
+          {
+            fprintf(stderr,"WARNING: Invalid optimisation resolution, it should range between 1 and 128 \n");
+          }
+        }
+        else
+        {
+          fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+        }
+      }
+
+      else if ( strCom("OPT_NORM", str1 ) )
       {
         singleFlag ( flags, str1, str2, FLAG_OPT_LOCAVE, "LOCAVE", "MEDIAN", lineno, fName );
       }
@@ -4685,7 +4804,14 @@ void readAccelDefalts(searchSpecs *sSpec)
         int read1 = sscanf(str2, "%i", &no  );
         if ( read1 == 1 )
         {
-          sSpec->optMinLocHarms = no;
+          if ( no >= 1 && no <= OPT_MAX_LOC_HARMS )
+          {
+            sSpec->optMinLocHarms = no;
+          }
+          else
+          {
+            fprintf(stderr,"WARNING: Invalid value, %s should range between 1 and %i \n", str1, OPT_MAX_LOC_HARMS);
+          }
         }
         else
         {
@@ -4721,6 +4847,16 @@ void readAccelDefalts(searchSpecs *sSpec)
         {
           fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
         }
+      }
+
+      else if ( strCom("FLAG_OPT_DYN_HW", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_OPT_DYN_HW, "", "0", lineno, fName );
+      }
+
+      else if ( strCom("OPT_NELDER_MEAD_REFINE", str1 ) )
+      {
+        singleFlag ( flags, str1, str2, FLAG_OPT_NM_REFINE, "", "0", lineno, fName );
       }
 
       else if ( strCom("optPlnSiz", str1 ) )
@@ -4774,7 +4910,7 @@ void readAccelDefalts(searchSpecs *sSpec)
           }
           else
           {
-            fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 0 and %i \n", no1, NO_OPT_LEVS);
+            fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 1 and %i \n", no1, NO_OPT_LEVS);
           }
         }
         else
@@ -5158,46 +5294,149 @@ void initPlanes(cuSearch* sSrch )
  */
 void initOptimisers(cuSearch* sSrch )
 {
+  size_t free, total;                           ///< GPU memory
+
+  infoMSG(4,4,"Initialise all optimisers.\n");
+
   sSrch->oInf = new cuOptInfo;
   memset(sSrch->oInf, 0, sizeof(cuOptInfo));
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initOptimisers.");
 
+  double halfWidth = z_resp_halfwidth(sSrch->sSpec->zMax+10, HIGHACC)+10;	// Candidate may be on the z-max border so buffer a bit
+  sSrch->oInf->optResolution = sSrch->sSpec->optResolution;
+
+  cuOptCand*	devOpts[MAX_GPUS];
+
   FOLD // Create the primary stack on each device, this contains the kernel  .
   {
     NV_RANGE_PUSH("Initialise Optimisers");
 
+    // Determine the number of optimisers to make
     sSrch->oInf->noOpts = 0;
-
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
     {
       if ( sSrch->gSpec->noDevOpt[dev] <= 0 )
       {
-        // Use the default of 4
-        sSrch->gSpec->noDevOpt[dev] = 4;
+	// Use the default of 4
+	sSrch->gSpec->noDevOpt[dev] = 4;
+
+	infoMSG(5,5,"Using the default %i optimisers per GPU.\n", sSrch->gSpec->noDevOpt[dev]);
       }
       sSrch->oInf->noOpts += sSrch->gSpec->noDevOpt[dev];
     }
 
+    infoMSG(5,5,"Initialising %i optimisers on %i devices.\n", sSrch->oInf->noOpts, sSrch->gSpec->noDevices);
+
+    // Initialise the individual optimisers
     sSrch->oInf->opts = (cuOptCand*)malloc(sSrch->oInf->noOpts*sizeof(cuOptCand));
     memset(sSrch->oInf->opts, 0, sSrch->oInf->noOpts*sizeof(cuOptCand));
-
     int idx = 0;
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
     {
       for ( int oo = 0 ; oo < sSrch->gSpec->noDevOpt[dev]; oo++ )
       {
-        // Setup some basic info
-        sSrch->oInf->opts[idx].pIdx     = idx;
-        sSrch->oInf->opts[idx].device   = sSrch->gSpec->devId[dev];
+	// Setup some basic info
+	sSrch->oInf->opts[idx].pIdx     = idx;
+	sSrch->oInf->opts[idx].gInf	= &sSrch->gSpec->devInfo[dev];
 
-        initOptCand(sSrch, &sSrch->oInf->opts[idx], dev );
-        idx++;
+	initOptCand(sSrch, &sSrch->oInf->opts[idx], dev );
+
+	// Initialise device
+	if ( oo == 0 )
+	{
+	  devOpts[dev] = &sSrch->oInf->opts[idx];
+	}
+
+	idx++;
       }
     }
 
     NV_RANGE_POP();
   }
+
+  // Note I found the responce plane methoud to be slower or just equivilent
+  Fout // Setup response plane  .
+  {
+    // Set up planes
+    int sz = sSrch->gSpec->noDevices*sizeof(cuRespPln); 	// The size in bytes if the plane
+    sSrch->oInf->responcePlanes =  (cuRespPln*)malloc(sz);
+    memset(sSrch->oInf->responcePlanes, 0, sz);
+    for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) 	// Loop over devices  .
+    {
+      gpuInf* gInf     	= &sSrch->gSpec->devInfo[dev];
+      int device	= gInf->devid;
+      cuRespPln* resp	= &sSrch->oInf->responcePlanes[dev];
+
+      FOLD // See if we can use the cuda device and whether it may be possible to do GPU in-mem search .
+      {
+	infoMSG(5,6,"access device %i\n", device);
+
+	NV_RANGE_PUSH("Get Device");
+
+	if ( device >= getGPUCount() )
+	{
+	  fprintf(stderr, "ERROR: There is no CUDA device %i.\n", device);
+	  continue;
+	}
+	int currentDevvice;
+	CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
+	CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+	if (currentDevvice != device)
+	{
+	  fprintf(stderr, "ERROR: CUDA Device not set.\n");
+	  continue;
+	}
+	else
+	{
+	  CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+	}
+
+	NV_RANGE_POP();
+      }
+
+      FOLD // Calculate the size of a response function plane  .
+      {
+	resp->zMax	= (ceil(sSrch->sSpec->zMax/sSrch->noSrchHarms)+20)*sSrch->noSrchHarms ;
+	resp->dZ 	= sSrch->sSpec->zScale / (double)sSrch->sSpec->optResolution;
+	resp->noRpnts	= sSrch->oInf->optResolution;
+	resp->noZ	= resp->zMax * 2 / resp->dZ + 1 ;
+	resp->halfWidth = halfWidth;
+	resp->noR	= sSrch->oInf->optResolution*halfWidth*2 ;
+	resp->oStride 	= getStrie( resp->noR, sizeof(float2), sSrch->gSpec->devInfo[dev].alignment);
+	resp->size	= resp->oStride * resp->noZ * sizeof(float2);
+      }
+
+      if ( resp->size < free*0.95 )
+      {
+	printf("Allocating optimisation response function plane %.2f MB\n", resp->size/1e6 );
+
+	infoMSG(5, 5, "Allocating optimisation response function plane %.2f MB\n", resp->size/1e6 );
+
+	CUDA_SAFE_CALL(cudaMalloc(&resp->d_pln,  resp->size), "Failed to allocate device memory optimisation response plane.");
+	CUDA_SAFE_CALL(cudaMemsetAsync(resp->d_pln, 0, resp->size, devOpts[dev]->stream), "Failed to initiate optimisation response plane to zero");
+
+	// This kernel inst reall nessesary anymore
+	//opt_genResponce(resp, devOpts[dev]->stream);
+
+	for ( int optN = 0; optN < sSrch->oInf->noOpts; optN++ )
+	{
+	  cuOptCand* oCnd = &sSrch->oInf->opts[optN];
+
+	  if ( oCnd->gInf->devid == devOpts[dev]->gInf->devid )
+	  {
+	    oCnd->responcePln = resp;
+	  }
+	}
+      }
+      else
+      {
+	fprintf(stderr,"WARNING: Not enough free GPU memory to use a response plane for optimisation. Pln needs %.2f GB there is %.2f GB. \n", resp->size/1e9, free/1e9 );
+	memset(resp, 0, sizeof(cuRespPln) );
+      }
+    }
+  }
+
 }
 
 void freeAccelGPUMem(cuPlnInfo* aInf)
@@ -5420,8 +5659,6 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   infoMSG(1,0,"Initialise CU search data structures\n");
-
-
 
   if ( !srch )
   {
@@ -6490,4 +6727,13 @@ long long compltCudaContext(gpuSpecs* gSpec)
   }
 
   return 0;
+}
+void freeHarmInput(cuHarmInput* inp)
+{
+  if ( inp )
+  {
+    cudaFreeNull(inp->d_inp);
+    freeNull(inp->h_inp);
+    freeNull(inp);
+  }
 }

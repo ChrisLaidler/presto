@@ -1,15 +1,19 @@
 #include <curand.h>
 #include <math.h>             // log
 #include <curand_kernel.h>
+#include <stdlib.h>
 
 #include "cuda_math_ext.h"
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 #include "cuda_response.h"
+#include "cuda_cand_OPT.h"
 
 
-#define OPT_INP_BUF   10
+#define SCALE_AUT       (1000000000)
+
+#define OPT_INP_BUF   25
 
 extern "C"
 {
@@ -17,11 +21,419 @@ extern "C"
 #include "accel.h"
 }
 
+#define		NM_BEST		0
+#define		NM_MIDL		1
+#define		NM_WRST		2
+
+#define		WITH_
+
 #define SWAP_PTR(p1, p2) do { initCand* tmp = p1; p1 = p2; p2 = tmp; } while (0)
 
+#ifdef WITH_OPT_BLK1
+
+template<typename T, int noBlk>
+__global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw)
+{
+  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
+  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if ( ix < noR && iy < noZ)
+  {
+    double r            = firstR + ix*blkWidth/(double)(noR) ;
+    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+    float       total_power[noBlk];
+    float2      ans[noBlk];
+    int halfW;
+
+    for( int blk = 0; blk < noBlk; blk++ )
+    {
+      total_power[blk] = 0;
+    }
+
+    FOLD
+    {
+      for( int i = 1; i <= noHarms; i++ )           // Loop over harmonics
+      {
+	double absz         = fabs(z*i);
+
+	FOLD // Determine half width
+	{
+	  if ( hw.val[i-1] )
+	  {
+	    halfW	= hw.val[i-1];
+	  }
+	  else
+	  {
+	    halfW       = z_resp_halfwidth_cu_high<float>(z*i); // NB this was (z*i+4) I'm not sure why?
+	  }
+	}
+
+	// Set complex values to 0 for this harmonic
+	for( int blk = 0; blk < noBlk; blk++ )
+	{
+	  ans[blk].x = 0;
+	  ans[blk].y = 0;
+	}
+
+	FOLD // Calculate complex value, using direct application of the convolution
+	{
+	  rz_convolution_cu<T, float2, float2, noBlk>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, ans, blkWidth*i);
+	}
+
+	// Calculate power for the harmonic
+	for( int blk = 0; blk < noBlk; blk++ )
+	{
+	  total_power[blk] += POWERF(ans[blk]);
+	}
+      }
+    }
+
+    // Write values back to
+    for( int blk = 0; blk < noBlk; blk++ )
+    {
+      powers[iy*oStride + blk*noR + ix] = total_power[blk];
+    }
+  }
+}
+
+#endif
+
+#ifdef WITH_OPT_BLK2
+
+__global__ void opt_genResponce_ker(cuRespPln pln)
+{
+  const int ix  = blockIdx.x * blockDim.x + threadIdx.x;
+  const int iy  = blockIdx.y * blockDim.y + threadIdx.y;
+
+  const int idx = ix / pln.noRpnts;
+  const int is  = ix % pln.noRpnts;
+
+  if ( iy < pln.noZ && ix < pln.noR )
+  {
+    const double frac =  is / (double)pln.noRpnts ;
+
+    double     zVal   = pln.zMax - (double)iy*pln.dZ ;
+    double     offSet = -pln.halfWidth - frac  +  idx ;
+
+    double2 responce = calc_response_off(offSet, zVal);
+
+    // Write values to memory
+    pln.d_pln[iy*pln.oStride + ix ].x = (float)responce.x;
+    pln.d_pln[iy*pln.oStride + ix ].y = (float)responce.y;
+  }
+}
+
+template<typename T, int noBlk>
+__global__ void ffdotPlnByBlk_ker2(float2* powers, float2* fft, cuRespPln pln, int noHarms, int halfwidth, int zIdxTop, int rIdxLft, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw)
+{
+  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+
+  const int is = tx % pln.noRpnts ;		///<
+  const int ix = tx / pln.noRpnts ;
+  const int iy = ty;
+
+  if ( iy < noZ )
+  {
+    int plnCent = (pln.noZ)/2 ;
+
+    int zIdx = plnCent - zIdxTop - iy ;
+
+    float2	kerVal;
+    float2	outVal;
+    int 	halfW;
+
+    FOLD
+    {
+      for( int i = 0; i < noHarms; i++ )           // Loop over harmonics
+      {
+	int 	hrm 	= i+1;
+
+	int	zhIdx;		///< The harmonic specific Z index in the response
+	int	shIdx;		///< The harmonic specific response step index
+	int 	rhIdx;		///< The harmonic specific
+
+	zhIdx 	= plnCent - zIdx * hrm;
+	shIdx 	= is * hrm;					// Multiply we need the
+	rhIdx 	= rIdxLft * hrm + shIdx / pln.noRpnts;		// Need the int part
+	shIdx 	= shIdx % pln.noRpnts ;				// Adjust the remainder
+
+	double 	zh = -1;
+
+	FOLD // Determine half width
+	{
+	  if ( hw.val[i] )
+	  {
+	    halfW	= hw.val[i];
+	  }
+	  else
+	  {
+	    zh	= zIdx * hrm * pln.dZ;
+	    halfW       = z_resp_halfwidth_cu_high<float>(zh); // NB this was (z*i+4) I'm not sure why?
+	  }
+	}
+
+	if ( ix < halfW*2 )
+	{
+	  double off	= (ix - halfW);
+
+	  int	hRidx 	= pln.halfWidth + (ix - halfW);
+
+	  int khIdx = (hRidx) * pln.noRpnts + shIdx ;
+
+	  if ( zhIdx  >= 0 && zhIdx < pln.noZ && hRidx >= 0 && hRidx < pln.halfWidth*2 )
+	  {
+	    kerVal = pln.d_pln[zhIdx*pln.oStride + khIdx ];
+	  }
+	  else
+	  {
+	    kerVal = calc_response_off((float)off, (float)zh);
+	  }
+
+	  int start = rhIdx - halfW - loR.val[i]  ;
+
+	  // Calculate power for the harmonic
+	  for( int blk = 0; blk < noBlk; blk++ )
+	  {
+	    float2 inp = fft[iStride*i + start + blk*hrm + ix ];
+
+#if CORRECT_MULT
+	    // This is the "correct" version
+	    outVal.x = (kerVal.x * inp.x - kerVal.y * inp.y);
+	    outVal.y = (kerVal.x * inp.y + kerVal.y * inp.x);
+#else
+	    // This is the version accelsearch uses, ( added for comparison )
+	    outVal.x = (kerVal.x * inp.x + kerVal.y * inp.y);
+	    outVal.y = (kerVal.y * inp.x - kerVal.x * inp.y);
+#endif
+
+	    // if ( ix == 0 )
+	    {
+	      atomicAdd(&(powers[iy*oStride*noHarms + (is + blk*pln.noRpnts)*noHarms + i].x), (float)(outVal.x));
+	      atomicAdd(&(powers[iy*oStride*noHarms + (is + blk*pln.noRpnts)*noHarms + i].y), (float)(outVal.y));
+	    }
+	  }
+	}
+      }
+    }
+  }
+}
+
+#endif
+
+#ifdef WITH_OPT_BLK3
+template<typename T, int noBlk>
+__global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw)
+{
+  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+
+  const int i  = tx / harmWidth;
+  const int ix = tx % harmWidth;
+  const int iy = ty;
+
+  if ( ix < noR && iy < noZ)
+  {
+    double r            = firstR + ix*blkWidth/(double)(noR) ;
+    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+    float2      ans[noBlk];
+    int halfW;
+
+    FOLD
+    {
+      //for( int i = 0; i < noHarms; i++ )           // Loop over harmonics
+      {
+	int hrm = i+1;
+
+	double absz         = fabs(z*hrm);
+
+	FOLD // Determine half width
+	{
+	  if ( hw.val[i] )
+	  {
+	    halfW	= hw.val[i];
+	  }
+	  else
+	  {
+	    halfW       = z_resp_halfwidth_cu_high<float>(z*hrm); // NB this was (z*hrm+4) I'm not sure why?
+	  }
+	}
+
+	// Set complex values to 0 for this harmonic
+	for( int blk = 0; blk < noBlk; blk++ )
+	{
+	  ans[blk].x = 0;
+	  ans[blk].y = 0;
+	}
+
+	FOLD // Calculate complex value, using direct application of the convolution
+	{
+	  rz_convolution_cu<T, float2, float2, noBlk>(&fft[iStride*i], loR.val[i], iStride, r*hrm, z*hrm, halfW, ans, blkWidth*hrm);
+	}
+      }
+    }
+
+    // Write values back to
+    for( int blk = 0; blk < noBlk; blk++ )
+    {
+      float power = POWERF(ans[blk]);
+      atomicAdd(&(powers[iy*oStride + blk*noR + ix]), power);
+    }
+  }
+}
+#endif
+
+
+#ifdef WITH_OPT_PLN1
+template<typename T>
+__global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw)
+{
+  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
+  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if ( ix < noR && iy < noZ)
+  {
+    int halfW;
+    double r            = firstR + ix/(double)(noR-1) * rSZ ;
+    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+    T total_power  = 0;
+    T real = 0;
+    T imag = 0;
+
+    for( int i = 0; i < noHarms; i++ )
+    {
+      int hrm = i+1;
+      FOLD // Determine half width
+      {
+	if ( hw.val[i] )
+	  halfW	= hw.val[i];
+	else
+	  halfW	= z_resp_halfwidth_cu_high<float>(z*hrm);
+      }
+
+      rz_convolution_cu<T, float2>(&fft[iStride*i], loR.val[i], iStride, r*hrm, z*hrm, halfW, &real, &imag);
+
+      total_power     += POWERCU(real, imag);
+    }
+
+    powers[iy*oStride + ix] = total_power;
+  }
+}
+#endif
+
+#ifdef WITH_OPT_PLN2
+template<typename T>
+__global__ void ffdotPln_ker2(float2* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw)
+{
+  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+
+  int off = tx % halfwidth ;
+  int hrm = tx / halfwidth ;
+
+  const int ix = ty % noR;
+  const int iy = ty / noR;
+
+  if ( ix < noR && iy < noZ)
+  {
+    int halfW;
+    double r            = firstR + ix/(double)(noR-1) * rSZ ;
+    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+    T real = 0;
+    T imag = 0;
+
+    //    FOLD
+    //    {
+    //      FOLD // Determine half width
+    //      {
+    //        if ( hw.val[hrm] )
+    //          halfW = hw.val[hrm];
+    //        else
+    //          halfW = z_resp_halfwidth_cu_high<float>(z*(hrm+1));
+    //      }
+    //
+    //      if (off < halfW*2 )
+    //      {
+    //        rz_single_mult_cu<T, float2>(&fft[iStride*hrm], loR.val[hrm], iStride, r*(hrm+1), z*(hrm+1), halfW, &real, &imag, off);
+    //
+    //        atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms+hrm].x), (float)(real));
+    //        atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms+hrm].y), (float)(imag));
+    //      }
+    //    }
+
+    for( int i = 1; i <= noHarms; i++ )
+    {
+      hrm = i-1;
+
+      FOLD // Determine half width
+      {
+	if ( hw.val[hrm] )
+	  halfW = hw.val[hrm];
+	else
+	  halfW = z_resp_halfwidth_cu_high<float>(z*i);
+      }
+
+      if (off < halfW*2 )
+      {
+	rz_single_mult_cu<T, float2>(&fft[iStride*hrm], loR.val[hrm], iStride, r*i, z*i, halfW, &real, &imag, off);
+
+	atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms + hrm].x), (float)(real));
+	atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms + hrm].y), (float)(imag));
+      }
+    }
+  }
+}
+#endif
+
+#ifdef WITH_OPT_PLN3
+template<typename T>
+__global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw)
+{
+  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+
+  const int i  = tx / harmWidth ;
+  const int ix = tx % harmWidth ;
+  const int iy = ty;
+
+  if ( ix < noR && iy < noZ)
+  {
+    int halfW;
+    double r            = firstR + ix/(double)(noR-1) * rSZ ;
+    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+
+    T hrm_power  = 0;			///< The power of a single point for the harmonic
+    T real = 0;
+    T imag = 0;
+
+    const int hrm = i+1;
+    FOLD // Determine half width
+    {
+      if ( hw.val[i] )
+	halfW	= hw.val[i];
+      else
+	halfW	= z_resp_halfwidth_cu_high<float>(z*hrm);
+    }
+
+    rz_convolution_cu<T, float2>(&fft[iStride*i], loR.val[i], iStride, r*hrm, z*hrm, halfW, &real, &imag);
+
+    hrm_power     = POWERCU(real, imag);
+
+    atomicAdd(&(powers[iy*oStride + ix]), hrm_power);
+  }
+}
+#endif
+
+#ifdef WITH_OPT_PLN4
 #ifdef CBL
+
+// This function is under development, for some strange reason synchthreads is not working
 template<typename T, int noHarms>
-__global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int smLen, int32 loR, int32 hw)
+__global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int smLen, optLocInt_t loR, optLocInt_t hw)
 {
   const int ix = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -36,8 +448,8 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
 
   __syncthreads();
 
-//  if ( tid == 0 )
-//    sSum = 0;
+  //  if ( tid == 0 )
+  //    sSum = 0;
 
   __syncthreads();
 
@@ -51,8 +463,8 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
   T real = (T)0;
   T imag = (T)0;
 
-  T real_O = (T)0;
-  T imag_O = (T)0;
+  //T real_O = (T)0;
+  //T imag_O = (T)0;
 
   int 	width;
   long	first;
@@ -67,14 +479,14 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
   double fP = firstR + (blockIdx.x * blockDim.x) /(double)(noR-1) * rSZ ;
   double lP = firstR + MIN(noR, ((blockIdx.x+1) * blockDim.x - 1 ) ) /(double)(noR-1) * rSZ ;
 
-//  if ( ix < noR && iy < noZ)
-//    //if( total_power != 0 )
-//  {
-//    //      if ( blockIdx.y == 0 )
-//    powers[iy*oStride + ix] = 0;
-//    //      else
-//    //	powers[iy*oStride + ix] = 172 ;
-//  }
+  //  if ( ix < noR && iy < noZ)
+  //    //if( total_power != 0 )
+  //  {
+  //    //      if ( blockIdx.y == 0 )
+  //    powers[iy*oStride + ix] = 0;
+  //    //      else
+  //    //	powers[iy*oStride + ix] = 172 ;
+  //  }
 
   //int nno = 0;
 
@@ -149,21 +561,21 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
       //	    sm[odd] = fft[(i-1)*iStride + odd ];
       //	}
 
-//      if ( ix == 20 )
-//      {
-//	printf(" %03i %2i %8li %4i %4i \n", iy, i, first, width, halfW );
-//      }
+      //      if ( ix == 20 )
+      //      {
+      //	printf(" %03i %2i %8li %4i %4i \n", iy, i, first, width, halfW );
+      //      }
 
       __syncthreads(); // Make sure data is written before doing the convolutions
 
-//      if ( ix < noR && iy < noZ)
-//      {
-//	__syncthreads(); // Make sure data is written before doing the convolutions
-//	rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
-//	total_power     += POWERCU(real, imag);
-//      }
-//
-//      __syncthreads(); // Make sure data is written before doing the convolutions
+      //      if ( ix < noR && iy < noZ)
+      //      {
+      //	__syncthreads(); // Make sure data is written before doing the convolutions
+      //	rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
+      //	total_power     += POWERCU(real, imag);
+      //      }
+      //
+      //      __syncthreads(); // Make sure data is written before doing the convolutions
 
     }
   }
@@ -240,12 +652,7 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
       //      printf("Bad2 h: %2i  tid: %3i  %5i %5i\n", i, tid, sSum, nno);
       //    }
 
-
-
       //halfW	= z_resp_halfwidth_cu_high<float>(z*i);
-
-
-
 
       rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
 
@@ -290,109 +697,46 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
     //	powers[iy*oStride + ix] = 172 ;
   }
 }
+
 #endif
 
-template<typename T>
-__global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
+#endif
+
+void opt_genResponce(cuRespPln* pln, cudaStream_t stream)
 {
-  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
-  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+#ifdef WITH_OPT_BLK2
+  infoMSG(5, 5, "Generating optimisation response function values.\n" );
 
-  if ( ix < noR && iy < noZ)
-  {
-    int halfW;
-    double r            = firstR + ix/(double)(noR-1) * rSZ ;
-    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+  dim3 dimBlock, dimGrid;
 
-    T total_power  = 0;
-    T real = 0;
-    T imag = 0;
+  dimBlock.x = 16;
+  dimBlock.y = 16;
+  dimBlock.z = 1;
 
-    for( int i = 1; i <= noHarms; i++ )
-    {
-      FOLD // Determine half width
-      {
-	if ( hw.val[i-1] )
-	  halfW	= hw.val[i-1];
-	else
-	  halfW	= z_resp_halfwidth_cu_high<float>(z*i);
-      }
+  cudaDeviceSynchronize();
+  CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
-      rz_convolution_cu<T, float2>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, &real, &imag);
+  infoMSG(6, 6, "1 Synch.\n" );
 
-      total_power     += POWERCU(real, imag);
-    }
+  // One block per harmonic, thus we can sort input powers in Shared memory
+  dimGrid.x = ceil(pln->noR / (float)dimBlock.x);
+  dimGrid.y = ceil(pln->noZ / (float)dimBlock.y);
 
-    powers[iy*oStride + ix] = total_power;
-  }
-}
+  opt_genResponce_ker<<<dimGrid, dimBlock, 0, stream >>>(*pln);
 
-template<typename T, int noBlk>
-__global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int halfwidth, double firstR, double firstZ, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, int32 loR, float32 norm, int32 hw)
-{
-  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
-  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
+  cudaDeviceSynchronize();
+  CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
-  if ( ix < noR && iy < noZ)
-  {
-    double r            = firstR + ix*blkWidth/(double)(noR) ;
-    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
-
-    float       total_power[noBlk];
-    float2      ans[noBlk];
-    int halfW;
-
-    for( int blk = 0; blk < noBlk; blk++ )
-    {
-      total_power[blk] = 0;
-    }
-
-    FOLD
-    {
-      for( int i = 1; i <= noHarms; i++ )           // Loop over harmonics
-      {
-	double absz         = fabs(z*i);
-
-	FOLD // Determine half width
-	{
-	  if ( hw.val[i-1] )
-	    halfW	= hw.val[i-1];
-	  else
-	  {
-	    halfW       = z_resp_halfwidth_cu_high<float>(z*i); // NB this was (z*i+4) I'm not sure why?
-	  }
-	}
-
-	// Set complex values to 0 for this harmonic
-	for( int blk = 0; blk < noBlk; blk++ )
-	{
-	  ans[blk].x = 0;
-	  ans[blk].y = 0;
-	}
-
-	FOLD // Calculate complex value, using direct application of the convolution
-	{
-	  rz_convolution_cu<T, float2, float2, noBlk>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, ans, blkWidth*i);
-	}
-
-	// Calculate power for the harmonic
-	for( int blk = 0; blk < noBlk; blk++ )
-	{
-	  total_power[blk] += POWERF(ans[blk]);
-	}
-      }
-    }
-
-    // Write values back to
-    for( int blk = 0; blk < noBlk; blk++ )
-    {
-      powers[iy*oStride + blk*noR + ix] = total_power[blk];
-    }
-  }
+#else
+  fprintf(stderr, "ERROR: Not compiled with responce usingk block optemising kernel.\n");
+  exit(EXIT_FAILURE);
+#endif
 }
 
 int chKpn( cuOptCand* pln, fftInfo* fft )
 {
+  NV_RANGE_PUSH("Harm INP");
+
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 
   double maxZ       = (pln->centZ + pln->zSize/2.0);
@@ -402,15 +746,19 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdotPln.");
 
-  pln->halfWidth    = z_resp_halfwidth(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4, HIGHACC);
+  pln->halfWidth    = z_resp_halfwidth_cu_high<double>(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4);
   double rSpread    = ceil((maxR+OPT_INP_BUF)*pln->noHarms  + pln->halfWidth) - floor((minR-OPT_INP_BUF)*pln->noHarms - pln->halfWidth);
-  int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->alignment);
-  pln->outStride    = getStrie(pln->noR,  sizeof(float), pln->alignment);
+  int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->gInf->alignment);
 
   int     datStart;         // The start index of the input data
   int     datEnd;           // The end   index of the input data
   int     off;              // Offset
   int     newInp = 0;       // Flag whether new input is needed
+
+  if ( pln->noHarms != pln->input->noHarms )
+  {
+    newInp = 1;
+  }
 
   // Determine if new input is needed
   for( int h = 0; (h < pln->noHarms) /* && !newInp */ ; h++ )
@@ -422,25 +770,25 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
     {
       if ( h == 0 )
       {
-        fprintf(stderr, "ERROR: Trying to optimise a candidate beyond scope of the FFT?");
-        return 0;
+	fprintf(stderr, "ERROR: Trying to optimise a candidate beyond scope of the FFT?");
+	return 0;
       }
       pln->noHarms = h; // use previous harmonic
       break;
     }
 
-    if ( datStart < pln->loR[h] )
+    if ( datStart < pln->input->loR[h] )
     {
       newInp = 1;
     }
-    else if ( pln->loR[h] + pln->inpStride < datEnd )
+    else if ( pln->input->loR[h] + pln->input->stride < datEnd )
     {
       newInp = 1;
     }
   }
 
   // Initialise values to 0
-  for( int h = 0; h < 32; h++)
+  for( int h = 0; h < OPT_MAX_LOC_HARMS; h++)
   {
     pln->hw[h] = 0;
   }
@@ -449,12 +797,13 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
   {
     infoMSG(3,3,"New Input\n");
 
-    pln->inpStride = inpStride;
+    pln->input->stride = inpStride;
+    pln->input->noHarms = pln->noHarms;
 
-    if ( pln->inpStride*pln->noHarms*sizeof(cufftComplex) > pln->inpSz )
+    if ( pln->input->stride*pln->noHarms*sizeof(cufftComplex) > pln->input->size )
     {
       fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
-      exit(EXIT_FAILURE);
+      exit (EXIT_FAILURE);
     }
 
     FOLD // Calculate normalisation factor  .
@@ -463,14 +812,14 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
       for ( int i = 1; i <= pln->noHarms; i++ )
       {
-        if ( sSpec->flags & FLAG_OPT_LOCAVE )
-        {
-          pln->norm[i-1]  = get_localpower3d(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
-        }
-        else
-        {
-          pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
-        }
+	if ( sSpec->flags & FLAG_OPT_LOCAVE )
+	{
+	  pln->input->norm[i-1]  = get_localpower3d(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
+	}
+	else
+	{
+	  pln->input->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
+	}
       }
 
       NV_RANGE_POP();
@@ -500,28 +849,30 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
     if ( newInp ) // Normalise input and Write data to host memory  .
     {
-      int startV = MIN( ((datStart + datEnd - pln->inpStride ) / 2.0), datStart ); //Start value if the data is centred
+      int startV = MIN( ((datStart + datEnd - pln->input->stride ) / 2.0), datStart ); //Start value if the data is centred
 
-      pln->loR[h]     = startV;
-      double factor   = sqrt(pln->norm[h]);             // Correctly normalised by the sqrt of the local power
+      pln->input->loR[h]     = startV;
+      double factor   = sqrt(pln->input->norm[h]);             // Correctly normalised by the sqrt of the local power
 
-      for ( int i = 0; i < pln->inpStride; i++ ) // Normalise input  .
+      for ( int i = 0; i < pln->input->stride; i++ ) // Normalise input  .
       {
-        off = startV - fft->idx + i;
+	off = startV - fft->idx + i;
 
-        if ( off >= 0 && off < fft->nor )
-        {
-          pln->h_inp[h*pln->inpStride + i].r = fft->fft[off].r / factor ;
-          pln->h_inp[h*pln->inpStride + i].i = fft->fft[off].i / factor ;
-        }
-        else
-        {
-          pln->h_inp[h*pln->inpStride + i].r = 0;
-          pln->h_inp[h*pln->inpStride + i].i = 0;
-        }
+	if ( off >= 0 && off < fft->nor )
+	{
+	  pln->input->h_inp[h*pln->input->stride + i].r = fft->fft[off].r / factor ;
+	  pln->input->h_inp[h*pln->input->stride + i].i = fft->fft[off].i / factor ;
+	}
+	else
+	{
+	  pln->input->h_inp[h*pln->input->stride + i].r = 0;
+	  pln->input->h_inp[h*pln->input->stride + i].i = 0;
+	}
       }
     }
   }
+
+  NV_RANGE_POP();
 
   return newInp;
 }
@@ -529,59 +880,151 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 template<typename T>
 int ffdotPln( cuOptCand* pln, fftInfo* fft )
 {
-  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
+  searchSpecs*  sSpec   	= pln->cuSrch->sSpec;
+  cuRespPln* 	rpln 		= pln->responcePln;
 
-  bool    blkKer        = 0;  // Weather to use the block kernel
-  int     noBlk         = 1;  // The number of blocks each thread will cover
-  int     blkWidth      = 0;  // The width of a block
-  double  noR           = 0;  // The number of cuda threads in the x dimension of a the blocked kernel
+  int     	noBlk		= 1;	// The number of blocks each thread will cover
+  int     	blkWidth	= 0;	// The width of a block
+  int		noR      	= 0;	// The number of cuda threads in the x dimension of a the blocked kernel
+  int 		maxHW 		= 0;	// The maximum possible halfwidth of the elements being tested
 
-  int32   rOff;             // Row offset
-  int32   hw;               // The halfwidth for each harmonic
-  float32 norm;             // Normalisation factor for each harmonic
+  optLocInt_t	rOff;			// Row offset
+  optLocInt_t  	hw;			// The halfwidth for each harmonic
+  optLocFloat_t	norm;			// Normalisation factor for each harmonic
+  uint64_t	optKer		= 0;	// The optimisation kernel to use
+
+  size_t	outSz		= 0;	//
 
   double maxZ           = (pln->centZ + pln->zSize/2.0);
-  //double minZ           = (pln->centZ - pln->zSize/2.0);
-  //double maxR           = (pln->centR + pln->rSize/2.0);
   double minR           = (pln->centR - pln->rSize/2.0);
 
-  if ( pln->rSize > 1.5 ) // Use the block kernel  .
+  int lftIdx;
+  int topZidx;
+
+  FOLD // Determine optimisation kernels  .
   {
-    noR                 = pln->noR / pln->rSize ;
-    double rSize        = ceil(pln->rSize);
-
-    // TODO: Check noR on fermi cards, the increased registers may justify using larger blocks widths
-    do
+    if ( pln->rSize > 1.5 ) // Use the block kernel  .
     {
-      blkWidth++;
-      noR               = blkWidth / ( pln->rSize / pln->noR );
-      noR               = MIN(ceil(noR),32);                      // The max of 32 is not strictly necessary
-      noBlk             = ceil(pln->rSize / (float)blkWidth );
-    }
-    while ( noBlk > 10 );
+      /*	NOTE	Chris Laidler	22/06/2016
+       *
+       * The per harmonic blocked kernel is fastest in my testing
+       */
+      //optKer |= OPT_KER_PLN_BLK_NRM ;
+      optKer |= OPT_KER_PLN_BLK_3 ;
+      //optKer |= OPT_KER_PLN_BLK_EXP ;	// This is slow
 
-    pln->rSize          = noBlk*blkWidth - blkWidth/noR;
-    pln->noR            = noR * noBlk;
-    blkKer              = 1;
+      // New method finer granularity
+      if ( optKer & OPT_KER_PLN_BLK_EXP )
+      {
+	if ( !rpln )
+	{
+	  fprintf(stderr, "ERROR, optimising with NULL response plane, reverting to standard block method.\n");
+	  optKer = OPT_KER_PLN_BLK_NRM ;
+	}
+
+	blkWidth	= 1;
+	noR		= rpln->noRpnts;
+	noBlk		= ceil(pln->rSize);
+
+	pln->noR	= noR * noBlk;
+	pln->rSize	= (pln->noR-1)/(double)rpln->noRpnts;
+	lftIdx		= round( pln->centR - pln->rSize/2.0 ) ;
+	pln->centR	= lftIdx + pln->rSize/2.0;
+
+	pln->noZ	= pln->noR;
+	pln->zSize	= (pln->noZ-1)*rpln->dZ;
+	topZidx		= round( (pln->centZ + pln->zSize/2.0 )/rpln->dZ );
+	double top	= topZidx*rpln->dZ;
+	topZidx		= rpln->noZ/2-topZidx;
+	pln->centZ	= top - pln->zSize/2.0;
+      }
+
+      if ( optKer & ( OPT_KER_PLN_BLK_NRM | OPT_KER_PLN_BLK_3 ) )
+      {
+	// TODO: Check noR on fermi cards, the increased registers may justify using larger blocks widths
+	do
+	{
+	  blkWidth++;
+	  noR		= blkWidth / ( pln->rSize / pln->noR );
+	  //noR		= MIN(ceil(noR),32);                      // The max of 32 is not strictly necessary
+	  noBlk		= ceil(pln->rSize / (float)blkWidth );
+	}
+	while ( noBlk > 10 );
+
+	pln->rSize	= noBlk*blkWidth - blkWidth/(double)noR;
+	pln->noR	= noR * noBlk;
+      }
+    }
+    else
+    {
+      /*	NOTE	Chris Laidler	22/06/2016
+       *
+       * I found 16 testing on a 750ti, running in synchronous mode.
+       * This could probably be tested on more cards but I expect similar results
+       * This relates to a optPlnDim of 16, I found anything less than 20 shows
+       * significant speed up using the finer granularity kernel.
+       */
+
+#ifdef WITH_OPT_PLN2
+      if ( pln->noR < 16  )
+      {
+	optKer |= OPT_KER_PLN_PTS_EXP ;
+      }
+      else
+#endif
+      {
+	// The per harmonic kernel is the fastest
+	optKer	|= OPT_KER_PLN_PTS_3 ;
+      }
+    }
+
+    // All kernels use the same output stride
+    pln->outStride    = pln->noR;
   }
 
-  //
+  // Check input
   int newInp = chKpn( pln, fft );
 
   if ( newInp ) // Copy input data to the device  .
   {
     infoMSG(3,4,"Copy input to device\n");
 
-    CUDA_SAFE_CALL(cudaMemcpyAsync(pln->d_inp, pln->h_inp, pln->inpStride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, pln->stream), "Copying optimisation input to the device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(pln->input->d_inp, pln->input->h_inp, pln->input->stride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, pln->stream), "Copying optimisation input to the device");
     CUDA_SAFE_CALL(cudaEventRecord(pln->inpCmp, pln->stream),"Recording event: inpCmp");
   }
 
   // Initialise values to 0
-  for( int h = 0; h < 32; h++)
+  for( int h = 0; h < OPT_MAX_LOC_HARMS; h++)
   {
-    rOff.val[h]         = pln->loR[h];
+    rOff.val[h]         = pln->input->loR[h];
     hw.val[h]           = pln->hw[h];
-    norm.val[h]         = sqrt(pln->norm[h]);             // Correctly normalised by the sqrt of the local power
+    norm.val[h]         = sqrt(pln->input->norm[h]);             // Correctly normalised by the sqrt of the local power
+
+    MAXX(maxHW, hw.val[h]);
+  }
+
+  // Halfwidth stuff
+  if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
+  {
+    for( int h = 0; h < pln->noHarms; h++)
+    {
+      hw.val[h] = 0;
+    }
+    maxHW = pln->halfWidth;
+  }
+
+  FOLD // Check output size  .
+  {
+    // One float per point
+    outSz = pln->outStride*pln->noZ*sizeof(float) ;
+    if ( optKer & ( OPT_KER_PLN_BLK_EXP | OPT_KER_PLN_PTS_EXP ) )
+      outSz = pln->outStride*pln->noZ*pln->noHarms*sizeof(fcomplex);
+
+    if ( outSz > pln->outSz )
+    {
+      fprintf(stderr, "ERROR: Optemisation plane larger than allocated memory.\n");
+      exit(EXIT_FAILURE);
+    }
   }
 
   FOLD // Call kernel  .
@@ -591,131 +1034,340 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     if ( sSpec->flags & FLAG_SYNCH )
       CUDA_SAFE_CALL(cudaEventRecord(pln->compInit, pln->stream),"Recording event: compInit");
 
-    if ( blkKer )      	  // Use block kernel
+    if ( optKer & OPT_KER_PLN_BLK )		// Use block kernel
     {
       infoMSG(4,5,"Block kernel [ No threads %i  Width %i no Blocks %i]\n", (int)noR, blkWidth, noBlk);
 
-      if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
+      if ( optKer & OPT_KER_PLN_BLK_NRM )		// Use block kernel
       {
-	for( int h = 0; h < pln->noHarms; h++)
+#ifdef WITH_OPT_BLK1
+	// Thread blocks
+	dimBlock.x = noR;
+	dimBlock.y = 16;
+	dimBlock.z = 1;
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	dimGrid.x = 1;
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit1, pln->stream),"Recording event: tInit1");
+
+	// Call the kernel to normalise and spread the input data
+	switch (noBlk)
 	{
-	  hw.val[h] 	= 0;
+	  case 2:
+	    ffdotPlnByBlk_ker<T,2> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 3:
+	    ffdotPlnByBlk_ker<T,3> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 4:
+	    ffdotPlnByBlk_ker<T,4> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 5:
+	    ffdotPlnByBlk_ker<T,5> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 6:
+	    ffdotPlnByBlk_ker<T,6> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 7:
+	    ffdotPlnByBlk_ker<T,7> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 8:
+	    ffdotPlnByBlk_ker<T,8> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 9:
+	    ffdotPlnByBlk_ker<T,9> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 10:
+	    ffdotPlnByBlk_ker<T,10><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  default:
+	  {
+	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, noBlk );
+	    exit(EXIT_FAILURE);
+	  }
 	}
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp1, pln->stream),"Recording event: tComp1");
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK1.\n");
+	exit(EXIT_FAILURE);
+#endif
       }
 
-      // Thread blocks
-      dimBlock.x = noR;
-      dimBlock.y = 16;
-      dimBlock.z = 1;
-
-      // One block per harmonic, thus we can sort input powers in Shared memory
-      dimGrid.x = 1;
-      dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-      // Call the kernel to normalise and spread the input data
-      switch (noBlk)
+      if ( optKer & OPT_KER_PLN_BLK_EXP )
       {
-	case 2:
-	  ffdotPlnByBlk_ker<T,2> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 3:
-	  ffdotPlnByBlk_ker<T,3> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 4:
-	  ffdotPlnByBlk_ker<T,4> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 5:
-	  ffdotPlnByBlk_ker<T,5> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 6:
-	  ffdotPlnByBlk_ker<T,6> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 7:
-	  ffdotPlnByBlk_ker<T,7> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 8:
-	  ffdotPlnByBlk_ker<T,8> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 9:
-	  ffdotPlnByBlk_ker<T,9> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	case 10:
-	  ffdotPlnByBlk_ker<T,10><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->inpStride, pln->outStride, rOff, norm, hw);
-	  break;
-	default:
+#ifdef WITH_OPT_BLK2
+	dimBlock.x = 16;
+	dimBlock.y = 16;
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit2, pln->stream),"Recording event: tInit2");
+
+	cudaMemsetAsync ( pln->d_out, 0, outSz, pln->stream );
+	//cudaMemset ( pln->d_out, 0, outSz );
+	CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory");
+
+	maxHW *=2 ;
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	dimGrid.x = ceil(maxHW*rpln->noRpnts/(float)dimBlock.x);
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	// Call the kernel to normalise and spread the input data
+	switch (noBlk)
 	{
-	  fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, noBlk );
-	  exit(EXIT_FAILURE);
+	  case 2:
+	    ffdotPlnByBlk_ker2<T, 2> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 3:
+	    ffdotPlnByBlk_ker2<T, 3> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 4:
+	    ffdotPlnByBlk_ker2<T, 4> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 5:
+	    ffdotPlnByBlk_ker2<T, 5> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 6:
+	    ffdotPlnByBlk_ker2<T, 6> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 7:
+	    ffdotPlnByBlk_ker2<T, 7> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 8:
+	    ffdotPlnByBlk_ker2<T, 8> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 9:
+	    ffdotPlnByBlk_ker2<T, 9> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 10:
+	    ffdotPlnByBlk_ker2<T,10> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 11:
+	    ffdotPlnByBlk_ker2<T,11> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 12:
+	    ffdotPlnByBlk_ker2<T,12> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 13:
+	    ffdotPlnByBlk_ker2<T,13> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 14:
+	    ffdotPlnByBlk_ker2<T,14> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 15:
+	    ffdotPlnByBlk_ker2<T,15> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 16:
+	    ffdotPlnByBlk_ker2<T,16> <<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, *rpln, pln->noHarms, pln->halfWidth, topZidx, lftIdx, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  default:
+	  {
+	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, noBlk );
+	    exit(EXIT_FAILURE);
+	  }
 	}
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp2, pln->stream),"Recording event: tComp1");
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK2.\n");
+	exit(EXIT_FAILURE);
+#endif
+      }
+
+      if ( optKer & OPT_KER_PLN_BLK_3 )
+      {
+	dimBlock.x = 16;
+	dimBlock.y = 16;
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit2, pln->stream),"Recording event: tInit2");
+
+	int noX = ceil(noR / (float)dimBlock.x);
+	int harmWidth = noX*dimBlock.x;
+
+	cudaMemsetAsync ( pln->d_out, 0, outSz, pln->stream );
+	CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory");
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	dimGrid.x = noX * pln->noHarms ;
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	// Call the kernel to normalise and spread the input data
+	switch (noBlk)
+	{
+	  case 2:
+	    ffdotPlnByBlk_ker3<T, 2> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 3:
+	    ffdotPlnByBlk_ker3<T, 3> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 4:
+	    ffdotPlnByBlk_ker3<T, 4> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 5:
+	    ffdotPlnByBlk_ker3<T, 5> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 6:
+	    ffdotPlnByBlk_ker3<T, 6> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 7:
+	    ffdotPlnByBlk_ker3<T, 7> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 8:
+	    ffdotPlnByBlk_ker3<T, 8> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 9:
+	    ffdotPlnByBlk_ker3<T, 9> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  case 10:
+	    ffdotPlnByBlk_ker3<T,10> <<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, noR, pln->noZ, blkWidth, pln->input->stride, pln->outStride, rOff, norm, hw);
+	    break;
+	  default:
+	  {
+	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, noBlk );
+	    exit(EXIT_FAILURE);
+	  }
+	}
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp2, pln->stream),"Recording event: tComp1");
       }
     }
     else                  // Use normal kernel
     {
+      //      slog.csvWrite("Type","PNTS");
+
       dimBlock.x = 16;
       dimBlock.y = 16;
       dimBlock.z = 1;
 
-//#ifdef CBL
-//      float smSz = 0 ;
-//
-//      //smSz = pln->inpStride ; // TMP test
-//      //smSz = ( ceil(hw.val[pln->noHarms-1]*2 + pln->rSize*pln->noHarms) + 10) ;
-//      for( int h = 0; h < pln->noHarms; h++)
-//      {
-//	smSz += ceil(hw.val[h]*2 + pln->rSize*(h+1) + 4 );
-//      }
-//
-//      if ( smSz < 6144*0.9 ) // ~% of SM	10: 4915
-//      {
-//
-//	infoMSG(3,5,"Flat kernel\n");
-//
-//	// One block per harmonic, thus we can sort input powers in Shared memory
-//	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
-//	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-//
-//	int noTB = dimGrid.x * dimGrid.y ;
-//
-//	// Call the kernel to normalise and spread the input data
-//	switch (pln->noHarms)
-//	{
-//	  case 1:
-//	    ffdotPlnSM_ker<T,1><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-//	    break;
-//	  case 2:
-//	    ffdotPlnSM_ker<T,2><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-//	    break;
-//	  case 4:
-//	    ffdotPlnSM_ker<T,4><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-//	    break;
-//	  case 8:
-//	    ffdotPlnSM_ker<T,8><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-//	    break;
-//	  case 16:
-//	    ffdotPlnSM_ker<T,16><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-//	    break;
-//	}
-//	//ffdotPlnSM_ker<T><<<dimGrid, dimBlock, smSz*sizeof(float2)*pln->noHarms*1.2, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, smSz, rOff, hw);
-//      }
-//      else
-//#endif
+      maxHW = ceil(maxHW*2/(float)dimBlock.x)*dimBlock.x;
+
+      if ( optKer & OPT_KER_PLN_PTS_SHR ) // Shared meme  .
       {
+#ifdef WITH_OPT_PLN4
+#ifdef CBL
+	float smSz = 0 ;
+
+	//smSz = pln->input->stride ; // TMP test
+	//smSz = ( ceil(hw.val[pln->noHarms-1]*2 + pln->rSize*pln->noHarms) + 10) ;
+	for( int h = 0; h < pln->noHarms; h++)
+	{
+	  smSz += ceil(hw.val[h]*2 + pln->rSize*(h+1) + 4 );
+	}
+
+	if ( smSz < 6144*0.9 ) // ~% of SM	10: 4915
+	{
+
+	  infoMSG(3,5,"Flat kernel\n");
+
+	  // One block per harmonic, thus we can sort input powers in Shared memory
+	  dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
+	  dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	  //int noTB = dimGrid.x * dimGrid.y ;
+
+	  // Call the kernel to normalise and spread the input data
+	  switch (pln->noHarms)
+	  {
+	    case 1:
+	      ffdotPlnSM_ker<T,1><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, smSz, rOff, hw);
+	      break;
+	    case 2:
+	      ffdotPlnSM_ker<T,2><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, smSz, rOff, hw);
+	      break;
+	    case 4:
+	      ffdotPlnSM_ker<T,4><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, smSz, rOff, hw);
+	      break;
+	    case 8:
+	      ffdotPlnSM_ker<T,8><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, smSz, rOff, hw);
+	      break;
+	    case 16:
+	      ffdotPlnSM_ker<T,16><<<dimGrid, dimBlock, smSz*sizeof(float2), pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, smSz, rOff, hw);
+	      break;
+	  }
+	  //ffdotPlnSM_ker<T><<<dimGrid, dimBlock, smSz*sizeof(float2)*pln->noHarms*1.2, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, smSz, rOff, hw);
+	}
+#endif
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PLN4.\n");
+	exit(EXIT_FAILURE);
+#endif
+      }
+
+      if ( optKer & OPT_KER_PLN_PTS_NRM ) // thread point  .
+      {
+#ifdef WITH_OPT_PLN1
 	infoMSG(3,5,"Flat kernel\n");
 
-	if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
-	{
-	  for( int h = 0; h < pln->noHarms; h++)
-	  {
-	    hw.val[h] 	= 0;
-	  }
-	}
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit1, pln->stream),"Recording event: tInit1");
 
 	// One block per harmonic, thus we can sort input powers in Shared memory
 	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
 	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
 	// Call the kernel create a section of the f-fdot plane
-	ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->inpStride, pln->outStride, rOff, norm, hw);
+	ffdotPln_ker<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, pln->halfWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, rOff, norm, hw);
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp1, pln->stream),"Recording event: tComp1");
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PLN1.\n");
+	exit(EXIT_FAILURE);
+#endif
+      }
+
+      if ( optKer & OPT_KER_PLN_PTS_EXP ) // Thread response pos  .
+      {
+#ifdef WITH_OPT_PLN2
+	infoMSG(3,5,"Mult ker kernel\n");
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit2, pln->stream),"Recording event: tInit2");
+
+	cudaMemsetAsync ( pln->d_out, 0, outSz, pln->stream );
+	//cudaMemset ( pln->d_out, 0, outSz );
+	CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory");
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	//dimGrid.x = ceil(maxHW*pln->noHarms/(float)dimBlock.x);
+	dimGrid.x = ceil(maxHW/(float)dimBlock.x);
+	dimGrid.y = ceil(pln->noZ*pln->noR/(float)dimBlock.y);
+
+	// Call the kernel create a section of the f-fdot plane
+	ffdotPln_ker2<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float2*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, maxHW, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, rOff, norm, hw);
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp2, pln->stream),"Recording event: tComp2");
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PLN2.\n");
+	exit(EXIT_FAILURE);
+#endif
+      }
+
+      if ( optKer & OPT_KER_PLN_PTS_3 ) // Thread response pos  .
+      {
+#ifdef WITH_OPT_PLN3
+	infoMSG(3,5,"Pln by point kernel 3\n");
+
+	int noX = ceil(pln->noR / (float)dimBlock.x);
+	int harmWidth = noX*dimBlock.x;
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit3, pln->stream),"Recording event: tInit3");
+
+	cudaMemsetAsync ( pln->d_out, 0, outSz, pln->stream );
+	CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory");
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	//dimGrid.x = ceil(maxHW*pln->noHarms/(float)dimBlock.x);
+	dimGrid.x = noX * pln->noHarms ;
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	// Call the kernel create a section of the f-fdot plane
+	ffdotPln_ker3<T><<<dimGrid, dimBlock, 0, pln->stream >>>((float*)pln->d_out, (float2*)pln->input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, pln->input->stride, pln->outStride, rOff, norm, hw);
+
+	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp3, pln->stream),"Recording event: tComp3");
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PLN3.\n");
+	exit(EXIT_FAILURE);
+#endif
       }
     }
 
@@ -730,12 +1382,46 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     infoMSG(3,4,"Copy data back\n");
 
-    // TMP
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->compCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-
-
-    CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, pln->outStride*pln->noZ*sizeof(float), cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, outSz, cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
     CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
+  }
+
+  FOLD // Get data  .
+  {
+    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
+    {
+      infoMSG(3,4,"pre synchronisation [blocking]\n");
+
+      NV_RANGE_PUSH("EventSynch");
+      CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+      NV_RANGE_POP();
+    }
+
+    FOLD // Calc Powers  .
+    {
+      if ( optKer & ( OPT_KER_PLN_BLK_EXP | OPT_KER_PLN_PTS_EXP ) )
+      {
+	NV_RANGE_PUSH("Calc Powers");
+
+	int noHarms = pln->noHarms;
+
+	// Complex harminic output
+	for (int indy = 0; indy < pln->noZ; indy++ )
+	{
+	  for (int indx = 0; indx < pln->noR ; indx++ )
+	  {
+	    float yy2 = 0;
+	    for (int i = 0; i < pln->noHarms ; i++ )
+	    {
+	      float2 p1 = ((float2*)pln->h_out)[ indy*pln->outStride*noHarms + indx*noHarms + i ];
+	      yy2 += POWERF(p1);
+	    }
+	  }
+	}
+
+	NV_RANGE_POP();
+      }
+    }
   }
 
   return newInp;
@@ -1036,94 +1722,51 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
 }
 
 template<typename T>
-void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int plt = -1, int nn = 0, int lv = 0 )
+int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int plt = -1, int nn = 0, int lv = 0 )
 {
   infoMSG(3,2,"Gen plain\n");
+  int newInput = 0;
 
   fftInfo*	fft	= &pln->cuSrch->sSpec->fftInf;
 
   FOLD // Generate plain points  .
   {
-    pln->centR          = cand->r;
-    pln->centZ          = cand->z;
-    pln->noZ            = noP*2 + 1;
-    pln->noR            = noP*2 + 1;
+    pln->noZ            = noP;
+    pln->noR            = noP;
     pln->rSize          = scale;
-    pln->zSize          = scale*4.0;
+    pln->zSize          = scale*pln->cuSrch->sSpec->zScale;
+    double rRes		= pln->rSize / (double)(noP-1);
+    double zRes		= pln->zSize / (double)(noP-1);
+
+    if ( noP % 2 )
+    {
+      // Odd
+      pln->centR          = cand->r;
+      pln->centZ          = cand->z;
+    }
+    else
+    {
+      // Even
+      pln->centR          = cand->r + rRes/2.0;
+      pln->centZ          = cand->z - zRes/2.0;
+    }
 
     if ( ffdotPln<T>(pln, fft) )
     {
       // New input was used so don't maintain the old max
       cand->power = 0;
+      newInput = 1;
     }
   }
 
-  FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
-  {
-    infoMSG(3,4,"pre synchronisation [blocking]\n");
-
-    NV_RANGE_PUSH("EventSynch");
-    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-    NV_RANGE_POP();
-  }
-
-  FOLD // Write CVS & plot output  .
-  {
-#ifdef CBL
-    searchSpecs*  sSpec	= pln->cuSrch->sSpec;
-
-    if ( sSpec->flags & FLAG_DPG_PLT_OPT ) // Write CVS & plot output  .
-    {
-      infoMSG(4,4,"Write CVS\n");
-
-      NV_RANGE_PUSH("Write CVS");
-
-      char tName[1024];
-      sprintf(tName,"/home/chris/accel/Cand_%05i_Lv_%i_Rep_%02i_h%02i.csv", nn, lv, plt, cand->numharm );
-      FILE *f2 = fopen(tName, "w");
-
-      FOLD // Write CSV
-      {
-	fprintf(f2,"%i",pln->noHarms);
-
-	for (int indx = 0; indx < pln->noR ; indx++ )
-	{
-	  double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
-	  fprintf(f2,"\t%.6f",r);
-	}
-	fprintf(f2,"\n");
-
-	for (int indy = 0; indy < pln->noZ; indy++ )
-	{
-	  double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
-
-	  fprintf(f2,"%.6f",z);
-
-	  for (int indx = 0; indx < pln->noR ; indx++ )
-	  {
-	    float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
-	    fprintf(f2,"\t%.15f",yy2);
-	  }
-	  fprintf(f2,"\n");
-	}
-	fclose(f2);
-      }
-
-      FOLD // Make image  .
-      {
-	infoMSG(4,4,"Image\n");
-
-	NV_RANGE_PUSH("Image");
-	char cmd[1024];
-	sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s > /dev/null 2>&1", tName);
-	system(cmd);
-	NV_RANGE_POP();
-      }
-
-      NV_RANGE_POP();
-    }
-#endif
-  }
+//  FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
+//  {
+//    infoMSG(3,4,"pre synchronisation [blocking]\n");
+//
+//    NV_RANGE_PUSH("EventSynch");
+//    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+//    NV_RANGE_POP();
+//  }
 
   FOLD // Get new max  .
   {
@@ -1147,13 +1790,71 @@ void optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, in
 
     NV_RANGE_POP();
   }
+
+  FOLD // Write CVS & plot output  .
+  {
+#ifdef CBL
+    searchSpecs*  sSpec	= pln->cuSrch->sSpec;
+
+    if ( sSpec->flags & FLAG_DPG_PLT_OPT ) // Write CVS & plot output  .
+    {
+      infoMSG(4,4,"Write CVS\n");
+
+      NV_RANGE_PUSH("Write CVS");
+
+      char tName[1024];
+      sprintf(tName,"/home/chris/accel/Cand_%05i_Rep_%02i_Lv_%i_h%02i.csv", nn, plt, lv, cand->numharm );
+      FILE *f2 = fopen(tName, "w");
+
+      FOLD // Write CSV
+      {
+	fprintf(f2,"%i",pln->noHarms);
+
+	for (int indx = 0; indx < pln->noR ; indx++ )
+	{
+	  double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+	  fprintf(f2,"\t%.6f",r);
+	}
+	fprintf(f2,"\n");
+
+	for (int indy = 0; indy < pln->noZ; indy++ )
+	{
+	  double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+
+	  fprintf(f2,"%.15f",z);
+
+	  for (int indx = 0; indx < pln->noR ; indx++ )
+	  {
+	    float yy2 = ((float*)pln->h_out)[indy*pln->outStride+indx];
+	    fprintf(f2,"\t%.20f",yy2);
+	  }
+	  fprintf(f2,"\n");
+	}
+	fclose(f2);
+      }
+
+      FOLD // Make image  .
+      {
+	infoMSG(4,4,"Image\n");
+
+	NV_RANGE_PUSH("Image");
+	char cmd[1024];
+	sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s > /dev/null 2>&1", tName);
+	system(cmd);
+	NV_RANGE_POP();
+      }
+
+      NV_RANGE_POP();
+    }
+#endif
+  }
+
+  return newInput;
 }
 
 template<typename T>
-T pow(initCand* cand, cuOptCand* pln)
+T pow(initCand* cand, cuHarmInput* inp)
 {
-  //fftInfo*      fft     = &pln->cuSrch->sSpec->fftInf;
-
   int halfW;
   double r            = cand->r;
   double z            = cand->z;
@@ -1164,15 +1865,10 @@ T pow(initCand* cand, cuOptCand* pln)
 
   for( int i = 1; i <= cand->numharm; i++ )
   {
-    FOLD // Determine half width
-    {
-      if ( pln->hw[i-1] )
-        halfW = pln->hw[i-1];
-      else
-        halfW = z_resp_halfwidth_cu_high<float>(z*i);
-    }
+    // Determine half width
+    halfW = z_resp_halfwidth_cu_high<float>(z*i);
 
-    rz_convolution_cu<T, float2>((float2*)pln->h_inp, pln->loR[i-1], pln->inpStride, r*i, z*i, halfW, &real, &imag);
+    rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(i-1)*inp->stride], inp->loR[i-1], inp->stride, r*i, z*i, halfW, &real, &imag);
 
     total_power     += POWERCU(real, imag);
   }
@@ -1182,30 +1878,34 @@ T pow(initCand* cand, cuOptCand* pln)
   return total_power;
 }
 
-template<typename T>
-void optInitCandPosSim(initCand* cand, cuOptCand* pln, int noP, double scale, int plt = -1, int nn = 0, int lv = 0 )
+int prepInput(initCand* cand, cuOptCand* pln, double sz)
 {
   fftInfo*      fft     = &pln->cuSrch->sSpec->fftInf;
 
-  NV_RANGE_PUSH("Simplex");
-
   FOLD // Large points  .
   {
+    pln->noHarms	= cand->numharm;
     pln->centR          = cand->r;
     pln->centZ          = cand->z;
-    pln->noZ            = noP*2 + 1;
-    pln->noR            = noP*2 + 1;
-    pln->rSize          = scale;
-    pln->zSize          = scale*4.0;
+    pln->rSize          = sz;
+    pln->zSize          = sz*pln->cuSrch->sSpec->zScale;
   }
 
-  //
+  // Check the input
   int newInp = chKpn( pln, fft );
 
-  double alpha  = 1.0;
-  double gamma  = 2.0;
-  double row    = 0.5;
-  double sigma  = 0.5;
+  return newInp;
+}
+
+// Simplex method
+template<typename T>
+int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int plt = 0, int nn = 0, int lv = 0 )
+{
+  // These are the Nelder–Mead parameter values
+  double reflect	= 1.0;
+  double expand		= 2.0;
+  double contract	= 0.4;
+  double shrink		= 0.3;
 
   initCand  cnds[3];
   initCand* olst[3];
@@ -1219,128 +1919,149 @@ void optInitCandPosSim(initCand* cand, cuOptCand* pln, int noP, double scale, in
   cnds[1] = *cand;
   cnds[2] = *cand;
 
-  pow<T>(&cnds[0], pln);
+  pow<T>(&cnds[0], inp);
 
-  cnds[1].r += pln->rSize / 1.0;
-  pow<T>(&cnds[1], pln);
+  cnds[1].r += rSize;
+  pow<T>(&cnds[1], inp);
 
-  cnds[2].z += pln->zSize / 1.0;
-  pow<T>(&cnds[2], pln);
+  cnds[2].z += zSize;
+  pow<T>(&cnds[2], inp);
 
-  olst[0] = &cnds[0];
-  olst[1] = &cnds[1];
-  olst[2] = &cnds[2];
-
-  double diff = pln->rSize / 4.0 ;
+  olst[NM_BEST] = &cnds[0];
+  olst[NM_MIDL] = &cnds[1];
+  olst[NM_WRST] = &cnds[2];
 
   int ite = 0;
+  double rtol;			///< Ratio of low to high
 
   while (1)
   {
     FOLD // Order
     {
-      if (olst[2]->power > olst[1]->power )
-        SWAP_PTR(olst[2], olst[1]);
+      if (olst[NM_WRST]->power > olst[NM_MIDL]->power )
+	SWAP_PTR(olst[NM_WRST], olst[NM_MIDL]);
 
-      if (olst[1]->power > olst[0]->power )
+      if (olst[NM_MIDL]->power > olst[NM_BEST]->power )
       {
-        SWAP_PTR(olst[1], olst[0]);
+	SWAP_PTR(olst[NM_MIDL], olst[NM_BEST]);
 
-        if (olst[2]->power > olst[1]->power )
-          SWAP_PTR(olst[2], olst[1]);
+	if (olst[NM_WRST]->power > olst[NM_MIDL]->power )
+	  SWAP_PTR(olst[NM_WRST], olst[NM_MIDL]);
       }
     }
 
-    FOLD // Centred
+    FOLD // Centroid  .
     {
-      centroid.r = ( olst[0]->r + olst[1]->r ) / 2.0  ;
-      centroid.z = ( olst[0]->z + olst[1]->z ) / 2.0  ;
-      pow<T>(&centroid, pln);
+      centroid.r = ( olst[NM_BEST]->r + olst[NM_MIDL]->r ) / 2.0  ;
+      centroid.z = ( olst[NM_BEST]->z + olst[NM_MIDL]->z ) / 2.0  ;
+      //pow<T>(&centroid, inp);
     }
 
-    diff = (centroid.r-olst[0]->r)*(centroid.r-olst[0]->r) + (centroid.z-olst[0]->z)*(centroid.z-olst[0]->z);
-    diff = sqrt(diff);
-
-//    FOLD // Debug output
-//    {
-//      printf("%3i %17.9f %10.7f %12.7f %17.9f %10.7f %12.7f %17.9f %10.7f %12.7f  %17.9f %10.7f %12.7f  %10.8f \n", ite, olst[0]->r, olst[0]->z, olst[0]->power, olst[1]->r, olst[1]->z, olst[1]->power, olst[2]->r, olst[2]->z, olst[2]->power, centroid.r, centroid.z, centroid.power, diff );
-//    }
-
     ite++;
+
+    rtol = 2.0 * fabs(olst[NM_BEST]->power - olst[NM_WRST]->power) / (fabs(olst[NM_BEST]->power) + fabs(olst[NM_MIDL]->power) + 1.0e-15) ;
+
+    if (rtol < 1.0e-7 )  // Within error so leave  .
+    {
+      break;
+    }
 
     if ( ite == 100 )
     {
       break;
     }
 
-    if ( diff < pln->rSize / pln->noR / 2.0 && diff < pln->zSize / pln->noZ / 2.0 )
+    FOLD // Reflection  .
     {
-      break;
-    }
+      reflection.r = centroid.r + reflect*(centroid.r - olst[NM_WRST]->r ) ;
+      reflection.z = centroid.z + reflect*(centroid.z - olst[NM_WRST]->z ) ;
+      pow<T>(&reflection, inp);
 
-    FOLD // Reflection
-    {
-      reflection.r = centroid.r + alpha*(centroid.r - olst[2]->r ) ;
-      reflection.z = centroid.z + alpha*(centroid.z - olst[2]->z ) ;
-      pow<T>(&reflection, pln);
-
-      if ( olst[0]->power <= reflection.power && reflection.power < olst[1]->power )
+      if ( olst[NM_BEST]->power <= reflection.power && reflection.power < olst[NM_MIDL]->power )
       {
-        *olst[2] = reflection;
-        continue;
+	*olst[NM_WRST] = reflection;
+	continue;
       }
     }
 
-    FOLD // Expansion
+    FOLD // Expansion  .
     {
-      if ( reflection.power > olst[0]->power )
+      if ( reflection.power > olst[NM_BEST]->power )
       {
-        expansion.r = centroid.r + gamma*(reflection.r - centroid.r ) ;
-        expansion.z = centroid.z + gamma*(reflection.z - centroid.z ) ;
-        pow<T>(&expansion, pln);
+	expansion.r = centroid.r + expand*(reflection.r - centroid.r ) ;
+	expansion.z = centroid.z + expand*(reflection.z - centroid.z ) ;
+	pow<T>(&expansion, inp);
 
-        if (expansion.power > reflection.power)
-        {
-          *olst[2] = expansion;
-        }
-        else
-        {
-          *olst[2] = reflection;
-        }
-        continue;
+	if (expansion.power > reflection.power)
+	{
+	  *olst[NM_WRST] = expansion;
+	}
+	else
+	{
+	  *olst[NM_WRST] = reflection;
+	}
+	continue;
       }
     }
 
-    FOLD // Contraction
+    FOLD // Contraction  .
     {
-      contraction.r = centroid.r + row*(olst[2]->r - centroid.r) ;
-      contraction.z = centroid.z + row*(olst[2]->z - centroid.z) ;
-      pow<T>(&contraction, pln);
+      contraction.r = centroid.r + contract*(olst[NM_WRST]->r - centroid.r) ;
+      contraction.z = centroid.z + contract*(olst[NM_WRST]->z - centroid.z) ;
+      pow<T>(&contraction, inp);
 
-      if ( contraction.power > olst[2]->power )
+      if ( contraction.power > olst[NM_WRST]->power )
       {
-        *olst[2] = contraction;
-        continue;
+	*olst[NM_WRST] = contraction;
+	continue;
       }
     }
 
-    FOLD // Shrink
+    FOLD // Shrink  .
     {
-      olst[1]->r = olst[0]->r + sigma*(olst[1]->r - olst[0]->r);
-      olst[1]->z = olst[0]->z + sigma*(olst[1]->z - olst[0]->z);
-      pow<T>(olst[1], pln);
+      olst[NM_MIDL]->r = olst[NM_BEST]->r + shrink*(olst[NM_MIDL]->r - olst[NM_BEST]->r);
+      olst[NM_MIDL]->z = olst[NM_BEST]->z + shrink*(olst[NM_MIDL]->z - olst[NM_BEST]->z);
+      pow<T>(olst[NM_MIDL], inp);
 
-      olst[2]->r = olst[0]->r + sigma*(olst[2]->r - olst[0]->r);
-      olst[2]->z = olst[0]->z + sigma*(olst[2]->z - olst[0]->z);
-      pow<T>(olst[2], pln);
+      olst[NM_WRST]->r = olst[NM_BEST]->r + shrink*(olst[NM_WRST]->r - olst[NM_BEST]->r);
+      olst[NM_WRST]->z = olst[NM_BEST]->z + shrink*(olst[NM_WRST]->z - olst[NM_BEST]->z);
+      pow<T>(olst[NM_WRST], inp);
     }
   }
 
-  cand->r = olst[0]->r;
-  cand->z = olst[0]->z;
-  cand->power = olst[0]->power;
+  cand->r = olst[NM_BEST]->r;
+  cand->z = olst[NM_BEST]->z;
+  cand->power = olst[NM_BEST]->power;
 
-  NV_RANGE_POP();
+  return 1;
+}
+
+cuHarmInput* duplicateHost(cuHarmInput* orr)
+{
+  if ( orr )
+  {
+    size_t sz = MIN(orr->size, orr->noHarms * orr->stride * sizeof(fcomplexcu) * 1.1);
+
+    NV_RANGE_PUSH("Opt derivs");
+
+    cuHarmInput* res = (cuHarmInput*)malloc(sizeof(cuHarmInput));
+
+    memcpy(res, orr, sizeof(cuHarmInput));
+    res->d_inp = NULL;
+    res->h_inp = (fcomplexcu*)malloc(sz);
+
+    NV_RANGE_PUSH("memcpy");
+    memcpy(res->h_inp, orr->h_inp, res->noHarms * res->stride * sizeof(fcomplexcu));
+    NV_RANGE_POP();
+
+    NV_RANGE_POP();
+
+    return res;
+  }
+  else
+  {
+    return NULL;
+  }
 }
 
 /** Optimise derivatives of a candidate this is usually run in a separate CPU thread  .
@@ -1365,6 +2086,35 @@ void* optCandDerivs(void* ptr)
     gettimeofday(&start, NULL);
   }
 
+  if ( srch->sSpec->flags & FLAG_OPT_NM_REFINE )
+  {
+    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    {
+      NV_RANGE_PUSH("NM_REFINE");
+    }
+
+    initCand iCand;
+    iCand.numharm = cand->numharm;
+    iCand.power = cand->power;
+    iCand.r	= cand->r;
+    iCand.z	= cand->z;
+
+    // Run the NM
+    optInitCandPosSim<double>(&iCand,  res->input, 0.0005, 0.0005*srch->sSpec->optPlnScale);
+
+    cand->r	= iCand.r;
+    cand->z	= iCand.z;
+    cand->power	= iCand.power;
+
+    freeHarmInput(res->input);
+    res->input = NULL;
+
+    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    {
+      NV_RANGE_POP();
+    }
+  }
+
   int maxHarms  = MAX(cand->numharm, sSpec->optMinRepHarms) ;
 
   // Set up candidate
@@ -1376,13 +2126,17 @@ void* optCandDerivs(void* ptr)
   // Initialise values
   for( ii=0; ii < maxHarms; ii++ )
   {
-    //r_offset[ii]  = 0;
     cand->hirs[ii]  = cand->r*(ii+1);
     cand->hizs[ii]  = cand->z*(ii+1);
   }
 
   FOLD // Update fundamental values to the optimised ones  .
   {
+    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    {
+      NV_RANGE_PUSH("DERIVS");
+    }
+
     float   	maxSig		= 0;
     int     	bestH		= 0;
     float   	bestP		= 0;
@@ -1400,7 +2154,6 @@ void* optCandDerivs(void* ptr)
 
     for( ii = 1; ii <= maxHarms; ii++ )
     {
-
       infoMSG(5,5,"Harm %i\n",ii );
 
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
@@ -1411,11 +2164,9 @@ void* optCandDerivs(void* ptr)
       {
 	locpow = get_scaleFactorZ(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
       }
-      //infoMSG(6,6,"locpow %.5f \n", locpow );
 
       if ( locpow )
       {
-	//kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii) + 4.0, HIGHACC);  // Why is this +4 ???? TODO: Check why this +4 was here it was in one of the kernels as well!
 	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii), HIGHACC);
 
 	rz_convolution_cu<double, float2>((float2*)fft->fft, fft->idx, fft->nor, cand->r*ii, cand->z*ii, kern_half_width, &real, &imag);
@@ -1430,8 +2181,6 @@ void* optCandDerivs(void* ptr)
 	numindep	= (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (ACCEL_DZ / 6.95) / (ii) ;
 
 	sig		= candidate_sigma_cu(cand->power, (ii), numindep );
-
-	//infoMSG(6,6,"Power %7.3f  Sig: %6.3f  Sum: Power %7.3f  Sig: %6.3f\n", power, candidate_sigma_cu(power, 1, 1 ), cand->power, sig ); // TMP
 
 	if ( sig > maxSig || ii == 1 )
 	{
@@ -1469,6 +2218,11 @@ void* optCandDerivs(void* ptr)
 
       infoMSG(4,4,"Cand harm val Sigma: %5.2f Power: %6.4f\n", cand->sigma, cand->power);
     }
+
+    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    {
+      NV_RANGE_POP();
+    }
   }
 
   if ( srch->sSpec->flags & FLAG_TIME ) // Timing  .
@@ -1488,20 +2242,27 @@ void* optCandDerivs(void* ptr)
   return (NULL);
 }
 
+
 /** Optimise derivatives of a candidate Using the CPU  .
  * This usually spawns a separate CPU thread to do the sigma calculations
  */
-void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
+void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, int candNo = -1)
 {
   infoMSG(2,2,"Calc Cand Derivatives \n");
 
   candSrch*     thrdDat  = new candSrch;
+  memset(thrdDat, 0, sizeof(candSrch));
 
   thrdDat->cand   = cand;
   thrdDat->cuSrch = srch;
   thrdDat->candNo = candNo;
 
-  NV_RANGE_PUSH("Opt derivs");
+  if ( srch->sSpec->flags & FLAG_OPT_NM_REFINE )
+  {
+    thrdDat->input = duplicateHost(inp);
+  }
+
+  NV_RANGE_PUSH("Post Thred");
 
   // Increase the count number of running threads
   sem_post(&srch->threasdInfo->running_threads);
@@ -1527,6 +2288,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
   infoMSG(2,2,"Done");
 }
 
+
 /** This is the main function called by external elements
  *
  * @param cand
@@ -1535,16 +2297,15 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, int candNo = -1)
  * @param nn
  * @param pln
  */
-void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int no )
+
+void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 {
   infoMSG(2,2,"Optimise candidate by plain\n");
 
+  NV_RANGE_PUSH("Plns");
+
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
   fftInfo*      fft     = &sSpec->fftInf;
-
-  char Txt[1024];
-  sprintf(Txt, "Opt Cand %03i", no);
-  NV_RANGE_PUSH(Txt);
 
   // Number of harmonics to check, I think this could go up to 32!
   int maxHarms	= MAX(cand->numharm,sSpec->optMinLocHarms);
@@ -1553,74 +2314,109 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int no )
   pln->centR	= cand->r ;
   pln->centZ	= cand->z ;
   pln->noHarms	= maxHarms ;
-  for ( int i=1; i <= maxHarms; i++ )
-  {
-    if ( sSpec->flags & FLAG_OPT_LOCAVE )
-    {
-      pln->norm[i-1]  = get_localpower3d(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
-    }
-    else
-    {
-      pln->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
-    }
-  }
+  //  for ( int i=1; i <= pln->noHarms; i++ )
+  //  {
+  //    if ( sSpec->flags & FLAG_OPT_LOCAVE )
+  //    {
+  //      pln->input->norm[i-1]  = get_localpower3d(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
+  //    }
+  //    else
+  //    {
+  //      pln->input->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
+  //    }
+  //  }
 
   FOLD // Get best candidate location using GPU planes  .
   {
-    int rep       = 0;
-    int lrep      = 0;
-    int noP       = 30;
-    float snoop   = 0.3;
-    float sz;
-    float v1, v2;
+    int depth;
+    int noP;
+    int rep	= 0;
+    int lrep	= 0;
+    bool doub	= false;
+    const int	mxRep		= 10;
+    const float moveBound	= 0.67;
+    const float outBound	= 0.9;
+    double sz;
+    float posR, posZ;
 
-    const int mxRep = 10;
-
-    if ( cand->numharm == 1  )
+    if ( pln->noHarms == 1  )
       sz = sSpec->optPlnSiz[0];
-    if ( cand->numharm == 2  )
+    if ( pln->noHarms == 2  )
       sz = sSpec->optPlnSiz[1];
-    if ( cand->numharm == 4  )
+    if ( pln->noHarms == 4  )
       sz = sSpec->optPlnSiz[2];
-    if ( cand->numharm == 8  )
+    if ( pln->noHarms == 8  )
       sz = sSpec->optPlnSiz[3];
-    if ( cand->numharm == 16 )
+    if ( pln->noHarms == 16 )
       sz = sSpec->optPlnSiz[4];
 
     pln->halfWidth 	= 0;
+    cand->power	= 0;				// Set initial power to zero
 
-    for ( int idx = 0; idx < NO_OPT_LEVS; idx++ )
+    for ( int lvl = 0; lvl < NO_OPT_LEVS; lvl++ )
     {
-      if ( sSpec->optPlnDim[idx] > 0 )
-      {
-	noP		= sSpec->optPlnDim[idx] ;
-	lrep		= 0;
-	cand->power	= 0;				// Set initial power to zero
+      noP		= sSpec->optPlnDim[lvl] ;	// Set in the defaults text file
 
-	do
+      lrep		= 0;
+      depth		= 1;
+
+      if ( ( lvl == NO_OPT_LEVS-1 ) || (sz < 0.002) /*|| ( (sz < 0.06) && (abs(pln->centZ) < 0.05) )*/ )
+      {
+	// Last if last plane is not 0, it will be done with double precision
+	if (!doub)
+	  cand->power = 0;
+
+	doub = true;
+      }
+
+      if ( noP )
+      {
+	while ( (depth > 0) && (lrep < mxRep) )
 	{
-	  pln->centR	= cand->r ;
-	  pln->centZ	= cand->z ;
-	  if ( ( idx == NO_OPT_LEVS-1 ) /*|| ( (sz < 0.06) && (abs(pln->centZ) < 0.05) )*/ )
+	  if ( doub )
 	  {
-	    // Last if last plane is not 0, it will be done with double precision
-	    optInitCandPosPln<double>(cand, pln, noP, sz,  rep++, no, idx + 1 );
+	    // Double precision
+	    optInitCandPosPln<double>(cand, pln, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
 	  else
 	  {
 	    // Standard single precision
-	    optInitCandPosPln<float>(cand, pln, noP, sz,  rep++, no, idx + 1 );
+	    optInitCandPosPln<float>(cand, pln, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
-	  v1 = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
-	  v2 = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
-	  if ( ++lrep > mxRep )
+	  posR = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
+	  posZ = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
+
+	  double rRes = pln->rSize/(double)(pln->noR-1) ;
+	  if ( posR > moveBound || posZ > moveBound )
 	  {
-	    break;
+	    if ( ( (posR > outBound) || (posZ > outBound) ) && ( depth < lvl+2) )
+	    {
+	      // Zoom out
+	      sz *= sSpec->optPlnScale / 2.0 ;
+	      depth++;
+	      infoMSG(7,7,"Zoom out\n");
+	    }
 	  }
+	  else
+	  {
+	    // Break condition
+	    if ( rRes < 1e-5 )
+	    {
+	      infoMSG(7,7,"Break SZ small enough\n");
+	      break;
+	    }
+
+	    // Zoom in
+	    sz /= sSpec->optPlnScale;
+	    depth--;
+	    infoMSG(7,7,"Zoom in\n");
+	    if ( sz < 2.0*rRes )
+	      sz = rRes*2.0;
+	  }
+
+	  ++lrep;
 	}
-	while ( v1 > snoop || v2 > snoop );
-	sz /= sSpec->optPlnScale;
       }
     }
   }
@@ -1634,46 +2430,57 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int no )
  * @param pln
  * @param nn
  */
-void opt_accelcand(accelcand* cand, cuOptCand* pln, int no)
+void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
 {
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 
-  if ( sSpec->flags & FLAG_OPT_SWARM )
+  char Txt[1024];
+  sprintf(Txt, "Opt Cand %03i", candNo);
+  NV_RANGE_PUSH(Txt);
+
+  initCand iCand;
+  iCand.r 		= cand->r;
+  iCand.z 		= cand->z;
+  iCand.power		= cand->power;
+  iCand.numharm 	= cand->numharm;
+
+  if      ( sSpec->flags & FLAG_OPT_NM )
   {
-    fprintf(stderr,"ERROR: partial swarm has been removed.\n");
+    NV_RANGE_PUSH("Simplex");
+    prepInput(&iCand, pln, 15);
+    optInitCandPosSim<double>(&iCand, pln->input, 0.5, 0.5*sSpec->optPlnScale);
+    NV_RANGE_POP();
+  }
+  else if ( sSpec->flags & FLAG_OPT_SWARM )
+  {
+    fprintf(stderr,"ERROR: Particle swarm optimisation has been removed.\n");
     exit(EXIT_FAILURE);
   }
-  else
+  else // Default use planes
   {
-    initCand iCand;
-    iCand.r 		= cand->r;
-    iCand.z 		= cand->z;
-    iCand.power		= cand->power;
-    iCand.numharm 	= cand->numharm;
-
-    optInitCandLocPlns(&iCand, pln, no);
-
-    cand->r 		= iCand.r;
-    cand->z 		= iCand.z;
-    cand->power		= iCand.power;
-    cand->numharm 	= iCand.numharm;
+    optInitCandLocPlns(&iCand, pln, candNo);
   }
+
+  cand->r 		= iCand.r;
+  cand->z 		= iCand.z;
+  cand->power		= iCand.power;
+  cand->numharm 	= iCand.numharm;
 
   FOLD // Optimise derivatives  .
   {
-    processCandDerivs(cand, pln->cuSrch, no);
+    prepInput(&iCand, pln, 15);
+    processCandDerivs(cand, pln->cuSrch, pln->input,  candNo);
   }
 
+  NV_RANGE_POP();
 }
 
 int optList(GSList *listptr, cuSearch* cuSrch)
 {
-  struct timeval start01, end01;
 
-  NV_RANGE_PUSH("GPU Optimisation");
-  gettimeofday(&start01, NULL);       // Profiling
+  NV_RANGE_PUSH("GPU Kernels");
 
-  int numcands = g_slist_length(listptr);
+  int numcands 	= g_slist_length(listptr);
 
   int ii	= 0;
   int comp	= 0;
@@ -1698,7 +2505,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     int ti          = 0; // tread specific index
 
     cuOptCand* oPlnPln = &(cuSrch->oInf->opts[tid]);
-    setDevice(oPlnPln->device) ;
+    setDevice(oPlnPln->gInf->devid) ;
 
     while (listptr)  // Main Loop  .
     {
@@ -1712,7 +2519,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	{
 	  tid 		= ii % cuSrch->oInf->noOpts ;
 	  oPlnPln 	= &(cuSrch->oInf->opts[tid]);
-	  setDevice(oPlnPln->device) ;
+	  setDevice(oPlnPln->gInf->devid);
 	}
 
 	FOLD // Calculate candidate  .
@@ -1765,9 +2572,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
   // Wait for CPU derivative threads to finish
   waitForThreads(&cuSrch->threasdInfo->running_threads, "Waiting for CPU threads to complete.", 200 );
-
-  gettimeofday(&end01, NULL);
-  cuSrch->timings[TIME_GPU_OPT] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
 
   return 0;
 }

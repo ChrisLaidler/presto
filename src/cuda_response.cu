@@ -39,7 +39,7 @@ __host__ __device__ int z_resp_halfwidth_cu_high(T z)
   /* Prevent the equation from blowing up in large z cases */
 
   if (z > (T)100 && m > (T)1.2 * z)
-     m = (T)1.2 * z;
+    m = (T)1.2 * z;
 
   return m;
 }
@@ -67,23 +67,35 @@ __host__ __device__ inline double getFIlim(double nothing)
 {
   return FILIM_D;
 }
-__host__ __device__ inline void sinecos_fres(double x, float x2, float* sin, float* cos)
+
+
+__host__ __device__ inline void sinecos_fres(float x, float x2, float* sin, float* cos)
 {
-  float trigT 	= fmod_t(x * x, 4.0);
+  float trigT = x*x;
+  if ( trigT < 1e4 && trigT >-1e4 )
+  {
+    // Single Precision
+    trigT 	= fmod_t(trigT, 4.0f);
+  }
+  else
+  {
+    // Double Precision
+    trigT 	= fmod_t((double)x*(double)x, 4.0);
+  }
   trigT 	= trigT*(float)PIBYTWO;
   sincos_t(trigT, sin, cos);
 
-//  double sinD, cosD;
-//  sincos_t((double)x*(double)x*(double)PIBYTWO, &sinD, &cosD);
-//  *sin = sinD;
-//  *cos = cosD;
+  //  double sinD, cosD;
+  //  sincos_t((double)x*(double)x*(double)PIBYTWO, &sinD, &cosD);
+  //  *sin = sinD;
+  //  *cos = cosD;
 }
 
 __host__ __device__ inline void sinecos_fres(double x, double x2, double* sin, double* cos)
 {
-//  double trigT 	= fmod_t(x2, 4.0);
-//  trigT 	= trigT*(double)PIBYTWO;
-//  sincos_t(trigT, sin, cos);
+  //  double trigT 	= fmod_t(x2, 4.0);
+  //  trigT 	= trigT*(double)PIBYTWO;
+  //  sincos_t(trigT, sin, cos);
 
   sincos_t(x2*(double)PIBYTWO, sin, cos);
 }
@@ -214,17 +226,29 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
   }
 }
 
-__host__ __device__ inline void sinecos_resp(double Qk, double z, float PIoverZ, float* sin, float* cos)
+__host__ __device__ inline void sinecos_resp(float Qk, float z, float PIoverZ, float* sin, float* cos)
 {
-  double x	= Qk * Qk / z ;
-  float  xx	= fmod_t(x, 2.0);
-  xx		*= (float)PI;
-  sincos_t(xx, sin, cos);
+  float x_float = Qk * Qk / z ;
 
-//  double sinD, cosD;
-//  sincos_t((double)PIoverZ*(double)Qk*(double)Qk, &sinD, &cosD);
-//  *sin = sinD;
-//  *cos = cosD;
+  if ( x_float < 1e4 && x_float > -1e4 )
+  {
+    // single is enough precision
+    x_float = fmod_t(x_float, 2.0f);
+  }
+  else
+  {
+    // Have to use double
+    double x_double	= (double)Qk * (double)Qk / (double)z ;
+    x_float	= fmod_t(x_double, 2.0);
+  }
+
+  x_float *= (float)PI;
+  sincos_t(x_float, sin, cos);
+  
+  //double sinD, cosD;
+  //sincos_t((double)PIoverZ*(double)Qk*(double)Qk, &sinD, &cosD);
+  //*sin = sinD;
+  //*cos = cosD;
 }
 
 __host__ __device__ inline void sinecos_resp(double Qk, double z, double PIoverZ, double* sin, double* cos)
@@ -376,7 +400,6 @@ __host__ __device__ void calc_r_response(T dist, T sinsinPI, T sincosPI, T* real
     *real =  sincosPI / dist ;
     *imag =  sinsinPI / dist ;
 #endif
-
   }
 }
 
@@ -424,7 +447,7 @@ __host__ __device__ void calc_response_bin(long bin, double r, T z,  T* real, T*
  * @param imag		Pointer to the imaginary response
  */
 template<typename T>
-__host__ __device__ void calc_response_off(T offset, T z,  T* real, T* imag)
+__host__ __device__ void calc_response_off(T offset, T z, T* real, T* imag)
 {
   if ( z < getFIlim(z) && z > -getFIlim(z) )			// Do a Fourier interpolation  .
   {
@@ -455,6 +478,24 @@ __host__ __device__ void calc_response_off(T offset, T z,  T* real, T* imag)
 
     calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, real, imag);
   }
+}
+
+// I found that calling the function above with pointers somtimes gave errors
+// So the two functions below pass actual values
+__host__ __device__ double2 calc_response_off(double offset, double z)
+{
+  double2 resp;
+  calc_response_off<double>(offset, z, &resp.x, &resp.y);
+
+  return resp;
+}
+
+__host__ __device__ float2 calc_response_off(float offset, float z)
+{
+  float2 resp;
+  calc_response_off<float>(offset, z, &resp.x, &resp.y);
+
+  return resp;
 }
 
 /** Calculate a set of response values for a give f-fdot value
@@ -590,13 +631,11 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
 
     if ( start < 0 )
     {
-      //printf("Start < 0\n"); // TMP
-      
       numkern += start;						// Decrease number of kernel values
       start    = 0;
     }
 
-    offset = ( r - start);					// This is rc-k for the first bin
+    offset = (r - start);					// This is rc-k for the first bin
   }
 
   FOLD 								// Adjust for FFT
@@ -608,8 +647,6 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
     }
     else
     {
-      //printf("start >= loR\n"); // TMP
-
       // Start is below beginning of available data so start at available data
       numkern -= loR - start;
       offset = ( r - loR);					// This is rc-k for the first bin
@@ -618,8 +655,6 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
 
     if ( start + numkern >= noBins )
     {
-      //printf("start + numkern >= noBins\n"); // TMP
-      
       numkern = noBins - start;
     }
   }
@@ -627,7 +662,6 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
   if ( z < getFIlim(resReal) && z > -getFIlim(resReal) )	// Do a Fourier interpolation  .
   {
     T dist = offset;
-
     T sin, cos;
     T sinsinPI, sincosPI;
 
@@ -640,12 +674,12 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
     {
       FOLD //  Read the input value  .
       {
-        inp	= inputData[start+i];
+	inp	= inputData[start+i];
       }
 
       FOLD 							// Calculate response  .
       {
-	calc_r_response(dist, sinsinPI,  sincosPI, &resReal, &resImag);
+	calc_r_response<T>(dist, sinsinPI,  sincosPI, &resReal, &resImag);
       }
 
       FOLD 							//  Do the multiplication and sum  accumulate  .
@@ -678,7 +712,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
 
       FOLD 							//  Read the input value  .
       {
-        inp	= inputData[start+i];
+	inp	= inputData[start+i];
       }
 
       FOLD 							// Calculate response  .
@@ -702,6 +736,121 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
   }
 }
 
+
+template<typename T, typename dataT>
+__host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag, int i)
+{
+  *real = (T)0.0;
+  *imag = (T)0.0;
+
+  dataT   inp;                                                  // The input data, this is a complex number stored as, float2 or double2
+  double  fracfreq;                                             // Fractional part of r   - double precision
+  double  dintfreq;                                             // Integer part of r      - double precision
+  long    start;                                                // The first bin to use
+  T       offset;                                               // The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+  T       resReal       = 0;                                    // Response value - real
+  T       resImag       = 0;                                    // Response value - imaginary
+
+  FOLD                                                          // Calculate the reference bin (closes integer bin to r)  .
+  {
+    fracfreq    = modf_t(r, &dintfreq);                         // This is always double precision because - r needs to be r
+    start       = dintfreq + 1 - kern_half_width + i ;
+
+    if ( fracfreq > 0.5 ) // Adjust to closest bin
+    {
+      fracfreq -= 1.0 ;
+      dintfreq++;
+    }
+  }
+
+  FOLD                                                          // Clamp values to usable bounds  .
+  {
+    offset = ( r - start );                                  // This is rc-k for the first bin
+  }
+
+  FOLD                                                          // Adjust for FFT
+  {
+    // Adjust to FFT
+    {
+      start -= loR;                                             // Adjust for accessing the input FFT
+    }
+    if ( start < 0 )
+      return;
+    if ( start >= noBins )
+      return;
+  }
+
+  if ( z < getFIlim(resReal) && z > -getFIlim(resReal) )        // Do a Fourier interpolation  .
+  {
+    T dist = offset;
+
+    T sin, cos;
+    T sinsinPI, sincosPI;
+
+    // Do all the trig calculations for the constants, can drop PI*dintfreq (signs work out)
+    sincos_t((T)PI*fracfreq, &sin, &cos);                       // Highest precision using (T)PI*fracfreq
+    sinsinPI = sin * sin / (T)PI;
+    sincosPI = sin * cos / (T)PI;
+
+
+    FOLD //  Read the input value  .
+    {
+      inp     = inputData[start];
+    }
+
+    FOLD                                                      // Calculate response  .
+    {
+      calc_r_response<T>(dist, sinsinPI,  sincosPI, &resReal, &resImag);
+    }
+
+    FOLD                                                      //  Do the multiplication and sum  accumulate  .
+    {
+#if CORRECT_MULT
+      // This is the "correct" version
+      *real += (resReal * inp.x - resImag * inp.y);
+      *imag += (resReal * inp.y + resImag * inp.x);
+#else
+      // This is the version accelsearch uses, ( added for comparison )
+      *real += (resReal * inp.x + resImag * inp.y);
+      *imag += (resImag * inp.x - resReal * inp.y);
+#endif
+    }
+  }
+  else                                                          // Use a correlation kernel  .
+  {
+    // Calculate all the constants
+    int signZ       = (z < (T)0.0) ? -1 : 1;
+    T absZ          = fabs_t(z);
+    T sqrtAbsZ      = sqrt_t(absZ);
+    T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
+    T PIoverZ       = (T)PI / z;
+    T overSq2AbsZ   = (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
+    T Qk            = offset - z / (T)2.0;                      // Adjust for acceleration
+
+    FOLD                                                      //  Read the input value  .
+    {
+      inp     = inputData[start];
+    }
+
+    FOLD                                                      // Calculate response  .
+    {
+      calc_z_response<T,0>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal, &resImag);
+    }
+
+    FOLD                                                      //  Do the multiplication and sum  accumulate  .
+    {
+#if CORRECT_MULT
+      // This is the "correct" version
+      *real += (resReal * inp.x - resImag * inp.y);
+      *imag += (resReal * inp.y + resImag * inp.x);
+#else
+      // This is the version accelsearch uses, ( added for comparison )
+      *real += (resReal * inp.x + resImag * inp.y);
+      *imag += (resImag * inp.x - resReal * inp.y);
+#endif
+    }
+  }
+}
 
 /**  Uses the correlation method to do a Fourier interpolation at a number integer spaced (r) points in the f-fdot plane.
  *
@@ -758,7 +907,7 @@ __host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inS
   FOLD 								// Adjust for FFT
   {
     // Adjust to FFT
-      start -= loR;						// Adjust for accessing the input FFT
+    start -= loR;						// Adjust for accessing the input FFT
   }
 
   if ( z < getFIlim(resReal) && z > -getFIlim(resReal) )	// Do a Fourier interpolation  .
@@ -777,7 +926,7 @@ __host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inS
     {
       FOLD 							// Calculate response  .
       {
-	calc_r_response(dist, sinsinPI,  sincosPI, &resReal, &resImag);
+	calc_r_response<T>(dist, sinsinPI,  sincosPI, &resReal, &resImag);
       }
 
       // Use the kernel value on each input value with the same fractional part
@@ -929,7 +1078,7 @@ __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long 
 
 	FOLD // Calculate response  .
 	{
-	  calc_r_response(dist, sinsinPI,  sincosPI, &resReal, &resImag);
+	  calc_r_response<T>(dist, sinsinPI,  sincosPI, &resReal, &resImag);
 
 	  accelRealSum += resReal * inp.x - resImag*inp.y;
 	  accelImagSum += resReal * inp.y + resImag*inp.x;
@@ -944,15 +1093,6 @@ __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long 
 	  *imag	+= resReal * inp.y + resImag*inp.x;
 	}
 
-	printf("%10.4f\t%li\t", fabs_t(r - k), k);
-	printf("%8.3f\t%8.3f\t%8.3f\t", inRealSum, inImagSum, sqrt(POWERCU(inRealSum, inImagSum)));
-	printf("%8.3f\t%8.3f\t%8.3f\t", accelRealSum, accelImagSum, sqrt(POWERCU(accelRealSum, accelImagSum)));
-	printf("%8.3f\t%8.3f\t%8.3f\t", mathRealSum, mathImagSum, sqrt(POWERCU(mathRealSum, mathImagSum)));
-	printf("%8.3f\t%8.3f\t%8.3f\t", respRealSum, respImagSum, sqrt(POWERCU(respRealSum, respImagSum)));
-	printf("\n");
-
-	if ( i == 0 )
-	  break;
       }
     }
   }
@@ -1006,20 +1146,11 @@ __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long 
 	  *real	+= resReal * inp.x - resImag*inp.y;
 	  *imag	+= resReal * inp.y + resImag*inp.x;
 	}
-
-	printf("%10.4f\t%li\t", fabs_t(r - k), k);
-	printf("%8.6f\t%8.6f\t%8.6f\t", inRealSum, inImagSum, (POWERCU(inRealSum, inImagSum)));
-	//printf("%8.3f\t%8.3f\t%8.3f\t", accelRealSum, accelImagSum, (POWERCU(accelRealSum, accelImagSum)));
-	printf("%8.6f\t%8.6f\t%8.6f\t", mathRealSum, mathImagSum, (POWERCU(mathRealSum, mathImagSum)));
-	printf("%8.6f\t%8.6f\t%8.6f\t", resReal, resImag, (POWERCU(resReal, resImag)));
-	printf("\n");
-
-//	if ( i == 0 )
-//	  break;
       }
     }
   }
 }
+
 
 
 template int z_resp_halfwidth_cu<float >(float  z);
@@ -1037,6 +1168,8 @@ template void calc_z_response<double, 0>(double Qk, double z, double sq2overAbsZ
 template void calc_z_response<float,  1>(float  Qk, float  z, float  sq2overAbsZ, float  PIoverZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
 template void calc_z_response<double, 1>(double Qk, double z, double sq2overAbsZ, double PIoverZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
 
+template void calc_r_response<float >(float  dist, float  sinsinPI, float  sincosPI, float*  real, float*  imag);
+template void calc_r_response<double>(double dist, double sinsinPI, double sincosPI, double* real, double* imag);
 
 template void calc_response_bin<float> (long bin, double r, float  z,  float*  real, float*  imag);
 template void calc_response_bin<double>(long bin, double r, double z,  double* real, double* imag);
@@ -1049,10 +1182,16 @@ template void rz_convolution_cu<float,  double2>(double2* inputData, long loR, l
 template void rz_convolution_cu<double, float2> (float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
 template void rz_convolution_cu<double, double2>(double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
 
-template void rz_convolution_cu_inc<float,  float2> (float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
-template void rz_convolution_cu_inc<float,  double2>(double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
-template void rz_convolution_cu_inc<double, float2> (float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
-template void rz_convolution_cu_inc<double, double2>(double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
+
+template void rz_single_mult_cu<float,  float2> (float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag, int i);
+template void rz_single_mult_cu<float,  double2>(double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag, int i);
+template void rz_single_mult_cu<double, float2> (float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag, int i);
+template void rz_single_mult_cu<double, double2>(double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag, int i);
+
+//template void rz_convolution_cu_inc<float,  float2> (float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
+//template void rz_convolution_cu_inc<float,  double2>(double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
+//template void rz_convolution_cu_inc<double, float2> (float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
+//template void rz_convolution_cu_inc<double, double2>(double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
 
 template void rz_response_cu<double, double2>(double r, double z, int kern_half_width, double2* out);
 template void rz_response_cu<float,  float2> (double r, float  z, int kern_half_width, float2*  out);
@@ -1066,6 +1205,12 @@ template void rz_convolution_cu<float,  float2, float2, 7> (float2* inputData, l
 template void rz_convolution_cu<float,  float2, float2, 8> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
 template void rz_convolution_cu<float,  float2, float2, 9> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
 template void rz_convolution_cu<float,  float2, float2, 10>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 11>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 12>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 13>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 14>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 15>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+
 
 template void rz_convolution_cu<double, float2, float2, 2> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
 template void rz_convolution_cu<double, float2, float2, 3> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
@@ -1076,3 +1221,8 @@ template void rz_convolution_cu<double, float2, float2, 7> (float2* inputData, l
 template void rz_convolution_cu<double, float2, float2, 8> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
 template void rz_convolution_cu<double, float2, float2, 9> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
 template void rz_convolution_cu<double, float2, float2, 10>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 11>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 12>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 13>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 14>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 15>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);

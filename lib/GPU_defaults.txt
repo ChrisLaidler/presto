@@ -33,7 +33,7 @@ DUMMY_FLAG_TWO off
 # INTERLEAVE:
 # D	ROW			# Interleave steps row by row
 #	PLN			# Interleave steps row by plane
-#INTERLEAVE	ROW
+INTERLEAVE		ROW
 
 
 ############################ Kernel ############################
@@ -43,7 +43,7 @@ DUMMY_FLAG_TWO off
 # D	STD			# Standard low accuracy method of choosing the half-width
 #	HIGH    		# Choose larger half-width for higher accuracy of value of z close to 0 - This may make the search a tad more sensitive
 #	MAX     		# Choose largest possible response function width
-#RESPONSE        STD
+RESPONSE        	STD
 
 
 # Choose largest possible response function width - Not really a good idea
@@ -51,19 +51,19 @@ DUMMY_FLAG_TWO off
 
 
 # Centre and align the usable part of the planes (this is on by default, it can be disabled with CENTER_RESPONSE 0 or CENTER_RESPONSE off )
-#CENTER_RESPONSE
+CENTER_RESPONSE
 
 
 # RESPONSE_PRECISION:
 #	SINGLE  		# Calculate kernel response values using single precision
 # D	DOUBLE  		# Calculate kernel response values using double precision (generally A good idea)
-RESPONSE_PRECISION DOUBLE
+RESPONSE_PRECISION 	DOUBLE
 
 
 # KER_FFT_PRECISION
 # D	SINGLE  		# FFT the kernel elements using double precision (final results still stored as floats)
 #	DOUBLE  		# FFT the kernel elements using double precision (final results still stored as floats)
-KER_FFT_PRECISION SINGLE
+KER_FFT_PRECISION 	SINGLE
 
 
 ############################# Input ############################
@@ -72,14 +72,14 @@ KER_FFT_PRECISION SINGLE
 # INP_NORM:
 # D	CPU     		# Do the input Normalisation on the CPU - This is short enough that the CPU may as well do it
 #	GPU     		# Do the input Normalisation on the GPU
-INP_NORM	CPU
+INP_NORM		CPU
 
 
 # FFT input in the CPU or the GPU
 # INP_FFT:
 #	CPU     		# Do the input FFT's on the CPU
 # D	GPU     		# Do the input FFT's on the GPU - I generally find this a bit faster
-INP_FFT		GPU
+INP_FFT			GPU
 
 
 # This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
@@ -92,7 +92,7 @@ INP_FFT		GPU
 #	2048
 #	4096
 #	8192
-cuMedianBuffSz	0
+cuMedianBuffSz		0
 
 
 ########################### Convolve ###########################
@@ -107,7 +107,7 @@ cuMedianBuffSz	0
 #	30
 #	CB      		# This does the multiplication using CUFFT callbacks, in my testing this is very slow, like 7 times slower (FFT only)!
 # D	AA      		# Automatically chose, This may well select different kernel per stack
-MUL_KER		AA
+MUL_KER			AA
 
 
 # [Deprecated]  Use texture memory in the multiplication kernel
@@ -118,28 +118,28 @@ MUL_KER		AA
 # MUL_SLICES:
 # D	0       		# Let the application decide
 #	int     		# A number generally less than 7 and odd are "better"
-MUL_SLICES	0
+MUL_SLICES		0
 
 
 # The number of values to buffer in the multiplication kernel (this increases register use)
 # MUL_CHUNK:
 # D	0       		# Let the application decide
 #	int     		# A number <= 8
-MUL_CHUNK	0
+MUL_CHUNK		0
 
 
 # How to do convolution
 #CONVOLVE:
 # D	SEP     		# Do the multiplication and iFFT "separately"   ie all multiplications followed by all iFFT's
 #	CONT    		# Do the multiplication and iFFT "together"     ie multiply and iFFT each stack one after the other
-#CONVOLVE	SEP
+#CONVOLVE		SEP
 
 
 # Which order to process stacks
 # STACK:
 # D	DOWN    		# Largest to smallest
 #	UP      		# Smallest to largest
-#STACK		DOWN
+#STACK			DOWN
 
 
 ############################ FFT ###############################
@@ -147,7 +147,7 @@ MUL_CHUNK	0
 # CUFFT_PLAN:
 #	SEPARATE		Use separate CUFFT plans for each batch
 # D	SINGLE			Use one plan for all batches on a device - Saves a bit of memory and generally doesn't slow things down much
-#CUFFT_PLAN 	SINGLE
+#CUFFT_PLAN 		SINGLE
 
 
 ########################### Powers #############################
@@ -157,7 +157,7 @@ MUL_CHUNK	0
 #	CB      		# Use CUFFT callbacks to calculate powers. Almost always a good option!
 #	SS      		# Do the power calculations in the Sum and search step
 # D	AUTO			# Let the application decide
-STD_POWERS 		CB
+STD_POWERS 		AUTO
 
 
 # How to calculate powers in in-mem search
@@ -207,7 +207,7 @@ SS_KER			AA
 # RESULTS:
 # D	THREAD  		# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
 #	SEQ     		# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
-RESULTS THREAD
+#RESULTS   		THREAD
 
 
 # The number of horizontal "slices" to break the Sum & Search kernel into
@@ -251,15 +251,33 @@ CAND_STORAGE		ARR
 
 ######################### Optimisation ###########################
 
+
+
+# OPT_METHOUD
+# D	PLANE			# 
+#	SWARM			# 
+#	NM			# 
+OPT_METHOUD		PLANE
+
+# OPT_Z_RATIO
+#	float     		# This is the ratio between bin sizes in optimisation it is Z/R
+# D	4			# This is the default in accelsearch
+OPT_Z_RATIO		4
+
+# OPT_R_RES [Deprecated]
+#	float     		# This is the ratio between bin sizes in optimisation it is Z/R
+# D	16			# This is the default in accelsearch
+OPT_R_RES		16
+
 # How to normalise the powers of the optimised candidates
-# OPTIMISATION_NORM:
+# OPT_NORM
 # D	MEDIAN  		# Use 1D median power for normalisation
 #	LOCAVE  		# Use Local 3D power average for normalisation
-OPTI_NORM 		LOCAVE
+OPT_NORM 		MEDIAN
 
 
 # FLAG_OPT_BEST:		# Report the harmonic with the highest sigma value rather than the number of harmonic found during the initial search, this generally wont hurt
-#FLAG_OPT_BEST
+FLAG_OPT_BEST		0
 
 
 # This is the minimum number of harmonics that will be summed when localising the initial candidate
@@ -275,28 +293,41 @@ OPT_MIN_LOC_HARMS	1
 OPT_MIN_REP_HARMS	1
 
 
+# Do a final Nelder Mead refinement on the location
+OPT_NELDER_MEAD_REFINE	1
+
+
+
+#### The rest are optimisation plane parameters ####
+
 # Optimisation location finding step down
 # D	10			#
 optPlnScale             10
 
+# Use dynamic half-width in the optimisation planes, this is on by default
+FLAG_OPT_DYN_HW		1
+
+
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
-optPlnDim 1 40  		# The number of elements in the 1st optimisation plane
-optPlnDim 2 20  		# The number of elements in the 2nd optimisation plane
-optPlnDim 3 20  		# The number of elements in the 3rd optimisation plane
-optPlnDim 4 10  		# The number of elements in the 4th optimisation plane
-optPlnDim 5 0   		# The number of elements in the 5th optimisation plane
-optPlnDim 6 5   		# The number of elements in the 6th optimisation plane (this is a double precision plane)
+optPlnDim 1 128			# The number of elements in the 1st optimisation plane
+optPlnDim 2 32   		# The number of elements in the 2nd optimisation plane
+optPlnDim 3 16  		# The number of elements in the 3rd optimisation plane
+optPlnDim 4 16   		# The number of elements in the 4th optimisation plane
+optPlnDim 5 0   		# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
+optPlnDim 6 0   		# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
+optPlnDim 7 0   		# The number of elements in the 7th optimisation plane (this is a double precision plane)
 
 
 # The Numbers below dictate the size in bins of the incremental planes used to refine the location of the maximum f-fdot value
 # Lager numbers will explore the f-fdot plane faster but will reduce resolution
-optPlnSiz 1  8
-optPlnSiz 2  7
-optPlnSiz 4  6
-optPlnSiz 8  5
-optPlnSiz 16 4
+optPlnSiz 1  16
+optPlnSiz 2  14
+optPlnSiz 4  12
+optPlnSiz 8  10
+optPlnSiz 16 8
+
 
 
 ######################### Debug ###########################
@@ -312,12 +343,12 @@ optPlnSiz 16 4
 #	6       		# Super		- Details on the values of actual variables
 DBG_LEV			0
 
-#FLAG_DPG_PLT_OPT               # [ Debug ]	Plot optimisation planes
-#FLAG_DPG_UNOPT 		# [ Debug ]	Use saved initial search values
+#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
+#FLAG_DPG_UNOPT  		# [ Debug ]	Use saved initial search values
 #FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
 #FLAG_DPG_PRNT_CAND		# [ Debug ]     Print CSV of candidates at various stages
 
-#FLAG_DBG_SYNCH 		# [ Debug ]	Perform a synchronous search
+#FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_TIMING		# [ Debug ]	Perform advanced timing the search
 
 

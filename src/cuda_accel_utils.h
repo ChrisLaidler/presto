@@ -758,7 +758,9 @@ void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
 
 candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn = 0 );
 
+void opt_genResponce(cuRespPln* pln, cudaStream_t stream);
 
+void freeHarmInput(cuHarmInput* inp);
 
 //////////////////////////////////////////// Stats \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 

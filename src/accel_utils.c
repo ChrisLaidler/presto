@@ -567,7 +567,6 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
   return cands;
 }
 
-
 void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
 {
   int ii;

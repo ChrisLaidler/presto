@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 
 #endif
 
-#ifdef CBL
+#ifdef CBL  // The CPU and GPU main loop  .
   if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		// DEBUG: Read candidates from previous search  .
   {
     int numcands;
@@ -777,8 +777,8 @@ int main(int argc, char *argv[])
 
   }
 
-  FOLD  // optimization  .
-  {                            /* Candidate list trimming and optimization */
+  FOLD  // Optimisation  .
+  {                            /* Candidate list trimming and optimisation */
     printf("\n*************************************************************************************************\n                          Optimizing initial candidates\n*************************************************************************************************\n");
     printf("\n");
 
@@ -813,7 +813,6 @@ int main(int argc, char *argv[])
       system(scmd);
     }
 #endif
-
 
     if ( sSpec.flags & FLAG_DPG_SKP_OPT )
       numcands = 0;
@@ -890,12 +889,20 @@ int main(int argc, char *argv[])
       {
 #ifdef CUDA
 
-        // Initialise optimisation details!
-        cuSrch = initCuOpt(&sSpec, &gSpec, cuSrch);
+	NV_RANGE_PUSH("GPU Optimisation");
 
-        // Optimise all the candidates
+	gettimeofday(&start01, NULL);       // Profiling
+
+	// Initialise optimisation details!
+	initCuOpt(&sSpec, &gSpec, cuSrch);
+
+	// Optimise all the candidates
 	optList(cands, cuSrch);
 
+	gettimeofday(&end01, NULL);
+	cuSrch->timings[TIME_GPU_OPT] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+
+	NV_RANGE_POP();
 #else
 	fprintf(stderr,"ERROR: not compiled with CUDA!\n");
 #endif
@@ -906,7 +913,6 @@ int main(int argc, char *argv[])
 #ifdef CBL
       Fout // TMP
       {
-	Logger slog(stdout);
 	slog.setCsvDeliminator('\t');
 	listptr 	= cands;
 	double T	= obs.T;
@@ -915,8 +921,6 @@ int main(int argc, char *argv[])
 	{
 	  cand    = (accelcand *) (listptr->data);
 	  listptr = listptr->next;
-
-//	  Fout
 
 	  slog.csvWrite("TAG","cnd");
 
@@ -941,7 +945,6 @@ int main(int argc, char *argv[])
 	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma /*,pSum, pSum2*/  );
 	}
 
-	exit(0); // TMP;
       }
 #endif
 
