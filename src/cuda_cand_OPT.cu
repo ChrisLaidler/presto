@@ -802,7 +802,8 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
     if ( pln->input->stride*pln->noHarms*sizeof(cufftComplex) > pln->input->size )
     {
-      fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.", __FUNCTION__);
+      fprintf(stderr, "ERROR: In function %s, cuOptCand not created with large enough input buffer.\n", __FUNCTION__);
+      //fprintf(stderr, "maxZ: %.3f  minZ: %f  minR: %.1f maxR: %.1f  rSpread: %.1f  half width: %i  Harms: %i   \n", maxZ, minZ, minR, maxR, rSpread, pln->halfWidth, pln->noHarms );
       exit (EXIT_FAILURE);
     }
 
@@ -2390,12 +2391,16 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 	  double rRes = pln->rSize/(double)(pln->noR-1) ;
 	  if ( posR > moveBound || posZ > moveBound )
 	  {
-	    if ( ( (posR > outBound) || (posZ > outBound) ) && ( depth < lvl+2) )
+	    if ( ( (posR > outBound) || (posZ > outBound) ) && ( depth < lvl+1) )
 	    {
 	      // Zoom out
 	      sz *= sSpec->optPlnScale / 2.0 ;
 	      depth++;
 	      infoMSG(7,7,"Zoom out\n");
+	    }
+	    else
+	    {
+	      // wer just going to move the plane
 	    }
 	  }
 	  else
