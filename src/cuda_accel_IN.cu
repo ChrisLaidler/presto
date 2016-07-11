@@ -5,7 +5,7 @@
 
 int    cuMedianBuffSz = -1;             ///< The size of the sub sections to use in the CUDA median selection algorithm - If <= 0 an automatic value is used
 
-void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
+void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 {
   NV_RANGE_PUSH("CPU_Norm_Spread");
 
@@ -19,6 +19,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 
       int sz = 0;
       struct timeval start, end;  // Timing variables
+      int noRespPerBin = batch->cuSrch->sSpec->noResPerBin;
 
       if ( batch->flags & FLAG_TIME ) // Timing  .
       {
@@ -33,7 +34,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
 
           if ( rVal->numdata )
           {
-            if ( norm_type== 0 )  // Normal normalise  .
+            if ( batch->cuSrch->sSpec->normType == 0 )	// Block median normalisation  .
             {
               int start = rVal->lobin < 0 ? -rVal->lobin : 0 ;
               int end   = rVal->lobin + rVal->numdata >= batch->cuSrch->SrchSz->searchRHigh ? rVal->lobin + rVal->numdata - batch->cuSrch->SrchSz->searchRHigh : rVal->numdata ;
@@ -75,31 +76,31 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               FOLD // Normalise and spread  .
               {
                 NV_RANGE_PUSH("Write");
-                for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*ACCEL_NUMBETWEEN) < cStack->strideCmplx ); ii++)
+                for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*noRespPerBin) < cStack->strideCmplx ); ii++)
                 {
                   if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh )  // Zero Pad
                   {
-                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].r = 0;
-                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].i = 0;
+                    cStack->h_iBuffer[sz + ii * noRespPerBin].r = 0;
+                    cStack->h_iBuffer[sz + ii * noRespPerBin].i = 0;
                   }
                   else
                   {
-                    if ( ii * ACCEL_NUMBETWEEN > cStack->strideCmplx )
+                    if ( ii * noRespPerBin > cStack->strideCmplx )
                     {
                       fprintf(stderr, "ERROR: nice_numdata is greater that width.\n");
                       exit(EXIT_FAILURE);
                     }
 
-                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin + ii].r * rVal->norm;
-                    cStack->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin + ii].i * rVal->norm;
+                    cStack->h_iBuffer[sz + ii * noRespPerBin].r = fft[rVal->lobin + ii].r * rVal->norm;
+                    cStack->h_iBuffer[sz + ii * noRespPerBin].i = fft[rVal->lobin + ii].i * rVal->norm;
                   }
                 }
                 NV_RANGE_POP();
               }
             }
-            else                  // or double-tophat normalisation
+            else					// or double-tophat normalisation
             {
-              int nice_numdata = next2_to_n_cu(rVal->numdata);  // for FFTs
+              int nice_numdata = cu_next2_to_n(rVal->numdata);  // for FFTs
 
               if ( nice_numdata > cStack->width )
               {
@@ -126,8 +127,8 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
               {
                 float norm = invsqrt(loc_powers[ii]);
 
-                batch->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].r = fft[rVal->lobin+ ii].r* norm;
-                batch->h_iBuffer[sz + ii * ACCEL_NUMBETWEEN].i = fft[rVal->lobin+ ii].i* norm;
+                batch->h_iBuffer[sz + ii * noRespPerBin].r = fft[rVal->lobin+ ii].r* norm;
+                batch->h_iBuffer[sz + ii * noRespPerBin].i = fft[rVal->lobin+ ii].i* norm;
               }
 
               vect_free(loc_powers);  // I hate doing this!!!
@@ -160,7 +161,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, int norm_type, fcomplexcu* fft)
  * @param searchRLow an array of the step r-low values
  * @param searchRHi an array of the step r-high values
  */
-void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
+void setGenRVals(cuFFdotBatch* batch)
 {
   infoMSG(2,2,"Set Stack R-Vals\n");
   NV_RANGE_PUSH("Set R-Valst");
@@ -172,17 +173,21 @@ void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
   int lobin;      /// The first bin to copy from the the input fft ( serachR scaled - halfwidth )
   int numdata;    /// The number of input fft points to read
   int numrs;      /// The number of good bins in the plane ( expanded units )
-
+  int noResPerBin;
   for (int harm = 0; harm < batch->noGenHarms; harm++)
   {
-    cuHarmInfo* cHInfo      = &batch->hInfos[harm];                             // The current harmonic we are working on
-    binoffset               = batch->hInfos[harm].kerStart / ACCEL_NUMBETWEEN;  // This aligns all the planes so the all the "usable" parts start at the same offset in the stack
+    cuHarmInfo* cHInfo      = &batch->hInfos[harm];                             	// The current harmonic we are working on
+    noResPerBin		    = cHInfo->noResPerBin;
+    binoffset               = cHInfo->kerStart / noResPerBin;		// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
+
+
 
     for (int step = 0; step < batch->noSteps; step++)
     {
       rVals* rVal           = &(*batch->rAraays)[batch->rActive][step][harm];
+      rVals* rValFund		= &(*batch->rAraays)[batch->rActive][step][0];
 
-      if ( searchRLow[step] == searchRHi[step] )
+      if ( rValFund->drlo == rValFund->drhi )
       {
         rVal->drlo          = 0;
         rVal->lobin         = 0;
@@ -193,27 +198,30 @@ void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi)
       }
       else
       {
-        drlo                = calc_required_r_gpu(cHInfo->harmFrac, searchRLow[step]);
-        drhi                = calc_required_r_gpu(cHInfo->harmFrac, searchRHi[step] );
+        drlo			= cu_calc_required_r(cHInfo->harmFrac, rValFund->drlo, noResPerBin);
+        drhi			= cu_calc_required_r(cHInfo->harmFrac, rValFund->drhi, noResPerBin);
 
         lobin               = (int) floor(drlo) - binoffset;
         hibin               = (int) ceil(drhi)  + binoffset;
 
         numdata             = hibin - lobin + 1;
-        numrs               = (int) ((ceil(drhi) - floor(drlo)) * ACCEL_RDR + DBLCORRECT) + 1;
+        // TODO: Use the below methoud when doing CPU normalisation
+        //numdata		    = ceil(cHInfo->width / (float)noResPerBin); // Thus may use mutch more input data than is strictly nessesary but thats OK!
 
+        numrs               = (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
         if ( harm == 0 )
           numrs             = batch->accelLen;
-        else if ( numrs % ACCEL_RDR )
-          numrs             = (numrs / ACCEL_RDR + 1) * ACCEL_RDR;
+        else if ( numrs % noResPerBin )
+          numrs             = (numrs / noResPerBin + 1) * noResPerBin;
 
         rVal->drlo          = drlo;
+        rVal->drhi          = drhi;
         rVal->lobin         = lobin;
         rVal->numrs         = numrs;
         rVal->numdata       = numdata;
-        rVal->expBin        = (lobin+binoffset)*ACCEL_RDR;
+        rVal->expBin        = (lobin+binoffset)*noResPerBin;
 
-        int noEls           = numrs + 2*binoffset*ACCEL_RDR;
+        int noEls           = numrs + 2*cHInfo->kerStart;
 
         if  ( noEls > cHInfo->width )
         {
@@ -266,7 +274,6 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
         }
       }
     }
-
   }
 }
 
@@ -277,11 +284,10 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
  *  FFT it ready for convolution
  *
  * @param batch the batch to work with
- * @param norm_type   The type of normalisation to perform
  */
-void prepInputCPU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
+void prepInputCPU(cuFFdotBatch* batch )
 {
-  setGenRVals(batch, searchRLow, searchRHi);
+  setGenRVals(batch);
 
   // Timing
   if ( batch->flags & FLAG_TIME )
@@ -339,7 +345,7 @@ void prepInputCPU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, in
 
       FOLD // CPU Normalise  .
       {
-        CPU_Norm_Spread(batch, norm_type, fft);
+        CPU_Norm_Spread(batch, fft);
       }
 
       FOLD // FFT
@@ -647,11 +653,10 @@ void prepInputGPU(cuFFdotBatch* batch)
  *  FFT it ready for convolution
  *
  * @param batch the batch to work with
- * @param norm_type   The type of normalisation to perform
  */
-void prepInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type )
+void prepInput(cuFFdotBatch* batch)
 {
-  prepInputCPU(batch, searchRLow, searchRHi, norm_type );
+  prepInputCPU(batch);
   copyInputToDevice(batch);
   prepInputGPU(batch);
 }

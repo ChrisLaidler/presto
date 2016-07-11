@@ -176,4 +176,6 @@ GSList *duplicate_accelcands(GSList * list);
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
 GSList *insert_accelcand(GSList * list, accelcand *cand);
 
+void print_percent_complete(int current, int number, const char *what, int reset);
+
 #endif // _ACECEL_H

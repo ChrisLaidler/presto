@@ -37,7 +37,7 @@ __global__ void typeChangeKer(readT* read, writeT* write, size_t stride, size_t 
  * @param fftlen
  */
 template<typename genT, typename storeT>
-__global__ void init_kernels(storeT* response, int maxZ, int width, int half_width,  float zSteps, float rSteps)
+__global__ void init_kernels(storeT* response, double zStart, double zEnd, int noZ, int width, int half_width, int rSteps)
 {
   int cx, cy;							/// The x and y index of this thread in the array
   int rx = -1;							/// The x index of the value in the kernel
@@ -46,61 +46,63 @@ __global__ void init_kernels(storeT* response, int maxZ, int width, int half_wid
   cx = blockDim.x * blockIdx.x + threadIdx.x;			/// use BLOCKSIZE rather (its constant)
   cy = blockDim.y * blockIdx.y + threadIdx.y;			/// use BLOCKSIZE rather (its constant)
 
-  float z = -maxZ + cy * (float)1.0/zSteps;			/// The Fourier Frequency derivative
+  if ( cy < noZ && cx < width )
+  {
+    // In bound
 
-  if ( z < -maxZ || z > maxZ || cx >= width || cx < 0 )
-  {
-    // Out of bounds
-    return;
-  }
-  
-  if      ( half_width == 0  )
-  {
-    half_width    = z_resp_halfwidth_cu<float>(z);
-  }
-  else if ( half_width == 1  )  // Use high accuracy kernels
-  {
-    half_width    = z_resp_halfwidth_cu_high<float>(z);
-  }
-  else
-  {
-     // Use the actual halfwidth value for all rows
-  	
-    //int hw2       = MAX(0.6*z, 16*1);
-    //half_width    = MIN( half_width, hw2 ) ;
-    //half_width    = z_resp_halfwidth_cu((double) z);
-    //half_width    = z_resp_halfwidth_cu((double) z);
-  }
+    // Calculate the z value for the row
+    genT z = zStart + (zEnd-zStart)/(genT)(noZ-1)*cy;		/// The Fourier Frequency derivative
 
-  int noResp      = half_width / rSteps;		// The number of response variables per side
-  float offset;						// The distance of the response value from 0 (negative to the leaf)
-
-  // Calculate the kernel index for this thread (centred on zero and wrapped)
-  if		( cx < noResp )
-  {
-    offset = cx * rSteps;
-    rx = 1;
-  }
-  else if	(cx >= width - noResp )
-  {
-    offset = ( cx - width ) * rSteps;			// This is the negative side of the response function
-    rx = 1;
-  }
-
-  // the complex response
-  genT real = 0.0;
-  genT imag = 0.0;
-
-  FOLD // Calculate the response value  .
-  {
-    if (rx != -1)
+    if      ( half_width == 0  )
     {
-      calc_response_off<genT> ((genT)offset, (genT)z, &real, &imag);
+      half_width    = cu_z_resp_halfwidth_low<genT>(z);
     }
-  }
+    else if ( half_width == 1  )  // Use high accuracy kernels
+    {
+      half_width    = cu_z_resp_halfwidth_high<genT>(z);
+    }
+    else
+    {
+      // Use the actual halfwidth value for all rows
 
-  response[cy * width + cx].x = real;
-  response[cy * width + cx].y = imag;
+      //int hw2       = MAX(0.6*z, 16*1);
+      //half_width    = MIN( half_width, hw2 ) ;
+      //half_width    = cu_z_resp_halfwidth((double) z);
+      //half_width    = cu_z_resp_halfwidth((double) z);
+    }
+
+    int noResp	= half_width * rSteps;			// The number of response variables per side
+    genT offset	= 0;					// The distance of the response value from 0 (negative to the leaf)
+
+    // Calculate the kernel index for this thread (centred on zero inverted and wrapped)
+    if		( cx < noResp )
+    {
+      // Beginning of array ( left half of responce values mirrored about zero)
+      offset = -1 * cx / (genT)rSteps;
+      rx = 1;
+    }
+    else if	(cx >= width - noResp )
+    {
+      // End of array ( right half of responce values mirrored about zero)
+      offset = ( width - cx ) / (genT)rSteps;
+      rx = 1;
+    }
+
+    // The complex response
+    genT real = 0.0;
+    genT imag = 0.0;
+
+    FOLD // Calculate the response value  .
+    {
+      if (rx != -1)
+      {
+	calc_response_off<genT> (offset, z, &real, &imag);
+      }
+    }
+
+    response[cy * width + cx].x = real;
+    response[cy * width + cx].y = imag;
+  }
 }
 
 /** Create one GPU kernel. One kernel the size of the largest plane  .
@@ -144,15 +146,15 @@ int createStackKernel(cuFfdotStack* cStack)
   {
     if      ( (cStack->flags & FLAG_KER_DOUBFFT) || (cStack->flags & FLAG_DOUBLE) )
     {
-      init_kernels<double, double2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((double2*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_DR);
+      init_kernels<double, double2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((double2*)cStack->kernels->d_kerData, cStack->harmInf->zStart, cStack->harmInf->zEnd, cStack->harmInf->noZ, cStack->width, halfWidth, cStack->harmInf->noResPerBin);
     }
     else if ( cStack->flags & FLAG_KER_DOUBGEN )
     {
-      init_kernels<double, float2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((float2*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_DR);
+      init_kernels<double, float2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((float2*)cStack->kernels->d_kerData, cStack->harmInf->zStart, cStack->harmInf->zEnd, cStack->harmInf->noZ, cStack->width, halfWidth, cStack->harmInf->noResPerBin);
     }
     else
     {
-      init_kernels<float, float2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((float2*)cStack->d_kerData, cStack->harmInf->zmax, cStack->width,  halfWidth, ACCEL_RDZ, ACCEL_DR);
+      init_kernels<float, float2><<<dimGrid, dimBlock, 0, cStack->initStream>>>((float2*)cStack->kernels->d_kerData, cStack->harmInf->zStart, cStack->harmInf->zEnd, cStack->harmInf->noZ, cStack->width, halfWidth, cStack->harmInf->noResPerBin);
     }
 
     // Run message
@@ -163,20 +165,221 @@ int createStackKernel(cuFfdotStack* cStack)
 }
 
 
-int copyKerDoubleToFloat(cuFfdotStack* cStack, float* d_orrKer)
+int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t stream) //   cuFfdotStack* cStack, float* d_orrKer)
 {
   dim3 dimBlock, dimGrid;
 
   dimBlock.x     = KR_DIM_X;  // in my experience 16 is almost always best (half warp)
   dimBlock.y     = KR_DIM_Y;  // in my experience 16 is almost always best (half warp)
 
-  size_t width   = cStack->strideCmplx * 2 ;
+  size_t width   = doubleKer->stride * 2 ; // Stride is in complex valuses
 
   // Set up grid
-  dimGrid.x = ceil(  width / ( float ) ( BLOCKSIZE * BLOCKSIZE ) );
+  dimGrid.x = ceil(  width / ( float ) ( dimBlock.x * dimBlock.y ) );
   dimGrid.y = 1;
 
-  typeChangeKer<double, float><<<dimGrid, dimBlock, 0, cStack->initStream>>>((double*)cStack->d_kerData, d_orrKer, width,  cStack->kerHeigth );
+  typeChangeKer<double, float><<<dimGrid, dimBlock, 0, stream>>>((double*)doubleKer->d_kerData, (float*)floatKer->d_kerData, width, doubleKer->harmInf->noZ );
 
   return 0;
+}
+
+void createBatchKernels(cuFFdotBatch* batch)
+{
+  cuKernel doubleKres[MAX_STACKS];
+  char msg[1024];
+
+  infoMSG(4,4,"Initialise the multiplication kernels.\n");
+
+  // Run message
+  CUDA_SAFE_CALL(cudaGetLastError(), "Before creating GPU kernels");
+
+  FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
+  {
+    for (int i = 0; i < MAX_STACKS; i++)
+    {
+      doubleKres[i].d_kerData = NULL;
+    }
+
+    if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
+    {
+      for (int i = 0; i < batch->noStacks; i++)
+      {
+	infoMSG(4,6,"Stack %i\n",i);
+
+	cuFfdotStack* cStack = &batch->stacks[i];
+
+	size_t kerSz = cStack->kernels->stride * cStack->kernels->harmInf->noZ * sizeof(double2);
+
+	memcpy(&doubleKres[i], cStack->kernels, sizeof(cuKernel));
+
+	CUDA_SAFE_CALL(cudaMalloc((void**)&doubleKres[i].d_kerData, kerSz), "Failed to allocate temporary device memory for kernel stack."); // This is temporary double memory it will be freed at the end of this function
+      }
+    }
+  }
+
+  FOLD // Calculate the response values  .
+  {
+    infoMSG(4,5,"Calculate the response values\n");
+
+    NV_RANGE_PUSH("Calc stack response");
+
+    for (int i = 0; i < batch->noStacks; i++)
+    {
+      cuFfdotStack* cStack = &batch->stacks[i];
+
+      // Call the CUDA kernels
+      createStackKernel(cStack);
+    }
+
+    NV_RANGE_POP();
+  }
+
+  FOLD // FFT the kernels  .
+  {
+    infoMSG(4,5,"FFT the  response values\n");
+
+    NV_RANGE_PUSH("FFT kernels");
+
+    for (int i = 0; i < batch->noStacks; i++)
+    {
+      infoMSG(4,6,"Stack %i\n",i);
+
+      cuFfdotStack* cStack = &batch->stacks[i];
+
+      if ( (batch->flags & FLAG_KER_DOUBFFT) || (batch->flags & FLAG_DOUBLE) )
+      {
+	FOLD // Create the plan  .
+	{
+	  infoMSG(4,6,"Create plan\n");
+
+	  sprintf(msg,"Plan %i",i);
+	  NV_RANGE_PUSH(msg);
+
+	  int n[]             = {cStack->width};
+	  int inembed[]       = {cStack->strideCmplx* sizeof(double2)};
+	  int istride         = 1;
+	  int idist           = cStack->strideCmplx;
+	  int onembed[]       = {cStack->strideCmplx* sizeof(double2)};
+	  int ostride         = 1;
+	  int odist           = cStack->strideCmplx;
+	  int height          = cStack->kerHeigth;
+
+	  // Normal plans
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, height), "Creating plan for FFT'ing the kernel.");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+
+	  NV_RANGE_POP();
+	}
+
+	FOLD // Call the plan  .
+	{
+	  infoMSG(4,6,"Call the plan\n");
+
+	  sprintf(msg,"Call %i",i);
+	  NV_RANGE_PUSH(msg);
+
+	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
+	  CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *)doubleKres[i].d_kerData, (cufftDoubleComplex *) doubleKres[i].d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+	  NV_RANGE_POP();
+	}
+
+	FOLD // Destroy the plan  .
+	{
+	  infoMSG(4,6,"Destroy the plan\n");
+
+	  sprintf(msg,"Dest %i",i);
+	  NV_RANGE_PUSH(msg);
+
+	  CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+
+	  NV_RANGE_POP();
+	}
+      }
+      else
+      {
+	FOLD // Create the plan  .
+	{
+	  infoMSG(4,6,"Create plan\n");
+
+	  sprintf(msg,"Plan %i",i);
+	  NV_RANGE_PUSH(msg);
+
+	  int n[]             = {cStack->width};
+	  int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
+	  int istride         = 1;
+	  int idist           = cStack->strideCmplx;
+	  int onembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
+	  int ostride         = 1;
+	  int odist           = cStack->strideCmplx;
+	  int height          = cStack->kerHeigth;
+
+	  // Normal plans
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+
+	  NV_RANGE_POP();
+	}
+
+	FOLD // Call the plan  .
+	{
+	  infoMSG(4,6,"Call the plan\n");
+
+	  sprintf(msg,"Call %i",i);
+	  NV_RANGE_PUSH(msg);
+
+	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
+	  CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->kernels->d_kerData, (cufftComplex *) cStack->kernels->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+	  NV_RANGE_POP();
+	}
+
+	FOLD // Destroy the plan  .
+	{
+	  infoMSG(4,6,"Destroy the plan\n");
+
+	  sprintf(msg,"Dest %i",i);
+	  NV_RANGE_PUSH(msg);
+
+	  CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+
+	  NV_RANGE_POP();
+	}
+      }
+    }
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+
+    NV_RANGE_POP();
+  }
+
+  FOLD // Copy double FFT'ed data back to the float kernel  .
+  {
+    if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
+    {
+      for (int i = 0; i < batch->noStacks; i++)
+      {
+	cuFfdotStack* cStack = &batch->stacks[i];
+
+	copyKerDoubleToFloat( &doubleKres[i], cStack->kernels, cStack->initStream );
+      }
+    }
+
+    FOLD // Free temporary memory for kernel  .
+    {
+      if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
+      {
+	for (int i = 0; i < batch->noStacks; i++)
+	{
+	  cudaFreeNull( doubleKres[i].d_kerData );			// Free the temporary double data
+	}
+      }
+    }
+  }
+
+
 }

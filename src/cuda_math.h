@@ -38,6 +38,14 @@
 #define POWERC(c)     POWERCU(c.r, c.i)       /// The sum of the powers of a complex number
 #define POWERF(f)     POWERCU(f.x, f.y)       /// The sum of the powers of a complex number
 
+#ifndef MAX
+#define	MAX(a, b)	( ((a)<(b))?(b):(a) )
+#endif
+
+#ifndef MIN
+#define	MIN(a, b)	( ((a)>(b))?(b):(a) )
+#endif
+
 __host__ __device__ inline float  cos_t(float  x)
 {
   return cosf(x);
@@ -83,7 +91,6 @@ __host__ __device__ inline double modf_t ( double  x, double *y )
   return modf(x, y);
 }
 
-
 __host__ __device__ inline float  fabs_t(float  x )
 {
   return fabsf(x);
@@ -119,6 +126,29 @@ __host__ __device__ inline double fmod_t ( double  x, double y )
 {
   return fmod(x, y);
 }
+
+__host__ __device__ inline float  round_t ( float  x )
+{
+  //return rintf(x);
+  return roundf(x);
+}
+__host__ __device__ inline double round_t ( double  x )
+{
+  //return rint(x);
+  return round(x);
+}
+
+__host__ __device__ inline int lround_t ( float  x )
+{
+  //return lrintf(x);
+  return lroundf(x);
+}
+__host__ __device__ inline int lround_t ( double  x )
+{
+  //return lrint(x);
+  return lround(x);
+}
+
 
 
 #endif

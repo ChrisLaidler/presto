@@ -428,7 +428,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
   if ( batch->flags & FLAG_CUFFT_CB_OUT )
   {
-    if ( batch->flags & FLAG_HALF )
+    if ( batch->flags & FLAG_POW_HALF )
     {
 #if CUDA_VERSION >= 7050
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
@@ -498,7 +498,7 @@ void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack)
 #if CUDA_VERSION >= 6050
     rVals* rVal   = &(*batch->rAraays)[batch->rActive][0][0];
 
-    if ( batch->flags &  FLAG_HALF )
+    if ( batch->flags &  FLAG_POW_HALF )
     {
 #if CUDA_VERSION >= 7050
       dst    = ((half*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
@@ -537,7 +537,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
     {
       rVals* rVal   = &(*batch->rAraays)[batch->rActive][0][0];
 
-      if ( batch->flags &  FLAG_HALF )
+      if ( batch->flags &  FLAG_POW_HALF )
       {
 #if CUDA_VERSION >= 7050
         dst    = ((half*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane

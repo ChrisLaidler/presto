@@ -1523,8 +1523,6 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      //NV_RANGE_PUSH("Read file");
-
       unsigned long freeRam = getFreeRamCU();
 
       if ( freeRam * 0.7 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
@@ -1573,11 +1571,6 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
           obs->mmap_file = 0;
         }
       }
-
-#ifdef CUDA
-      //NV_RANGE_POP();
-#endif
-
     }
     else
     {
@@ -1770,3 +1763,23 @@ void free_accelobs(accelobs * obs)
   }
 }
 
+void print_percent_complete(int current, int number, const char *what, int reset)
+{
+  static int newper = 0, oldper = -1;
+
+  if (reset) {
+    oldper = -1;
+    newper = 0;
+  } else {
+    newper = (int) (current / (float) (number) * 100.0);
+    if (newper < 0)
+      newper = 0;
+    if (newper > 100)
+      newper = 100;
+    if (newper > oldper) {
+      printf("\rAmount of %s complete = %3d%%  ", what, newper);
+      fflush(stdout);
+      oldper = newper;
+    }
+  }
+}

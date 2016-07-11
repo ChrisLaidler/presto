@@ -65,7 +65,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int h
 	  }
 	  else
 	  {
-	    halfW       = z_resp_halfwidth_cu_high<float>(z*i); // NB this was (z*i+4) I'm not sure why?
+	    halfW       = cu_z_resp_halfwidth_high<float>(z*i); // NB this was (z*i+4) I'm not sure why?
 	  }
 	}
 
@@ -106,7 +106,7 @@ __global__ void opt_genResponce_ker(cuRespPln pln)
   const int ix  = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy  = blockIdx.y * blockDim.y + threadIdx.y;
 
-  const int idx = ix / pln.noRpnts;
+  const int firstBin = ix / pln.noRpnts;
   const int is  = ix % pln.noRpnts;
 
   if ( iy < pln.noZ && ix < pln.noR )
@@ -114,7 +114,7 @@ __global__ void opt_genResponce_ker(cuRespPln pln)
     const double frac =  is / (double)pln.noRpnts ;
 
     double     zVal   = pln.zMax - (double)iy*pln.dZ ;
-    double     offSet = -pln.halfWidth - frac  +  idx ;
+    double     offSet = -pln.halfWidth - frac  +  firstBin ;
 
     double2 responce = calc_response_off(offSet, zVal);
 
@@ -170,7 +170,7 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* fft, cuRespPln pln, i
 	  else
 	  {
 	    zh	= zIdx * hrm * pln.dZ;
-	    halfW       = z_resp_halfwidth_cu_high<float>(zh); // NB this was (z*i+4) I'm not sure why?
+	    halfW       = cu_z_resp_halfwidth_high<float>(zh); // NB this was (z*i+4) I'm not sure why?
 	  }
 	}
 
@@ -257,7 +257,7 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
 	  }
 	  else
 	  {
-	    halfW       = z_resp_halfwidth_cu_high<float>(z*hrm); // NB this was (z*hrm+4) I'm not sure why?
+	    halfW       = cu_z_resp_halfwidth_high<float>(z*hrm); // NB this was (z*hrm+4) I'm not sure why?
 	  }
 	}
 
@@ -311,7 +311,7 @@ __global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwi
 	if ( hw.val[i] )
 	  halfW	= hw.val[i];
 	else
-	  halfW	= z_resp_halfwidth_cu_high<float>(z*hrm);
+	  halfW	= cu_z_resp_halfwidth_high<float>(z*hrm);
       }
 
       rz_convolution_cu<T, float2>(&fft[iStride*i], loR.val[i], iStride, r*hrm, z*hrm, halfW, &real, &imag);
@@ -353,7 +353,7 @@ __global__ void ffdotPln_ker2(float2* powers, float2* fft, int noHarms, int half
     //        if ( hw.val[hrm] )
     //          halfW = hw.val[hrm];
     //        else
-    //          halfW = z_resp_halfwidth_cu_high<float>(z*(hrm+1));
+    //          halfW = cu_z_resp_halfwidth_high<float>(z*(hrm+1));
     //      }
     //
     //      if (off < halfW*2 )
@@ -374,7 +374,7 @@ __global__ void ffdotPln_ker2(float2* powers, float2* fft, int noHarms, int half
 	if ( hw.val[hrm] )
 	  halfW = hw.val[hrm];
 	else
-	  halfW = z_resp_halfwidth_cu_high<float>(z*i);
+	  halfW = cu_z_resp_halfwidth_high<float>(z*i);
       }
 
       if (off < halfW*2 )
@@ -416,7 +416,7 @@ __global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmW
       if ( hw.val[i] )
 	halfW	= hw.val[i];
       else
-	halfW	= z_resp_halfwidth_cu_high<float>(z*hrm);
+	halfW	= cu_z_resp_halfwidth_high<float>(z*hrm);
     }
 
     rz_convolution_cu<T, float2>(&fft[iStride*i], loR.val[i], iStride, r*hrm, z*hrm, halfW, &real, &imag);
@@ -652,7 +652,7 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
       //      printf("Bad2 h: %2i  tid: %3i  %5i %5i\n", i, tid, sSum, nno);
       //    }
 
-      //halfW	= z_resp_halfwidth_cu_high<float>(z*i);
+      //halfW	= cu_z_resp_halfwidth_high<float>(z*i);
 
       rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
 
@@ -746,7 +746,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdotPln.");
 
-  pln->halfWidth    = z_resp_halfwidth_cu_high<double>(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4);
+  pln->halfWidth    = cu_z_resp_halfwidth_high<double>(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4);
   double rSpread    = ceil((maxR+OPT_INP_BUF)*pln->noHarms  + pln->halfWidth) - floor((minR-OPT_INP_BUF)*pln->noHarms - pln->halfWidth);
   int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->gInf->alignment);
 
@@ -766,7 +766,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
     datStart        = floor( minR*(h+1) - pln->halfWidth );
     datEnd          = ceil(  maxR*(h+1) + pln->halfWidth );
 
-    if ( datStart > fft->nor || datEnd <= fft->idx )
+    if ( datStart > fft->noBins || datEnd <= fft->firstBin )
     {
       if ( h == 0 )
       {
@@ -815,11 +815,11 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
       {
 	if ( sSpec->flags & FLAG_OPT_LOCAVE )
 	{
-	  pln->input->norm[i-1]  = get_localpower3d(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
+	  pln->input->norm[i-1]  = get_localpower3d(fft->fft, fft->noBins, (pln->centR-fft->firstBin)*i, pln->centZ*i, 0.0);
 	}
 	else
 	{
-	  pln->input->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
+	  pln->input->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->noBins, (pln->centR-fft->firstBin)*i, pln->centZ*i, 0.0);
 	}
       }
 
@@ -840,7 +840,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
     datStart            = floor( minR*(h+1) - pln->halfWidth );
     datEnd              = ceil(  maxR*(h+1) + pln->halfWidth );
 
-    pln->hw[h]          = z_resp_halfwidth(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))) + 4, HIGHACC);
+    pln->hw[h]          = cu_z_resp_halfwidth<double>(MAX(fabs(maxZ*(h+1)), fabs(minZ*(h+1))), HIGHACC);
 
     if ( pln->hw[h] > pln->halfWidth )
     {
@@ -853,13 +853,13 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
       int startV = MIN( ((datStart + datEnd - pln->input->stride ) / 2.0), datStart ); //Start value if the data is centred
 
       pln->input->loR[h]     = startV;
-      double factor   = sqrt(pln->input->norm[h]);             // Correctly normalised by the sqrt of the local power
+      double factor   = sqrt(pln->input->norm[h]);		// Correctly normalised by the sqrt of the local power
 
-      for ( int i = 0; i < pln->input->stride; i++ ) // Normalise input  .
+      for ( int i = 0; i < pln->input->stride; i++ )		// Normalise input  .
       {
-	off = startV - fft->idx + i;
+	off = startV - fft->firstBin + i;
 
-	if ( off >= 0 && off < fft->nor )
+	if ( off >= 0 && off < fft->noBins )
 	{
 	  pln->input->h_inp[h*pln->input->stride + i].r = fft->fft[off].r / factor ;
 	  pln->input->h_inp[h*pln->input->stride + i].i = fft->fft[off].i / factor ;
@@ -1867,7 +1867,7 @@ T pow(initCand* cand, cuHarmInput* inp)
   for( int i = 1; i <= cand->numharm; i++ )
   {
     // Determine half width
-    halfW = z_resp_halfwidth_cu_high<float>(z*i);
+    halfW = cu_z_resp_halfwidth_high<float>(z*i);
 
     rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(i-1)*inp->stride], inp->loR[i-1], inp->stride, r*i, z*i, halfW, &real, &imag);
 
@@ -2159,27 +2159,28 @@ void* optCandDerivs(void* ptr)
 
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
       {
-	locpow = get_localpower3d(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
+	locpow = get_localpower3d(fft->fft, fft->noBins, cand->r*ii, cand->z*ii, 0.0);
       }
       else
       {
-	locpow = get_scaleFactorZ(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0);
+	locpow = get_scaleFactorZ(fft->fft, fft->noBins, cand->r*ii, cand->z*ii, 0.0);
       }
 
       if ( locpow )
       {
-	kern_half_width   = z_resp_halfwidth(fabs(cand->z*ii), HIGHACC);
+	kern_half_width   = cu_z_resp_halfwidth<double>(fabs(cand->z*ii), HIGHACC);
 
-	rz_convolution_cu<double, float2>((float2*)fft->fft, fft->idx, fft->nor, cand->r*ii, cand->z*ii, kern_half_width, &real, &imag);
+	rz_convolution_cu<double, float2>((float2*)fft->fft, fft->firstBin, fft->noBins, cand->r*ii, cand->z*ii, kern_half_width, &real, &imag);
 
+	// Normalised power
 	power = POWERCU(real, imag) / locpow ;
 
 	cand->pows[ii-1] = power;
 
-	get_derivs3d(fft->fft, fft->nor, cand->r*ii, cand->z*ii, 0.0, locpow, &res->cand->derivs[ii-1] );
+	get_derivs3d(fft->fft, fft->noBins, cand->r*ii, cand->z*ii, 0.0, locpow, &res->cand->derivs[ii-1] );
 
 	cand->power	+= power;
-	numindep	= (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (ACCEL_DZ / 6.95) / (ii) ;
+	numindep	= (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (sSpec->zRes / 6.95) / (double)(ii) ;
 
 	sig		= candidate_sigma_cu(cand->power, (ii), numindep );
 
@@ -2306,7 +2307,6 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
   NV_RANGE_PUSH("Plns");
 
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
-  fftInfo*      fft     = &sSpec->fftInf;
 
   // Number of harmonics to check, I think this could go up to 32!
   int maxHarms	= MAX(cand->numharm,sSpec->optMinLocHarms);
@@ -2315,17 +2315,6 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
   pln->centR	= cand->r ;
   pln->centZ	= cand->z ;
   pln->noHarms	= maxHarms ;
-  //  for ( int i=1; i <= pln->noHarms; i++ )
-  //  {
-  //    if ( sSpec->flags & FLAG_OPT_LOCAVE )
-  //    {
-  //      pln->input->norm[i-1]  = get_localpower3d(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
-  //    }
-  //    else
-  //    {
-  //      pln->input->norm[i-1]  = get_scaleFactorZ(fft->fft, fft->nor, (pln->centR-fft->idx)*i, pln->centZ*i, 0.0);
-  //    }
-  //  }
 
   FOLD // Get best candidate location using GPU planes  .
   {

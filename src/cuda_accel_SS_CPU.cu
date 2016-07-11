@@ -29,7 +29,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   const int noHarms     = batch->noGenHarms;
   const int noSteps     = batch->noSteps;
   const int64_t FLAGS   = batch->flags;
-  const int zeroHeight  = batch->hInfos->height;
+  const int zeroHeight  = batch->hInfos->noZ;
 
   float*      pwerPlnF[noHarms];
   fcomplexcu* pwerPlnC[noHarms];
@@ -60,7 +60,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
         pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
         pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
 
-        bace += batch->hInfos[harm].height * batch->stacks[batch->hInfos[harm].stackNo].stridePower * noSteps;
+        bace += batch->hInfos[harm].noZ * batch->stacks[batch->hInfos[harm].stackNo].stridePower * noSteps;
       }
     }
 
@@ -137,7 +137,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                     }
                     else
                     {
-                      iy2 = ( iy1 + step * hInf->height ) * cStack->strideCmplx ;
+                      iy2 = ( iy1 + step * hInf->noZ ) * cStack->strideCmplx ;
                     }
                   }
 
@@ -188,7 +188,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                     rVals* rVal = &(*batch->rAraays)[batch->rActive][step][0];
 
                     int numharm   = (1<<stage);
-                    double rr     = rVal->drlo + ix *  ACCEL_DR ;
+                    double rr     = rVal->drlo + ix / (double) batch->hInfos->noResPerBin ;
 
                     //procesCanidate(batch, rr, y, candLists[stage][step].value, 0, stage, numharm );
                     cnd[noCands].numharm  = numharm;

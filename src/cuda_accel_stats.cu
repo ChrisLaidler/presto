@@ -183,6 +183,7 @@ __host__ __device__ double incdf (double p, double q )
 
   return sighn*x;
 }
+
 //Incomplete gamma by quadrature. Returns P .a; x/ or Q.a; x/, when psig is 1 or 0,
 //respectively. User should not call directly.
 double gammpapprox(double a, double x, int psig)

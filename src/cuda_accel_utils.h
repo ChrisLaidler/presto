@@ -27,6 +27,7 @@
 #ifdef CBL
 #include "array.h"
 #include "arrayDsp.h"
+#include "log.h"
 #endif
 
 extern "C"
@@ -56,6 +57,12 @@ extern "C"
 
 #define BS_DIM          1024    // compute 3.x +
 //#define BS_DIM          576   // compute 2.x
+
+typedef enum {
+  IM_TOP,
+  IM_BOT,
+} ImPlane;
+
 
 
 typedef struct iList
@@ -338,38 +345,39 @@ typedef struct fMax
 
 //-------------------  Details in Family order  ------------------------\\
 
-extern __device__ __constant__ int          HEIGHT_HARM[MAX_HARM_NO];		///< Plane  heights   in family
-extern __device__ __constant__ int          STRIDE_HARM[MAX_HARM_NO];		///< Plane  strides   in family
-extern __device__ __constant__ int          WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
-extern __device__ __constant__ void*        KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointers  in family
+extern __device__ __constant__ int	HEIGHT_HARM[MAX_HARM_NO];		///< Plane  heights   in family
+extern __device__ __constant__ int	STRIDE_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+extern __device__ __constant__ int	WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+extern __device__ __constant__ void*	KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointers  in family
+extern __device__ __constant__ int	KERNEL_OFF_HARM[MAX_HARM_NO];		///< The offset of the first row of each plane in thier respective kernels
 
 //--------------------  Details in stage order  ------------------------\\
 
-extern __device__ __constant__ float        POWERCUT_STAGE[MAX_HARM_NO];	///<
-extern __device__ __constant__ float        NUMINDEP_STAGE[MAX_HARM_NO];	///<
-extern __device__ __constant__ int          HEIGHT_STAGE[MAX_HARM_NO];		///< Plane heights in stage order
-extern __device__ __constant__ int          STRIDE_STAGE[MAX_HARM_NO];		///< Plane strides in stage order
-extern __device__ __constant__ int          PSTART_STAGE[MAX_HARM_NO];		///< Plane half width in stage order
+extern __device__ __constant__ float	POWERCUT_STAGE[MAX_HARM_NO];		///<
+extern __device__ __constant__ float	NUMINDEP_STAGE[MAX_HARM_NO];		///<
+extern __device__ __constant__ int	HEIGHT_STAGE[MAX_HARM_NO];		///< Plane heights in stage order
+extern __device__ __constant__ int	STRIDE_STAGE[MAX_HARM_NO];		///< Plane strides in stage order
+extern __device__ __constant__ int	PSTART_STAGE[MAX_HARM_NO];		///< Plane half width in stage order
 
 //-------------------  In-mem constant values  -------------------------\\
 
-extern __device__ __constant__ void*        PLN_START;				///< A pointer to the start of the in-mem plane
-extern __device__ __constant__ uint         PLN_STRIDE;				///< The strided in units of the in-mem plane
-extern __device__ __constant__ int          NO_STEPS;				///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
-extern __device__ __constant__ int          ALEN;				///< CUDA copy of the accelLen used in the search
+extern __device__ __constant__ void*	PLN_START;				///< A pointer to the start of the in-mem plane
+extern __device__ __constant__ uint	PLN_STRIDE;				///< The strided in units of the in-mem plane
+extern __device__ __constant__ int	NO_STEPS;				///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
+extern __device__ __constant__ int	ALEN;					///< CUDA copy of the accelLen used in the search
 
 //-------------------  Other constant values  --------------------------\\
 
-extern __device__ __constant__ stackInfo    STACKS[64];				///< Stack infos
-extern __device__ __constant__ int          YINDS[MAX_YINDS];			///< Z Indices in int
+extern __device__ __constant__ stackInfo	STACKS[64];			///< Stack infos
+extern __device__ __constant__ int		YINDS[MAX_YINDS];		///< Z Indices in int
 
-extern __device__ __constant__ int          STK_STRD[MAX_STACKS];		///< Stride of the stacks
-extern __device__ __constant__ char         STK_INP[MAX_STACKS][4069];		///< input details
+extern __device__ __constant__ int		STK_STRD[MAX_STACKS];		///< Stride of the stacks
+extern __device__ __constant__ char		STK_INP[MAX_STACKS][4069];	///< input details
 
 
 //======================================= Constant Values =================================================\\
 
-const int   stageOrder[16]        =  { 0,         8,      4     , 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+const int   stageOrder[16]        =  { 0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15};
 const float HARM_FRAC_FAM[16]     =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
 const short STAGE_CPU[5][2]       =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
 const short CHUNKSZE_CPU[5]       =  { 4, 8, 8, 8, 8 } ;
@@ -417,47 +425,123 @@ extern float  globalFloat05;
 
 //====================================== Inline functions ================================================\\
 
+/** Return the first value of 2^n >= x
+ */
+__host__ __device__ static inline long long cu_next2_to_n(long long x)
+{
+  long long i = 1;
+
+  while (i < x)
+    i <<= 1;
+
+  return i;
+}
+
+template<typename T>
+__host__ __device__ static inline int cu_z_resp_halfwidth_low(T z)
+{
+  int m;
+
+  z = fabs_t(z);
+
+  m = (long) (z * ((T)0.00089 * z + (T)0.3131) + NUMFINTBINS);
+  m = (m < NUMFINTBINS) ? NUMFINTBINS : m;
+
+  // Prevent the equation from blowing up in large z cases
+
+  if (z > (T)100 && m > (T)0.6 * z)
+    m = (T)0.6 * z;
+
+  return m;
+}
+
+template<typename T>
+__host__ __device__ static inline int cu_z_resp_halfwidth_high(T z)
+{
+  int m;
+
+  z = fabs_t(z);
+
+  m = (long) (z * ((T)0.002057 * z + (T)0.0377) + NUMFINTBINS * 3);
+  m += ((NUMLOCPOWAVG >> 1) + DELTAAVGBINS);
+
+  /* Prevent the equation from blowing up in large z cases */
+
+  if (z > (T)100 && m > (T)1.2 * z)
+    m = (T)1.2 * z;
+
+  return m;
+}
+
+template<typename T>
+__host__ __device__ static inline int cu_z_resp_halfwidth(T z, presto_interp_acc accuracy)
+{
+  if ( accuracy == LOWACC )
+    return cu_z_resp_halfwidth_low<T>(z);
+  else
+    return cu_z_resp_halfwidth_high<T>(z);
+}
+
 /* Calculate the 'r' you need for subharmonic  */
 /* harm_fract = harmnum / numharm if the       */
 /* 'r' at the fundamental harmonic is 'rfull'. */
-__host__ __device__ static double calc_required_r_gpu(double harm_fract, double rfull)
+__host__ __device__ static inline double cu_calc_required_r(double harm_fract, double rfull, int noResPerBin)
 {
-  return (int) ( ((double)ACCEL_RDR) * rfull * harm_fract + 0.5) * ((double)ACCEL_DR);
+  return (int) ( ((double)noResPerBin) * rfull * harm_fract + 0.5) / ((double)noResPerBin);
 }
 
 /* Return an index for a Fourier Freq given an array that */
 /* has stepsize ACCEL_DR and low freq 'lor'.              */
-__host__ __device__ inline float index_from_r(float r, float lor)
+__host__ __device__ static inline float cu_index_from_r(float r, float lor)
 {
   return /* (int) */((r - lor) * (float)ACCEL_RDR /* + 1e-6 */);
 }
 
+///* Calculate the 'z' you need for subharmonic  */
+///* harm_fract = harmnum / numharm if the       */
+///* 'z' at the fundamental harmonic is 'zfull'. */
+//__host__ __device__ static inline int calc_required_z(float harm_fract, float zfull, float dz)
+//{
+//  return ( round( zfull * harm_fract / dz ) * dz );
+//}
+
 /* Calculate the 'z' you need for subharmonic  */
-/* harm_fract = harmnum / numharm if the       */
-/* 'z' at the fundamental harmonic is 'zfull'. */
-__host__ __device__ static inline int calc_required_z(float harm_fract, float zfull)
+template<typename T>
+__host__ __device__ static inline T cu_calc_required_z(T harm_fract, T zfull, T dz)
 {
-  return ( round(ACCEL_RDZ * zfull * harm_fract) * ACCEL_DZ );
+  return ( round_t( zfull * harm_fract / dz ) * dz );
 }
 
+
 /** Calculate the index for a given z value of a f-∂f plane  .
- *  Assume a stepsize of ACCEL_DZ
  *
- *  Return an index for a Fourier Fdot given an array that
- *  has stepsize ACCEL_DZ and low freq 'lor'.
+ *  Return an index offset for a Fourier Fdot given the step size and
+ *  start location
  *
  * @param z
  * @param loz the low freq 'lor' of the plane
  * @return
  */
-__host__ __device__ static inline int index_from_z(float z, float loz)
+template<typename T>
+__host__ __device__ static inline int cu_index_from_z(T z, T zStart, T dz)
 {
-  return (int) ((z - loz) * ACCEL_RDZ + 1e-6);
+  //return (int) (fabsf(z - zStart) / dz + 1e-6);
+  return (lround_t(fabs_t(z - zStart) / dz));
 }
 
-//__global__ void print_YINDS(int no);
-//double _GammaP (double n, double x);
-//double _GammaQ (double n, double x);
+/* The fft length needed to properly process a subharmonic */
+template<typename T>
+__host__ __device__ static inline int cu_calc_fftlen(T harm_fract, T max_zfull, uint accelLen, presto_interp_acc accuracy, int noResPerBin, T dz)
+{
+  int bins_needed, end_effects;
+
+  bins_needed = accelLen * harm_fract + 2;
+  float subZ = cu_calc_required_z<T>(harm_fract, max_zfull, dz);
+  int halfwidth = cu_z_resp_halfwidth(subZ, accuracy );
+  end_effects = 2 * noResPerBin * halfwidth ;
+  return cu_next2_to_n(bins_needed + end_effects);
+}
+
 
 //////////////////////////////////////// Getter & setters \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
@@ -559,10 +643,6 @@ void cycleRlists(cuFFdotBatch* batch);
  */
 void cycleOutput(cuFFdotBatch* batch);
 
-/** Return the first value of 2^n >= x
- */
-__host__ __device__ long long next2_to_n_cu(long long x);
-
 /** Select the GPU to use  .
  * @param device The device to use
  * @param print if set to 1 will print the name and details of the device
@@ -570,7 +650,7 @@ __host__ __device__ long long next2_to_n_cu(long long x);
  */
 int selectDevice(int device, int print);
 
-int calc_fftlen3(double harm_fract, int max_zfull, uint accelLen, presto_interp_acc accuracy);
+int cu_calc_fftlen(double harm_fract, int max_zfull, uint accelLen, presto_interp_acc accuracy, int noResPerBin, float dz); 
 
 void printContext();
 
@@ -587,7 +667,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch);
  */
 cuHarmInfo* createStacks(int numharmstages, int zmax, accelobs* obs);
 
-int ffdot_planeCU2(cuFFdotBatch* planes, double searchRLow, double searchRHi, int norm_type, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
+//int ffdot_planeCU2(cuFFdotBatch* planes, double searchRLow, double searchRHi, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
 
 /** Initialise the pointers of the stacks data structures of a batch  .
  *
@@ -613,6 +693,8 @@ void setPlanePointers(cuFFdotBatch* batch);
  */
 void setBatchPointers(cuFFdotBatch* batch);
 
+void setKernelPointers(cuFFdotBatch* batch);
+
 /** Print a integer in binary  .
  *
  * @param val The value to print
@@ -626,7 +708,10 @@ void printBitString(uint val);
 void freeKernel(cuFFdotBatch* kernel);
 
 
+
 /////////////////////////////////////// Kernel prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+void createBatchKernels(cuFFdotBatch* batch);
 
 /** Create one GPU kernel. One kernel the size of the largest plane  .
  *
@@ -641,9 +726,9 @@ int createStackKernel(cuFfdotStack* cStack);
  * @param d_orrKer
  * @return
  */
-int copyKerDoubleToFloat(cuFfdotStack* cStack, float* d_orrKer);
+int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t stream);
 
-int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
+//int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
 
 /** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
  *
@@ -651,17 +736,19 @@ int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
  * @param zmax
  * @return
  */
-uint calcAccellen(float width, float zmax, presto_interp_acc accuracy);
+uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin);
+
+
 
 ///////////////////////////////////////// Init prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 float cuGetMedian(float *data, uint len);
 
-void setGenRVals(cuFFdotBatch* batch, double* searchRLow, double* searchRHi);
+void setGenRVals(cuFFdotBatch* batch);
 
 void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len);
 
-void prepInputCPU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type );
+void prepInputCPU(cuFFdotBatch* batch);
 
 void copyInputToDevice(cuFFdotBatch* batch);
 
@@ -676,10 +763,9 @@ void prepInputGPU(cuFFdotBatch* batch);
  * @param planes      The planes
  * @param searchRLow  The index of the low  R bin (1 value for each step)
  * @param searchRHi   The index of the high R bin (1 value for each step)
- * @param norm_type   The type of normalisation to perform
  * @param fft         The fft
  */
-void prepInput(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, int norm_type );
+void prepInput(cuFFdotBatch* batch);
 
 
 
@@ -733,11 +819,10 @@ void copyToInMemPln(cuFFdotBatch* batch );
 void convolveBatch(cuFFdotBatch* batch );
 
 
+
 //////////////////////////////////// Sum and search Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-int setConstVals( cuFFdotBatch* stkLst, int numharmstages, float *powcut, long long *numindep );
-
-
+int setConstVals( cuFFdotBatch* stkLst );
 
 void processSearchResults(cuFFdotBatch* batch );
 
@@ -762,6 +847,8 @@ void opt_genResponce(cuRespPln* pln, cudaStream_t stream);
 
 void freeHarmInput(cuHarmInput* inp);
 
+
+
 //////////////////////////////////////////// Stats \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 __host__ __device__ double incdf (double p, double q );
@@ -771,4 +858,27 @@ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 
+
+////////////////////////////////// defines for templated functions \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+template int cu_z_resp_halfwidth_low<float >(float  z);
+template int cu_z_resp_halfwidth_low<double>(double z);
+
+template int cu_z_resp_halfwidth_high<float >(float  z);
+template int cu_z_resp_halfwidth_high<double>(double z);
+
+template int cu_z_resp_halfwidth<float >(float  z, presto_interp_acc accuracy);
+template int cu_z_resp_halfwidth<double>(double z, presto_interp_acc accuracy);
+
+
+template float  cu_calc_required_z<float >(float  harm_fract, float  zfull, float  dz);
+template double cu_calc_required_z<double>(double harm_fract, double zfull, double dz);
+
+template int cu_index_from_z<float >(float  z, float  zStart, float  dz);
+template int cu_index_from_z<double>(double z, double zStart, double dz);
+
+template int cu_calc_fftlen<float >(float  harm_fract, float  max_zfull, uint accelLen, presto_interp_acc accuracy, int noResPerBin, float  dz);
+template int cu_calc_fftlen<double>(double harm_fract, double max_zfull, uint accelLen, presto_interp_acc accuracy, int noResPerBin, double dz);
+
 #endif // CUDA_ACCEL_UTILS_INCLUDED
+

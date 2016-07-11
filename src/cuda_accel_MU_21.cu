@@ -53,7 +53,7 @@ __global__ void mult21_k(const __restrict__ fcomplexcu* kernels, const __restric
       for (int pln = 0; pln < noPlns; pln++)                      // Loop through the planes  .
       {
         const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
-        const int kerYOffset    = (kerHeight - plnHeight)/2;
+        const int kerYOffset    = KERNEL_OFF_HARM[firstPlane + pln];
         const int planeY        = kerY - kerYOffset;
         const int ns2           = plnHeight * stride;
 
@@ -123,47 +123,47 @@ __host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2:
     {
-      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3:
     {
-      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4:
     {
-      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5:
     {
-      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6:
     {
-      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7:
     {
-      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8:
     {
-      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9:
     {
-      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default:

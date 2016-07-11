@@ -230,7 +230,7 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
         }
       }
 
-      if ( batch->flags & FLAG_HALF )
+      if ( batch->flags & FLAG_POW_HALF )
       {
 #if CUDA_VERSION >= 7050
         // Each Step has its own start location in the inmem plane
@@ -318,7 +318,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
             infoMSG(3,4,"2D async memory copy\n");
 
             // Copy memory using a 2D async memory copy
-            if ( batch->flags & FLAG_HALF )
+            if ( batch->flags & FLAG_POW_HALF )
             {
 #if CUDA_VERSION >= 7050
               copyIFFTtoPln<half,half>( batch, cStack );

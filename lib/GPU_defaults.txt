@@ -27,6 +27,16 @@ DUMMY_FLAG_TWO off
 
 #	These flags often correspond to one of the bit flags used in "cuda_accel.h" used to configure the search, and
 
+
+########################### General ###########################
+
+
+R_RESOLUTION	2
+
+Z_RESOLUTIOM	2
+
+FLAG_Z_SPLIT
+
 ########################### Memory ############################
 
 # Interleaving
@@ -42,7 +52,7 @@ INTERLEAVE		ROW
 # RESPONSE:
 # D	STD			# Standard low accuracy method of choosing the half-width
 #	HIGH    		# Choose larger half-width for higher accuracy of value of z close to 0 - This may make the search a tad more sensitive
-#	MAX     		# Choose largest possible response function width
+#	MAX     		# Choose largest possible response function width - not a good idea
 RESPONSE        	STD
 
 
@@ -51,7 +61,7 @@ RESPONSE        	STD
 
 
 # Centre and align the usable part of the planes (this is on by default, it can be disabled with CENTER_RESPONSE 0 or CENTER_RESPONSE off )
-CENTER_RESPONSE
+#CENTER_RESPONSE
 
 
 # RESPONSE_PRECISION:
@@ -118,14 +128,14 @@ MUL_KER			AA
 # MUL_SLICES:
 # D	0       		# Let the application decide
 #	int     		# A number generally less than 7 and odd are "better"
-MUL_SLICES		0
+MUL_KER			AA
 
 
 # The number of values to buffer in the multiplication kernel (this increases register use)
 # MUL_CHUNK:
 # D	0       		# Let the application decide
 #	int     		# A number <= 8
-MUL_CHUNK		0
+MUL_KER			AA
 
 
 # How to do convolution
@@ -173,7 +183,7 @@ IN_MEM_POWERS		AUTO
 # POWER_PRECISION:
 #	HALF    		# Force half precision powers - much faster a good very good option! (requires CUDA 7.5 or greater)
 #	SINGLE  		# Force single precision powers
-#	DOUBLE  		# Not yet implemented
+#	DOUBLE  		# Not yet implemented - Not sure if this is really necessary
 # D	AUTO			# Let the application decide
 POWER_PRECISION		AUTO
 
@@ -251,8 +261,6 @@ CAND_STORAGE		ARR
 
 ######################### Optimisation ###########################
 
-
-
 # OPT_METHOUD
 # D	PLANE			# 
 #	SWARM			# 
@@ -265,8 +273,8 @@ OPT_METHOUD		PLANE
 OPT_Z_RATIO		4
 
 # OPT_R_RES [Deprecated]
-#	float     		# This is the ratio between bin sizes in optimisation it is Z/R
-# D	16			# This is the default in accelsearch
+#	float     		#
+# D	16			# 
 OPT_R_RES		16
 
 # How to normalise the powers of the optimised candidates
@@ -343,13 +351,14 @@ optPlnSiz 16 8
 #	6       		# Super		- Details on the values of actual variables
 DBG_LEV			0
 
-#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 #FLAG_DPG_UNOPT  		# [ Debug ]	Use saved initial search values
 #FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
 #FLAG_DPG_PRNT_CAND		# [ Debug ]     Print CSV of candidates at various stages
+#FLAG_DPG_PLT_POWERS		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
+#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 
-#FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
-#FLAG_DBG_TIMING		# [ Debug ]	Perform advanced timing the search
+FLAG_DBG_SYNCH 		# [ Debug ]	Perform a synchronous search
+FLAG_DBG_TIMING		# [ Debug ]	Perform advanced timing the search
 
 
 

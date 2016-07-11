@@ -80,16 +80,16 @@ void multiplyPlane(cuFFdotBatch* batch)
           {
             // Shift by plane height
             if ( batch->flags & FLAG_DOUBLE )
-              d_planeData   = (double2*)cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;
+              d_planeData   = (double2*)cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
             else
-              d_planeData   = (float2*) cPlane->d_planeMult + step * cHInfo->height * cStack->strideCmplx;
+              d_planeData   = (float2*) cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
           }
 
           // Texture memory in multiplication is now deprecated
           //if ( batch->flag & FLAG_TEX_MUL )
           //  mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
           //else
-          mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
+          mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->noZ, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
 
           // Run message
           CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");
@@ -460,6 +460,140 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
     {
 #if CUDA_VERSION >= 6050
       cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream);
+    }
+#endif
+  }
+
+  FOLD // Plot  .
+  {
+#ifdef CBL
+    if ( batch->flags & FLAG_DPG_PLT_POWERS )
+    {
+      FOLD // Synchronisation  .
+      {
+	CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+      }
+
+      FOLD // Get data  .
+      {
+	float* outVals = (float*)malloc(batch->plnDataSize);
+        void*  tmpRow  = malloc(batch->inpDataSize);
+        ulong sz  = 0;
+
+        for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
+        {
+          cuHarmInfo* cHInfo    = &cStack->harmInf[plainNo];          // The current harmonic we are working on
+          void*       tmpRow      = malloc(batch->inpDataSize);
+          cuFFdot*    plan      = &cStack->planes[plainNo];          // The current plane
+
+          int harm = cStack->startIdx+plainNo;
+
+          for ( int step = 0; step < batch->noSteps; step ++)    // Loop over steps
+          {
+            rVals* rVal = &(((*batch->rAraays)[batch->rActive])[step][harm]);
+
+            if ( rVal->numdata )
+            {
+	      char tName[1024];
+	      sprintf(tName,"/home/chris/accel/Powers_setp_%05i_h_%02i.csv", rVal->step, harm );
+	      FILE *f2 = fopen(tName, "w");
+
+	      fprintf(f2,"%i",harm);
+
+              for ( int i = 0; i < rVal->numrs; i++)
+	      {
+		double r = rVal->drlo + i / (double)batch->cuSrch->sSpec->noResPerBin;
+		fprintf(f2,"\t%.6f",r);
+	      }
+              fprintf(f2,"\n");
+
+              // Copy pain from GPU
+              for( int y = 0; y < cHInfo->noZ; y++ )
+              {
+        	fcomplexcu *cmplxData;
+        	void *powers;
+        	int offset;
+        	int elsz;
+
+        	FOLD // Get the row as floats
+        	{
+        	  if      ( batch->flags & FLAG_ITLV_ROW )
+        	  {
+        	    //offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+        	    offset = (y*batch->noSteps + step)*cStack->strideCmplx   + cHInfo->kerStart ;
+        	  }
+        	  else
+        	  {
+        	    //offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
+        	    offset  = (y + step*cHInfo->noZ)*cStack->strideCmplx   + cHInfo->kerStart ;
+        	  }
+
+        	  if      ( batch->flags & FLAG_POW_HALF )
+        	  {
+#if CUDA_VERSION >= 7050   // Half precision getter and setter  .
+        	    powers =  &((half*)      plan->d_planePowr)[offset];
+        	    elsz   = sizeof(half);
+        	    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+
+        	    for ( int i = 0; i < rVal->numrs; i++)
+        	    {
+        	      outVals[i] = half2float(((ushort*)tmpRow)[i]);
+        	    }
+#else
+        	    fprintf(stderr, "ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
+        	    exit(EXIT_FAILURE);
+#endif
+        	  }
+        	  else if ( batch->flags & FLAG_CUFFT_CB_POW )
+        	  {
+        	    powers =  &((float*)     plan->d_planePowr)[offset];
+        	    elsz   = sizeof(float);
+        	    CUDA_SAFE_CALL(cudaMemcpy(outVals, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+        	  }
+        	  else
+        	  {
+        	    powers =  &((fcomplexcu*) plan->d_planePowr)[offset];
+        	    elsz   = sizeof(cmplxData);
+        	    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+
+        	    for ( int i = 0; i < rVal->numrs; i++)
+        	    {
+        	      outVals[i] = POWERC(((fcomplexcu*)tmpRow)[i]);
+        	    }
+        	  }
+        	}
+
+        	FOLD // Write line to csv  .
+        	{
+        	  double z = cHInfo->zStart + (cHInfo->zEnd-cHInfo->zStart)/(double)(cHInfo->noZ-1)*y;
+        	  fprintf(f2,"%.15f",z);
+
+        	  for ( int i = 0; i < rVal->numrs; i++)
+        	  {
+        	    fprintf(f2,"\t%.20f", outVals[i] );
+        	  }
+        	  fprintf(f2,"\n");
+        	}
+              }
+
+              fclose(f2);
+
+              FOLD // Make image  .
+              {
+        	infoMSG(4,4,"Image\n");
+
+        	NV_RANGE_PUSH("Image");
+        	char cmd[1024];
+        	sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s 2.5 > /dev/null 2>&1", tName);
+        	system(cmd);
+        	NV_RANGE_POP();
+              }
+
+              sz += cStack->strideCmplx;
+            }
+          }
+        }
+      }
     }
 #endif
   }

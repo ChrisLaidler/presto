@@ -223,7 +223,7 @@ __host__ void add_and_searchCU00_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[idx].d_planePowr;
   }
 
-  if      ( batch->flags & FLAG_HALF         )
+  if      ( batch->flags & FLAG_POW_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
@@ -253,7 +253,7 @@ __host__ void add_and_searchCU01_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
-  if      ( batch->flags & FLAG_HALF         )
+  if      ( batch->flags & FLAG_POW_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
@@ -283,7 +283,7 @@ __host__ void add_and_searchCU02_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
-  if      ( batch->flags & FLAG_HALF         )
+  if      ( batch->flags & FLAG_POW_HALF         )
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );

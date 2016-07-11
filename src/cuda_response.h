@@ -20,12 +20,6 @@
 #endif
 
 template<typename T>
-__host__ __device__ int z_resp_halfwidth_cu(T z);
-
-template<typename T>
-__host__ __device__ int z_resp_halfwidth_cu_high(T z);
-
-template<typename T>
 __host__ __device__ void fresnl(T xxa, T* ss, T* cc);
 
 template<typename T, uint flags>
@@ -49,6 +43,9 @@ __host__ __device__ void gen_response_cu(double r, T z, int kern_half_width, out
 
 template<typename T, typename dataT>
 __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag);
+
+template<typename T, typename dataT>
+__host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag);
 
 template<typename T, typename dataT>
 __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag, int i);

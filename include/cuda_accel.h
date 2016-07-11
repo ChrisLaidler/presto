@@ -34,6 +34,10 @@ extern "C"
 }
 #endif
 
+#ifdef CBL
+#include "log.h"
+#endif
+
 
 #undef  NVVP
 //#define NVVP                // Uncomment to allow CUDA profiling
@@ -50,97 +54,117 @@ extern "C"
 
 //=========================================== Defines ====================================================
 
-#define         MAX_IN_STACK            10      ///< NOTE: this is 1 to big to handle the init problem
-#define         MAX_STACKS              5       ///< The maximum number stacks in a family of plains
-#define         MAX_HARM_NO             16      ///< The maximum number of harmonics handled by a accel search
-#define         MAX_NO_STAGES           5       ///< The maximum number of harmonics handled by a accel search
-#define         MAX_YINDS               8000    ///< The maximum number of y indices to store in constant memory
-#define         INDS_BUFF               20      ///< The maximum number of y indices to store in constant memory
-#define         MAX_STEPS               8       ///< The maximum number of steps in a single batch
-#define         MAX_BATCHES             5       ///< The maximum number of batches on a single GPU
-#define         MAX_GPUS                32      ///< The maximum number GPU's
-#define         INMEM_FFT_WIDTH         4096    ///< The size of FFT planes for in-mem GPU search
-#define         CORRECT_MULT            1       ///< Generate the kernel values the correct way and do the
-#define         NO_OPT_LEVS             7       ///< The number of optimisation planes/steps
+#define		MAX_IN_STACK		10		///< NOTE: this is 1 to big to handle the init problem
+#define		MAX_STACKS		5		///< The maximum number stacks in a family of plains
+#define		MAX_HARM_NO		16		///< The maximum number of harmonics handled by a accel search
+#define		MAX_NO_STAGES		5		///< The maximum number of harmonics handled by a accel search
+#define		MAX_YINDS		8000		///< The maximum number of y indices to store in constant memory
+#define		INDS_BUFF		20		///< The bufer at the ends of each pane in the yInds array
+#define		MAX_STEPS		8		///< The maximum number of steps in a single batch
+#define		MAX_BATCHES		5		///< The maximum number of batches on a single GPU
+#define		MAX_GPUS		32		///< The maximum number GPU's
+#define		INMEM_FFT_WIDTH		4096		///< The size of FFT planes for in-mem GPU search
+#define		CORRECT_MULT		1		///< Generate the kernel values the correct way and do the
+#define		NO_OPT_LEVS		7		///< The number of optimisation planes/steps
 
 //====================================== Bit flag values =================================================
 
-#define     FLAG_ITLV_ROW		BIT(0)       ///< Multi-step Row   interleaved        - This seams to be best in most cases
+#define		FLAG_DOUBLE		BIT(0)		///< Use double precision kernels and complex plane and iFFT's
+#define		FLAG_ITLV_ROW		BIT(1)		///< Multi-step Row interleaved- This seams to be best in most cases
+#define		FLAG_STK_UP		BIT(2)		///< Process stack in increasing size order
+#define		FLAG_CONV		BIT(3)		///< Multiply and FFT each stack "together"
+#define		FLAG_Z_SPLIT		BIT(4)		///< Split the f-fdot plane into top and bottom sections
 
-#define     FLAG_KER_HIGH       	BIT(1)       ///< Use increased response function width for higher accuracy at Z close to zero
-#define     FLAG_KER_MAX        	BIT(2)       ///< Use maximum   response function width for higher accuracy at Z close to zero
-#define     FLAG_CENTER         	BIT(3)       ///< Centre and align the usable part of the convolution kernel
-#define     FLAG_KER_DOUBGEN    	BIT(4)       ///< Create kernel with double precision calculations
-#define     FLAG_KER_DOUBFFT    	BIT(5)       ///< Create kernel with double precision calculations and FFT's
+//---- Kernels ----//
 
-#define     CU_NORM_CPU         	BIT(6)       ///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define     CU_NORM_EQUIV       	BIT(7)       ///< Do the normalisation the CPU way
+#define		FLAG_KER_HIGH		BIT(5)		///< Use increased response function width for higher accuracy at Z close to zero
+#define		FLAG_KER_MAX		BIT(6)		///< Use maximum response function width for higher accuracy at Z close to zero
+#define		FLAG_CENTER		BIT(7)		///< Centre and align the usable part of the convolution kernel
+#define		FLAG_KER_DOUBGEN	BIT(8)		///< Create kernel with double precision calculations
+#define		FLAG_KER_DOUBFFT	BIT(9)		///< Create kernel with double precision calculations and FFT's
 
-#define     CU_INPT_FFT_CPU     	BIT(8)       ///< Do the FFT on the CPU
+//---- Input ----//
 
-#define     CU_FFT_SEP          	BIT(9)       ///< Use a separate FFT plan for each batch
+#define		CU_NORM_CPU		BIT(10)		///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define		CU_NORM_EQUIV		BIT(11)		///< Do the normalisation the CPU way
 
-#define     FLAG_MUL_00         	BIT(10)      ///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
-#define     FLAG_MUL_11         	BIT(11)      ///< Multiply kernel - Do the multiplication one plane ant a time
-#define     FLAG_MUL_21         	BIT(12)      ///< Multiply kernel - read all input - loop over kernel - loop over planes
-#define     FLAG_MUL_22         	BIT(13)      ///< Multiply kernel - Loop ( Plane - Y )
-#define     FLAG_MUL_23         	BIT(14)      ///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
-#define     FLAG_MUL_30         	BIT(15)      ///< Multiply kernel - Do an entire batch in one kernel
-#define     FLAG_MUL_CB         	BIT(16)      ///< Multiply kernel - Using a CUFFT callback
-#define     FLAG_MUL_PLN        	( FLAG_MUL_11 )
-#define     FLAG_MUL_STK        	( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_MUL_CB )
-#define     FLAG_MUL_BATCH      	( FLAG_MUL_30 )
-#define     FLAG_MUL_ALL        	( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
+#define		CU_INPT_FFT_CPU		BIT(12)		///< Do the FFT on the CPU
 
-#define     FLAG_TEX_MUL        	BIT(17)      ///< [ Deprecated ]  Use texture memory for multiplication                              - May give some advantage on pre-Fermi generation which we don't really care about
+//---- Multiplication ----//
 
-#define     FLAG_CUFFT_CB_POW   	BIT(18)      ///< Use an output callback to create powers, this works in std or in-mem searches       - This is a similar iFFT speed but speeds up SS
-#define     FLAG_CUFFT_CB_INMEM 	BIT(19)      ///< Use the in-mem FFT's to copy values strait back to in-mem plane
-#define     FLAG_CUFFT_CB_OUT   	( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM )   /// All output callbacks
-#define     FLAG_CUFFT_ALL      	( FLAG_CUFFT_CB_OUT | FLAG_MUL_CB )           /// All callbacks
+#define		FLAG_MUL_00		BIT(15)		///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
+#define		FLAG_MUL_11		BIT(16)		///< Multiply kernel - Do the multiplication one plane ant a time
+#define		FLAG_MUL_21		BIT(17)		///< Multiply kernel - read all input - loop over kernel - loop over planes
+#define		FLAG_MUL_22		BIT(18)		///< Multiply kernel - Loop ( Plane - Y )
+#define		FLAG_MUL_23		BIT(16)		///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
+#define		FLAG_MUL_30		BIT(20)		///< Multiply kernel - Do an entire batch in one kernel
+#define		FLAG_MUL_CB		BIT(21)		///< Multiply kernel - Using a CUFFT callback
+#define		FLAG_MUL_PLN		( FLAG_MUL_11 )
+#define		FLAG_MUL_STK		( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_MUL_CB )
+#define		FLAG_MUL_BATCH		( FLAG_MUL_30 )
+#define		FLAG_MUL_ALL		( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define     FLAG_SAS_TEX        	BIT(20)      ///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define     FLAG_TEX_INTERP     	BIT(21)      ///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
-#define     FLAG_SIG_GPU        	BIT(22)      ///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
+#define		FLAG_TEX_MUL		BIT(22)		///< [ Deprecated ]Use texture memory for multiplication- May give some advantage on pre-Fermi generation which we don't really care about
 
-#define     FLAG_SS_CPU         	BIT(23)      ///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
-#define     FLAG_SS_00          	BIT(24)      ///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
-#define     FLAG_SS_10          	BIT(25)      ///< This is the standard sum and search kernel, there were others but they were deprecated
-#define     FLAG_SS_INMEM       	BIT(26)      ///< Do an in memory GPU search
-#define     FLAG_SS_STG        		( FLAG_SS_00  | FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
-#define     FLAG_SS_KERS        	( FLAG_SS_STG | FLAG_SS_INMEM  )
-#define     FLAG_SS_ALL         	( FLAG_SS_CPU | (FLAG_SS_KERS) )
+//---- FFT ----//
 
-#define     FLAG_DOUBLE         	BIT(27)      ///< Use double precision kernels and complex plane and iFFT's
-#define     FLAG_HALF           	BIT(28)      ///< Use half precision when doing a INMEM search
+#define		CU_FFT_SEP		BIT(25)		///< Use a separate FFT plan for each batch
 
-#define     FLAG_RET_STAGES     	BIT(29)      ///< Return results for all stages of summing, default is only the final result
-#define     FLAG_STORE_ALL      	BIT(30)      ///< Store candidates for all stages of summing, default is only the final result
-#define     FLAG_STORE_EXP      	BIT(31)      ///< Store expanded candidates
+#define		FLAG_CUFFT_CB_POW	BIT(26)		///< Use an output callback to create powers, this works in std or in-mem searches - This is a similar iFFT speed but speeds up SS
+#define		FLAG_CUFFT_CB_INMEM	BIT(27)		///< Use the in-mem FFT's to copy values strait back to in-mem plane
+#define		FLAG_CUFFT_CB_OUT	( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM ) /// All output callbacks
+#define		FLAG_CUFFT_ALL		( FLAG_CUFFT_CB_OUT | FLAG_MUL_CB ) /// All callbacks
 
-#define     FLAG_THREAD         	BIT(32)      ///< Use separate CPU threads to search for candidates in returned data
+//---- Power ----//
 
-#define     FLAG_STK_UP         	BIT(33)      ///< Process stack in increasing size order
-#define     FLAG_CONV           	BIT(34)      ///< Multiply and FFT each stack "together"
+#define		FLAG_POW_HALF		BIT(28)		///< Use half precision when doing a INMEM search
 
-#define     FLAG_OPT_NM			BIT(40)      ///< Use particle swarm to optimise candidate location
-#define     FLAG_OPT_SWARM      	BIT(41)      ///< Use particle swarm to optimise candidate location
-#define     FLAG_OPT_ALL		( FLAG_OPT_NM | FLAG_OPT_SWARM )
+//---- Sum and search ----//
 
-#define     FLAG_OPT_LOCAVE     	BIT(42)      ///< Use local average normalisation instead of median in the optimisation
-#define     FLAG_OPT_BEST       	BIT(43)      ///< Use local average normalisation instead of median in the optimisation
-#define     FLAG_OPT_DYN_HW     	BIT(44)      ///< Use Dynamic half-width in optimisation
-#define     FLAG_OPT_NM_REFINE     	BIT(45)      ///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_SAS_TEX		BIT(30)		///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+#define		FLAG_TEX_INTERP		BIT(31)		///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
+#define		FLAG_SIG_GPU		BIT(32)		///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
-#define     FLAG_TIME           	BIT(50)      ///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
-#define     FLAG_SYNCH          	BIT(51)      ///< Run the search in synchronous mode, this is slow and should only be used for testing
-#define     FLAG_SEPSRCH        	BIT(52)      ///< Create a separate second output location for the search output
-#define     FLAG_SEPRVAL        	BIT(53)      ///< Create a separate location list
-#define     FLAG_DPG_PRNT_CAND  	BIT(54)      ///< Print candidates to
-#define     FLAG_DPG_PLT_OPT    	BIT(55)      ///< Plot optimisation stages
-#define     FLAG_DPG_SKP_OPT    	BIT(56)      ///< Plot optimisation stages
+#define		FLAG_SS_CPU		BIT(33)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
+#define		FLAG_SS_00		BIT(34)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
+#define		FLAG_SS_10		BIT(35)		///< This is the standard sum and search kernel, there were others but they were deprecated
+#define		FLAG_SS_INMEM		BIT(36)		///< Do an in memory GPU search
+#define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
+#define		FLAG_SS_KERS		( FLAG_SS_STG | FLAG_SS_INMEM)
+#define		FLAG_SS_ALL		( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define     FLAG_RAND_1         	BIT(60)      ///< Random Flag 1
+#define		FLAG_RET_STAGES		BIT(37)		///< Return results for all stages of summing, default is only the final result
+#define		FLAG_SEPSRCH		BIT(38)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
+#define		FLAG_SEPRVAL		BIT(39)		///< Create a separate location list - Used by the testing thing
+
+// ---- Inital canidates ----//
+
+#define		FLAG_STORE_ALL		BIT(40)		///< Store candidates for all stages of summing, default is only the final result
+#define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
+
+#define		FLAG_THREAD		BIT(42)		///< Use separate CPU threads to search for candidates in returned data
+
+// ---- Optimisation ----//
+
+#define		FLAG_OPT_NM		BIT(45)		///< Use particle swarm to optimise candidate location
+#define		FLAG_OPT_SWARM		BIT(46)		///< Use particle swarm to optimise candidate location
+#define		FLAG_OPT_ALL		( FLAG_OPT_NM | FLAG_OPT_SWARM )
+
+#define		FLAG_OPT_LOCAVE		BIT(47)		///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_OPT_BEST		BIT(48)		///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_OPT_DYN_HW		BIT(49)		///< Use Dynamic half-width in optimisation
+#define		FLAG_OPT_NM_REFINE	BIT(50)		///< Use local average normalisation instead of median in the optimisation
+
+// ---- Debug ----//
+
+#define		FLAG_TIME		BIT(55)		///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
+#define		FLAG_SYNCH		BIT(56)		///< Run the search in synchronous mode, this is slow and should only be used for testing
+#define		FLAG_DPG_PRNT_CAND	BIT(57)		///< Print candidates to
+#define		FLAG_DPG_SKP_OPT	BIT(58)		///< Skip optimisation stage
+#define		FLAG_DPG_PLT_OPT	BIT(59)		///< Plot optimisation stages
+#define		FLAG_DPG_PLT_POWERS	BIT(60)		///< Plot powers
+
+//#define		FLAG_RAND_1		BIT(59)		///< Random Flag 1
 
 
 //================================== data types identifiers ==============================================
@@ -166,7 +190,7 @@ extern "C"
 #define     CU_STR_QUAD         	BIT(23)         ///< Candidates are stored in a dynamic quadtree
 #define     CU_SRT_ALL          	(CU_STR_ARR | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
-// ----------- This is a list of the data types that and storage structures
+// ----------- This is a ??????
 
 #define     HAVE_INPUT          	BIT(1)
 #define     HAVE_MULT           	BIT(2)
@@ -177,18 +201,20 @@ extern "C"
 
 //=========================================== enums ======================================================
 
-#define  TIME_CONTEXT   0
-#define  TIME_PREP      1
-#define  TIME_CPU_KER   2
-#define  TIME_GPU_KER   3
-#define  TIME_ALL_SRCH  4
-#define  TIME_GPU_SRCH  5
-#define  TIME_CPU_SRCH  6
-#define  TIME_CND       7
-#define  TIME_ALL_OPT   8
-#define  TIME_GPU_OPT   9
-#define  TIME_CPU_OPT   10
-#define  TIME_END       11
+#define  TIME_CONTEXT		0
+#define  TIME_PREP		1
+#define  TIME_CPU_KER		2
+#define  TIME_GPU_KER		3
+#define  TIME_ALL_SRCH		4
+#define  TIME_GPU_SRCHALL	5
+#define  TIME_GPU_PLN		6
+#define  TIME_GPU_IMSRCH	7
+#define  TIME_CPU_SRCH		8
+#define  TIME_CND		9
+#define  TIME_ALL_OPT		10
+#define  TIME_GPU_OPT		11
+#define  TIME_CPU_OPT		12
+#define  TIME_END		13
 
 //========================================== Macros ======================================================
 
@@ -308,13 +334,13 @@ typedef struct stackInfo
  */
 typedef struct fftInfo
 {
-    double          rlo;                ///< The Low bin   (of interest)
-    double          rhi;                ///< The high bin  (of interest)
+    double	rlo;		///< The Low bin   (of interest)
+    double	rhi;		///< The high bin  (of interest)
 
-    long long       idx;                ///< The FFT bin index of the first memory location
-    long long       nor;                ///< The number of bins in the memory location
+    long long	firstBin;	///< The FFT bin index of the first memory location
+    long long	noBins;		///< The number of bins in the memory location
 
-    fcomplex*       fft;                ///< The array of complex numbers (nor long)
+    fcomplex*	fft;		///< The array of complex numbers (nor long)
 } fftInfo;
 
 typedef struct candOpt
@@ -363,27 +389,35 @@ typedef struct cuHarmInput
  */
 typedef struct cuHarmInfo
 {
-    size_t          height;             ///< The number if rows (Z's)
-    size_t          width;              ///< The number of columns, including the contaminated ends (this should always be a power of 2)
+    size_t		noZ;		///< The number of rows (Z's)
+    float		zmax;		///< The maximum (and minimum) z
+    double		zStart;		///< The z value of the first "row" in memory
+    double		zEnd;		///< The z value of the last "row" in memory
+    int			halfWidth;	///< The kernel half width         - in input fft units ie needs to be multiply by noResPerBin to get plane units
+    int			kerStart;	///< The starting point for data in the various planes, this is essentially the largest halfwidth in the stack
 
-    int             halfWidth;          ///< The kernel half width         - in input fft units ie needs to be multiply by ACCEL_RDR to get plane units
-    int             kerStart;           ///< The starting point for data in the various planes, this is essentially the largest halfwidth in the stack
 
-    int             zmax;               ///< The maximum (and minimum) z
-    float           harmFrac;           ///< The harmonic fraction
-    int             stackNo;            ///< Which Stack is this plane in. (0 indexed at starting at the widest stack)
+    size_t		width;		///< The number of columns, including the contaminated ends (this should always be a power of 2)
+    int			noResPerBin;	///< The number of points sampled at
 
-    int             yInds;              ///< The offset of the y offset in constant memory
-    int             stageIndex;         ///< The index of this harmonic in the staged order
+
+    double		harmFrac;	///< The harmonic fraction
+    int			stackNo;	///< Which Stack is this plane in. (0 indexed at starting at the widest stack)
+
+    int			yInds;		///< The offset of the y offset in constant memory
+    int			stageIndex;	///< The index of this harmonic in the staged order
 } cuHarmInfo;
 
 /** The complex multiplication kernels of a f-∂f plane
  */
 typedef struct cuKernel
 {
-    cuHarmInfo*     harmInf;            ///< A pointer to the harmonic information for this kernel
-    void*           d_kerData;          ///< A pointer to the first kernel element (Width, Stride and height determined by harmInf)
-    fCplxTex        kerDatTex;          ///< A texture holding the kernel data
+    cuHarmInfo*		harmInf;	///< A pointer to the harmonic information for this kernel
+    int			kreOff;		///< The offset of the first column of the knerl in the stack kernel
+    int			stride;		///< The stride of the data in the kernel
+    int			type;		///< The data type of the kernel data (foat or double)
+    void*		d_kerData;	///< A pointer to the first kernel element (Width, Stride and height determined by harmInf)
+    fCplxTex		kerDatTex;	///< A texture holding the kernel data
 } cuKernel;
 
 /** A f-∂f plane  .
@@ -443,9 +477,7 @@ typedef struct cuFfdotStack
     ////////////////// Memory information \\\\\\\\\\\\\\\\\\
 
     size_t          strideCmplx;        ///< The stride of the block of memory  [ in complex numbers! ]
-    size_t          stridePower;        ///< The stride of the powers
-
-    void*           d_kerData;          ///< Kernel data for this stack
+    size_t          stridePower;        ///< The stride of the powerss
 
     fcomplexcu*     h_iBuffer;          ///< Pointer to host memory to do CPU "work" on the Input data for the batch
     fcomplexcu*     h_iData;            ///< Paged locked input data for this stack
@@ -511,9 +543,9 @@ typedef struct rVals
     double          drhi;               ///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
     long long       lobin;              ///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
     long            numdata;            ///< The number of input FFT points to read
-    long            numrs;              ///< The number of good bins in the plane ( expanded units )
+    long            numrs;              ///< The number of good values in the plane ( expanded units ) NOTE: This is used to denote an active "section' if this is set to 0 many of the processes wont run on
     long long       expBin;             ///< The index of the expanded bin of the first good value
-    double          norm;               ///< The normalisation factor used to normalise the input
+    double          norm;               ///< The normalisation factor used to normalise the input - Not always set
 } rVals;
 
 /** User specified search details
@@ -523,7 +555,11 @@ typedef struct searchSpecs
 {
     int                 noHarmStages;                   ///< The number of stages of harmonic summing
 
-    int                 zMax;                           ///< The highest z drift of the fundamental
+    int			noResPerBin;			///< The number of respocne values per bin
+
+    float               zMax;                           ///< The highest z drift of the fundamental
+    double		zRes;				///< Th resolution in the z dimension
+
     int                 pWidth;                         ///< The desired width of the planes
     int                 ssStepSize;                     ///< The size of the steps to take through the in-memory plane
     float               sigma;                          ///< The cut off sigma
@@ -580,6 +616,7 @@ typedef struct gpuSpecs
 typedef struct cuFFdotBatch
 {
     cuSearch*       	cuSrch;           	///< A pointer to the parent search info
+    gpuInf*		gInf;			///< GPU information for the batch
 
     ////////////////// Batch parameters \\\\\\\\\\\\\\\\\\
 
@@ -592,8 +629,6 @@ typedef struct cuFFdotBatch
 
     int             	noSteps;            ///< The number of steps processed by the batch
     uint            	noResults;          ///< The number of results from the previous search
-    int             	device;             ///< The CUDA device to run on
-    float           	capability;         ///< The CUDA capability of the device
     int             	srchMaster;         ///< Weather this is the master batch
     int             	isKernel;           ///< Weather this is the master batch
 
@@ -860,6 +895,7 @@ struct cuSearch
     // Search specific memory
     void*               h_candidates;       ///< Host memory for candidates
     void*               d_planeFull;        ///< Device memory for the in-mem f-∂f plane
+    GSList*		cands;			///< The canidates from the GPU search
 
     unsigned int        inmemStride;        ///< The stride (in units) of the in-memory plane data in device memory
 };
@@ -898,9 +934,12 @@ typedef struct resultData
     uint                xStride;
     uint                yStride;
 
-    uint                zMax;
+    double		zStart;
+    double		zEnd;
+    uint		noZ;
 
     double              rLow;
+    int 		noResPerBin;
 
     rVals               rVal;
 
@@ -1005,7 +1044,7 @@ ExternC void freeBatchGPUmem(cuFFdotBatch* batch);
 
 ExternC void printCands(const char* fileName, GSList *candsCPU, double T);
 
-ExternC void search_ffdot_batch_CU(cuFFdotBatch* planes, double* searchRLow, double* searchRHi, int norm_type );
+ExternC void search_ffdot_batch_CU(cuFFdotBatch* planes);
 
 ExternC void inmemSS(cuFFdotBatch* batch, double drlo, int len);
 
@@ -1044,5 +1083,7 @@ ExternC long long compltCudaContext(gpuSpecs* gSpec);
  * @param batch
  */
 ExternC void CycleBackRlists(cuFFdotBatch* batch);
+
+ExternC cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec);
 
 #endif // CUDA_ACCEL_INCLUDED

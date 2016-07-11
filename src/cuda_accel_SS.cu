@@ -143,33 +143,35 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
   }
 }
 
-int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long long *numindep )
+int setConstVals( cuFFdotBatch* batch )
 {
   void *dcoeffs;
+
+  int numharmstages	= batch->cuSrch->noHarmStages;
+  float *powcut		= batch->cuSrch->powerCut;
+  long long *numindep	= batch->cuSrch->numindep;
 
   FOLD // Calculate Y coefficients and copy to constant memory  .
   {
     int noHarms         = batch->cuSrch->noSrchHarms;
 
-    if ( ((batch->hInfos->height + INDS_BUFF) * noHarms) > MAX_YINDS)
+    if ( ((batch->hInfos->noZ + INDS_BUFF) * noHarms) > MAX_YINDS)
     {
       printf("ERROR! YINDS to small!");
     }
 
     freeNull(batch->cuSrch->yInds);
-    batch->cuSrch->yInds    = (int*) malloc( (batch->hInfos->height + INDS_BUFF) * noHarms * sizeof(int));
+    batch->cuSrch->yInds    = (int*) malloc( (batch->hInfos->noZ + INDS_BUFF) * noHarms * sizeof(int));
     int *indsY            = batch->cuSrch->yInds;
     int bace              = 0;
 
     batch->hInfos->yInds  = 0;
 
-    int zmax = batch->hInfos->zmax ;
-
     for (int ii = 0; ii < noHarms; ii++)
     {
       if ( ii == 0 )
       {
-        for (int j = 0; j < batch->hInfos->height; j++)
+        for (int j = 0; j < batch->hInfos->noZ; j++)
         {
           indsY[bace + j] = j;
         }
@@ -177,34 +179,35 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
       else
       {
         float harmFrac  = HARM_FRAC_STAGE[ii];
-        int sZmax;
+        double sZstart;
+        int dir = (batch->hInfos[ii].zEnd > batch->hInfos[ii].zStart?1:-1);
 
         if ( batch->flags & FLAG_SS_INMEM )
         {
-          sZmax = zmax;
+          sZstart = batch->hInfos->zStart;
         }
         else
         {
-          int sIdx  = batch->cuSrch->sIdx[ii];
-          sZmax = batch->hInfos[sIdx].zmax;
+          int sIdx	= batch->cuSrch->sIdx[ii];
+          sZstart	= batch->hInfos[sIdx].zStart;
         }
 
-        for (int j = 0; j < batch->hInfos->height; j++)
+        for (int j = 0; j < batch->hInfos->noZ; j++)
         {
-          int zz    = -zmax + j* ACCEL_DZ;
-          int subz  = calc_required_z( harmFrac, zz );
-          int zind  = index_from_z( subz, -sZmax );
+          double fundZ	= batch->hInfos->zStart + j * dir * batch->cuSrch->sSpec->zRes;
+          double subzf	= cu_calc_required_z<double>( harmFrac, fundZ, batch->cuSrch->sSpec->zRes);
+          int zind	= cu_index_from_z<double>( subzf, sZstart, batch->cuSrch->sSpec->zRes);
 
           indsY[bace + j] = zind;
         }
       }
-
+      // Set the yindex value in the harmonic info
       if ( ii < batch->noSrchHarms)
       {
         batch->hInfos[ii].yInds = bace;
       }
 
-      bace += batch->hInfos->height;
+      bace += batch->hInfos->noZ;
 
       // Buffer with last value
       for (int j = 0; j < INDS_BUFF; j++)
@@ -290,26 +293,26 @@ int setConstVals( cuFFdotBatch* batch, int numharmstages, float *powcut, long lo
       for (int i = 0; i < batch->noGenHarms; i++)
       {
         int sIdx  = batch->cuSrch->sIdx[i];
-        height[i] = batch->hInfos[sIdx].height;
+        height[i] = batch->hInfos[sIdx].noZ;
         stride[i] = batch->hInfos[sIdx].width;
         pStart[i] = batch->hInfos[sIdx].kerStart;
       }
 
       FOLD // The rest  .
       {
-        int zeroZMax    = batch->hInfos->zmax;
-
         presto_interp_acc accuracy = LOWACC;
         if ( batch->flags & FLAG_KER_HIGH )
           accuracy = HIGHACC;
 
         for (int i = batch->noGenHarms; i < MAX_HARM_NO; i++)
         {
-          float harmFrac  = HARM_FRAC_FAM[i];
-          int zmax        = calc_required_z(harmFrac, zeroZMax);
-          height[i]       = (zmax / ACCEL_DZ) * 2 + 1;
-          stride[i]       = calc_fftlen3(harmFrac, zmax, batch->accelLen, accuracy);
-          pStart[i]       = -1;
+          float harmFrac	= HARM_FRAC_FAM[i];
+          double zmax		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zmax,   batch->cuSrch->sSpec->zRes);
+          double zStart		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zStart, batch->cuSrch->sSpec->zRes);
+          double zEnd		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zEnd,   batch->cuSrch->sSpec->zRes);
+          height[i]		= abs(cu_index_from_z<double>(zEnd-zStart, 0, batch->cuSrch->sSpec->zRes));
+          stride[i]		= cu_calc_fftlen<double>(harmFrac, zmax, batch->accelLen, accuracy, batch->cuSrch->sSpec->noResPerBin, batch->cuSrch->sSpec->zRes);
+          pStart[i]		= -1;
         }
       }
     }
@@ -411,11 +414,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
 {
   cuSearch*	cuSrch	= res->cuSrch;
 
-  // Adjust r and z for the number of harmonics
-  rr    /=  (double)numharm ;
-  zz    =   ( zz * ACCEL_DZ - res->zMax ) / (double)numharm ;
-
-  if ( rr < cuSrch->SrchSz->searchRHigh )
+  if ( floor(rr) < cuSrch->SrchSz->searchRHigh )
   {
     if ( !(res->flags & FLAG_SIG_GPU) ) // Do the sigma calculation  .
     {
@@ -444,12 +443,12 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
     }
     else if ( res->cndType & CU_STR_ARR     )
     {
-      double  rDiff = rr - cuSrch->SrchSz->searchRLow ;
-      long    grIdx;   /// The index of the candidate in the global list
+      double  	rDiff = rr - cuSrch->SrchSz->searchRLow ;
+      long long	grIdx;   /// The index of the candidate in the global list
 
       if ( res->flags & FLAG_STORE_EXP )
       {
-        grIdx = floor(rDiff*ACCEL_RDR);
+        grIdx = floor(rDiff*res->noResPerBin);
       }
       else
       {
@@ -636,38 +635,38 @@ void* processSearchResults(void* ptr)
 
         if ( poww > 0 )
         {
-          if ( isnan(poww) )
+          // This value is above the threshold
+          if ( zz < 0 || zz >= res->noZ )
           {
-            rr      = ( res->rLow + x * ACCEL_DR ) / numharm ;
-            fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
+            fprintf(stderr,"ERROR: invalid z value found at bin %.2f.\n", rr);
           }
           else
           {
-            if ( isinf(poww) )
-            {
-              if ( res->flags & FLAG_HALF )
-              {
-                poww          = 6.55e4;      // Max 16 bit float value
-                double rPos   = ( res->rLow + x * ACCEL_DR ) / numharm ;
-                fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", rPos, poww);
-              }
-              else
-              {
-                poww          = 3.402823e38; // Max 32 bit float value
-                double rPos   = ( res->rLow + x * ACCEL_DR ) / numharm ;
-                fprintf(stderr,"WARNING: Search return inf power at bin %.2f. This is probably an error as you are using single precision floats.\n", rPos);
-              }
-            }
+            // Calculate r and z value
+            rr	= ( res->rLow + x / (double) res->noResPerBin ) / (double)numharm ;
+            zz	= (res->zStart + (res->zEnd - res->zStart ) * zz / (double)(res->noZ-1) ) ;
+            zz  /= (double)numharm ;
 
-            if ( zz < 0 || zz >= res->zMax+1)
+            if ( isnan(poww) )
             {
-              double rPos   = ( res->rLow + x * ACCEL_DR ) / numharm ;
-              fprintf(stderr,"ERROR: invalid z value found at bin %.2f.\n", rPos);
+              fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
             }
             else
             {
-              // This value is above the threshold
-              rr      = res->rLow + x * ACCEL_DR ;
+              if ( isinf(poww) )
+              {
+        	if ( res->flags & FLAG_POW_HALF )
+        	{
+        	  poww          = 6.55e4;      // Max 16 bit float value
+        	  fprintf(stderr,"WARNING: Search return inf power at bin %.2f, dropping to %.2e. If this persists consider using single precision floats.\n", rr, poww);
+        	}
+        	else
+        	{
+        	  poww          = 3.402823e38; // Max 32 bit float value
+        	  fprintf(stderr,"WARNING: Search return inf power at bin %.2f. This is probably an error as you are using single precision floats.\n", rr);
+        	}
+              }
+
               procesCanidate(res, rr, zz, poww, sig, stage, numharm ) ;
             }
           }
@@ -749,12 +748,17 @@ void processSearchResults(cuFFdotBatch* batch)
 
       thrdDat->cuSrch		= batch->cuSrch;
       thrdDat->cndType  	= batch->cndType;
-      thrdDat->rLow       	= rVal->drlo;
       thrdDat->retType  	= batch->retType;
       thrdDat->flags    	= batch->flags;
-      thrdDat->zMax      	= batch->hInfos->zmax;
       thrdDat->resultTime 	= batch->resultTime;
       thrdDat->noResults  	= &batch->noResults;
+
+      thrdDat->rLow       	= rVal->drlo;
+      thrdDat->noResPerBin	= batch->hInfos->noResPerBin;
+
+      thrdDat->noZ		= batch->hInfos->noZ;
+      thrdDat->zStart		= batch->hInfos->zStart;
+      thrdDat->zEnd		= batch->hInfos->zEnd;
 
       thrdDat->x0      		= 0;
       thrdDat->x1		= 0;
@@ -1015,15 +1019,15 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
   {
     infoMSG(1,2,"Sum & Search\n");
 
-    if      ( batch->retType 	& CU_STR_PLN 	  )
+    if      ( batch->retType	& CU_STR_PLN 	  )
     {
       // Nothing!
     }
-    else if ( batch->flags    & FLAG_SS_INMEM )
+    else if ( batch->flags	& FLAG_SS_INMEM )
     {
       // NOTHING
     }
-    else if ( batch->flags    & FLAG_SS_CPU   )
+    else if ( batch->flags	& FLAG_SS_CPU   )
     {
       // NOTHING
     }
@@ -1076,16 +1080,22 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
 void inmemSumAndSearch(cuSearch* cuSrch)
 {
-  infoMSG(1,2,"Inmem Sum And Search\n");
+  infoMSG(2,2,"Inmem Sum And Search\n");
 
-  cuFFdotBatch* master  = &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
-  uint startBin         = cuSrch->SrchSz->searchRLow * ACCEL_RDR;
-  uint endBin           = startBin + cuSrch->SrchSz->noSteps * master->accelLen;
-  float totaBinsl       = endBin - startBin ;
-  int iteration         = 0;
-  uint currentBin       = startBin;
+  struct timeval start, end;
+  cuFFdotBatch* master	= &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
+  long long startBin	= cuSrch->SrchSz->searchRLow * cuSrch->sSpec->noResPerBin;
+  long long endBin	= startBin + cuSrch->SrchSz->noSteps * master->accelLen;
+  float totaBins	= endBin - startBin ;
+  int iteration		= 0;
+  long long currentBin	= startBin;
 
   NV_RANGE_PUSH("Inmem Search");
+
+  FOLD // Basic timing  .
+  {
+    gettimeofday(&start, NULL);
+  }
 
   FOLD // Set all r-values to zero  .
   {
@@ -1127,7 +1137,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     int tid = omp_get_thread_num();
     cuFFdotBatch* batch = &cuSrch->pInf->batches[tid];
 
-    setDevice(batch->device) ;
+    setDevice(batch->gInf->devid) ;
 
     uint firstBin = 0;
     uint len      = 0;
@@ -1146,7 +1156,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
             // If running in synchronous mode use multiple batches, just synchronously
             tid     = iteration % cuSrch->pInf->noBatches ;
             batch   = &cuSrch->pInf->batches[tid];
-            setDevice(batch->device) ;
+            setDevice(batch->gInf->devid) ;
           }
         }
 
@@ -1163,11 +1173,11 @@ void inmemSumAndSearch(cuSearch* cuSrch)
         {
           int tot  = (endBin)/batch->strideOut;
 
-          infoMSG(1,1,"\nStep %4i of %4i thread %02i processing %02i steps on GPU %i\n", step+1, tot, tid, 1, batch->device );
+          infoMSG(1,1,"\nStep %4i of %4i thread %02i processing %02i steps on GPU %i\n", step+1, tot, tid, 1, batch->gInf->devid );
         }
       }
 
-      inmemSS(batch, firstBin * ACCEL_DR, len);
+      inmemSS(batch, firstBin / (double)cuSrch->sSpec->noResPerBin, len);
 
 #pragma omp critical
       FOLD // Output  .
@@ -1176,7 +1186,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
         {
           int noTrd;
           sem_getvalue(&master->cuSrch->threasdInfo->running_threads, &noTrd );
-          printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBinsl-endBin+currentBin)/totaBinsl*100.0, noTrd );
+          printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBins-endBin+currentBin)/totaBins*100.0, noTrd );
           fflush(stdout);
         }
         else
@@ -1199,6 +1209,12 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   FOLD // Wait for all processing threads to terminate
   {
     waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
+  }
+
+  FOLD // Basic timing  .
+  {
+    gettimeofday(&end, NULL);
+    cuSrch->timings[TIME_GPU_IMSRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
   }
 
   NV_RANGE_POP();

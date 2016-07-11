@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
     int   oAccelLen1, oAccelLen2;
 
     // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-    oAccelLen1  = calcAccellen(width,     zmax, accuracy);
-    oAccelLen2  = calcAccellen(width/2.0, zmax/2.0, accuracy);
+    oAccelLen1  = calcAccellen(width,     zmax, accuracy, 2);
+    oAccelLen2  = calcAccellen(width/2.0, zmax/2.0, accuracy, 2);
 
     if ( width > 100 )
     {
@@ -75,9 +75,9 @@ int main(int argc, char *argv[])
 
     if ( width < 100 ) // Check  .
     {
-      float fWidth    = floor(calc_fftlen3(1, zmax, accelLen, accuracy)/1000.0);
+      float fWidth    = floor(cu_calc_fftlen<double>(1, zmax, accelLen, accuracy, 2, 2.0)/1000.0);
 
-      float ss        = calc_fftlen3(1, zmax, accelLen, accuracy) ;
+      float ss        = cu_calc_fftlen<double>(1, zmax, accelLen, accuracy, 2, 2.0) ;
       float l2        = log2( ss );
 
       if      ( l2 == 10 )
@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
   else
   {
     // Just a single plane
-    accelLen = calcAccellen(width, zmax, accuracy);
+    accelLen = calcAccellen(width, zmax, accuracy, 2);
   }
 
   printf("%u\n", accelLen);
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 //
 //    float accelLen = 0;
 //
-//    float halfwidth =  z_resp_halfwidth(zmax);
+//    float halfwidth =  cu_z_resp_halfwidth<double>(zmax);
 //
 //    accelLen    = floor(szzz - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
 //    if (accelLen < 100 )
