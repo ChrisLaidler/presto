@@ -2450,16 +2450,34 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( batch->flags & FLAG_SS_INMEM )
 	{
-	  // With the inmem serath only only one "step" is done at a time
-	  // Tested with a 560 Ti, 6 was the best chunk size
-	  // TODO: Check this with other comput caperbiloty cards
+	  // With the inmem serch only only one "step" is done at a time
+	  // Tested with a 750 Ti, 770 and 970, 6 was the best chunk size on the Maxwell card
+	  // The Kepler cards could go to 8
+	  // This was teste by Chris L - 12/07/2016
 	  batch->ssChunk = 6;
 	}
 	else
 	{
-	  // TODO; CHeck this, this may chage with more registers
-	  //kernel->ssChunk         = 8 ;
-	  batch->ssChunk = 30.0 / (float) batch->noSteps ; // TODO: Where did I get these values from?
+	  // Using standard sum and search kernel
+
+	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
+	  {
+	    // Kepler cards have fewer regsiters so this limit chunk size
+	    // I did some testing and found a roughly linier relationship between
+	    // Optimal chink size and number of steps with the standard search kernel on Kepler cards.
+	    // This was teste on a GTX 770 by Chris L - 12/07/2016
+	    batch->ssChunk = round(9.5 - 0.75*batch->noSteps );
+	  }
+	  else					// Maxwell  .
+	  {
+	    // More register
+
+	    // Well this looks crazy, but from my testing this gives a pretty good apprximation to the optimal cunksize for a range of
+	    // steps, harmonics and widths.  Importantly this works well for many steps (~8) and 16 harmonics.
+	    // Diagrams and numbers can be produced on request if you dont believe me ;-)
+	    // This was teste on a GTX 970 by Chris L - 12/07/2016
+	    batch->ssChunk = round(-0.256 * batch->noSteps*batch->noSteps + 2.4 * batch->noSteps + 2.8 );
+	  }
 	}
 
 	// Clamp to valid bounds
@@ -5541,7 +5559,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 	}
 	else
 	{
-	  srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * ( sSpec->zRes / 6.95) / (double)(1<<ii);
+	  srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * ( sSpec->zRes / 6.95 ) / (double)(1<<ii);
 	}
 
 	// Power cutoff
