@@ -279,6 +279,8 @@ void copyToInMemPln(cuFFdotBatch* batch)
     {
       infoMSG(2,2,"Copy to in-mem plane\n");
 
+      NV_RANGE_PUSH("CPY2IM");
+
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
         // Copying was done by the callback directly
@@ -307,7 +309,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
         {
           if ( batch->flags & FLAG_TIME )
           {
-            CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: multInit");
+            CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: ifftMemInit");
           }
         }
 
@@ -357,11 +359,14 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
           cuFfdotStack* cStack = &batch->stacks[0];
 
+          // This is a hack
           NV_RANGE_PUSH("EventSynch");
           CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
           NV_RANGE_POP();
         }
       }
+
+      NV_RANGE_POP();
     }
   }
 }

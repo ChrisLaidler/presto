@@ -262,9 +262,9 @@ CAND_STORAGE		ARR
 ######################### Optimisation ###########################
 
 # OPT_METHOUD
-# D	PLANE			# 
-#	SWARM			# 
-#	NM			# 
+# D	PLANE			#
+#	SWARM			#
+#	NM			#
 OPT_METHOUD		PLANE
 
 # OPT_Z_RATIO
@@ -274,7 +274,7 @@ OPT_Z_RATIO		4
 
 # OPT_R_RES [Deprecated]
 #	float     		#
-# D	16			# 
+# D	16			#
 OPT_R_RES		16
 
 # How to normalise the powers of the optimised candidates
@@ -357,8 +357,8 @@ DBG_LEV			0
 #FLAG_DPG_PLT_POWERS		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
 #FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 
-FLAG_DBG_SYNCH 		# [ Debug ]	Perform a synchronous search
-FLAG_DBG_TIMING		# [ Debug ]	Perform advanced timing the search
+#FLAG_DBG_SYNCH 		# [ Debug ]	Perform a synchronous search
+#FLAG_DBG_TIMING		# [ Debug ]	Perform advanced timing the search
 
 
 

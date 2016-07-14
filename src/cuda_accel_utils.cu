@@ -472,7 +472,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       // Kernel
       kerSize		+= fftLen * plnY * sizeof(cufftComplex);						// Kernel
       if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
-	kerSize        += fftLen * plnY * sizeof(double)*2;                                             // Kernel
+	kerSize        += fftLen * plnY * sizeof(double)*2;							// Kernel
 
       // Calculate the  "approximate" size of a single 1 step batch
       batchSize		+= fftLen * sizeof(cufftComplex);							// Input
@@ -3750,11 +3750,11 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
       setActiveBatch(batch, 0);
       multiplyBatch(batch);
 
-      setActiveBatch(batch, 1);
-      copyToInMemPln(batch);
-
       setActiveBatch(batch, 0);
       IFFTBatch(batch);
+
+      setActiveBatch(batch, 0);
+      copyToInMemPln(batch);
     }
     else
     {
@@ -6806,11 +6806,16 @@ void genPlane(cuSearch* cuSrch, char* msg)
     // Set the device this thread will be using
     setDevice(batch->gInf->devid) ;
 
+    FOLD // Set the r arrays to zero  .
+    {
+      rVals* rVal = (*batch->rAraays)[0][0];
+      memset(rVal, 0, sizeof(rVals)*batch->noSteps);
+    }
+
     while ( ss < maxxx )  //			---===== Main Loop =====---  .
     {
       FOLD // Calculate the step(s) to handle  .
       {
-
 #pragma omp critical		// Calculate the step(s) this batch is processing  .
 
 	FOLD
