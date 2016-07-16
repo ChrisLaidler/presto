@@ -500,6 +500,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires ~%.2f GB and the workspace ~%.2f MB.\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
 	}
 
+	// TODO: Dont to a automatic in-mem search if 1 harm
+
 	if ( (cuSrch->sSpec->flags & FLAG_SS_ALL) && !(cuSrch->sSpec->flags & FLAG_SS_INMEM) )
 	{
 	  fprintf(stderr,"WARNING: Opting to NOT do a in-mem search when you could!\n");
@@ -1223,7 +1225,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       printf("\nGenerating GPU multiplication kernels using device %i (%s).\n\n", kernel->gInf->devid, kernel->gInf->name);
 
-      createBatchKernels(kernel);
+      createBatchKernels(kernel, NULL);
     }
   }
 
@@ -2069,8 +2071,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     NV_RANGE_POP();
   }
-
-
 
   printf("Done initializing GPU %i.\n", kernel->gInf->devid);
 
@@ -6685,7 +6685,8 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
 
   // for the moment there shpuld only be one kernel!
   // Note we could split the inmem plane adross two devices!
-  cuFFdotBatch* kernel = &cuSrch->pInf->kernels[0];
+  cuFFdotBatch* kernel	= &cuSrch->pInf->kernels[0];
+  cuFFdotBatch* batch	= &cuSrch->pInf->batches[0];
 
   // Calculate the start and end z values
   for (int i = kernel->noSrchHarms; i > 0; i--)
@@ -6725,7 +6726,7 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
     {
       printf("\nGenerating GPU multiplication kernels using device %i (%s).\n", kernel->gInf->devid, kernel->gInf->name);
 
-      createBatchKernels(kernel);
+      createBatchKernels(kernel, batch->d_planeMult);
     }
   }
 

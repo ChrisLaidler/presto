@@ -183,7 +183,7 @@ int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t s
   return 0;
 }
 
-void createBatchKernels(cuFFdotBatch* batch)
+void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 {
   cuKernel doubleKres[MAX_STACKS];
   char msg[1024];
@@ -317,8 +317,19 @@ void createBatchKernels(cuFFdotBatch* batch)
 	  int height          = cStack->kerHeigth;
 
 	  // Normal plans
+	  if (buffer)
+	  {
+	    // use pre allocated memory
+	    CUFFT_SAFE_CALL(cufftSetAutoAllocation(cStack->plnPlan, 0), "cufftSetAutoAllocation");
+	  }
 	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
 	  CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
+
+	  if (buffer)
+	  {
+	    // Assighn pre allocated memory
+	    CUFFT_SAFE_CALL( cufftSetWorkArea(cStack->plnPlan, buffer), "cufftSetWorkArea" );
+	  }
 
 	  NV_RANGE_POP();
 	}

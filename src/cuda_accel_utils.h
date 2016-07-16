@@ -711,7 +711,7 @@ void freeKernel(cuFFdotBatch* kernel);
 
 /////////////////////////////////////// Kernel prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-void createBatchKernels(cuFFdotBatch* batch);
+void createBatchKernels(cuFFdotBatch* batch, void* buffer);
 
 /** Create one GPU kernel. One kernel the size of the largest plane  .
  *
