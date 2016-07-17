@@ -2507,7 +2507,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     infoMSG(4,4,"Allocate memory for the batch\n");
 
-    FOLD  // Allocate host input memory
+    FOLD // Allocate host input memory  .
     {
       NV_RANGE_PUSH("Host");
 
@@ -2579,6 +2579,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planePowr,   batch->pwrDataSize ), "Failed to allocate device memory for batch powers plane.");
 	  free -= batch->pwrDataSize;
 	}
+
       }
 
       NV_RANGE_POP();
@@ -2653,7 +2654,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       NV_RANGE_POP();
     }
 
-    FOLD // Create the planes structures
+    FOLD // Create the planes structures  .
     {
       if ( batch->noGenHarms* sizeof(cuFFdot) > getFreeRamCU() )
       {
@@ -4117,6 +4118,11 @@ void readAccelDefalts(searchSpecs *sSpec)
       else if ( strCom(str1, "DUMMY" ) )                        // Dummy parameter
       {
 	continue;
+      }
+
+      else if ( strCom("FLAG_SEPSRCH", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_SEPSRCH, "", "0", lineno, fName );
       }
 
       else if ( strCom("R_RESOLUTION", str1 ) )
