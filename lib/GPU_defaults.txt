@@ -35,7 +35,7 @@ R_RESOLUTION	2
 
 Z_RESOLUTIOM	2
 
-FLAG_Z_SPLIT
+#FLAG_Z_SPLIT
 
 ########################### Memory ############################
 
@@ -128,14 +128,14 @@ MUL_KER			AA
 # MUL_SLICES:
 # D	0       		# Let the application decide
 #	int     		# A number generally less than 7 and odd are "better"
-MUL_KER			AA
+MUL_SLICES		0
 
 
 # The number of values to buffer in the multiplication kernel (this increases register use)
 # MUL_CHUNK:
 # D	0       		# Let the application decide
 #	int     		# A number <= 8
-MUL_KER			AA
+MUL_CHUNK		0
 
 
 # How to do convolution
@@ -357,7 +357,7 @@ DBG_LEV			0
 #FLAG_DPG_PLT_POWERS		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
 #FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 
-#FLAG_DBG_SYNCH 		# [ Debug ]	Perform a synchronous search
+FLAG_DBG_SYNCH 		# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_TIMING		# [ Debug ]	Perform advanced timing the search
 
 

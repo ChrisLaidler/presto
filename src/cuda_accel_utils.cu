@@ -30,6 +30,8 @@ extern "C"
 #include "log.h"
 #endif
 
+#define MAX_GPU_MEM	3400000000					///< This is a TMP 970 hack, FUCK YOU NVIDIA!!!
+
 __device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
 __device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
 __device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
@@ -410,6 +412,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     else
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
+
     }
 
     NV_RANGE_POP();
@@ -1568,6 +1579,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       NV_RANGE_PUSH("Calc steps");
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
       freeRam = getFreeRamCU();
 
       printf("   There is a total of %.2f GiB of device memory, %.2f GiB is free. There is %.2f GiB free host memory.\n",total / 1073741824.0, (free ) / 1073741824.0, freeRam / 1073741824.0 );
@@ -2293,6 +2312,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     setDevice(kernel->gInf->devid) ;
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
   }
 
   FOLD // Copy details from kernel and allocate stacks .
@@ -3282,6 +3309,14 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
       oPln->input->size	= (maxWidth*10 + 2*oPln->maxHalfWidth) * sSrch->noSrchHarms * sizeof(cufftComplex)*2; // The noR is oversized to allo for moves of the plane withought getting new input
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = totalMem - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    freeMem-= Diff;
+	    totalMem-=Diff;
+	  }
+#endif
 
       if ( (oPln->input->size + oPln->outSz) > freeMem )
       {
@@ -5331,6 +5366,14 @@ void initOptimisers(cuSearch* sSrch )
 	else
 	{
 	  CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
 	}
 
 	NV_RANGE_POP();
