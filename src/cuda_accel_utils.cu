@@ -503,22 +503,33 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       infoMSG(5,5,"Free: %.3fGB  - in-mem plane: %.2f GB - Kernel: ~%.2f MB - batch: ~%.2f MB - fft: ~%.2f MB - full batch: ~%.2f MB \n", free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, familySz*1e-6 );
 
+      bool doIm = false;
+      bool prefIm = false;
+
       if ( planeSize + familySz < free )
       {
+	// We can do a IM sre
+
+	if ( cuSrch->noHarmStages > 2 )
+	{
+	  // It's probally better to do an in-mem search
+	  prefIm = true;
+	}
+
 	if ( !(cuSrch->sSpec->flags & FLAG_SS_ALL) || (cuSrch->sSpec->flags & FLAG_SS_INMEM) )
 	{
 	  printf("Device %i can do a in-mem GPU search.\n", gInf->devid);
-	  printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires ~%.2f GB and the workspace ~%.2f MB.\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
+	  printf("  There is %.2fGB free memory.\n  A slpit f-∂f plane requires ~%.2f GB and the workspace ~%.2f MB.\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
 	}
 
-	// TODO: Dont to a automatic in-mem search if 1 harm
-
-	if ( (cuSrch->sSpec->flags & FLAG_SS_ALL) && !(cuSrch->sSpec->flags & FLAG_SS_INMEM) )
+	if ( (cuSrch->sSpec->flags & FLAG_SS_INMEM) || ( prefIm && !(cuSrch->sSpec->flags & FLAG_SS_ALL)) )
 	{
-	  fprintf(stderr,"WARNING: Opting to NOT do a in-mem search when you could!\n");
+	  doIm = true;
 	}
-	else
-	{
+      }
+
+      if ( doIm )
+      {
 	  cuSrch->noGenHarms        = 1;
 
 	  if ( cuSrch->gSpec->noDevices > 1 )
@@ -541,46 +552,55 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  }
 
 	  cuSrch->sSpec->flags |= FLAG_SS_INMEM ;	// TODO: Dont edit sSpec directly?
-
 #if CUDA_VERSION >= 6050
-	  if ( !(cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW) )
-	    fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
+	if ( !(cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW) )
+	  fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
 #else
-	  fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal. Try upgrading to CUDA 6.5 or later.\n");
-	  cuSrch->sSpec->flags &= ~FLAG_CUFFT_ALL;
+	fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal. Try upgrading to CUDA 6.5 or later.\n");
+	cuSrch->sSpec->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
 #if CUDA_VERSION >= 7050
-	  if ( !(cuSrch->sSpec->flags & FLAG_POW_HALF) )
-	    fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
+	if ( !(cuSrch->sSpec->flags & FLAG_POW_HALF) )
+	  fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
 #else
-	  fprintf(stderr,"  Warning: You could be using half precision. Try upgrading to CUDA 7.5 or later.\n");
+	fprintf(stderr,"  Warning: You could be using half precision. Try upgrading to CUDA 7.5 or later.\n");
 #endif
 
-	  FOLD // Set types  .
-	  {
-	    cuSrch->sSpec->retType &= ~CU_TYPE_ALLL;
-	    cuSrch->sSpec->retType |= CU_POWERZ_S;
+	FOLD // Set types  .
+	{
+	  cuSrch->sSpec->retType &= ~CU_TYPE_ALLL;
+	  cuSrch->sSpec->retType |= CU_POWERZ_S;
 
-	    cuSrch->sSpec->retType &= ~CU_SRT_ALL;
-	    cuSrch->sSpec->retType |= CU_STR_ARR;
-	  }
+	  cuSrch->sSpec->retType &= ~CU_SRT_ALL;
+	  cuSrch->sSpec->retType |= CU_STR_ARR;
 	}
+
 	printf("\n");
       }
       else
       {
 	// No In-mem
 
-	if ( !(cuSrch->sSpec->flags & FLAG_SS_ALL) || (cuSrch->sSpec->flags & FLAG_SS_INMEM) )
-	{
-	  printf("Device %i can not do a in-mem GPU search.\n", gInf->devid);
-	  printf("  There is %.2fGB free memory.\n  The entire f-∂f plane requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
-	}
-
 	if ( cuSrch->sSpec->flags & FLAG_SS_INMEM  )
 	{
-	  fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible.\n\tThere is %.2f GB of free memory.\n\tIn-mem GPU search would require ~%.2f GB\n\n", free*1e-9, (planeSize + familySz)*1e-9 );
+	  // Warning
+	  fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible.\n\tThere is %.2f GB of free memory.\n\tIn-mem (split plane) GPU search would require ~%.2f GB\n\n", free*1e-9, (planeSize + familySz)*1e-9 );
+	}
+	else if ( prefIm )
+	{
+	  // "Should" do a IM serch
+
+	  if ( (cuSrch->sSpec->flags & FLAG_SS_ALL) )
+	  {
+	    fprintf(stderr,"WARNING: Opting to NOT do a in-mem search when you could!\n");
+	  }
+	}
+	else
+	{
+	  // Nothing was selected so let the user know info
+	  printf("Device %i can not do a in-mem GPU search.\n", gInf->devid);
+	  printf("  There is %.2fGB free memory.\n  The entire f-∂f plane (split) requires %.2f GB and the workspace ~%.2f MB.\n\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
 	}
 
 	cuSrch->sSpec->flags &= ~FLAG_SS_INMEM ;
