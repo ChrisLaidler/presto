@@ -17,9 +17,9 @@ WITHCBL    = yes
 # You can use multiple values, just uncomment the specific lines below, or add youre own
 CUDA_ARCH  =
 #CUDA_ARCH += 20
-CUDA_ARCH += 30
+#CUDA_ARCH += 30
 #CUDA_ARCH += 35
-CUDA_ARCH += 50
+#CUDA_ARCH += 50
 
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
@@ -90,6 +90,8 @@ else
 PGPLOTINC  = -I$(PGPLOT_DIR)
 PGPLOTLINK = -L$(PGPLOT_DIR) -lcpgplot -lpgplot $(X11LINK) $(PNGLINK)
 endif
+
+
 
 # Include and link information for the FFTW 3.X single-precision library
 FFTINC  := $(shell pkg-config --cflags fftw3f)
@@ -191,12 +193,12 @@ CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
 CUDAINC    = -I$(CUDA_PATH)/include
 
 NVCCFLAGS  =  $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
-NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+NVCCFLAGS  += $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 #NVCCFLAGS  += -Xcompiler -Wno-comment
 NVCCFLAGS	 += $(foreach root, $(CXXWARN), -Xcompiler $(root))
 
 NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)
-NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+NVCLFLAGS  += $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 GPUOUTP		=
 
