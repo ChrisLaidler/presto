@@ -306,7 +306,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  sprintf(msg,"Plan %i",i);
 	  NV_RANGE_PUSH(msg);
-          size_t workSize;
+	  size_t workSize;
 
 	  int n[]             = {cStack->width};
 	  int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
@@ -351,15 +351,18 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	FOLD // Destroy the plan  .
 	{
-	  infoMSG(4,6,"Destroy the plan\n");
+	  if (!buffer)
+	  {
+	    infoMSG(4,6,"Destroy the plan\n");
 
-	  sprintf(msg,"Dest %i",i);
-	  NV_RANGE_PUSH(msg);
+	    sprintf(msg,"Dest %i",i);
+	    NV_RANGE_PUSH(msg);
 
-	  CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
+	    CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
 
-	  NV_RANGE_POP();
+	    NV_RANGE_POP();
+	  }
 	}
       }
     }

@@ -42,8 +42,18 @@
 #define	MAX(a, b)	( ((a)<(b))?(b):(a) )
 #endif
 
+// Compare and set
+#ifndef MAXX
+#define MAXX(a, b)  ( a=(a)<(b)?b:a )
+#endif
+
 #ifndef MIN
 #define	MIN(a, b)	( ((a)>(b))?(b):(a) )
+#endif
+
+// Compare pare and set
+#ifndef MINN
+#define MINN(a, b)  (a=(a)>(b)?(b):(a) )
 #endif
 
 __host__ __device__ inline float  cos_t(float  x)

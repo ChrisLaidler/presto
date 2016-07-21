@@ -760,6 +760,7 @@ __host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, do
       }
 
       // LOG
+#ifdef CBL
       slog.csvWrite("i","%i", i + 1  );
       slog.csvWrite("r","%i", start + loR + i );
 
@@ -770,6 +771,7 @@ __host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, do
       slog.csvWrite("inp_i","%11.7f", inp.y );
 
       slog.csvEndLine();
+#endif
 
       FOLD 							//  Do the multiplication and sum  accumulate  .
       {
