@@ -306,6 +306,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  sprintf(msg,"Plan %i",i);
 	  NV_RANGE_PUSH(msg);
+          size_t workSize;
 
 	  int n[]             = {cStack->width};
 	  int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
@@ -316,21 +317,21 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  int odist           = cStack->strideCmplx;
 	  int height          = cStack->kerHeigth;
 
-	  // Normal plans
+          // Normal plans
 	  if (buffer)
 	  {
 	    // use pre allocated memory
-	    CUFFT_SAFE_CALL(cufftSetAutoAllocation(cStack->plnPlan, 0), "cufftSetAutoAllocation");
+	    CUFFT_SAFE_CALL( cufftCreate(&cStack->plnPlan), "cufftCreate");
+	    CUFFT_SAFE_CALL( cufftSetAutoAllocation(cStack->plnPlan, 0), "cufftSetAutoAllocation");
+	    CUFFT_SAFE_CALL( cufftSetWorkArea(cStack->plnPlan, buffer), "cufftSetWorkArea" ); // Assighn pre allocated memory
+	    CUFFT_SAFE_CALL( cufftMakePlanMany(cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height, &workSize), "cufftMakePlanMany" );
 	  }
-	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
-
-	  if (buffer)
+	  else
 	  {
-	    // Assighn pre allocated memory
-	    CUFFT_SAFE_CALL( cufftSetWorkArea(cStack->plnPlan, buffer), "cufftSetWorkArea" );
+	    CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 	  }
-
+	  
 	  NV_RANGE_POP();
 	}
 

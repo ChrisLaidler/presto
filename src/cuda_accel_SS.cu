@@ -181,6 +181,7 @@ int setConstVals( cuFFdotBatch* batch )
         float harmFrac  = HARM_FRAC_STAGE[ii];
         double sZstart;
         int dir = (batch->hInfos[ii].zEnd > batch->hInfos[ii].zStart?1:-1);
+        int noZ = batch->hInfos[ii].noZ;
 
         if ( batch->flags & FLAG_SS_INMEM )
         {
@@ -197,6 +198,9 @@ int setConstVals( cuFFdotBatch* batch )
           double fundZ	= batch->hInfos->zStart + j * dir * batch->cuSrch->sSpec->zRes;
           double subzf	= cu_calc_required_z<double>( harmFrac, fundZ, batch->cuSrch->sSpec->zRes);
           int zind	= cu_index_from_z<double>( subzf, sZstart, batch->cuSrch->sSpec->zRes);
+
+          MAXX(zind,0);
+          MINN(zind,noZ-1);
 
           indsY[bace + j] = zind;
         }

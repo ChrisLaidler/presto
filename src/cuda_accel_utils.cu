@@ -30,6 +30,8 @@ extern "C"
 #include "log.h"
 #endif
 
+#define MAX_GPU_MEM	3400000000					///< This is a TMP 970 hack, FUCK YOU NVIDIA!!!
+
 __device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
 __device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
 __device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
@@ -410,6 +412,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     else
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
+
     }
 
     NV_RANGE_POP();
@@ -1568,6 +1579,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       NV_RANGE_PUSH("Calc steps");
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
       freeRam = getFreeRamCU();
 
       printf("   There is a total of %.2f GiB of device memory, %.2f GiB is free. There is %.2f GiB free host memory.\n",total / 1073741824.0, (free ) / 1073741824.0, freeRam / 1073741824.0 );
@@ -2293,6 +2312,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     setDevice(kernel->gInf->devid) ;
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
   }
 
   FOLD // Copy details from kernel and allocate stacks .
@@ -2507,7 +2534,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     infoMSG(4,4,"Allocate memory for the batch\n");
 
-    FOLD  // Allocate host input memory
+    FOLD // Allocate host input memory  .
     {
       NV_RANGE_PUSH("Host");
 
@@ -2579,6 +2606,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planePowr,   batch->pwrDataSize ), "Failed to allocate device memory for batch powers plane.");
 	  free -= batch->pwrDataSize;
 	}
+
       }
 
       NV_RANGE_POP();
@@ -2653,7 +2681,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       NV_RANGE_POP();
     }
 
-    FOLD // Create the planes structures
+    FOLD // Create the planes structures  .
     {
       if ( batch->noGenHarms* sizeof(cuFFdot) > getFreeRamCU() )
       {
@@ -3281,6 +3309,14 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
       oPln->input->size	= (maxWidth*10 + 2*oPln->maxHalfWidth) * sSrch->noSrchHarms * sizeof(cufftComplex)*2; // The noR is oversized to allo for moves of the plane withought getting new input
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = totalMem - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    freeMem-= Diff;
+	    totalMem-=Diff;
+	  }
+#endif
 
       if ( (oPln->input->size + oPln->outSz) > freeMem )
       {
@@ -4117,6 +4153,11 @@ void readAccelDefalts(searchSpecs *sSpec)
       else if ( strCom(str1, "DUMMY" ) )                        // Dummy parameter
       {
 	continue;
+      }
+
+      else if ( strCom("FLAG_SEPSRCH", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_SEPSRCH, "", "0", lineno, fName );
       }
 
       else if ( strCom("R_RESOLUTION", str1 ) )
@@ -5325,6 +5366,14 @@ void initOptimisers(cuSearch* sSrch )
 	else
 	{
 	  CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+	  long  Diff = total - MAX_GPU_MEM;
+	  if( Diff > 0 )
+	  {
+	    free-= Diff;
+	    total-=Diff;
+	  }
+#endif
 	}
 
 	NV_RANGE_POP();
