@@ -586,6 +586,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  // Warning
 	  fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible.\n\tThere is %.2f GB of free memory.\n\tIn-mem (split plane) GPU search would require ~%.2f GB\n\n", free*1e-9, (planeSize + familySz)*1e-9 );
+
+	  printf("Temproy exit shrch specs\n"); // TMP
+	  exit(EXIT_FAILURE); // TMP
 	}
 	else if ( prefIm )
 	{

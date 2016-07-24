@@ -64,7 +64,7 @@ int detect_gdb_tree(void);
  *
  * @return number of bytes of free RAM
  **/
-ExternC unsigned long getFreeRamCU();
+ExternC size_t getFreeRamCU();
 
 ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
 //ExternC void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptCand* pln);

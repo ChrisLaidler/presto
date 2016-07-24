@@ -23,7 +23,7 @@ size_t getFreeRamCU()
 /** Get the amount of free RAM in bytes
  *
  */
-unsigned long getFreeRamCU()
+size_t getFreeRamCU()
 {
   long pages = sysconf(_SC_PHYS_PAGES);
   long freePages = sysconf(_SC_AVPHYS_PAGES);
@@ -43,7 +43,7 @@ unsigned long getFreeRamCU()
   }
 }
 #else
-unsigned long getFreeRamCU()
+size_t getFreeRamCU()
 {
   fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }

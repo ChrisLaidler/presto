@@ -27,6 +27,46 @@
 /* Return 2**n */
 #define index_to_twon(n) (1<<n)
 
+#if __linux
+#include <sys/sysinfo.h>
+/** Get the amount of free RAM in bytes
+ *
+ */
+unsigned long getFreeRam()
+{
+  long cach;
+
+  FILE *fp;
+  char buf[1024];
+  char rr[1024];
+  fp = fopen("/proc/meminfo", "r");
+  int i;
+  for(i = 0; i <= 3; i++) {
+    fgets(buf, 1024, fp);
+  }
+  sscanf(buf,"%s %li kB", rr, &cach);
+
+  struct sysinfo sys_info;
+  if(sysinfo(&sys_info) != 0)
+  {
+    fprintf(stderr, "ERROR: Reading memory info.");
+    return 0;
+  }
+  else
+  {
+    unsigned long vv = sys_info.freeram + sys_info.bufferram ;
+    vv *= sys_info.mem_unit;
+    vv += cach * 1000; // Add chaged mem (Kb -> B )
+    return vv;
+  }
+}
+#else
+uint64_t getFreeRam()
+{
+  fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
+}
+#endif
+
 /* Return x such that 2**x = n */
 static inline int twon_to_index(int n)
 {
@@ -1156,11 +1196,13 @@ void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs)
 {
   // This moves the fundamental's ffdot plane powers
   // into the one for the full array
-  int ii, rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
+  // Conver to unsigned long to handle planes greater than 8GB
+  unsigned long ii;
+  unsigned long rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
   float *outpow;
 
   for (ii = 0 ; ii < ffd->numzs ; ii++) {
-    outpow = obs->ffdotplane + ii * rlen + ffd->rlo * ACCEL_RDR;
+    outpow =  obs->ffdotplane + ii * rlen + (unsigned long)ffd->rlo * ACCEL_RDR ;
     memcpy(outpow, ffd->powers[ii], ffd->numrs*sizeof(float));
   }
 }
@@ -1241,7 +1283,7 @@ void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs,
   const int rlo = fundamental->rlo;
   const int numrs = fundamental->numrs;
   const int numzs = fundamental->numzs;
-  const int rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
+  const unsigned long rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
   const double harm_fract = (double) harmnum / (double) numharm;
   float *outpows, *inpows;
   int *indices;
@@ -1523,9 +1565,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      unsigned long freeRam = getFreeRamCU();
+      unsigned long freeRam = getFreeRam();
 
-      if ( freeRam * 0.7 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
+      if ( freeRam * 0.9 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
       {
         FILE *datfile;
         long long filelen;
@@ -1719,7 +1761,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 
   /* Can we perform the search in-core memory? */
   {
-    long long memuse;
+    unsigned long long memuse;
     double gb = (double)(1L<<30);
 
     // This is the size of powers covering the full f-∂f plane to search
@@ -1727,7 +1769,25 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     memuse = sizeof(float) * (obs->highestbin + ACCEL_USELEN) \
         * obs->numbetween * obs->numz;
     printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
+
     if (memuse < MAXRAMUSE || cmd->inmemP) {
+#ifdef CUDA
+      //size_t freeRam = getFreeRam();
+      unsigned long freeRam = getFreeRam();
+      if ( freeRam * 0.95 < memuse )
+      {
+	// Lets not kill the computer
+	printf("Not enough memory for in-mem plane there is only %.2f GB.\n", freeRam / gb);
+	printf("Using standard accelsearch.\n\n");
+	obs->inmem = 0;
+	obs->ffdotplane = NULL;
+
+	printf("Tempory testing exit...\n"); // TMP
+	exit(EXIT_FAILURE); // TMP
+
+	return;
+      }
+#endif
       printf("using in-memory accelsearch.\n\n");
       obs->inmem = 1;
       obs->ffdotplane = gen_fvect(memuse / sizeof(float));
