@@ -158,10 +158,12 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
             {
               offsetPart1  = pHeight + planeY*noSteps*stride;
             }
+#ifdef WITH_ITLV_PLN
             else
             {
               offsetPart1  = pHeight + planeY*stride;
             }
+#endif
           }
 
           for ( int step = 0; step < noSteps; step++ )        // Loop over steps  .
@@ -174,10 +176,12 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
               {
                 idx  = offsetPart1 + step * stride;
               }
+#ifdef WITH_ITLV_PLN
               else
               {
                 idx  = offsetPart1 + step * ns2;
               }
+#endif
             }
 
             FOLD // Multiply  .
@@ -340,6 +344,14 @@ __host__  void mult23(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 
   if      ( batch->flags & FLAG_ITLV_ROW )
     mult23_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+#ifdef WITH_ITLV_PLN
   else
     mult23_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+#else
+    else
+    {
+      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+#endif
 }

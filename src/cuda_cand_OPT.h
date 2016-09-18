@@ -40,4 +40,11 @@ typedef int16 optLocFloat_t;
 #endif
 
 
+ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
+//ExternC void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptCand* pln);
+//ExternC void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln);
+
+ExternC void opt_accelcand(accelcand* cand, cuOptCand* pln, int no);
+
+
 #endif

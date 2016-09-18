@@ -135,10 +135,18 @@ void add_and_search_CPU(cuFFdotBatch* batch )
                       ix2 = ix1 + step    * cStack->strideCmplx;
                       iy2 = iy1 * noSteps * cStack->strideCmplx;
                     }
+#ifdef WITH_ITLV_PLN
                     else
                     {
                       iy2 = ( iy1 + step * hInf->noZ ) * cStack->strideCmplx ;
                     }
+#else
+                    else
+                    {
+                      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+                      exit(EXIT_FAILURE);
+                    }
+#endif
                   }
 
                   FOLD // Read powers  .

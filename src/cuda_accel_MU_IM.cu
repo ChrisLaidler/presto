@@ -170,10 +170,18 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
         src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
         spitch  = cStack->stridePower*batch->noSteps*inSz;
       }
+#ifdef WITH_ITLV_PLN
       else
       {
         src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
       }
+#else
+    else
+    {
+      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+#endif
 
       CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
     }
@@ -224,10 +232,18 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
           src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
           spitch  = cStack->strideCmplx*batch->noSteps;
         }
+#ifdef WITH_ITLV_PLN
         else
         {
           src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
         }
+#else
+    else
+    {
+      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+#endif
       }
 
       if ( batch->flags & FLAG_POW_HALF )

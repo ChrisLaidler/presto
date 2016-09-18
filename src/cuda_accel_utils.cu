@@ -4,11 +4,6 @@
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 
-#ifdef CUDA_PROF
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
-#endif
-
 extern "C"
 {
 #define __float128 long double
@@ -24,6 +19,15 @@ extern "C"
 #include "cuda_accel_utils.h"
 #include "cuda_accel_IN.h"
 #include "cuda_cand_OPT.h"
+
+#ifdef CUDA_PROF
+#include <nvToolsExt.h>
+#include <nvToolsExtCudaRt.h>
+#endif
+
+#ifdef NVVP
+#include <cuda_profiler_api.h>
+#endif
 
 #ifdef CBL
 #include <unistd.h>
@@ -3010,7 +3014,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  cuFFdot* cPlane = &cStack->planes[j];
 
 	  if ( batch->flags & FLAG_CUFFT_CB_POW ) // float input
-	      {
+	  {
 	    if      ( batch->flags & FLAG_ITLV_ROW )
 	    {
 	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ;
@@ -3018,6 +3022,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
 	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
 	    }
+#ifdef WITH_ITLV_PLN
 	    else
 	    {
 	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ * batch->noSteps ;
@@ -3025,7 +3030,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
 	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
 	    }
-	      }
+#else
+	    else
+	    {
+	      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	      exit(EXIT_FAILURE);
+	    }
+#endif
+	  }
 	  else // Implies complex numbers
 	  {
 	    if      ( batch->flags & FLAG_ITLV_ROW )
@@ -3035,6 +3047,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
 	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
 	    }
+#ifdef WITH_ITLV_PLN
 	    else
 	    {
 	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ * batch->noSteps ;
@@ -3042,6 +3055,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
 	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
 	    }
+#else
+	    else
+	    {
+	      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	      exit(EXIT_FAILURE);
+	    }
+#endif
 	  }
 
 	  CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlane->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plane data.");
@@ -7045,6 +7065,8 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
   cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
 #endif
 
+  NV_RANGE_PUSH("GPU");
+
   printf("\n*************************************************************************************************\n                         Doing GPU Search \n*************************************************************************************************\n");
 
   char srcTyp[1024];
@@ -7114,50 +7136,41 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 	gettimeofday(&start01, NULL);
       }
 
-      if      ( master->cndType & CU_STR_ARR    ) // Copying candidates from array to list for optimisation  .
+      if      ( master->cndType & CU_STR_ARR ) // Copying candidates from array to list for optimisation  .
       {
-	printf("\nCopying initial candidates from array to list for optimisation.\n");
-
-	NV_RANGE_PUSH("Add to list");
-
-	int     cdx;
-	double  poww, sig;
-	double  rr, zz;
-	int     added = 0;
-	int     numharm;
-	initCand*   candidate = (initCand*)cuSrch->h_candidates;
-	poww    = 0;
-
-//#ifdef DEBUG
-//	FILE * pFile;
-//	sprintf(name,"%s_GPU_ARRAY.csv",fname);
-//	pFile = fopen (name,"w");
-//	fprintf (pFile, "idx;rr;f;zz;sig;harm\n");
-//#endif
-	for (cdx = 0; cdx < (int)cuSrch->SrchSz->noOutpR; cdx++)  // Loop
+	if ( !(master->flags & FLAG_DPG_SKP_OPT) )
 	{
-	  poww        = candidate[cdx].power;
+	  printf("\nCopying initial candidates from array to list for optimisation.\n");
 
-	  if ( poww > 0 )
+	  NV_RANGE_PUSH("Add to list");
+
+	  int     cdx;
+	  double  poww, sig;
+	  double  rr, zz;
+	  int     added = 0;
+	  int     numharm;
+	  initCand*   candidate = (initCand*)cuSrch->h_candidates;
+	  poww    = 0;
+
+	  for (cdx = 0; cdx < (int)cuSrch->SrchSz->noOutpR; cdx++)  // Loop
 	  {
-	    numharm   = candidate[cdx].numharm;
-	    sig       = candidate[cdx].sig;
-	    rr        = candidate[cdx].r;
-	    zz        = candidate[cdx].z;
+	    poww        = candidate[cdx].power;
 
-	    cuSrch->cands  = insert_new_accelcand(cuSrch->cands, poww, sig, numharm, rr, zz, &added );
+	    if ( poww > 0 )
+	    {
+	      numharm   = candidate[cdx].numharm;
+	      sig       = candidate[cdx].sig;
+	      rr        = candidate[cdx].r;
+	      zz        = candidate[cdx].z;
 
-//#ifdef DEBUG
-//	    fprintf (pFile, "%i;%.2f;%.3f;%.2f;%.2f;%i\n",cdx+1,rr, rr/obs.T, zz, sig, numharm );
-//#endif
-	    noCands++;
+	      cuSrch->cands  = insert_new_accelcand(cuSrch->cands, poww, sig, numharm, rr, zz, &added );
+
+	      noCands++;
+	    }
 	  }
+	  
+	  NV_RANGE_POP();
 	}
-//#ifdef DEBUG
-//	fclose (pFile);
-//#endif
-
-	NV_RANGE_POP();
       }
       else if ( master->cndType & CU_STR_LST    )
       {
@@ -7211,13 +7224,6 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
   }
 
   printf("\nGPU found %li initial candidates of which %i are unique. In %.4f ms\n", noCands, g_slist_length(cuSrch->cands), cuSrch->timings[TIME_GPU_SRCHALL]/1000.0 );
-
-//  if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
-//  {
-//    char name [1024];
-//    sprintf(name,"%s_GPU_01_Cands.csv",fname);
-//    printCands(name, cuSrch->cands, obs.T);
-//  }
 
   return cuSrch;
 }

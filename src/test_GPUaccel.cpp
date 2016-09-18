@@ -22,6 +22,7 @@ extern "C"
 #endif
 
 #include "cuda_response.h"
+#include "cuda_cand_OPT.h"
 #endif
 
 #include <sys/time.h>

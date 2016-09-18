@@ -75,10 +75,12 @@ __device__ inline int getY(int planeY, const int noSteps,  const int step, const
   {
     return planeY * noSteps + step;
   }
+#ifdef WITH_ITLV_PLN
   else
   {
     return planeY + planeHeight*step;
   }
+#endif
 }
 
 template<int64_t FLAGS>

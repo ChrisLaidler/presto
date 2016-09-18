@@ -206,10 +206,12 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
           {
             off1  = pHeight + planeY*noSteps*stride;
           }
+#ifdef WITH_ITLV_PLN
           else
           {
             off1  = pHeight + planeY*stride;
           }
+#endif
         }
 
         for ( int step = 0; step < noSteps; ++step )          // Loop over steps .
@@ -220,10 +222,12 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
             {
               idx  = off1 + step * stride;
             }
+#ifdef WITH_ITLV_PLN
             else
             {
               idx  = off1 + step * ns2;
             }
+#endif
           }
 
           fcomplexcu kv;
@@ -314,6 +318,14 @@ __host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotSta
 
   if      ( batch->flags & FLAG_ITLV_ROW )
     mult02_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+#ifdef WITH_ITLV_PLN
   else
     mult02_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+#else
+  else
+  {
+    fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+#endif
 }

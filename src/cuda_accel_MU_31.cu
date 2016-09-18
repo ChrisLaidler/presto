@@ -51,10 +51,12 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
           {
             off1  = pHeight + planeY*noSteps*stride;
           }
+#ifdef WITH_ITLV_PLN
           else
           {
             off1  = pHeight + planeY*stride;
           }
+#endif
         }
 
         // Multiply and write data
@@ -72,10 +74,12 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
             {
               idx  = off1 + step * stride;
             }
+#ifdef WITH_ITLV_PLN
             else
             {
               idx  = off1 + step * plnStride;
             }
+#endif
           }
 
 	  // Multiply
@@ -168,6 +172,14 @@ __host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch)
 
   if      ( batch->flags & FLAG_ITLV_ROW )
     mult31_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);
+#ifdef WITH_ITLV_PLN
   else
     mult31_s<0>(dimGrid, dimBlock, 0, multStream, batch);
+#else
+    else
+    {
+      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+#endif
 }

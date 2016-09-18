@@ -253,6 +253,8 @@ typedef struct resThrds resThrds;
 #define 		WITH_OPT_PLN3
 //#define 		WITH_OPT_PLN4
 
+//#define  		WITH_ITLV_PLN
+
 //======================================== Type defines ==================================================
 
 ///< A complex float in device texture memory

@@ -119,10 +119,12 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 			  ix2     = ix1 + step    * STRIDE_STAGE[harm] ;
 			  iy2     = iy1 * noSteps * STRIDE_STAGE[harm];
 			}
+#ifdef WITH_ITLV_PLN
 			else
 			{
 			  iy2     = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
 			}
+#endif
 		      }
 
 		      FOLD // Read powers  .
@@ -407,10 +409,18 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     {
       add_and_searchCU31_p<T, FLAG_ITLV_ROW>    (dimGrid, dimBlock, stream, batch);
     }
+#ifdef WITH_ITLV_PLN
     else
     {
       add_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, batch);
     }
+#else
+    else
+    {
+      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+#endif
   }
 }
 

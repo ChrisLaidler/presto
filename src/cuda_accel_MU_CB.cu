@@ -141,14 +141,14 @@ __device__ cufftComplex CB_readInp0( void *dataIn, size_t offset, void *callerIn
   cufftComplex ker = ((cufftComplex*)dataIn)[offset];
 
   cufftComplex out;
-//  out.x = (ipd.x * ker.x + ipd.y * ker.y);
-//  out.y = (ipd.y * ker.x - ipd.x * ker.y);
+  //  out.x = (ipd.x * ker.x + ipd.y * ker.y);
+  //  out.y = (ipd.y * ker.x - ipd.x * ker.y);
   out.x = ipd.x;
   out.y = ker.y;
 
-//  cufftComplex out;
-//  out.x = 1;
-//  out.y = 0;
+  //  cufftComplex out;
+  //  out.x = 1;
+  //  out.y = 0;
   return out;
 }
 
@@ -159,20 +159,20 @@ __device__ cufftComplex CB_readInp0( void *dataIn, size_t offset, void *callerIn
  */
 __device__ cufftComplex CB_readInp1( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
-//  int strd        = STK_STRD[1];
-//  int col         = offset % strd;
-//  int row         = offset / strd;
-//  char  inpIdx    = STK_INP[1][row];
-//
-//  // Read input
-//  cufftComplex ipd = ((cufftComplex*)callerInfo)[strd*inpIdx + col ];
-//
-//  // Read kernel
-//  cufftComplex ker = ((cufftComplex*)dataIn)[offset];
-//
-//  cufftComplex out;
-//  out.x = (ipd.x * ker.x + ipd.y * ker.y);
-//  out.y = (ipd.y * ker.x - ipd.x * ker.y);
+  //  int strd        = STK_STRD[1];
+  //  int col         = offset % strd;
+  //  int row         = offset / strd;
+  //  char  inpIdx    = STK_INP[1][row];
+  //
+  //  // Read input
+  //  cufftComplex ipd = ((cufftComplex*)callerInfo)[strd*inpIdx + col ];
+  //
+  //  // Read kernel
+  //  cufftComplex ker = ((cufftComplex*)dataIn)[offset];
+  //
+  //  cufftComplex out;
+  //  out.x = (ipd.x * ker.x + ipd.y * ker.y);
+  //  out.y = (ipd.y * ker.x - ipd.x * ker.y);
 
   cufftComplex out;
   out.x = 1;
@@ -187,20 +187,20 @@ __device__ cufftComplex CB_readInp1( void *dataIn, size_t offset, void *callerIn
  */
 __device__ cufftComplex CB_readInp2( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
-//  int strd        = STK_STRD[2];
-//  int col         = offset % strd;
-//  int row         = offset / strd;
-//  char  inpIdx    = STK_INP[2][row];
-//
-//  // Read input
-//  cufftComplex ipd = ((cufftComplex*)callerInfo)[strd*inpIdx + col ];
-//
-//  // Read kernel
-//  cufftComplex ker = ((cufftComplex*)dataIn)[offset];
-//
-//  cufftComplex out;
-//  out.x = (ipd.x * ker.x + ipd.y * ker.y);
-//  out.y = (ipd.y * ker.x - ipd.x * ker.y);
+  //  int strd        = STK_STRD[2];
+  //  int col         = offset % strd;
+  //  int row         = offset / strd;
+  //  char  inpIdx    = STK_INP[2][row];
+  //
+  //  // Read input
+  //  cufftComplex ipd = ((cufftComplex*)callerInfo)[strd*inpIdx + col ];
+  //
+  //  // Read kernel
+  //  cufftComplex ker = ((cufftComplex*)dataIn)[offset];
+  //
+  //  cufftComplex out;
+  //  out.x = (ipd.x * ker.x + ipd.y * ker.y);
+  //  out.y = (ipd.y * ker.x - ipd.x * ker.y);
 
   cufftComplex out;
   out.x = 1;
@@ -215,20 +215,20 @@ __device__ cufftComplex CB_readInp2( void *dataIn, size_t offset, void *callerIn
  */
 __device__ cufftComplex CB_readInp3( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
 {
-//  int strd        = STK_STRD[3];
-//  int col         = offset % strd;
-//  int row         = offset / strd;
-//  char  inpIdx    = STK_INP[3][row];
-//
-//  // Read input
-//  cufftComplex ipd = ((cufftComplex*)callerInfo)[strd*inpIdx + col ];
-//
-//  // Read kernel
-//  cufftComplex ker = ((cufftComplex*)dataIn)[offset];
-//
-//  cufftComplex out;
-//  out.x = (ipd.x * ker.x + ipd.y * ker.y);
-//  out.y = (ipd.y * ker.x - ipd.x * ker.y);
+  //  int strd        = STK_STRD[3];
+  //  int col         = offset % strd;
+  //  int row         = offset / strd;
+  //  char  inpIdx    = STK_INP[3][row];
+  //
+  //  // Read input
+  //  cufftComplex ipd = ((cufftComplex*)callerInfo)[strd*inpIdx + col ];
+  //
+  //  // Read kernel
+  //  cufftComplex ker = ((cufftComplex*)dataIn)[offset];
+  //
+  //  cufftComplex out;
+  //  out.x = (ipd.x * ker.x + ipd.y * ker.y);
+  //  out.y = (ipd.y * ker.x - ipd.x * ker.y);
 
   cufftComplex out;
   out.x = 1;
@@ -433,23 +433,31 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 #if CUDA_VERSION >= 7050
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
-        // Store powers to inmem plane
-        if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
-        {
-          //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
-          CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-        }
-        else                                  // Plane interleaved
-        {
-          //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
-          CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-        }
+	// Store powers to inmem plane
+	if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
+	{
+	  //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
+	}
+#ifdef WITH_ITLV_PLN
+	else                                  // Plane interleaved
+	{
+	  //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
+	}
+#else
+	else
+	{
+	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	  exit(EXIT_FAILURE);
+	}
+#endif
       }
       else
       {
-        // Calculate powers and write to powers half precision plane
-        //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),     "Getting constant memory address.");
-        CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
+	// Calculate powers and write to powers half precision plane
+	//CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC)),     "Getting constant memory address.");
+	CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
       }
 #else
       fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -460,23 +468,31 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
     {
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
-        // Store powers to inmem plane
-        if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
-        {
-          //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
-          CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-        }
-        else                                  // Plane interleaved
-        {
-          //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemPln_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
-          CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-        }
+	// Store powers to inmem plane
+	if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
+	{
+	  //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
+	}
+#ifdef WITH_ITLV_PLN
+	else                                  // Plane interleaved
+	{
+	  //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_inmemPln_f, sizeof(cufftCallbackStoreC)),  "Getting constant memory address.");
+	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
+	}
+#else
+	else
+	{
+	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	  exit(EXIT_FAILURE);
+	}
+#endif
       }
       else
       {
-        // Calculate powers and write to powers half single plane
-        //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC)),     "Getting constant memory address.");
-        CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
+	// Calculate powers and write to powers half single plane
+	//CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC)),     "Getting constant memory address.");
+	CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
       }
     }
   }
@@ -540,15 +556,15 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
       if ( batch->flags &  FLAG_POW_HALF )
       {
 #if CUDA_VERSION >= 7050
-        dst    = ((half*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
+	dst    = ((half*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
 #else
-        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-        exit(EXIT_FAILURE);
+	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+	exit(EXIT_FAILURE);
 #endif
       }
       else
       {
-        dst    = ((float*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
+	dst    = ((float*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen; // A pointer to the location of the first step in the in-mem plane
       }
     }
     else
