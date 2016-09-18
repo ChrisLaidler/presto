@@ -176,52 +176,59 @@ void setGenRVals(cuFFdotBatch* batch)
   int noResPerBin;
   for (int harm = 0; harm < batch->noGenHarms; harm++)
   {
-    cuHarmInfo* cHInfo      = &batch->hInfos[harm];                             	// The current harmonic we are working on
-    noResPerBin		    = cHInfo->noResPerBin;
-    binoffset               = cHInfo->kerStart / noResPerBin;		// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
+    cuHarmInfo* cHInfo		= &batch->hInfos[harm];                             	// The current harmonic we are working on
+    noResPerBin			= cHInfo->noResPerBin;
+    binoffset			= cHInfo->kerStart / noResPerBin;		// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
 
 
 
     for (int step = 0; step < batch->noSteps; step++)
     {
-      rVals* rVal           = &(*batch->rAraays)[batch->rActive][step][harm];
+      rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][harm];
       rVals* rValFund		= &(*batch->rAraays)[batch->rActive][step][0];
 
       if ( rValFund->drlo == rValFund->drhi )
       {
-        rVal->drlo          = 0;
-        rVal->lobin         = 0;
-        rVal->numrs         = 0;
-        rVal->numdata       = 0;
-        rVal->expBin        = 0;
-        rVal->step          = -1; // Invalid step!
+        rVal->drlo		= 0;
+        rVal->lobin		= 0;
+        rVal->numrs		= 0;
+        rVal->numdata		= 0;
+        rVal->expBin		= 0;
+        rVal->step		= -1; // Invalid step!
       }
       else
       {
         drlo			= cu_calc_required_r(cHInfo->harmFrac, rValFund->drlo, noResPerBin);
         drhi			= cu_calc_required_r(cHInfo->harmFrac, rValFund->drhi, noResPerBin);
 
-        lobin               = (int) floor(drlo) - binoffset;
-        hibin               = (int) ceil(drhi)  + binoffset;
+        lobin			= (int) floor(drlo) - binoffset;
+        hibin			= (int) ceil(drhi)  + binoffset;
 
-        numdata             = hibin - lobin + 1;
-        // TODO: Use the below methoud when doing CPU normalisation
-        //numdata		    = ceil(cHInfo->width / (float)noResPerBin); // Thus may use mutch more input data than is strictly nessesary but thats OK!
+        if ( batch->flags & CU_NORM_CPU )
+        {
+          // CPU nomralisation can normalise differing length data so use the correct lengths
+          numdata		= hibin - lobin + 1;
+        }
+        else
+        {
+          // GPU normalisation now relies on all input for a stack being of the same length
+          numdata		= ceil(cHInfo->width / (float)noResPerBin); // Thus may use mutch more input data than is strictly nessesary but thats OK!
+        }
 
-        numrs               = (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
+        numrs			= (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
         if ( harm == 0 )
-          numrs             = batch->accelLen;
+          numrs			= batch->accelLen;
         else if ( numrs % noResPerBin )
-          numrs             = (numrs / noResPerBin + 1) * noResPerBin;
+          numrs			= (numrs / noResPerBin + 1) * noResPerBin;
 
-        rVal->drlo          = drlo;
-        rVal->drhi          = drhi;
-        rVal->lobin         = lobin;
-        rVal->numrs         = numrs;
-        rVal->numdata       = numdata;
-        rVal->expBin        = (lobin+binoffset)*noResPerBin;
+        rVal->drlo		= drlo;
+        rVal->drhi		= drhi;
+        rVal->lobin		= lobin;
+        rVal->numrs		= numrs;
+        rVal->numdata		= numdata;
+        rVal->expBin		= (lobin+binoffset)*noResPerBin;
 
-        int noEls           = numrs + 2*cHInfo->kerStart;
+        int noEls		= numrs + 2*cHInfo->kerStart;
 
         if  ( noEls > cHInfo->width )
         {

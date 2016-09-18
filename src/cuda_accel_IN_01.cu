@@ -1,5 +1,5 @@
 #include "cuda_accel_IN.h"
-#include "cuda_median.h"
+#include "cuda_sort.h"
 
 
 /** Kernel to calculate median of the powers of complex values and spread and normalise the complex using the calculated median value
@@ -7,101 +7,149 @@
  * @param data    The data, initially the input is in the first half, results are written to the same location spread by 2
  * @param lens    The lengths of the individual input sections
  */
-template<int BS_MAX>
-__global__ void normAndSpread_k(fcomplexcu* data, int stride, int lenth, int noRespPerBin)
+template<int noEls>
+__global__ void normAndSpread_k(fcomplexcu* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
   const int bSz = blockDim.x  * blockDim.y;                     /// Block size
 
-  int width = lenth;
-  if (width)
+  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+
+  float   factor;
+
+  // Stride input data
+  data += stride*bid;
+
+  FOLD  //  .
   {
-    __shared__ float sData[BS_MAX];
-
-    float   medianValue;
-    float   factor;
-
-    int batches = ceilf( width / (float) bSz );
-
-    // Stride input data
-    data += stride*bid;
-
-    if ( width <= BS_MAX )
+    FOLD // Calculate and store powers in shared memory  .
     {
-      FOLD // Calculate and store powers in shared memory  .
-      {
-        for ( int batch = 0; batch < batches; batch++)
-        {
-          int idx = batch*bSz+tid;
+      int os = noEls/2-1;
 
-          if ( idx < width )
-          {
-            fcomplexcu val  = data[idx];
-            sData[idx]      = val.r*val.r+val.i*val.i;
-          }
-        }
+      float  powers[batches];				/// Registers to store powers
+
+      float median_orderstat_radix = 1;
+      float median_orderstat_sort = 1;
+      float median_Sort = 1;
+      float median_Sort_mult = 1;
+
+//	FOLD // Order stat - sort  .
+//	{
+//	  for ( int batch = 0; batch < batches; batch++)
+//	  {
+//	    int idx = batch*bSz+tid;
+//
+//	    if ( idx < noEls )
+//	    {
+//	      fcomplexcu val  = data[idx];
+//	      powers[batch]   = val.r*val.r+val.i*val.i;
+//	    }
+//	  }
+//	  median_orderstat_sort = cuOrderStatPow2_sort<float, noEls, batches>(powers, os);
+//	}
+//
+//	__syncthreads();
+
+      FOLD // Sort SM  .
+      {
+	__shared__ float smData[noEls];
+	for ( int batch = 0; batch < batches; batch++)
+	{
+	  int idx = batch*bSz+tid;
+
+	  if ( idx < noEls )
+	  {
+	    fcomplexcu val  = data[idx];
+	    smData[idx]     = val.r*val.r+val.i*val.i;
+	  }
+	}
+	__syncthreads();
+
+	bitonicSort<float, noEls>(smData);
+
+	__syncthreads();
+
+	median_Sort = smData[os];
       }
 
-      medianValue = cuMedianOne(sData, width);
+      __syncthreads();
+
+//	FOLD // Sort mult  .
+//	{
+//	  for ( int batch = 0; batch < batches; batch++)
+//	  {
+//	    int idx = batch*bSz+tid;
+//
+//	    if ( idx < noEls )
+//	    {
+//	      fcomplexcu val  = data[idx];
+//	      powers[batch]   = val.r*val.r+val.i*val.i;
+//	    }
+//	  }
+//	  bitonicSort_mult<float, noEls, batches>(powers);
+//
+//	  __syncthreads();
+//
+//	  median_Sort_mult = getValue<float, batches>(powers, os);
+//	}
+//
+//	__syncthreads();
+
+//	FOLD // Order stat radix  .
+//	{
+//	  for ( int batch = 0; batch < batches; batch++)
+//	  {
+//	    int idx = batch*bSz+tid;
+//
+//	    if ( idx < noEls )
+//	    {
+//	      fcomplexcu val  = data[idx];
+//	      powers[batch]   = val.r*val.r+val.i*val.i;
+//	    }
+//	  }
+//	  median_orderstat_radix = cuOrderStatPow2_radix<noEls>(powers, os, 0);
+//	}
+//
+//	__syncthreads();
+
+      // Calculate normalisation factor
+      factor = 1.0 / sqrtf( median_Sort / (float)LN2 );
     }
-    else // Use device memory for powers
+  }
+
+  // Write, spread and normalised
+  for ( int batch = batches-1; batch >= 0; batch--)
+  {
+    int idx	 = batch*bSz+tid;
+    int expIdx = idx * noRespPerBin;
+
+    // Read all values into registers
+    fcomplexcu val = data[idx];
+
+    __syncthreads(); // Needed to ensure all values are in registers before writing data
+
+    if ( expIdx < stride)
     {
-      // The output data is spread by two
-      // This the input is only in the first half and we can use the last half to store the powers
-
-      float* powers = (float*)(&data[stride/2]); // Stride should always be a power of 2
-
-      FOLD // Calculate and store powers in device memory  .
+      // Set the value to normalised complex number spread by 2
+      if ( idx < noEls )
       {
-        for ( int batch = 0; batch < batches; batch++)
-        {
-          fcomplexcu val            = data[batch*bSz+tid];
-          powers[batch*bSz  + tid]  = val.r*val.r+val.i*val.i;
-        }
+	val.i *= factor;
+	val.r *= factor;
       }
-
-      medianValue = cuMedianBySection<BS_MAX>(powers, sData, width);
-    }
-
-    // Calculate normalisation factor
-    factor = 1.0 / sqrt( medianValue / LN2 );
-
-    batches = ceil( stride / (float) bSz );
-
-    // Write, spread and normalised
-    for ( int batch = batches-1; batch >= 0; batch--)
-    {
-      int idx	= batch*bSz+tid;
-      int expIdx = idx * noRespPerBin;
-
-      // Read all values into registers
-      fcomplexcu val = data[idx];
-
-      __syncthreads(); // Needed to ensure all values are in refisters before writing data
-
-      if ( expIdx < stride)
+      else
       {
-        // Set the value to normalised complex number spread by 2
-        if ( idx < width )
-        {
-          val.i *= factor;
-          val.r *= factor;
-        }
-        else
-        {
-          val.i = 0;
-          val.r = 0;
-        }
-        data[expIdx]     = val;
+	val.i = 0;
+	val.r = 0;
+      }
+      data[expIdx]     = val;
 
-        // Set every second value to 0
-        for (int i = 1; i < noRespPerBin; i++ )
-        {
-          val.i = 0;
-          val.r = 0;
-          data[expIdx+i]   = val;
-        }
+      // Set every second value to 0
+      for (int i = 1; i < noRespPerBin; i++ )
+      {
+	val.i = 0;
+	val.r = 0;
+	data[expIdx+i]   = val;
       }
     }
   }
@@ -110,72 +158,58 @@ __global__ void normAndSpread_k(fcomplexcu* data, int stride, int lenth, int noR
 /** A function in the template tree used to call the CUDA median normalisation kernel
  *
  * This function determines the buffer width and
-* calls the function in the template tree
+ * calls the function in the template tree
  *
  */
 void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFfdotStack* cStack, int numData )
 {
-  int bufWidth;
-
-  if ( cuMedianBuffSz > 0 )
+  switch ( numData )
   {
-    bufWidth            = cuMedianBuffSz;
-  }
-  else
-  {
-    if ( cStack->width > 8192 )
-      bufWidth          = 2048;			// Multi bitonic sort with a buffer size of 2048 (2048 found to be close to optimal most of the time)
-    else
-      bufWidth          = numData; 		// Use the actual number of input elements (1 bitonic sort)
-  }
-
-  bufWidth              = MAX( (numData)/32.0f, bufWidth );
-  bufWidth              = MAX( 128,  bufWidth );
-  bufWidth              = MIN( 8192, bufWidth );
-
-  // TODO: Profile this with noResPerBin templated
-
-  switch ( bufWidth )
-  {
+    case 64   :
+    {
+      normAndSpread_k<64  ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      break;
+    }
     case 128   :
     {
-      normAndSpread_k<128><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<128 ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     case 256   :
     {
-      normAndSpread_k<256><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<256 ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     case 512   :
     {
-      normAndSpread_k<512><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<512 ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     case 1024  :
     {
-      normAndSpread_k<1024><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<1024><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     case 2048  :
     {
-      normAndSpread_k<2048><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<2048><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     case 4096  :
     {
-      normAndSpread_k<4096><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<4096><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     case 8192  :
     {
-      normAndSpread_k<8192><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, numData, cStack->harmInf->noResPerBin );
+      normAndSpread_k<8192><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       break;
     }
     default    :
     {
-      fprintf(stderr, "ERROR: %s has not been templated for sorting with %i elements.\n", __FUNCTION__, bufWidth );
+      fprintf(stderr, "ERROR: %s has not been templated for sorting with %i elements.\n", __FUNCTION__, numData );
       exit(EXIT_FAILURE);
+      break;
     }
   }
 }
@@ -202,7 +236,7 @@ __host__ void normAndSpread(cudaStream_t stream, cuFFdotBatch* batch, uint stack
 
   if ( batch->cuSrch->sSpec->normType != 0 )
   {
-    fprintf(stderr, "ERROR: GPU normalisation can only pefrom oldstyle block median normalisation of the step input.\n");
+    fprintf(stderr, "ERROR: GPU normalisation can only perform old-style block median normalisation of the step input.\n");
     exit(EXIT_FAILURE);
   }
 

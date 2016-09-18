@@ -1,6 +1,9 @@
 #ifndef CUTIL_MATH_H
 #define CUTIL_MATH_H
 
+#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
+#include <cuda.h>
 
 #ifndef SQRT2
 #define SQRT2		1.4142135623730950488016887242096980785696718753769
@@ -55,6 +58,13 @@
 #ifndef MINN
 #define MINN(a, b)  (a=(a)>(b)?(b):(a) )
 #endif
+
+__device__ __forceinline__ unsigned int    __lidd() { unsigned int laneid; asm volatile ("mov.u32 %0, %laneid;" : "=r"(laneid)); return laneid; }
+//__device__ __forceinline__ unsigned int __warpid() { unsigned int warpid; asm volatile ("mov.u32 %0, %warpid;" : "=r"(warpid)); return warpid; }
+//__device__ __forceinline__ unsigned int   __smid() { unsigned int smid;   asm volatile ("mov.u32 %0, %smid;"   : "=r"(smid));   return smid;   }
+//__device__ __forceinline__ unsigned int __gridid() { unsigned int gridid; asm volatile ("mov.u32 %0, %gridid;" : "=r"(gridid)); return gridid; }
+//__device__ __forceinline__ unsigned int __tIdBlock() { unsigned int tid; asm volatile ("mad.lo.u32 %ntid.x, %tid.y, %tid.x, %0;" : "=r"(tid)); return tid; }
+
 
 __host__ __device__ inline float  cos_t(float  x)
 {
@@ -159,6 +169,50 @@ __host__ __device__ inline int lround_t ( double  x )
   return lround(x);
 }
 
+#if __CUDA_ARCH__ >= 200
+__device__ static float atomicMax(float* address, float val)
+{
+  int* address_as_i = (int*) address;
+  int old = *address_as_i, assumed;
+  do
+  {
+    assumed = old;
+    old = atomicCAS(address_as_i, assumed, __float_as_int(::fmaxf(val, __int_as_float(assumed))));
+  } while (assumed != old);
+  return __int_as_float(old);
+}
 
+__device__ static float atomicMin(float* address, float val)
+{
+  int* address_as_i = (int*) address;
+  int old = *address_as_i, assumed;
+  do
+  {
+    assumed = old;
+    old = atomicCAS(address_as_i, assumed, __float_as_int(::fminf(val, __int_as_float(assumed))));
+  } while (assumed != old);
+  return __int_as_float(old);
+}
+#endif
+
+/** Extract k-th bit from i
+ *
+ */
+__device__ inline int bfe(int i, int k)
+{
+  int ret;
+  asm("bfe.u32 %0, %1, %2, 1;" : "=r"(ret) : "r"(i), "r"(k));
+  return ret;
+}
+
+/** Find most significant non-sign bit from i.
+ *
+ */
+__device__ inline int bfind(int i)
+{
+  int ret;
+  asm("bfind.s32 %0, %1;" : "=r"(ret) : "r"(i));
+  return ret;
+}
 
 #endif
