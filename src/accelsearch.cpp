@@ -340,6 +340,12 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP )			// --=== The GPU Search == --  .
       {
 #ifdef CUDA
+
+	if ( cmd->cpuP ) // Duplicate the CPU canidates  .
+	{
+	  candsCPU = duplicate_accelcands(cands);
+	}
+
 	searchGPU(cuSrch, &gSpec, &sSpec);
 
 	cands = cuSrch->cands;
@@ -388,6 +394,12 @@ int main(int argc, char *argv[])
   {                            /* Candidate list trimming and optimisation */
     printf("\n*************************************************************************************************\n                          Optimizing initial candidates\n*************************************************************************************************\n");
     printf("\n");
+
+    if ( cmd->cpuP && cmd->cpuP ) // Duplicate the CPU canidates  .
+    {
+      // We did a CPU search we may as well use the CPU canidated    TMP
+      cands = candsCPU;
+    }
 
     int numcands;
     GSList *listptr;
@@ -496,6 +508,12 @@ int main(int argc, char *argv[])
       {
 #ifdef CUDA
 
+	if ( cmd->cpuP )
+	{
+	  // Get the pre optimisation candates
+	  cands = duplicate_accelcands(cuSrch->cands);
+	}
+
 	NV_RANGE_PUSH("GPU Optimisation");
 
 	gettimeofday(&start01, NULL);       // Profiling
@@ -510,6 +528,8 @@ int main(int argc, char *argv[])
 	cuSrch->timings[TIME_GPU_OPT] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
 
 	NV_RANGE_POP();
+
+	NV_RANGE_POP(); // GPU
 #else
 	fprintf(stderr,"ERROR: not compiled with CUDA!\n");
 #endif
