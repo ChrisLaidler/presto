@@ -91,8 +91,6 @@ PGPLOTINC  = -I$(PGPLOT_DIR)
 PGPLOTLINK = -L$(PGPLOT_DIR) -lcpgplot -lpgplot $(X11LINK) $(PNGLINK)
 endif
 
-
-
 # Include and link information for the FFTW 3.X single-precision library
 FFTINC  := $(shell pkg-config --cflags fftw3f)
 FFTLINK := $(shell pkg-config --libs fftw3f)
@@ -167,8 +165,8 @@ CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-par
 
 CWARN				  = -Wno-implicit-function-declaration
 
-CFLAGS			 	= $(BASEFLAGS) $(CWARN) $(CXXWARN)
-CXXFLAGS			= $(BASEFLAGS) $(CXXWARN)
+CFLAGS			 	+= $(BASEFLAGS) $(CWARN) $(CXXWARN)
+CXXFLAGS			+= $(BASEFLAGS) $(CXXWARN)
 
 CLINKFLAGS 		= $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
@@ -189,8 +187,8 @@ CUDA_ARCH  := $(foreach root, $(CUDA_ARCH), -gencode arch=compute_$(root),code=s
 
 CUDA_PATH  = /usr/local/cuda
 
-CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
-CUDAINC    = -I$(CUDA_PATH)/include
+CUDALIBS   += -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
+CUDAINC    += -I$(CUDA_PATH)/include
 
 NVCCFLAGS  =  $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
 NVCCFLAGS  += $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
@@ -711,6 +709,7 @@ cleanGPU: cudaclean
 	rm -f ../lib/libcuaccel*
 	rm -f ../bin/test_GPUaccel*
 	rm -f ../bin/accelsearch*
+	rm -f ../bin/getAccelLen*
 
 cleancubasics:
 	rm -f build/*/cuda_accel_IN.cu.o
