@@ -16,7 +16,7 @@
 
 #define SORT_DBG
 
-/** Compare and swap two values (if they are in the wrong order).
+/** Compare and swap two values (if they are in the wrong order)  .
  *
  * @param valA The first value
  * @param valB The second value
@@ -34,7 +34,7 @@ __device__ inline void Comparator(float &valA, float &valB, uint dir)
   }
 }
 
-/** XOR swap two integer values
+/** XOR swap two integer values  .
  *
  * @param a integer a
  * @param b integer b
@@ -46,7 +46,7 @@ __device__ inline void swap(int & a, int & b)
   a = a ^ b;
 }
 
-/** Butterfly shuffle swap
+/** Butterfly shuffle swap  .
  *
  * @param x
  * @param mask
@@ -60,7 +60,7 @@ __device__ inline T shflSwap(const T x, int mask, int dir)
   return ((x < y) == dir) ? y : x;
 }
 
-/** Per warp, bitonic sort of 2^x elements up to 32 elements using shuffle operation
+/** Per warp, bitonic sort of 2^x elements in registers up to 32 elements using shuffle operation  .
  *
  * This function sorts the values in a warp using a bitonic sort
  * Values are passed in as a parameter and passed back.
@@ -118,14 +118,14 @@ __device__ inline T bitonicSort3x_warp(T val, const int laneId)
   return val;
 }
 
-/** Fast bitonic sort of power of two up to 256 elements in per thread arrays, using shuffle operation, no memory writes
+/** Block, Bitonic sort of power of two up to  256 elements in per thread arrays, using shuffle operation, no memory writes  .
  *
  * @param val		The per thread element to be sorted
  * @param laneId	The lane of the thread
  * @return		The noSorted values are stored val
  */
 template <typename T, const int noSorted, const int noSort, const int NoArr>
-__device__ inline void bitonicSort3x_warp_mult_2(T* val, const int laneId)
+__device__ inline void bitonicSort3x_warp_regs(T* val, const int laneId)
 {
   if ( noSort <= 32 )
   {
@@ -285,440 +285,436 @@ __device__ inline void bitonicSort3x_warp_mult_2(T* val, const int laneId)
   }
 }
 
-/** Fast bitonic sort of power of two up to 256 elements in per thread arrays, using shuffle operation, no memory writes
- *
- *
- * @param val		The per thread element to be sorted
- * @param laneId	The lane of the thread
- * @return		The noSorted values are stored val
- */
-template <typename T, const int noSorted, const int noSort, const int NoArr>
-__device__ inline void bitonicSort3x_warp_mult(T* val, const int laneId, const int print = 0)
-{
-  // TODO: Check speeds between this function and the one above, they should be the same but above has manual unrolling
+// Debug version s of above function
+//
+///** Fast bitonic sort of power of two up to 256 elements in per thread arrays, using shuffle operation, no memory writes
+// *
+// *
+// * @param val		The per thread element to be sorted
+// * @param laneId	The lane of the thread
+// * @return		The noSorted values are stored val
+// */
+//template <typename T, const int noSorted, const int noSort, const int NoArr>
+//__device__ inline void bitonicSort3x_warp_regs_2(T* val, const int laneId, const int print = 0)
+//{
+//  // TODO: Check speeds between this function and the one above, they should be the same but above has manual unrolling
+//
+//  FOLD // Full sort of values within each array in each warp, using shuffle  .
+//  {
+//    if ( noSort < 32 )
+//    {
+//      // Sort each section less than 32
+//#pragma unroll
+//      for ( int i = 0; i < NoArr; i++)
+//      {
+//	val[i] = bitonicSort3x_warp<T, noSorted, noSort>(val[i], laneId);
+//      }
+//    }
+//    else
+//    {
+//      // Sort each section of 32
+//#pragma unroll
+//      for ( int i = 0; i < NoArr; i++)
+//      {
+//	val[i] = bitonicSort3x_warp<T, noSorted, 32>(val[i], laneId);
+//      }
+//    }
+//  }
+//
+//  FOLD // Full sort of values across "arrays" in warps  .
+//  {
+//    const int noInWarp = NoArr*32;
+//#pragma unroll
+//    for ( int pow2 = 64; pow2 <= noInWarp; pow2*=2 )	// Loop over section length  .
+//    {
+//      if ( pow2 > noSorted && pow2 <= noSort)		// Control for partially sorted sections  .
+//      {
+//	const int no32 = pow2/32;
+//
+//#ifdef SORT_DBG
+//	if ( print )
+//	{
+//	  printf("%02i %9.6f \n", 32*2+laneId, val[2] );
+//	  printf("%02i %9.6f \n", 32*3+laneId, val[3] );
+//	}
+//
+//	if ( print && laneId == 0 )
+//	{
+//	  printf("Bitonic sort pow2 %4i \n", pow2);
+//	}
+//#endif
+//
+//	FOLD // Bitonic sort values across "arrays" in warps  .
+//	{
+//#pragma unroll
+//	  for ( int i = 0; i < NoArr/no32; i++ )		// loop over sort sections  .
+//	  {
+//#pragma unroll
+//	    for ( int p1 = 0; p1 < no32/2; p1++ )
+//	    {
+//	      int i0 = (i+1)*no32-1-p1;
+//	      int i1 = i*no32+p1;
+//
+//	      T v0 = __shfl_xor(val[i1], 0x1F);
+//	      T v1 = __shfl_xor(val[i0], 0x1F);
+//
+//	      val[i0] = val[i0] < v0 ? v0 : val[i0];
+//	      val[i1] = val[i1] < v1 ? val[i1] : v1;
+//	    }
+//	  }
+//	}
+//
+//#ifdef SORT_DBG
+//	if ( print )
+//	{
+//	  printf("%02i %9.6f \n", 32*2+laneId, val[2] );
+//	  printf("%02i %9.6f \n", 32*3+laneId, val[3] );
+//	}
+//#endif
+//
+//	FOLD // Bitonic merge  .
+//	{
+//	  FOLD // Bitonic merge values across "arrays" in warps  .
+//	  {
+//#pragma unroll
+//	    for ( int sLen = no32/2; sLen > 1; sLen/=2 )
+//	    {
+//#pragma unroll
+//	      for ( int i = 0; i < no32/sLen; i++ )
+//	      {
+//#pragma unroll
+//		for ( int j = 0; j < sLen/2; j++ )
+//		{
+//		  int i0 = i*sLen+j+0;
+//		  int i1 = i*sLen+j+sLen/2;
+//
+//		  T v0=val[i0];
+//		  T v1=val[i1];
+//
+//		  val[i0] = v0 < v1 ? v0 : v1;
+//		  val[i1] = v0 < v1 ? v1 : v0;
+//		}
+//	      }
+//
+//#ifdef SORT_DBG
+//	      if ( print && laneId == 0 )
+//	      {
+//		printf("Bitonic merge sLen %4i \n", sLen);
+//	      }
+//
+//	      if ( print )
+//	      {
+//		printf("%02i %9.6f \n", 32*2+laneId, val[2] );
+//		printf("%02i %9.6f \n", 32*3+laneId, val[3] );
+//	      }
+//#endif
+//	    }
+//	  }
+//
+//	  FOLD // Bitonic merge sections within each array  .
+//	  {
+//#pragma unroll
+//	    for ( int i = 0; i < NoArr; i++)
+//	    {
+//	      val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
+//	      val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
+//	      val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
+//	      val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
+//	      val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+//	    }
+//
+//#ifdef SORT_DBG
+//	    if ( print && laneId == 0 )
+//	    {
+//	      printf("Bitonic merge arr \n");
+//	    }
+//
+//	    if ( print )
+//	    {
+//	      printf("%02i %9.6f \n", 32*2+laneId, val[2] );
+//	      printf("%02i %9.6f \n", 32*3+laneId, val[3] );
+//	    }
+//#endif
+//	  }
+//	}
+//      }
+//    }
+//  }
+//}
+//
+///** Fast bitonic sort of power of two up to 256 elements in per thread arrays, using shuffle operation, no memory writes
+// *
+// *
+// *
+// * @param val		The per thread element to be sorted
+// * @param laneId	The lane of the thread
+// * @return		The noSorted values are stored val
+// */
+//template <typename T, const int noSorted, const int noSort, const int NoArr>
+//__device__ inline void bitonicSort3x_warp_regs_3(T* val, const int laneId, const int print = 0)
+//{
+//  const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index) DBG
+//
+//  // TODO: Check speeds between this function and the one above, they should be the same but above has manual unrolling
+//
+//  FOLD // Full sort of values within each array in each warp, using shuffle  .
+//  {
+//    if ( noSort < 32 )
+//    {
+//      // Sort each section less than 32
+//#pragma unroll
+//      for ( int i = 0; i < NoArr; i++)
+//      {
+//	val[i] = bitonicSort3x_warp<T, noSorted, noSort>(val[i], laneId);
+//      }
+//    }
+//    else
+//    {
+//      // Sort each section of 32
+//#pragma unroll
+//      for ( int i = 0; i < NoArr; i++)
+//      {
+//	val[i] = bitonicSort3x_warp<T, noSorted, 32>(val[i], laneId);
+//      }
+//    }
+//  }
+//
+//  FOLD // Full sort of values across "arrays" in warps  .
+//  {
+//    const int noInWarp = NoArr*32;
+//#pragma unroll
+//    for ( int pow2 = 64; pow2 <= noInWarp; pow2*=2 )	// Loop over section length  .
+//    {
+//      if ( pow2 > noSorted && pow2 <= noSort)		// Control for partially sorted sections  .
+//      {
+//	const int no32 = pow2/32;
+//
+//#ifdef SORT_DBG
+//	if ( print && tid == 0 )
+//	{
+//	  printf("Bitonic sort  pow2   %4i \n", pow2);
+//	}
+//#endif
+//
+//	FOLD // Bitonic sort values across "arrays" in warps  .
+//	{
+//#pragma unroll
+//	  for ( int i = 0; i < NoArr/no32; i++ )		// loop over sort sections  .
+//	  {
+//
+//#ifdef SORT_DBG
+//	    if ( print && tid == 0 )
+//	    {
+//	      printf("Array %i  \n", i );
+//	    }
+//#endif
+//
+//#pragma unroll
+//	    for ( int p1 = 0; p1 < no32/2; p1++ )
+//	    {
+//
+//
+//	      int i0 = (i+1)*no32-1-p1;
+//	      int i1 = i*no32+p1;
+//
+//#ifdef SORT_DBG
+//	      if ( print && tid == 0 )
+//	      {
+//		printf("p1    %i   %i  %i \n", p1, i0, i1 );
+//	      }
+//#endif
+//
+//	      T v0 = __shfl_xor(val[i1], 0x1F);
+//	      T v1 = __shfl_xor(val[i0], 0x1F);
+//
+//	      val[i0] = val[i0] < v0 ? v0 : val[i0];
+//	      val[i1] = val[i1] < v1 ? val[i1] : v1;
+//	    }
+//	  }
+//	}
+//
+//	FOLD // Bitonic merge  .
+//	{
+//	  FOLD // Bitonic merge values across "arrays" in warps  .
+//	  {
+//#pragma unroll
+//	    for ( int sLen = no32/2; sLen > 1; sLen/=2 )
+//	    {
+//#pragma unroll
+//	      for ( int i = 0; i < no32/sLen; i++ )
+//	      {
+//#pragma unroll
+//		for ( int j = 0; j < sLen/2; j++ )
+//		{
+//		  int i0 = i*sLen+j+0;
+//		  int i1 = i*sLen+j+sLen/2;
+//
+//		  T v0=val[i0];
+//		  T v1=val[i1];
+//
+//		  val[i0] = v0 < v1 ? v0 : v1;
+//		  val[i1] = v0 < v1 ? v1 : v0;
+//		}
+//	      }
+//
+//#ifdef SORT_DBG
+//	      if ( print && tid == 0 )
+//	      {
+//		printf("Bitonic merge sLen %4i \n", sLen);
+//	      }
+//#endif
+//	    }
+//	  }
+//
+//	  FOLD // Bitonic merge sections within each array  .
+//	  {
+//#pragma unroll
+//	    for ( int i = 0; i < NoArr; i++)
+//	    {
+//	      val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
+//	      val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
+//	      val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
+//	      val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
+//	      val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+//	    }
+//
+//#ifdef SORT_DBG
+//	    if ( print && tid == 0 )
+//	    {
+//	      printf("Bitonic merge arr \n");
+//	    }
+//#endif
+//	  }
+//	}
+//      }
+//    }
+//  }
+//}
 
-  FOLD // Full sort of values within each array in each warp, using shuffle  .
-  {
-    if ( noSort < 32 )
-    {
-      // Sort each section less than 32
-#pragma unroll
-      for ( int i = 0; i < NoArr; i++)
-      {
-	val[i] = bitonicSort3x_warp<T, noSorted, noSort>(val[i], laneId);
-      }
-    }
-    else
-    {
-      // Sort each section of 32
-#pragma unroll
-      for ( int i = 0; i < NoArr; i++)
-      {
-	val[i] = bitonicSort3x_warp<T, noSorted, 32>(val[i], laneId);
-      }
-    }
-  }
+// Original version of function below
+//
+///** Block, Bitonic sort of power of two up to 1024 elements in a single using as much SM as elements  .
+// *
+// * This is an in-place bitonic sort.
+// * This is very fast for small numbers of items, ie; when they can all fit in shared memory, ie < ~12K
+// *
+// * It has a constant performance of \f$ O\left(n\ \log^2 n \right)\f$ where n is the number of items to be sorted.
+// * It requires the sort to be performed by only one block, as it requires synchronisation.
+// * But this allows for the use of SM
+// *
+// * Each thread counts for to items in the array, as each thread performs comparisons between to elements.
+// * Generally there is ~48.0 KBytes of shared memory, thus could sort up to 12288 items. However there is a
+// * maximum of 1024 thread per block, thus if there are more that 2048 threads each thread must do multiple comparisons at
+// * each step. These are refereed to as batches.
+// *
+// * @param data A pointer to an shared memory array containing elements to be sorted.
+// * @param arrayLength The number of elements in the array
+// * @param trdId the index of the calling thread (1 thread for 2 items in data)
+// * @param noThread The number of thread that are sorting this data
+// * @param dir direction to sort data ( 1 -> smallest to largest AND -1 -> largest to smallest )
+// */
+//template <typename T, const int noSorted, const int noEls>
+//__device__ T bitonicSort3X_regs(T* regs, T val)
+//{
+//  const int tid		= threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
+//  const int wId		= tid / 32;					/// Warp ID
+//  const int laneId	= tid % 32;					/// Lane ID 	// TODO: get from PTX register
+//
+//  if ( noEls <= 32 )
+//  {
+//    if ( wId == 0 )
+//    {
+//      val = bitonicSort3x_warp<T, noSorted, noEls>(val,laneId);		// Sort each warps elements
+//      regs[tid] = val;
+//    }
+//  }
+//  else
+//  {
+//    const bool threadActive = ( tid < noEls );
+//
+//    FOLD // sort sections of 32 values with warp sort  .
+//    {
+//      if ( threadActive )
+//      {
+//	val = bitonicSort3x_warp<T, noSorted, noEls>(val,laneId);	// Sort each warps elements
+//	regs[tid] = val;
+//      }
+//    }
+//    __syncthreads(); // SM Writes
+//
+//    for ( int pow2 = 64, bPos = 5; pow2 <= noEls; pow2*=2, bPos++ )
+//    {
+//      if ( pow2 > noSorted && pow2 <= noEls )
+//      {
+//	FOLD // Bitonic sort  .
+//	{
+//	  if ( threadActive )
+//	  {
+//	    int bit = bfe(tid, bPos);
+//	    int otherIdx = tid ^ (pow2-1);
+//	    T otherV = regs[otherIdx];
+//	    val = ( val < otherV == !bit ) ? val : otherV;
+//	  }
+//	  __syncthreads(); // SM reads
+//
+//	  if ( threadActive ) // Write back to SM
+//	  {
+//	    regs[tid] = val;
+//	  }
+//	  __syncthreads(); // SM Writes
+//	}
+//
+//	FOLD // Bitonic Merge  .
+//	{
+//	  FOLD // Merge sections larger than one warp using
+//	  {
+//	    for ( int mLen = pow2/2, bPos2 = bPos-1; mLen > 32; mLen/=2, bPos2-- )
+//	    {
+//	      if ( threadActive )
+//	      {
+//		int bit = bfe(tid, bPos2);
+//		int otherIdx = tid ^ (mLen/2);
+//
+//		T otherV =  regs[otherIdx];
+//		val = val < otherV == !bit ? val : otherV;
+//	      }
+//	      __syncthreads(); // SM reads
+//
+//	      if ( threadActive )	// Write back to SM
+//	      {
+//		regs[tid] = val;
+//	      }
+//	    }
+//	  }
+//
+//	  FOLD // Merge last 32 bit long sections using shuffle  .
+//	  {
+//	    if ( threadActive )
+//	    {
+//	      val = shflSwap<T>(val, 0xF0, bfe(laneId, 4));
+//	      val = shflSwap<T>(val, 0x08, bfe(laneId, 3));
+//	      val = shflSwap<T>(val, 0x04, bfe(laneId, 2));
+//	      val = shflSwap<T>(val, 0x02, bfe(laneId, 1));
+//	      val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
+//	    }
+//	    __syncthreads(); // SM reads
+//
+//	    if ( threadActive ) // Write back to SM
+//	    {
+//	      regs[tid] = val;
+//	    }
+//	  }
+//	}
+//      }
+//    }
+//  }
+//
+//  __syncthreads();  // Ensure all buffer is sorted before we return
+//
+//  return val;
+//}
 
-  FOLD // Full sort of values across "arrays" in warps  .
-  {
-    const int noInWarp = NoArr*32;
-#pragma unroll
-    for ( int pow2 = 64; pow2 <= noInWarp; pow2*=2 )	// Loop over section length  .
-    {
-      if ( pow2 > noSorted && pow2 <= noSort)		// Control for partially sorted sections  .
-      {
-	const int no32 = pow2/32;
-
-	if ( print )
-	{
-	  printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	  printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	}
-
-	if ( print && laneId == 0 )
-	{
-	  printf("Bitonic sort pow2 %4i \n", pow2);
-	}
-
-	FOLD // Bitonic sort values across "arrays" in warps  .
-	{
-#pragma unroll
-	  for ( int i = 0; i < NoArr/no32; i++ )		// loop over sort sections  .
-	  {
-#pragma unroll
-	    for ( int p1 = 0; p1 < no32/2; p1++ )
-	    {
-	      int i0 = (i+1)*no32-1-p1;
-	      int i1 = i*no32+p1;
-
-	      T v0 = __shfl_xor(val[i1], 0x1F);
-	      T v1 = __shfl_xor(val[i0], 0x1F);
-
-	      val[i0] = val[i0] < v0 ? v0 : val[i0];
-	      val[i1] = val[i1] < v1 ? val[i1] : v1;
-	    }
-	  }
-	}
-
-	if ( print )
-	{
-	  printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	  printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	}
-
-	FOLD // Bitonic merge  .
-	{
-	  FOLD // Bitonic merge values across "arrays" in warps  .
-	  {
-#pragma unroll
-	    for ( int sLen = no32/2; sLen > 1; sLen/=2 )
-	    {
-#pragma unroll
-	      for ( int i = 0; i < no32/sLen; i++ )
-	      {
-#pragma unroll
-		for ( int j = 0; j < sLen/2; j++ )
-		{
-		  int i0 = i*sLen+j+0;
-		  int i1 = i*sLen+j+sLen/2;
-
-		  T v0=val[i0];
-		  T v1=val[i1];
-
-		  val[i0] = v0 < v1 ? v0 : v1;
-		  val[i1] = v0 < v1 ? v1 : v0;
-		}
-	      }
-
-	      if ( print && laneId == 0 )
-	      {
-		printf("Bitonic merge sLen %4i \n", sLen);
-	      }
-
-	      if ( print )
-	      {
-		printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-		printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	      }
-
-	    }
-	  }
-
-	  FOLD // Bitonic merge sections within each array  .
-	  {
-#pragma unroll
-	    for ( int i = 0; i < NoArr; i++)
-	    {
-	      val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-	      val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-	      val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-	      val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-	      val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
-	    }
-
-	    if ( print && laneId == 0 )
-	    {
-	      printf("Bitonic merge arr \n");
-	    }
-
-	    if ( print )
-	    {
-	      printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	      printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	    }
-	  }
-	}
-      }
-    }
-  }
-}
-
-/** Fast bitonic sort of power of two up to 256 elements in per thread arrays, using shuffle operation, no memory writes
- *
- *
- *
- * @param val		The per thread element to be sorted
- * @param laneId	The lane of the thread
- * @return		The noSorted values are stored val
- */
-template <typename T, const int noSorted, const int noSort, const int NoArr>
-__device__ inline void bitonicSort3x_warp_mult_3(T* val, const int laneId, const int print = 0)
-{
-  const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index) DBG
-
-  // TODO: Check speeds between this function and the one above, they should be the same but above has manual unrolling
-
-  FOLD // Full sort of values within each array in each warp, using shuffle  .
-  {
-    if ( noSort < 32 )
-    {
-      // Sort each section less than 32
-#pragma unroll
-      for ( int i = 0; i < NoArr; i++)
-      {
-	val[i] = bitonicSort3x_warp<T, noSorted, noSort>(val[i], laneId);
-      }
-    }
-    else
-    {
-      // Sort each section of 32
-#pragma unroll
-      for ( int i = 0; i < NoArr; i++)
-      {
-	val[i] = bitonicSort3x_warp<T, noSorted, 32>(val[i], laneId);
-      }
-    }
-  }
-
-  FOLD // Full sort of values across "arrays" in warps  .
-  {
-    const int noInWarp = NoArr*32;
-#pragma unroll
-    for ( int pow2 = 64; pow2 <= noInWarp; pow2*=2 )	// Loop over section length  .
-    {
-      if ( pow2 > noSorted && pow2 <= noSort)		// Control for partially sorted sections  .
-      {
-	const int no32 = pow2/32;
-
-	//	if ( print )
-	//	{
-	//	  printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	//	  printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	//	}
-
-	if ( print && tid == 0 )
-	{
-	  printf("Bitonic sort  pow2   %4i \n", pow2);
-	}
-
-	FOLD // Bitonic sort values across "arrays" in warps  .
-	{
-#pragma unroll
-	  for ( int i = 0; i < NoArr/no32; i++ )		// loop over sort sections  .
-	  {
-
-	    if ( print && tid == 0 )
-	    {
-	      printf("Array %i  \n", i );
-	    }
-
-#pragma unroll
-	    for ( int p1 = 0; p1 < no32/2; p1++ )
-	    {
-
-
-	      int i0 = (i+1)*no32-1-p1;
-	      int i1 = i*no32+p1;
-
-	      if ( print && tid == 0 )
-	      {
-		printf("p1    %i   %i  %i \n", p1, i0, i1 );
-	      }
-
-	      T v0 = __shfl_xor(val[i1], 0x1F);
-	      T v1 = __shfl_xor(val[i0], 0x1F);
-
-	      val[i0] = val[i0] < v0 ? v0 : val[i0];
-	      val[i1] = val[i1] < v1 ? val[i1] : v1;
-	    }
-	  }
-	}
-
-	//	if ( print )
-	//	{
-	//	  printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	//	  printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	//	}
-
-	FOLD // Bitonic merge  .
-	{
-	  FOLD // Bitonic merge values across "arrays" in warps  .
-	  {
-#pragma unroll
-	    for ( int sLen = no32/2; sLen > 1; sLen/=2 )
-	    {
-#pragma unroll
-	      for ( int i = 0; i < no32/sLen; i++ )
-	      {
-#pragma unroll
-		for ( int j = 0; j < sLen/2; j++ )
-		{
-		  int i0 = i*sLen+j+0;
-		  int i1 = i*sLen+j+sLen/2;
-
-		  T v0=val[i0];
-		  T v1=val[i1];
-
-		  val[i0] = v0 < v1 ? v0 : v1;
-		  val[i1] = v0 < v1 ? v1 : v0;
-		}
-	      }
-
-	      if ( print && tid == 0 )
-	      {
-		printf("Bitonic merge sLen %4i \n", sLen);
-	      }
-
-	      //	      if ( print )
-	      //	      {
-	      //		printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	      //		printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	      //	      }
-
-	    }
-	  }
-
-	  FOLD // Bitonic merge sections within each array  .
-	  {
-#pragma unroll
-	    for ( int i = 0; i < NoArr; i++)
-	    {
-	      val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-	      val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-	      val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-	      val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-	      val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
-	    }
-
-	    if ( print && tid == 0 )
-	    {
-	      printf("Bitonic merge arr \n");
-	    }
-
-	    //	    if ( print )
-	    //	    {
-	    //	      printf("%02i %9.6f \n", 32*2+laneId, val[2] );
-	    //	      printf("%02i %9.6f \n", 32*3+laneId, val[3] );
-	    //	    }
-	  }
-	}
-      }
-    }
-  }
-}
-
-/** Block wide Bitonic sort of up to 1024 elements in a single register  .
- *
- * This is an in-place bitonic sort.
- * This is very fast for small numbers of items, ie; when they can all fit in shared memory, ie < ~12K
- *
- * It has a constant performance of \f$ O\left(n\ \log^2 n \right)\f$ where n is the number of items to be sorted.
- * It requires the sort to be performed by only one block, as it requires synchronisation.
- * But this allows for the use of SM
- *
- * Each thread counts for to items in the array, as each thread performs comparisons between to elements.
- * Generally there is ~48.0 KBytes of shared memory, thus could sort up to 12288 items. However there is a
- * maximum of 1024 thread per block, thus if there are more that 2048 threads each thread must do multiple comparisons at
- * each step. These are refereed to as batches.
- *
- * @param data A pointer to an shared memory array containing elements to be sorted.
- * @param arrayLength The number of elements in the array
- * @param trdId the index of the calling thread (1 thread for 2 items in data)
- * @param noThread The number of thread that are sorting this data
- * @param dir direction to sort data ( 1 -> smallest to largest AND -1 -> largest to smallest )
- */
-template <typename T, const int noSorted, const int noEls>
-__device__ T bitonicSort3X(T* buffer, T val)
-{
-  const int tid		= threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
-  const int wId		= tid / 32;					/// Warp ID
-  const int laneId	= tid % 32;					/// Lane ID 	// TODO: get from PTX register
-
-  if ( noEls <= 32 )
-  {
-    if ( wId == 0 )
-    {
-      val = bitonicSort3x_warp<T, noSorted, noEls>(val,laneId);		// Sort each warps elements
-      buffer[tid] = val;
-    }
-  }
-  else
-  {
-    const bool threadActive = ( tid < noEls );
-
-    FOLD // sort sections of 32 values with warp sort  .
-    {
-      if ( threadActive )
-      {
-	val = bitonicSort3x_warp<T, noSorted, noEls>(val,laneId);	// Sort each warps elements
-	buffer[tid] = val;
-      }
-    }
-    __syncthreads(); // SM Writes
-
-    for ( int pow2 = 64, bPos = 5; pow2 <= noEls; pow2*=2, bPos++ )
-    {
-      if ( pow2 > noSorted && pow2 <= noEls )
-      {
-	FOLD // Bitonic sort  .
-	{
-	  if ( threadActive )
-	  {
-	    int bit = bfe(tid, bPos);
-	    int otherIdx = tid ^ (pow2-1);
-	    T otherV = buffer[otherIdx];
-	    val = ( val < otherV == !bit ) ? val : otherV;
-	  }
-	  __syncthreads(); // SM reads
-
-	  if ( threadActive ) // Write back to SM
-	  {
-	    buffer[tid] = val;
-	  }
-	  __syncthreads(); // SM Writes
-	}
-
-	FOLD // Bitonic Merge  .
-	{
-	  FOLD // Merge sections larger than one warp using
-	  {
-	    for ( int mLen = pow2/2, bPos2 = bPos-1; mLen > 32; mLen/=2, bPos2-- )
-	    {
-	      if ( threadActive )
-	      {
-		int bit = bfe(tid, bPos2);
-		int otherIdx = tid ^ (mLen/2);
-
-		T otherV =  buffer[otherIdx];
-		val = val < otherV == !bit ? val : otherV;
-	      }
-	      __syncthreads(); // SM reads
-
-	      if ( threadActive )	// Write back to SM
-	      {
-		buffer[tid] = val;
-	      }
-	    }
-	  }
-
-	  FOLD // Merge last 32 bit long sections using shuffle  .
-	  {
-	    if ( threadActive )
-	    {
-	      val = shflSwap<T>(val, 0xF0, bfe(laneId, 4));
-	      val = shflSwap<T>(val, 0x08, bfe(laneId, 3));
-	      val = shflSwap<T>(val, 0x04, bfe(laneId, 2));
-	      val = shflSwap<T>(val, 0x02, bfe(laneId, 1));
-	      val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
-	    }
-	    __syncthreads(); // SM reads
-
-	    if ( threadActive ) // Write back to SM
-	    {
-	      buffer[tid] = val;
-	    }
-	  }
-	}
-      }
-    }
-  }
-
-  __syncthreads();  // Ensure all buffer is sorted before we return
-
-  return val;
-}
-
-/** Block wide Bitonic sort of up to 8192 elements stored in per thread arrays  .
+/** Block, Bitonic sort of power of two up to 8192 elements in per thread arrays (register) using as much SM as elements  .
  *
  * NB: This contains synchronisation and must be called by all threads, only the correct number of elements will be sorted
  *
@@ -741,7 +737,7 @@ __device__ T bitonicSort3X(T* buffer, T val)
  * @param dir direction to sort data ( 1 -> smallest to largest AND -1 -> largest to smallest )
  */
 template <typename T, const int noSorted, const int noSort, const int NoArr>
-__device__ void bitonicSort3x_mult(T *data, T *val)
+__device__ void bitonicSort3x_regs_SM(T *data, T *val)
 {
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
   const int wId = tid / 32;					/// Warp ID
@@ -778,16 +774,16 @@ __device__ void bitonicSort3x_mult(T *data, T *val)
     {
       if( warpActive )
       {
-	bitonicSort3x_warp_mult_2<T, noSorted, noSort, NoArr>(val, laneId);
-      }
+	bitonicSort3x_warp_regs<T, noSorted, noSort, NoArr>(val, laneId);
 
-      FOLD // Store values in SM  .
-      {
-#pragma unroll
-	for ( int a = 0; a < NoArr; a++)
+	FOLD // Store values in SM  .
 	{
-	  int idx = wId*32*NoArr + a*32 + laneId;
-	  data[idx] = val[a];
+#pragma unroll
+	  for ( int a = 0; a < NoArr; a++)
+	  {
+	    int idx = wId*32*NoArr + a*32 + laneId;
+	    data[idx] = val[a];
+	  }
 	}
       }
     }
@@ -922,7 +918,7 @@ __device__ void bitonicSort3x_mult(T *data, T *val)
   __syncthreads();  // Ensure all data is sorted before we return
 }
 
-/** Block wide Bitonic sort of up to 8192 elements stored in per thread arrays using only 1024 SM elements .
+/** Block, Bitonic sort of power of two up to 8192 elements in per thread arrays (register) using only 1024 SM elements .
  *
  * What a fucking beauty! Sort values in registers with only 1024 SM elements!
  *
@@ -947,7 +943,7 @@ __device__ void bitonicSort3x_mult(T *data, T *val)
  * @param dir direction to sort data ( 1 -> smallest to largest AND -1 -> largest to smallest )
  */
 template <typename T, const int noSorted, const int noSort, const int NoArr>
-__device__ void bitonicSort3x_mult_1024(T *val)
+__device__ void bitonicSort3x_regs_1024(T *val)
 {
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
   const int wId = tid / 32;					/// Warp ID
@@ -957,13 +953,12 @@ __device__ void bitonicSort3x_mult_1024(T *val)
 
   const int noInWarp = NoArr*32;
   const bool warpActive = ( wId < (noSort+noInWarp-1)/noInWarp ) ;
-  //const bool warpActive = ( tid < noSort ) ;
 
   FOLD // Full sort sections that fit in 1 warp using registers and no synchronisation  .
   {
     if ( warpActive )
     {
-      bitonicSort3x_warp_mult_2<T, noSorted, noSort, NoArr>(val, laneId);
+      bitonicSort3x_warp_regs<T, noSorted, noSort, NoArr>(val, laneId);
     }
   }
 
@@ -1081,7 +1076,8 @@ __device__ void bitonicSort3x_mult_1024(T *val)
   }
 }
 
-/** Iterative order statistic, one value per thread maximum of 8192 values
+
+/** Iterative order statistic, one value per thread maximum of 8192 values  .
  *
  * @param array
  * @param offset
@@ -1109,11 +1105,13 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
   T lftBound = NAN;
   T rhtBound = NAN;
 
-  const int sortLen = 512;
+  const int sortLen = 512;					///< Determine where to just sort
 
   if ( noEls <= sortLen)					// Just sort small sections  .
   {
-    bitonicSort3X<T, 0, noEls>(array, *val);
+    // Sort values in SM
+    //bitonicSort3X_regs<T, 0, noEls>(array, *val);		// Sort using old method
+    bitonicSort3x_regs_SM<float, 0, noEls, 1>(array, val);	// Sort using SM buffer
     return array[offset];
   }
 
@@ -1148,7 +1146,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
     FOLD // Combine sections .
     {
-      bitonicSort3x_warp_mult_2<float, hLen, sLen, NoArr>(val, laneId);
+      bitonicSort3x_warp_regs<float, hLen, sLen, NoArr>(val, laneId);
     }
 
     FOLD // Write warp medians  .
@@ -1178,7 +1176,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       }
 
       // Sort median values
-      bitonicSort3x_mult<float, 0, noTotMels, 1>(array, &mVals);
+      bitonicSort3x_regs_SM<float, 0, noTotMels, 1>(array, &mVals);
     }
 
     FOLD // Count around vals  .
@@ -1363,7 +1361,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
     FOLD // Combine sections .
     {
-      bitonicSort3x_warp_mult_2<float, hLen, sLen, NoArr>(val, laneId);
+      bitonicSort3x_warp_regs<float, hLen, sLen, NoArr>(val, laneId);
     }
 
     FOLD // Write warp medians  .
@@ -1393,7 +1391,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       }
 
       // Sort median values
-      bitonicSort3x_mult<float, 0, noTotMels, 1>(array, &mVals);
+      bitonicSort3x_regs_SM<float, 0, noTotMels, 1>(array, &mVals);
     }
 
     FOLD // Count around vals  .
@@ -1577,7 +1575,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
     FOLD // Combine sections .
     {
-      bitonicSort3x_warp_mult_2<float, hLen, sLen, NoArr>(val, laneId);
+      bitonicSort3x_warp_regs<float, hLen, sLen, NoArr>(val, laneId);
     }
 
     FOLD // Write warp medians  .
@@ -1607,7 +1605,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       }
 
       // Sort median values
-      bitonicSort3x_mult<float, 0, noTotMels, 1>(array, &mVals);
+      bitonicSort3x_regs_SM<float, 0, noTotMels, 1>(array, &mVals);
     }
 
     FOLD // Count around vals  .
@@ -1796,7 +1794,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       {
 	FOLD // Sort remaining values  .
 	{
-	  bitonicSort3x_mult<float, hLen, noVals, 1>(array, val);
+	  bitonicSort3x_regs_SM<float, hLen, noVals, 1>(array, val);
 	}
 
 	return array[offset];
@@ -2029,7 +2027,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 	if ( tid < noVals/2 )
 	{
 	  val[0] = array[tid];
-	  bitonicSort3x_warp_mult_2<float, hLen/2, hLen, 1>(val, laneId);
+	  bitonicSort3x_warp_regs<float, hLen/2, hLen, 1>(val, laneId);
 	}
       }
     }
@@ -2048,7 +2046,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       {
 	FOLD // Sort remaining values  .
 	{
-	  bitonicSort3x_mult<float, hLen, noVals, 1>(array, val);
+	  bitonicSort3x_regs_SM<float, hLen, noVals, 1>(array, val);
 	}
 
 	return array[offset];
@@ -2281,7 +2279,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 	if ( tid < noVals/2 )
 	{
 	  val[0] = array[tid];
-	  bitonicSort3x_warp_mult_2<float, hLen/2, hLen, 1>(val, laneId);
+	  bitonicSort3x_warp_regs<float, hLen/2, hLen, 1>(val, laneId);
 	}
       }
     }
@@ -2300,7 +2298,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       {
 	FOLD // Sort remaining values  .
 	{
-	  bitonicSort3x_mult<float, hLen, noVals, 1>(array, val);
+	  bitonicSort3x_regs_SM<float, hLen, noVals, 1>(array, val);
 	}
 
 	return array[offset];
@@ -2533,7 +2531,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 	if ( tid < noVals/2 )
 	{
 	  val[0] = array[tid];
-	  bitonicSort3x_warp_mult_2<float, hLen/2, hLen, 1>(val, laneId);
+	  bitonicSort3x_warp_regs<float, hLen/2, hLen, 1>(val, laneId);
 	}
       }
     }
@@ -2545,7 +2543,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
     FOLD // Sort remaining values  .
     {
-      bitonicSort3x_mult<float, hLen, noVals, 1>(array, val);
+      bitonicSort3x_regs_SM<float, hLen, noVals, 1>(array, val);
     }
 
     return array[offset];
@@ -2553,17 +2551,14 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 }
 
 
-
 ////  Public sort functions  \\\\\\
 
 template <typename T, int noEls>
-__device__ void bitonicSort(T *data)
+__device__ void bitonicSort_mem(T *data)
 {
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
   const int wId = tid / 32;					/// Warp ID
   const int laneId = tid % 32;					/// Lane ID 	// TODO: get from PTX register
-  //const int laneId = tid & 31;  				/// Lane ID 	// TODO: get from PTX register
-  //const int laneId = __lid();					/// Lane ID 	// TODO: get from PTX register
 
   if ( noEls <= 1024 ) // Can have each thread handle one value
   {
@@ -2574,11 +2569,12 @@ __device__ void bitonicSort(T *data)
       val = data[tid];
     }
 
-    bitonicSort3X<T, 0, noEls>(data, val);
+    //bitonicSort3X_regs<T, 0, noEls>(data, val);			// Old method
+    bitonicSort3x_regs_SM<T, 0, noEls, 1>(data, &val);			// New method
   }
   else
   {
-    const int NoArr = (noEls + 1023) / 1024.0 ; // int round up done at compile time ;)
+    const int NoArr = (noEls + 1023) / 1024.0 ;				// int round up done at compile time ;)
 
     T val[NoArr]; // Registers
 
@@ -2597,17 +2593,17 @@ __device__ void bitonicSort(T *data)
       __syncthreads(); // SM reads
     }
 
-    bitonicSort3x_mult<T, 0, noEls, NoArr>(data, val);
+    bitonicSort3x_regs_SM<T, 0, noEls, NoArr>(data, val);
   }
 
   __syncthreads(); // DBG
 }
 
 template <typename T, int noEls, int noArr>
-__device__ void bitonicSort_mult(T *val)
+__device__ void bitonicSort_reg(T *val)
 {
-  //bitonicSort3x_mult<T, 0, noEls, noArr>(val);
-  bitonicSort3x_mult_1024<T, 0, noEls, noArr>(val);
+  //bitonicSort3x_regs_SM<T, 0, noEls, noArr>(val);
+  bitonicSort3x_regs_1024<T, 0, noEls, noArr>(val);
 }
 
 
@@ -2790,6 +2786,7 @@ __device__ void bitonicSort_mult(T *val)
 
 ////  Public order statistic \\\\\\
 
+
 /**
  *
  * @param val
@@ -2799,9 +2796,11 @@ __device__ void bitonicSort_mult(T *val)
 template <typename T, int noEls, int noArr>
 __device__ T cuOrderStatPow2_sort(T *val, int offset)
 {
-  bitonicSort3x_mult_1024<T, 0, noEls, noArr>(val);
+  bitonicSort3x_regs_1024<T, 0, noEls, noArr>(val);
+
   return getValue<T, noArr>(val, offset);
 }
+
 
 /** Generic order statistic function
  *
@@ -2813,37 +2812,38 @@ template< int noEls >
 __device__ float cuOrderStatPow2_radix(float *val , int offset, int printVals)
 {
   const int NoArr = (noEls + 1023) / 1024.0 ; // int round up ;)
+
   return cuOrderStatPow2_radix_local<float, noEls>(offset, NoArr, val, printVals);
 }
 
 
-template __device__ void bitonicSort<float, 2   >(float *data);
-template __device__ void bitonicSort<float, 4   >(float *data);
-template __device__ void bitonicSort<float, 8   >(float *data);
-template __device__ void bitonicSort<float, 16  >(float *data);
-template __device__ void bitonicSort<float, 32  >(float *data);
-template __device__ void bitonicSort<float, 64  >(float *data);
-template __device__ void bitonicSort<float, 128 >(float *data);
-template __device__ void bitonicSort<float, 256 >(float *data);
-template __device__ void bitonicSort<float, 512 >(float *data);
-template __device__ void bitonicSort<float, 1024>(float *data);
-template __device__ void bitonicSort<float, 2048>(float *data);
-template __device__ void bitonicSort<float, 4096>(float *data);
-template __device__ void bitonicSort<float, 8192>(float *data);
+template __device__ void bitonicSort_mem<float, 2   >(float *data);
+template __device__ void bitonicSort_mem<float, 4   >(float *data);
+template __device__ void bitonicSort_mem<float, 8   >(float *data);
+template __device__ void bitonicSort_mem<float, 16  >(float *data);
+template __device__ void bitonicSort_mem<float, 32  >(float *data);
+template __device__ void bitonicSort_mem<float, 64  >(float *data);
+template __device__ void bitonicSort_mem<float, 128 >(float *data);
+template __device__ void bitonicSort_mem<float, 256 >(float *data);
+template __device__ void bitonicSort_mem<float, 512 >(float *data);
+template __device__ void bitonicSort_mem<float, 1024>(float *data);
+template __device__ void bitonicSort_mem<float, 2048>(float *data);
+template __device__ void bitonicSort_mem<float, 4096>(float *data);
+template __device__ void bitonicSort_mem<float, 8192>(float *data);
 
-template __device__ void bitonicSort_mult<float, 2,    1>(float *val);
-template __device__ void bitonicSort_mult<float, 4,    1>(float *val);
-template __device__ void bitonicSort_mult<float, 8,    1>(float *val);
-template __device__ void bitonicSort_mult<float, 16,   1>(float *val);
-template __device__ void bitonicSort_mult<float, 32,   1>(float *val);
-template __device__ void bitonicSort_mult<float, 64,   1>(float *val);
-template __device__ void bitonicSort_mult<float, 128,  1>(float *val);
-template __device__ void bitonicSort_mult<float, 256,  1>(float *val);
-template __device__ void bitonicSort_mult<float, 512,  1>(float *val);
-template __device__ void bitonicSort_mult<float, 1024, 1>(float *val);
-template __device__ void bitonicSort_mult<float, 2048, 2>(float *val);
-template __device__ void bitonicSort_mult<float, 4096, 4>(float *val);
-template __device__ void bitonicSort_mult<float, 8192, 8>(float *val);
+template __device__ void bitonicSort_reg<float, 2,    1>(float *val);
+template __device__ void bitonicSort_reg<float, 4,    1>(float *val);
+template __device__ void bitonicSort_reg<float, 8,    1>(float *val);
+template __device__ void bitonicSort_reg<float, 16,   1>(float *val);
+template __device__ void bitonicSort_reg<float, 32,   1>(float *val);
+template __device__ void bitonicSort_reg<float, 64,   1>(float *val);
+template __device__ void bitonicSort_reg<float, 128,  1>(float *val);
+template __device__ void bitonicSort_reg<float, 256,  1>(float *val);
+template __device__ void bitonicSort_reg<float, 512,  1>(float *val);
+template __device__ void bitonicSort_reg<float, 1024, 1>(float *val);
+template __device__ void bitonicSort_reg<float, 2048, 2>(float *val);
+template __device__ void bitonicSort_reg<float, 4096, 4>(float *val);
+template __device__ void bitonicSort_reg<float, 8192, 8>(float *val);
 
 template __device__ float cuOrderStatPow2_sort<float, 2,    1>(float *val, int os);
 template __device__ float cuOrderStatPow2_sort<float, 4,    1>(float *val, int os);

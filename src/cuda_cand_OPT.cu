@@ -2291,7 +2291,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
 }
 
 
-/** This is the main function called by external elements
+/** This is the main function called by external elements  .
  *
  * @param cand
  * @param srch
@@ -2418,7 +2418,7 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
   NV_RANGE_POP();
 }
 
-/** This is the main function called by external elements
+/** This is the main function called by external elements  .
  *
  * @param cand
  * @param pln

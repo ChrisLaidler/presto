@@ -35,20 +35,19 @@ __host__ __device__ inline double getFIlim(double nothing)
 
 __host__ __device__ inline void sinecos_fres(float x, float x2, float* sin, float* cos)
 {
-  float trigT = x*x;
-  if ( trigT < 1e4 && trigT >-1e4 )
+  float trigT;
+  if ( x2 < 1e4 && x2 > -1e4 )		// Single Precision
   {
-    // Single Precision
-    trigT 	= fmod_t(trigT, 4.0f);
+    trigT 	= fmod_t(x2, 4.0f);
   }
-  else
+  else					// Double Precision
   {
-    // Double Precision
     trigT 	= fmod_t((double)x*(double)x, 4.0);
   }
   trigT 	= trigT*(float)PIBYTWO;
   sincos_t(trigT, sin, cos);
 
+  //  Force to double precision
   //  double sinD, cosD;
   //  sincos_t((double)x*(double)x*(double)PIBYTWO, &sinD, &cosD);
   //  *sin = sinD;
@@ -118,11 +117,10 @@ template<typename T, typename idxT>
 __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
 {
   T f, g, c, s, t, u;
-  T 	absX;				// Absolute value of x
+  T absX;					// Absolute value of x
+  absX       = fabs_t(x);			// Use templated absolute CUDA function
 
-  absX       = fabs_t(x);		//
-
-  if      ( absX < (T)FREESLIM1   )	// Small so use a polynomial approximation  .
+  if      ( absX < (T)FREESLIM1  )		// Small so use a polynomial approximation  .
   {
     T x2	= absX * absX;
     t		= x2 * x2;
@@ -141,14 +139,14 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
     *ss   = absX * x2 * sn / sd;
     *cc   = absX * cn / cd;
   }
-  else if ( absX > (T)FREESLIM2  )	// Asymptotic behaviour  .
+  else if ( absX > (T)FREESLIM2  )		// Asymptotic behaviour  .
   {
     *cc   = (T)0.5;
     *ss   = (T)0.5;
   }
-  else					// Auxiliary functions for large argument  .
+  else						// Auxiliary functions for large argument  .
   {
-    T x2	= absX * absX;		// x * x ( Standard precision value of x squared )
+    T x2	= absX * absX;			// x * x ( Standard precision value of x squared )
 
     t		= (T)PI * x2;
     u		= (T)1.0 / (t * t);
@@ -173,8 +171,7 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
     f     = (T)1.0 - u * fn / fd;
     g     =          t * gn / gd;
 
-    // Templated for double phase calculations for large x
-    sinecos_fres(x, x2, &s, &c);
+    sinecos_fres(x, x2, &s, &c);	// Templated for double precision phase calculations for large x
 
     t     = (T)PI * absX;
 
@@ -203,7 +200,7 @@ __host__ __device__ inline void sinecos_resp(float Qk, float z, float PIoverZ, f
   {
     // Have to use double
     double x_double	= (double)Qk * (double)Qk / (double)z ;
-    x_float	= fmod_t(x_double, 2.0);
+    x_float		= fmod_t(x_double, 2.0);
   }
 
   x_float *= (float)PI;

@@ -59,7 +59,7 @@ extern "C"
 #define		MAX_HARM_NO		16		///< The maximum number of harmonics handled by a accel search
 #define		MAX_NO_STAGES		5		///< The maximum number of harmonics handled by a accel search
 #define		MAX_YINDS		8500		///< The maximum number of y indices to store in constant memory - 8500 Works upto ~500
-#define		INDS_BUFF		20		///< The bufer at the ends of each pane in the yInds array
+#define		INDS_BUFF		20		///< The buffer at the ends of each pane in the yInds array
 #define		MAX_STEPS		8		///< The maximum number of steps in a single batch
 #define		MAX_BATCHES		5		///< The maximum number of batches on a single GPU
 #define		MAX_GPUS		32		///< The maximum number GPU's
@@ -89,13 +89,15 @@ extern "C"
 
 #define		CU_INPT_FFT_CPU		BIT(12)		///< Do the FFT on the CPU
 
+
+
 //---- Multiplication ----//
 
 #define		FLAG_MUL_00		BIT(15)		///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
 #define		FLAG_MUL_11		BIT(16)		///< Multiply kernel - Do the multiplication one plane ant a time
 #define		FLAG_MUL_21		BIT(17)		///< Multiply kernel - read all input - loop over kernel - loop over planes
 #define		FLAG_MUL_22		BIT(18)		///< Multiply kernel - Loop ( Plane - Y )
-#define		FLAG_MUL_23		BIT(16)		///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
+#define		FLAG_MUL_23		BIT(19)		///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
 #define		FLAG_MUL_30		BIT(20)		///< Multiply kernel - Do an entire batch in one kernel
 #define		FLAG_MUL_CB		BIT(21)		///< Multiply kernel - Using a CUFFT callback
 #define		FLAG_MUL_PLN		( FLAG_MUL_11 )
@@ -136,7 +138,7 @@ extern "C"
 #define		FLAG_SEPSRCH		BIT(38)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
 #define		FLAG_SEPRVAL		BIT(39)		///< Create a separate location list - Used by the testing thing
 
-// ---- Inital canidates ----//
+// ---- Initial candidates ----//
 
 #define		FLAG_STORE_ALL		BIT(40)		///< Store candidates for all stages of summing, default is only the final result
 #define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
@@ -244,7 +246,7 @@ typedef struct resThrds resThrds;
 
 //====================================== Section Enables =================================================
 
-//     Optemisation
+//     Optimisation
 //#define		WITH_OPT_BLK1
 //#define		WITH_OPT_BLK2
 #define 		WITH_OPT_BLK3
@@ -383,9 +385,7 @@ typedef struct cuHarmInput
 
 //------------- Data structures for, planes, stacks, batches etc ----------------
 
-
-
-/** The general information of a f-∂f plane
+/** The general information of a f-∂f plane  .
  * NOTE: This is everything that is not specific to a particular plane
  */
 typedef struct cuHarmInfo
@@ -409,7 +409,7 @@ typedef struct cuHarmInfo
     int			stageIndex;	///< The index of this harmonic in the staged order
 } cuHarmInfo;
 
-/** The complex multiplication kernels of a f-∂f plane
+/** The complex multiplication kernels of a f-∂f plane  .
  */
 typedef struct cuKernel
 {
@@ -440,7 +440,7 @@ typedef struct cuFFdot
     fCplxTex        powerTex;           ///< A texture of the power data        [ Depreciated ]
 } cuFFdot;
 
-/** A stack of f-∂f planes that all have the same FFT width
+/** A stack of f-∂f planes that all have the same FFT width  .
  */
 typedef struct cuFfdotStack
 {
@@ -519,7 +519,7 @@ typedef struct cuFfdotStack
 
 } cuFfdotStack;
 
-/** Details of the number of bins of the full search
+/** Details of the number of bins of the full search  .
  */
 typedef struct searchScale
 {
@@ -535,7 +535,7 @@ typedef struct searchScale
     long long       noSteps;            ///< The number of steps the FFT is divided into
 } searchScale;
 
-/** Details of the section/step of the input FFT
+/** Details of the section/step of the input FFT  .
  */
 typedef struct rVals
 {
@@ -549,7 +549,7 @@ typedef struct rVals
     double          norm;               ///< The normalisation factor used to normalise the input - Not always set
 } rVals;
 
-/** User specified search details
+/** User specified search details  .
  *
  */
 typedef struct searchSpecs
@@ -595,7 +595,7 @@ typedef struct searchSpecs
     void*               outData;                        ///< A pointer to the location to store candidates
 } searchSpecs;
 
-/** User specified GPU search details
+/** User specified GPU search details  .
  */
 typedef struct gpuSpecs
 {
@@ -610,7 +610,7 @@ typedef struct gpuSpecs
     long long   nctxTime;                       ///< The amount of time it took to initialise the cuda contexts
 } gpuSpecs;
 
-/** A collection of f-∂f plane(s) and all its/their sub harmonics
+/** A collection of f-∂f plane(s) and all its/their sub harmonics  .
  * This is a collection of stack(s) that make up a harmonic family of f-∂f plane(s)
  * And the device specific multiplication kernels which is just another batch
  */
@@ -763,7 +763,7 @@ typedef struct cuPlnInfo
     stackInfo**     	h_stackInfo;        	///< An array of pointers to host memory for the stack info
 } cuPlnInfo;
 
-/** A structure to hold the details of a GPU plane of respoce function values
+/** A structure to hold the details of a GPU plane of response function values  .
  *
  */
 typedef struct cuRespPln
@@ -901,7 +901,7 @@ struct cuSearch
     unsigned int        inmemStride;        ///< The stride (in units) of the in-memory plane data in device memory
 };
 
-/** Information of the P-threads used in the search
+/** Information of the P-threads used in the search  .
  *
  */
 struct resThrds
@@ -913,7 +913,7 @@ struct resThrds
 
 };
 
-/** A data structure to pass to a thread, containing information on search results
+/** A data structure to pass to a thread, containing information on search results  .
  *
  */
 typedef struct resultData

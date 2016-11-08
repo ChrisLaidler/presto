@@ -33,25 +33,47 @@ __global__ void normAndSpread_k(fcomplexcu* data, int stride, int noRespPerBin)
       float median_orderstat_sort = 1;
       float median_Sort = 1;
       float median_Sort_mult = 1;
+      float median = 1;
 
-//	FOLD // Order stat - sort  .
+//      FOLD // Order stat - sort  .
+//      {
+//	for ( int batch = 0; batch < batches; batch++)
 //	{
-//	  for ( int batch = 0; batch < batches; batch++)
-//	  {
-//	    int idx = batch*bSz+tid;
+//	  int idx = batch*bSz+tid;
 //
-//	    if ( idx < noEls )
-//	    {
-//	      fcomplexcu val  = data[idx];
-//	      powers[batch]   = val.r*val.r+val.i*val.i;
-//	    }
+//	  if ( idx < noEls )
+//	  {
+//	    fcomplexcu val  = data[idx];
+//	    powers[batch]   = val.r*val.r+val.i*val.i;
 //	  }
-//	  median_orderstat_sort = cuOrderStatPow2_sort<float, noEls, batches>(powers, os);
 //	}
+//	median_orderstat_sort = cuOrderStatPow2_sort<float, noEls, batches>(powers, os);
 //
 //	__syncthreads();
+//
+//	median = median_orderstat_sort;
+//      }
 
-      FOLD // Sort SM  .
+//      FOLD // Order stat radix  .
+//      {
+//	for ( int batch = 0; batch < batches; batch++)
+//	{
+//	  int idx = batch*bSz+tid;
+//
+//	  if ( idx < noEls )
+//	  {
+//	    fcomplexcu val  = data[idx];
+//	    powers[batch]   = val.r*val.r+val.i*val.i;
+//	  }
+//	}
+//	median_orderstat_radix = cuOrderStatPow2_radix<noEls>(powers, os, 0);
+//
+//	__syncthreads();
+//
+//	median = median_orderstat_radix;
+//      }
+
+      FOLD // Sort - SM  .
       {
 	__shared__ float smData[noEls];
 	for ( int batch = 0; batch < batches; batch++)
@@ -66,55 +88,45 @@ __global__ void normAndSpread_k(fcomplexcu* data, int stride, int noRespPerBin)
 	}
 	__syncthreads();
 
-	bitonicSort<float, noEls>(smData);
+	bitonicSort_mem<float, noEls>(smData);
 
 	__syncthreads();
 
 	median_Sort = smData[os];
+
+	__syncthreads();
+
+	median = median_Sort;
       }
 
-      __syncthreads();
-
-//	FOLD // Sort mult  .
+//      FOLD // Sort SM 1024  .
+//      {
+//	for ( int batch = 0; batch < batches; batch++)
 //	{
-//	  for ( int batch = 0; batch < batches; batch++)
+//	  int idx = batch*bSz+tid;
+//
+//	  if ( idx < noEls )
 //	  {
-//	    int idx = batch*bSz+tid;
-//
-//	    if ( idx < noEls )
-//	    {
-//	      fcomplexcu val  = data[idx];
-//	      powers[batch]   = val.r*val.r+val.i*val.i;
-//	    }
+//	    fcomplexcu val  = data[idx];
+//	    powers[batch]   = val.r*val.r+val.i*val.i;
 //	  }
-//	  bitonicSort_mult<float, noEls, batches>(powers);
-//
-//	  __syncthreads();
-//
-//	  median_Sort_mult = getValue<float, batches>(powers, os);
 //	}
+//	bitonicSort_reg<float, noEls, batches>(powers);
 //
 //	__syncthreads();
-
-//	FOLD // Order stat radix  .
-//	{
-//	  for ( int batch = 0; batch < batches; batch++)
-//	  {
-//	    int idx = batch*bSz+tid;
 //
-//	    if ( idx < noEls )
-//	    {
-//	      fcomplexcu val  = data[idx];
-//	      powers[batch]   = val.r*val.r+val.i*val.i;
-//	    }
-//	  }
-//	  median_orderstat_radix = cuOrderStatPow2_radix<noEls>(powers, os, 0);
-//	}
+//	median_Sort = getValue<float, batches>(powers, os);
 //
 //	__syncthreads();
+//
+//	median = median_Sort;
+//      }
+
+
+
 
       // Calculate normalisation factor
-      factor = 1.0 / sqrtf( median_Sort / (float)LN2 );
+      factor = 1.0 / sqrtf( median / (float)LN2 );
     }
   }
 

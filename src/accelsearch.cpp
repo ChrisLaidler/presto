@@ -395,9 +395,9 @@ int main(int argc, char *argv[])
     printf("\n*************************************************************************************************\n                          Optimizing initial candidates\n*************************************************************************************************\n");
     printf("\n");
 
-    if ( cmd->cpuP && cmd->cpuP ) // Duplicate the CPU canidates  .
+    if ( cmd->cpuP && cmd->cpuP ) // Duplicate the CPU candidates  .
     {
-      // We did a CPU search we may as well use the CPU canidated    TMP
+      // We did a CPU search we may as well use the CPU candidates    TMP
       cands = candsCPU;
     }
 
@@ -1054,4 +1054,5 @@ int main(int argc, char *argv[])
 
   return (0);
 }
+
 
