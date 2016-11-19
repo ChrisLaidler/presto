@@ -84,11 +84,14 @@ extern "C"
 
 //---- Input ----//
 
-#define		CU_NORM_CPU		BIT(10)		///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define		CU_NORM_EQUIV		BIT(11)		///< Do the normalisation the CPU way
+//		NO_VALUE				///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
+#define		CU_NORM_GPU_SM		BIT(10)		///< Prepare input data one step at a time, using GPU - Sort using SM
+#define		CU_NORM_GPU_SM_MIN	BIT(11)		///< Prepare input data one step at a time, using CPU - Sort at most 1024 SM floats
+#define		CU_NORM_GPU_OS		BIT(12)		///< Prepare input data one step at a time, using CPU - Innovative Order statistic algorithm
+#define		CU_NORM_GPU		( CU_NORM_GPU_SM | CU_NORM_GPU_SM_MIN | CU_NORM_GPU_OS )
 
-#define		CU_INPT_FFT_CPU		BIT(12)		///< Do the FFT on the CPU
-
+#define		CU_NORM_EQUIV		BIT(13)		///< Do the normalisation the CPU way
+#define		CU_INPT_FFT_CPU		BIT(14)		///< Do the FFT on the CPU
 
 
 //---- Multiplication ----//
@@ -202,20 +205,22 @@ extern "C"
 
 //=========================================== enums ======================================================
 
-#define  TIME_CONTEXT		0
-#define  TIME_PREP		1
-#define  TIME_CPU_KER		2
-#define  TIME_GPU_KER		3
-#define  TIME_ALL_SRCH		4
-#define  TIME_GPU_SRCHALL	5
-#define  TIME_GPU_PLN		6
-#define  TIME_GPU_IMSRCH	7
-#define  TIME_CPU_SRCH		8
-#define  TIME_CND		9
-#define  TIME_ALL_OPT		10
-#define  TIME_GPU_OPT		11
-#define  TIME_CPU_OPT		12
-#define  TIME_END		13
+#define  TIME_CONTEXT		0			/// Time for CUDA context initialisation
+#define  TIME_PREP		1			/// CPU preparation - parse command line, read, (FFT), and normalise input
+#define  TIME_CPU_KER		2			/// CPU - Initialisation
+#define  TIME_GPU_KER		3			/// GPU - Initialisation
+#define  TIME_ALL_SRCH		4			/// CPU & GPU - Initialisation and Candidate Generation
+#define  TIME_GPU_SRCHALL	5			/// GPU - Initialisation & Generation stages & Candidate copy and clear memory
+#define  TIME_CPU_CND_GEN	6			/// CPU - Candidate generation stage
+#define  TIME_GPU_CND_GEN	7			/// GPU - Candidate generation stage
+#define  TIME_GPU_PLN		8			/// GPU - Plane generation & Sum & Search in standard search
+#define  TIME_GPU_SS		9			/// GPU - Sum and search (only in in-mem) of full plane (Not including plane creation)
+#define  TIME_CPU_SRCH		10			/// CPU - Initialisation & Generation stage
+#define  TIME_CND		11			/// GPU - Time to copy candidates from GPU data structure to list for optimisation
+#define  TIME_ALL_OPT		12			///     - All Optimisation (duplicates, CPU and GPU refine, writing results to file
+#define  TIME_GPU_REFINE	13			/// GPU - Candidate refine and properties
+#define  TIME_CPU_REFINE	14			/// CPU - Candidate refine and properties
+#define  TIME_END		15			/// Nothing - A value to indicate the array length
 
 //========================================== Macros ======================================================
 
@@ -245,6 +250,11 @@ typedef struct cuSearch cuSearch;
 typedef struct resThrds resThrds;
 
 //====================================== Section Enables =================================================
+
+
+//     Normalisation
+#define 		WITH_NORM_GPU
+#define 		WITH_NORM_GPU_OS
 
 //     Optimisation
 //#define		WITH_OPT_BLK1
@@ -885,7 +895,7 @@ struct cuSearch
     int                 noSrchHarms;        ///<
     int                 noSteps;            ///< The number of steps to cover the entire input data
 
-    long long           timings[TIME_END];  ///<
+    long long           timings[TIME_END];  ///< Array for timing values (values stored in ms)
 
     // Search power cutoff values
     int*                sIdx;               ///< The index of the planes in the Presto harmonic summing order
@@ -896,7 +906,7 @@ struct cuSearch
     // Search specific memory
     void*               h_candidates;       ///< Host memory for candidates
     void*               d_planeFull;        ///< Device memory for the in-mem f-∂f plane
-    GSList*		cands;			///< The canidates from the GPU search
+    GSList*		cands;              ///< The candidates from the GPU search
 
     unsigned int        inmemStride;        ///< The stride (in units) of the in-memory plane data in device memory
 };
