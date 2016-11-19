@@ -80,9 +80,13 @@ KER_FFT_PRECISION 	SINGLE
 
 # Normalise input in the CPU or the GPU
 # INP_NORM:
-# D	CPU     		# Do the input Normalisation on the CPU - This is short enough that the CPU may as well do it
-#	GPU     		# Do the input Normalisation on the GPU
-INP_NORM		CPU
+# 	CPU     		# Do the input Normalisation on the CPU - This is usually the best option, the taks is short enough that the CPU may as well do it (unless Z-Max is very small  ( < ~10 )
+#	GPU     		# Do the input Normalisation on the GPU using an inplace Shared Meory sort 
+#	GPU_SM     		# DEBUG: Do the input Normalisation on the GPU using an inplace Shared Meory sort
+#	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an inplace Shared Meory sort - Minimise SM use
+#	GPU_OS			# DEBUG: Do the input Normalisation on the GPU using a custom novel order statistic algorithm
+# D	AA      		# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
+INP_NORM		AA
 
 
 # FFT input in the CPU or the GPU
@@ -242,6 +246,8 @@ SS_CHUNK		0
 #	8192
 #	16384
 #	32768
+#	65536
+#	131072
 SS_INMEM_SZ 		0
 
 
