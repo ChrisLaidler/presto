@@ -1760,6 +1760,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
    */
 
   /* Can we perform the search in-core memory? */
+  if(1)
   {
     unsigned long long memuse;
     double gb = (double)(1L<<30);
@@ -1782,8 +1783,8 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 	obs->inmem = 0;
 	obs->ffdotplane = NULL;
 
-	printf("Tempory testing exit...\n"); // TMP
-	exit(EXIT_FAILURE); // TMP
+	printf("Temporary testing exit...\n");		// REM
+	exit(EXIT_FAILURE);				// REM
 
 	return;
       }

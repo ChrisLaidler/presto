@@ -235,13 +235,12 @@ else
   NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo
 
   # Global memory accesses cached in both L1 and L2 (default)
-  #NVCCFLAGS += -Xptxas -dlcm=ca
-  #NVCLFLAGS += -Xptxas -dlcm=ca
+  NVCCFLAGS += -Xptxas -dlcm=ca
+  NVCLFLAGS += -Xptxas -dlcm=ca
 
-  # Global memory accesses cached in L2 only
+  # Global memory accesses cached in L2 only - more SM
   #NVCCFLAGS += -Xptxas -dlcm=cg
   #NVCLFLAGS += -Xptxas -dlcm=cg
-
 
   DEBUG_TARGET   =release
   POSTFIX        =

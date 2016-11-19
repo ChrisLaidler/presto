@@ -1096,11 +1096,10 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   int iteration		= 0;
   long long currentBin	= startBin;
 
-  NV_RANGE_PUSH("Inmem Search");
-
   FOLD // Basic timing  .
   {
     gettimeofday(&start, NULL);
+    NV_RANGE_PUSH("GPU IMSS");
   }
 
   FOLD // Set all r-values to zero  .
@@ -1219,9 +1218,10 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   FOLD // Basic timing  .
   {
+    NV_RANGE_POP(); // Inmem Search
     gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_GPU_IMSRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    cuSrch->timings[TIME_GPU_SS] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
   }
 
-  NV_RANGE_POP();
+
 }

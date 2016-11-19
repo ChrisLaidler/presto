@@ -1,147 +1,24 @@
 #include "cuda_accel_IN.h"
 #include "cuda_sort.h"
 
-
-/** Kernel to calculate median of the powers of complex values and spread and normalise the complex using the calculated median value
- *
- * @param data    The data, initially the input is in the first half, results are written to the same location spread by 2
- * @param lens    The lengths of the individual input sections
- */
-template<int noEls>
-__global__ void normAndSpread_k(fcomplexcu* data, int stride, int noRespPerBin)
+template<int batches>
+__device__ void scaleAndSpread(fcomplexcu* data, int stride, int noRespPerBin, const float factor, const int noEls)
 {
-  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
-  const int tid = threadIdx.y * blockDim.x + threadIdx.x;       /// Thread ID in block (flat index)
-  const int bSz = blockDim.x  * blockDim.y;                     /// Block size
+  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
+  const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
+  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
 
-  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
-
-  float   factor;
-
-  // Stride input data
-  data += stride*bid;
-
-  FOLD  //  .
-  {
-    FOLD // Calculate and store powers in shared memory  .
-    {
-      int os = noEls/2-1;
-
-      float  powers[batches];				/// Registers to store powers
-
-      float median_orderstat_radix = 1;
-      float median_orderstat_sort = 1;
-      float median_Sort = 1;
-      float median_Sort_mult = 1;
-      float median = 1;
-
-//      FOLD // Order stat - sort  .
-//      {
-//	for ( int batch = 0; batch < batches; batch++)
-//	{
-//	  int idx = batch*bSz+tid;
-//
-//	  if ( idx < noEls )
-//	  {
-//	    fcomplexcu val  = data[idx];
-//	    powers[batch]   = val.r*val.r+val.i*val.i;
-//	  }
-//	}
-//	median_orderstat_sort = cuOrderStatPow2_sort<float, noEls, batches>(powers, os);
-//
-//	__syncthreads();
-//
-//	median = median_orderstat_sort;
-//      }
-
-//      FOLD // Order stat radix  .
-//      {
-//	for ( int batch = 0; batch < batches; batch++)
-//	{
-//	  int idx = batch*bSz+tid;
-//
-//	  if ( idx < noEls )
-//	  {
-//	    fcomplexcu val  = data[idx];
-//	    powers[batch]   = val.r*val.r+val.i*val.i;
-//	  }
-//	}
-//	median_orderstat_radix = cuOrderStatPow2_radix<noEls>(powers, os, 0);
-//
-//	__syncthreads();
-//
-//	median = median_orderstat_radix;
-//      }
-
-      FOLD // Sort - SM  .
-      {
-	__shared__ float smData[noEls];
-	for ( int batch = 0; batch < batches; batch++)
-	{
-	  int idx = batch*bSz+tid;
-
-	  if ( idx < noEls )
-	  {
-	    fcomplexcu val  = data[idx];
-	    smData[idx]     = val.r*val.r+val.i*val.i;
-	  }
-	}
-	__syncthreads();
-
-	bitonicSort_mem<float, noEls>(smData);
-
-	__syncthreads();
-
-	median_Sort = smData[os];
-
-	__syncthreads();
-
-	median = median_Sort;
-      }
-
-//      FOLD // Sort SM 1024  .
-//      {
-//	for ( int batch = 0; batch < batches; batch++)
-//	{
-//	  int idx = batch*bSz+tid;
-//
-//	  if ( idx < noEls )
-//	  {
-//	    fcomplexcu val  = data[idx];
-//	    powers[batch]   = val.r*val.r+val.i*val.i;
-//	  }
-//	}
-//	bitonicSort_reg<float, noEls, batches>(powers);
-//
-//	__syncthreads();
-//
-//	median_Sort = getValue<float, batches>(powers, os);
-//
-//	__syncthreads();
-//
-//	median = median_Sort;
-//      }
-
-
-
-
-      // Calculate normalisation factor
-      factor = 1.0 / sqrtf( median / (float)LN2 );
-    }
-  }
-
-  // Write, spread and normalised
   for ( int batch = batches-1; batch >= 0; batch--)
   {
-    int idx	 = batch*bSz+tid;
-    int expIdx = idx * noRespPerBin;
+    int idx	= batch*bSz+tid;
+    int expIdx	= idx * noRespPerBin;
 
     // Read all values into registers
     fcomplexcu val = data[idx];
 
     __syncthreads(); // Needed to ensure all values are in registers before writing data
 
-    if ( expIdx < stride)
+    if ( expIdx < stride )
     {
       // Set the value to normalised complex number spread by 2
       if ( idx < noEls )
@@ -167,6 +44,209 @@ __global__ void normAndSpread_k(fcomplexcu* data, int stride, int noRespPerBin)
   }
 }
 
+/** Kernel to calculate median of the powers of complex values and spread and normalise the complex using the calculated median value
+ *
+ * @param data    The data, initially the input is in the first half, results are written to the same location spread by 2
+ * @param lens    The lengths of the individual input sections
+ */
+template<int noEls>
+__global__ void normAndSpread_SM(fcomplexcu* data, int stride, int noRespPerBin)
+{
+  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
+  const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
+  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+
+  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+  float     factor      = 1.0f;
+
+  // Stride input data
+  data += stride*bid;
+
+  FOLD  //  Calculate the normalisation factor from the median .
+  {
+    int os = noEls/2-1;
+
+    float median = 1.0f;
+
+    __shared__ float smData[noEls];				/// SM to store powers
+
+    FOLD // Read values into SM  .
+    {
+      for ( int batch = 0; batch < batches; batch++)
+      {
+	int idx = batch*bSz+tid;
+
+	if ( idx < noEls )
+	{
+	  fcomplexcu val  = data[idx];
+	  smData[idx]     = val.r*val.r+val.i*val.i;
+	}
+      }
+      __syncthreads();	// Writing values to SM
+    }
+
+    // Sort
+    bitonicSort_SM<float, noEls>(smData);
+    median = smData[os];
+
+    // Calculate normalisation factor
+    factor = 1.0 / sqrtf( median / (float)LN2 );
+  }
+
+  scaleAndSpread<batches>(data, stride, noRespPerBin, factor, noEls);
+}
+
+/** Kernel to calculate median of the powers of complex values and spread and normalise the complex using the calculated median value
+ *
+ * @param data    The data, initially the input is in the first half, results are written to the same location spread by 2
+ * @param lens    The lengths of the individual input sections
+ */
+template<int noEls>
+__global__ void normAndSpread_SM_MIN(fcomplexcu* data, int stride, int noRespPerBin)
+{
+  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
+  const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
+  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+
+  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+  float     factor      = 1.0f;
+
+  // Stride input data
+  data += stride*bid;
+
+  FOLD  //  Calculate the normalisation factor from the median .
+  {
+    float  powers[batches];					/// Registers to store powers
+    int    os		= noEls/2-1;
+    float  median 	= 1.0f;
+
+    FOLD // Read values into registers  .
+    {
+      for ( int batch = 0; batch < batches; batch++)
+      {
+	int idx = batch*bSz+tid;
+
+	if ( idx < noEls )
+	{
+	  fcomplexcu val  = data[idx];
+	  powers[batch]   = val.r*val.r+val.i*val.i;
+	}
+      }
+    }
+
+    // Sort
+    bitonicSort_reg<float, noEls, batches>(powers);
+    median = getValue<float, batches>(powers, os);
+
+    // Calculate normalisation factor
+    factor = 1.0 / sqrtf( median / (float)LN2 );
+  }
+
+  scaleAndSpread<batches>(data, stride, noRespPerBin, factor, noEls);
+}
+
+/** Kernel to calculate median of the powers of complex values and spread and normalise the complex using the calculated median value
+ *
+ * @param data    The data, initially the input is in the first half, results are written to the same location spread by 2
+ * @param lens    The lengths of the individual input sections
+ */
+#ifdef WITH_NORM_GPU_OS
+template<int noEls>
+__global__ void normAndSpread_OS(fcomplexcu* data, int stride, int noRespPerBin)
+{
+  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
+  const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
+  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+
+  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+  float     factor      = 1.0f;
+
+  // Stride input data
+  data += stride*bid;
+
+  FOLD  //  Calculate the normalisation factor from the median .
+  {
+    float  powers[batches];					/// Registers to store powers
+    int    os		= noEls/2-1;
+    float  median 	= 1.0f;
+
+    FOLD // Read values into registers  .
+    {
+      for ( int batch = 0; batch < batches; batch++)
+      {
+	int idx = batch*bSz+tid;
+
+	if ( idx < noEls )
+	{
+	  fcomplexcu val  = data[idx];
+	  powers[batch]   = val.r*val.r+val.i*val.i;
+	}
+      }
+    }
+
+    // Get median
+    median = cuOrderStatPow2_radix<noEls>(powers, os, 0);
+
+    // Calculate normalisation factor
+    factor = 1.0 / sqrtf( median / (float)LN2 );
+  }
+
+  scaleAndSpread<batches>(data, stride, noRespPerBin, factor, noEls);
+}
+#endif
+
+/** A function in the template tree used to call the CUDA median normalisation kernel
+ *
+ * This function determines the buffer width and
+ * calls the function in the template tree
+ *
+ */
+template<int noEls>
+void normAndSpread_m(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, cuFfdotStack* cStack )
+{
+  FOLD // Call flag template  .
+  {
+    const int64_t FLAGS = cStack->flags;
+
+    if      ( FLAGS & CU_NORM_GPU_SM     )
+    {
+      normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+    }
+    else if ( FLAGS & CU_NORM_GPU_SM_MIN )
+    {
+      if ( noEls <= 1024 )
+      {
+	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      }
+      else
+      {
+	normAndSpread_SM_MIN<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      }
+    }
+    else if ( FLAGS & CU_NORM_GPU_OS     )
+    {
+#ifdef WITH_NORM_GPU_OS
+      if ( noEls <= 1024 )
+      {
+	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      }
+      else
+      {
+	normAndSpread_OS<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      }
+#else
+      fprintf(stderr, "ERROR: %s disabled at compile time. Function %s in %s.\n", "GPU normalisation by radix", __FUNCTION__, __FILE__);
+      exit(EXIT_FAILURE);
+#endif
+    }
+    else
+    {
+      fprintf(stderr,"ERROR: No valid GPU normalisation specified. Function %s in %s.\n", __FUNCTION__, __FILE__);
+      exit(EXIT_FAILURE);
+    }
+  }
+}
+
 /** A function in the template tree used to call the CUDA median normalisation kernel
  *
  * This function determines the buffer width and
@@ -177,44 +257,44 @@ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
 {
   switch ( numData )
   {
-    case 64   :
+    case 64    :
     {
-      normAndSpread_k<64  ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<64   >(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 128   :
     {
-      normAndSpread_k<128 ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<128 >(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 256   :
     {
-      normAndSpread_k<256 ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<256 >(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 512   :
     {
-      normAndSpread_k<512 ><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<512 >(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 1024  :
     {
-      normAndSpread_k<1024><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<1024>(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 2048  :
     {
-      normAndSpread_k<2048><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<2048>(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 4096  :
     {
-      normAndSpread_k<4096><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<4096>(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     case 8192  :
     {
-      normAndSpread_k<8192><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_m<8192>(dimGrid, dimBlock, 0, stream, cStack );
       break;
     }
     default    :
@@ -253,8 +333,9 @@ __host__ void normAndSpread(cudaStream_t stream, cuFFdotBatch* batch, uint stack
   }
 
   rVals* rVal 	= &(*batch->rAraays)[batch->rActive][0][cStack->startIdx];
-  int numData	=  rVal->numdata;
+  int numData	= rVal->numdata;
 
+  // Call the templated kernel chain
   normAndSpread_w(dimGrid, dimBlock, 0, stream, cStack, numData );
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Calling the normalisation and spreading kernel.");

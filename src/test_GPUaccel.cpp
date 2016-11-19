@@ -38,7 +38,6 @@ extern "C"
 #include "util.h"
 #endif
 
-extern float calc_median_powers(fcomplex * amplitudes, int numamps);
 
 /* Return x such that 2**x = n */
 //static
@@ -1036,32 +1035,32 @@ int main(int argc, char *argv[])
 
               errorStats eStat = GPU_kernels.diff(CPU_kernels);
               double RMSE = eStat.RMSE;
-              double ERR =  RMSE / statG.sigma ;
-              //printf("   Cmplx: %02i (%.2f)  RMSE: %10.3e    μ: %10.3e    σ: %10.3e    RMSE/σ: %9.2e  Max: %8.2e ", idx, frac, RMSE, statG.mean, statG.sigma, ERR, MAX(fabs(statD.min),fabs(statD.max)) );
-              //"(%.2f)   μ: %10.3e    σ: %10.3e   | Error  RMSE: %10.3e   Max: %10.3e  RMSE/σ: %9.2e ", idx, frac, stat.mean, stat.sigma, eStat.RMSE, eStat.largestError, ERR );
-              printf("   Cmplx: %02i (%.2f)   μ: %10.3e    σ: %10.3e   | Error  RMSE: %10.3e   Max: %10.3e  RMSE/σ: %9.2e ", idx, frac, statG.mean, statG.sigma, eStat.RMSE, eStat.largestError, ERR );
+              double Error =  RMSE / statG.sigma ;
+              //printf("   Cmplx: %02i (%.2f)  RMSE: %10.3e    μ: %10.3e    σ: %10.3e    RMSE/σ: %9.2e  Max: %8.2e ", idx, frac, RMSE, statG.mean, statG.sigma, Error, MAX(fabs(statD.min),fabs(statD.max)) );
+              //"(%.2f)   μ: %10.3e    σ: %10.3e   | Error  RMSE: %10.3e   Max: %10.3e  RMSE/σ: %9.2e ", idx, frac, stat.mean, stat.sigma, eStat.RMSE, eStat.largestError, Error );
+              printf("   Cmplx: %02i (%.2f)   μ: %10.3e    σ: %10.3e   | Error  RMSE: %10.3e   Max: %10.3e  RMSE/σ: %9.2e ", idx, frac, statG.mean, statG.sigma, eStat.RMSE, eStat.largestError, Error );
 
 
-              if      ( ERR > buckets[0] )
+              if      ( Error > buckets[0] )
                 printf("  BAD!    Not even in the same realm.\n");
-              else if ( ERR > buckets[1] )
+              else if ( Error > buckets[1] )
                 printf("  Bad.  \n" );
-              else if ( ERR > buckets[2] )
+              else if ( Error > buckets[2] )
                 printf("  Bad.   But not that bad.\n");
-              else if ( ERR > buckets[3] )
+              else if ( Error > buckets[3] )
                 printf("  Close  But not great. \n");
-              else if ( ERR > buckets[4] )
+              else if ( Error > buckets[4] )
                 printf("  GOOD  But a bit high.\n");
-              else if ( ERR > buckets[5] )
+              else if ( Error > buckets[5] )
                 printf("  GOOD \n"  );
-              else if ( ERR > buckets[6] )
+              else if ( Error > buckets[6] )
                 printf("  GOOD  Very good.\n"  );
               else
                 printf("  Great \n");
 
               FOLD // Print actual values  .
               {
-        	if ( ERR > buckets[2] )
+        	if ( Error > buckets[2] )
         	{
         	  int y = master->hInfos[idx].noZ/2.0 - 1 ;
 

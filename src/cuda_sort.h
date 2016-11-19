@@ -7,6 +7,10 @@ __device__ void bitonicSort_mem(T *data);
 template <typename T, int noEls, int noArr>
 __device__ void bitonicSort_reg(T *val);
 
+template <typename T, const int noSort>
+__device__ void bitonicSort_SM(T *data);
+
+
 
 template< int noEls >
 __device__ float cuOrderStatPow2_radix(float *val, int offset, int printVals);
@@ -14,11 +18,8 @@ __device__ float cuOrderStatPow2_radix(float *val, int offset, int printVals);
 template <typename T, int noEls, int noArr>
 __device__ T cuOrderStatPow2_sort(T *val, int os);
 
-
-
-//__device__ void bitonicSort(float *data, const uint arrayLength, const uint trdId, const uint noThread, const int dir );
-
-//__device__ void bitonicSort1Warp(float *data, const uint arrayLength, const uint trdId, const uint noThread, const int dir );
+template <typename T, int noEls>
+__device__ void cuOrderStatPow2_sort_SM(T *data, int os);
 
 template <typename T, int noArr>
 __device__ inline T getValue(T *val, const int os)

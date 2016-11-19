@@ -204,15 +204,16 @@ void setGenRVals(cuFFdotBatch* batch)
         lobin			= (int) floor(drlo) - binoffset;
         hibin			= (int) ceil(drhi)  + binoffset;
 
-        if ( batch->flags & CU_NORM_CPU )
-        {
-          // CPU nomralisation can normalise differing length data so use the correct lengths
-          numdata		= hibin - lobin + 1;
-        }
-        else
+        if ( batch->flags & CU_NORM_GPU )
         {
           // GPU normalisation now relies on all input for a stack being of the same length
-          numdata		= ceil(cHInfo->width / (float)noResPerBin); // Thus may use mutch more input data than is strictly nessesary but thats OK!
+          numdata		= ceil(cHInfo->width / (float)noResPerBin); // Thus may use much more input data than is strictly necessary but thats OK!
+        }
+
+        else
+        {
+          // CPU normalisation can normalise differing length data so use the correct lengths
+          numdata		= hibin - lobin + 1;
         }
 
         numrs			= (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
@@ -302,7 +303,7 @@ void prepInputCPU(cuFFdotBatch* batch )
     if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
     {
       // GPU Normalisation
-      if ( !(batch->flags & CU_NORM_CPU) )
+      if ( batch->flags & CU_NORM_GPU )
       {
         for (int stack = 0; stack < batch->noStacks; stack++)
         {
@@ -336,7 +337,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
     fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->sSpec->fftInf.fft;
 
-    if ( batch->flags & CU_NORM_CPU  ) // Copy chunks of FFT data and normalise and spread using the CPU  .
+    if ( !(batch->flags & CU_NORM_GPU)  ) // Copy chunks of FFT data and normalise and spread using the CPU  .
     {
       // Timing variables  .
       struct timeval start, end;
@@ -402,13 +403,13 @@ void prepInputCPU(cuFFdotBatch* batch )
         NV_RANGE_POP();
       }
 
-      if ( batch->flags & CU_NORM_CPU  ) // Copy CPU prepped data to the pagelocked input data
+      if ( !(batch->flags & CU_NORM_GPU)  )	// Copy CPU prepped data to the pagelocked input data
       {
         NV_RANGE_PUSH("memcpy");
         memcpy(batch->h_iData, batch->h_iBuffer, batch->inpDataSize );
         NV_RANGE_POP();
       }
-      else                               // Copy chunks of FFT data and normalise and spread using the GPU  .
+      else					// Copy chunks of FFT data and normalise and spread using the GPU  .
       {
         infoMSG(2,3,"CPU prep input\n");
 
@@ -499,7 +500,7 @@ void copyInputToDevice(cuFFdotBatch* batch)
     {
       cudaEventRecord(batch->iDataCpyComp,  batch->inpStream);
 
-      if ( batch->flags & CU_NORM_CPU  )
+      if ( !(batch->flags & CU_NORM_GPU)  )
       {
         // Data has been normalised by CPU
         cudaEventRecord(batch->normComp,      batch->inpStream);
@@ -527,7 +528,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 
     FOLD // Normalise and spread on GPU  .
     {
-      if ( !(batch->flags & CU_NORM_CPU) )
+      if ( batch->flags & CU_NORM_GPU )
       {
         infoMSG(3,4,"Normalise on device\n");
 

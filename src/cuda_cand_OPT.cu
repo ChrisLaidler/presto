@@ -906,7 +906,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     if ( pln->rSize > 1.5 ) // Use the block kernel  .
     {
-      /*	NOTE	Chris Laidler	22/06/2016
+      /*	NOTE:	Chris Laidler	22/06/2016
        *
        * The per harmonic blocked kernel is fastest in my testing
        */
@@ -958,7 +958,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     }
     else
     {
-      /*	NOTE	Chris Laidler	22/06/2016
+      /*	NOTE:	Chris Laidler	22/06/2016
        *
        * I found 16 testing on a 750ti, running in synchronous mode.
        * This could probably be tested on more cards but I expect similar results
@@ -1023,7 +1023,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
     if ( outSz > pln->outSz )
     {
-      fprintf(stderr, "ERROR: Optemisation plane larger than allocated memory.\n");
+      fprintf(stderr, "ERROR: Optimisation plane larger than allocated memory.\n");
       exit(EXIT_FAILURE);
     }
   }
@@ -1244,7 +1244,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
       maxHW = ceil(maxHW*2/(float)dimBlock.x)*dimBlock.x;
 
-      if ( optKer & OPT_KER_PLN_PTS_SHR ) // Shared meme  .
+      if ( optKer & OPT_KER_PLN_PTS_SHR ) // Shared mem  .
       {
 #ifdef WITH_OPT_PLN4
 #ifdef CBL
@@ -2488,7 +2488,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
   {
     omp_set_num_threads(cuSrch->oInf->noOpts);
   }
-
 #pragma omp parallel
 #endif
   FOLD  	// Main GPU loop  .
