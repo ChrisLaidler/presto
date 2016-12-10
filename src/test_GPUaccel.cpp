@@ -1596,6 +1596,8 @@ int main(int argc, char *argv[])
                                 //zz      = ( iz * ACCEL_DZ - batch->hInfos[0].noZ ) / (double)harmtosum ;
                                 zz	= (batch->hInfos[0].zStart + (batch->hInfos[0].zEnd - batch->hInfos[0].zStart ) * iz / (double)(batch->hInfos[0].noZ-1) ) ;
                                 zz	/= (double)harmtosum ;
+                                if ( batch->hInfos[0].noZ == 1 )
+                                  zz = 0;
 
                                 float cPow;
                                 float *row;

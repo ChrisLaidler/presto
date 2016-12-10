@@ -41,6 +41,8 @@ __global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int h
   {
     double r            = firstR + ix*blkWidth/(double)(noR) ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+    if (noZ == 1)
+      z = 0;
 
     float       total_power[noBlk];
     float2      ans[noBlk];
@@ -237,6 +239,8 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
   {
     double r            = firstR + ix*blkWidth/(double)(noR) ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+    if (noZ == 1)
+      z = 0;
 
     float2      ans[noBlk];
     int halfW;
@@ -298,6 +302,8 @@ __global__ void ffdotPln_ker(float* powers, float2* fft, int noHarms, int halfwi
     int halfW;
     double r            = firstR + ix/(double)(noR-1) * rSZ ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+    if (noZ == 1)
+      z = 0;
 
     T total_power  = 0;
     T real = 0;
@@ -342,6 +348,8 @@ __global__ void ffdotPln_ker2(float2* powers, float2* fft, int noHarms, int half
     int halfW;
     double r            = firstR + ix/(double)(noR-1) * rSZ ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+    if (noZ == 1)
+      z = 0;
 
     T real = 0;
     T imag = 0;
@@ -405,6 +413,8 @@ __global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmW
     int halfW;
     double r            = firstR + ix/(double)(noR-1) * rSZ ;
     double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+    if (noZ == 1)
+      z = 0;
 
     T hrm_power  = 0;			///< The power of a single point for the harmonic
     T real = 0;
@@ -458,6 +468,8 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
   int halfW;
   double r            = firstR + ix/(double)(noR-1) * rSZ ;
   double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
+  if (noZ == 1)
+    z = 0;
 
   T total_power  = 0;
   T real = (T)0;
@@ -1459,6 +1471,8 @@ int addPlnToTree(candTree* tree, cuOptCand* pln)
 	  canidate->r       = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
 	  canidate->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
 	  canidate->sig     = yy2;
+	  if ( pln->noZ == 1 )
+	    canidate->z = 0;
 
 	  ggr++;
 
@@ -1783,6 +1797,8 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
 	  cand->power   = yy2;
 	  cand->r       = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
 	  cand->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+	  if ( pln->noZ == 1 )
+	    cand->z = 0;
 	}
       }
     }
@@ -1821,7 +1837,9 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
 	for (int indy = 0; indy < pln->noZ; indy++ )
 	{
 	  double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
-
+	  if ( pln->noZ == 1 )
+	    z = 0;
+	  
 	  fprintf(f2,"%.15f",z);
 
 	  for (int indx = 0; indx < pln->noR ; indx++ )

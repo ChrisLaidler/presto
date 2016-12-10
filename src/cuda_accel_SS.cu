@@ -649,9 +649,11 @@ void* processSearchResults(void* ptr)
           else
           {
             // Calculate r and z value
-            rr	= ( res->rLow + x / (double) res->noResPerBin ) / (double)numharm ;
-            zz	= (res->zStart + (res->zEnd - res->zStart ) * zz / (double)(res->noZ-1) ) ;
-            zz  /= (double)numharm ;
+            rr  = ( res->rLow + x / (double) res->noResPerBin ) / (double)numharm ;
+            zz  = (res->zStart + (res->zEnd - res->zStart ) * zz / (double)(res->noZ-1) ) ;
+            zz /= (double)numharm ;
+            if ( res->noZ == 1 )
+              zz = 0;
 
             if ( isnan(poww) )
             {

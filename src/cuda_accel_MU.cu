@@ -582,6 +582,8 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		FOLD // Write line to csv  .
 		{
 		  double z = cHInfo->zStart + (cHInfo->zEnd-cHInfo->zStart)/(double)(cHInfo->noZ-1)*y;
+		  if (cHInfo->noZ == 1 )
+		    z = 0;
 		  fprintf(f2,"%.15f",z);
 
 		  for ( int i = 0; i < rVal->numrs; i++)
