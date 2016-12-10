@@ -795,9 +795,9 @@ typedef struct cuRespPln
  */
 typedef struct cuOptCand
 {
-    cuSearch*       	cuSrch;             	///< Details of the search
+    cuSearch*       	cuSrch;			///< Details of the search
 
-    gpuInf*		gInf;			///< Infrmation on the GPU being used
+    gpuInf*		gInf;			///< Information on the GPU being used
 
     double          	centR;
     double          	centZ;
@@ -821,34 +821,34 @@ typedef struct cuOptCand
     int             	hw[32];
 
     int             	maxHalfWidth;
-    int             	outSz;              	///< The size in bytes of device output buffer
+    int             	outSz;			///< The size in bytes of device output buffer
 
     void*           	d_out;
     void*           	h_out;
 
     int             	outStride;
 
-    cuRespPln*		responcePln;		///< A device specific plane holding possibly pre calculated response function values
+    cuRespPln*		responsePln;		///< A device specific plane holding possibly pre calculated response function values
 
     // Streams
-    cudaStream_t    	stream;             ///< CUDA stream for work
+    cudaStream_t    	stream;			///< CUDA stream for work
 
     // Events
-    cudaEvent_t     	inpInit;            ///< Copying input data to device
-    cudaEvent_t     	inpCmp;             ///< Copying input data to device
-    cudaEvent_t     	compInit;           ///< Copying input data to device
-    cudaEvent_t     	compCmp;            ///< Copying input data to device
-    cudaEvent_t     	outInit;            ///< Copying input data to device
-    cudaEvent_t     	outCmp;             ///< Copying input data to device
+    cudaEvent_t     	inpInit;		///< Copying input data to device
+    cudaEvent_t     	inpCmp;			///< Copying input data to device
+    cudaEvent_t     	compInit;		///< Copying input data to device
+    cudaEvent_t     	compCmp;		///< Copying input data to device
+    cudaEvent_t     	outInit;		///< Copying input data to device
+    cudaEvent_t     	outCmp;			///< Copying input data to device
 
-    cudaEvent_t     	tInit1;             ///< Timing
-    cudaEvent_t     	tComp1;             ///< Timing
-    cudaEvent_t     	tInit2;             ///< Timing
-    cudaEvent_t     	tComp2;             ///< Timing
-    cudaEvent_t     	tInit3;             ///< Timing
-    cudaEvent_t     	tComp3;             ///< Timing
-    cudaEvent_t     	tInit4;             ///< Timing
-    cudaEvent_t     	tComp4;             ///< Timing
+    cudaEvent_t     	tInit1;			///< Timing
+    cudaEvent_t     	tComp1;			///< Timing
+    cudaEvent_t     	tInit2;			///< Timing
+    cudaEvent_t     	tComp2;			///< Timing
+    cudaEvent_t     	tInit3;			///< Timing
+    cudaEvent_t     	tComp3;			///< Timing
+    cudaEvent_t     	tInit4;			///< Timing
+    cudaEvent_t     	tComp4;			///< Timing
 
 } cuOptCand;
 
@@ -858,7 +858,7 @@ typedef struct cuOptInfo
 {
     int                 noOpts;                 ///< The total number of optimisations to do across all devices
     cuOptCand*          opts;                   ///< A list noBatches long of
-    cuRespPln*          responcePlanes;         ///< A collection of response functions for optimisation, one per GPU
+    cuRespPln*          responsePlanes;         ///< A collection of response functions for optimisation, one per GPU
 
     float               zScale;			///< The ratio between spacing in R and Z in the optimisation planes
     int                 optResolution;		///< The number of r points per fft bin to use in the initial position optimisation

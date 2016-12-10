@@ -5395,18 +5395,18 @@ void initOptimisers(cuSearch* sSrch )
     NV_RANGE_POP();
   }
 
-  // Note I found the responce plane methoud to be slower or just equivilent
+  // Note I found the response plane method to be slower or just equivalent
   Fout // Setup response plane  .
   {
     // Set up planes
     int sz = sSrch->gSpec->noDevices*sizeof(cuRespPln); 	// The size in bytes if the plane
-    sSrch->oInf->responcePlanes =  (cuRespPln*)malloc(sz);
-    memset(sSrch->oInf->responcePlanes, 0, sz);
+    sSrch->oInf->responsePlanes =  (cuRespPln*)malloc(sz);
+    memset(sSrch->oInf->responsePlanes, 0, sz);
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) 	// Loop over devices  .
     {
       gpuInf* gInf     	= &sSrch->gSpec->devInfo[dev];
       int device	= gInf->devid;
-      cuRespPln* resp	= &sSrch->oInf->responcePlanes[dev];
+      cuRespPln* resp	= &sSrch->oInf->responsePlanes[dev];
 
       FOLD // See if we can use the cuda device and whether it may be possible to do GPU in-mem search .
       {
@@ -5464,8 +5464,8 @@ void initOptimisers(cuSearch* sSrch )
 	CUDA_SAFE_CALL(cudaMalloc(&resp->d_pln,  resp->size), "Failed to allocate device memory optimisation response plane.");
 	CUDA_SAFE_CALL(cudaMemsetAsync(resp->d_pln, 0, resp->size, devOpts[dev]->stream), "Failed to initiate optimisation response plane to zero");
 
-	// This kernel inst reall nessesary anymore
-	//opt_genResponce(resp, devOpts[dev]->stream);
+	// This kernel isn't really necessary anymore
+	//opt_genResponse(resp, devOpts[dev]->stream);
 
 	for ( int optN = 0; optN < sSrch->oInf->noOpts; optN++ )
 	{
@@ -5473,7 +5473,7 @@ void initOptimisers(cuSearch* sSrch )
 
 	  if ( oCnd->gInf->devid == devOpts[dev]->gInf->devid )
 	  {
-	    oCnd->responcePln = resp;
+	    oCnd->responsePln = resp;
 	  }
 	}
       }

@@ -81,13 +81,13 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
     // Calculate the kernel index for this thread (centred on zero inverted and wrapped)
     if		( cx < noResp )
     {
-      // Beginning of array ( left half of responce values mirrored about zero)
+      // Beginning of array ( left half of response values mirrored about zero)
       offset = -1 * cx / (genT)rSteps;
       rx = 1;
     }
     else if	(cx >= width - noResp )
     {
-      // End of array ( right half of responce values mirrored about zero)
+      // End of array ( right half of response values mirrored about zero)
       offset = ( width - cx ) / (genT)rSteps;
       rx = 1;
     }

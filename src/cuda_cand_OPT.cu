@@ -101,7 +101,7 @@ __global__ void ffdotPlnByBlk_ker(float* powers, float2* fft, int noHarms, int h
 
 #ifdef WITH_OPT_BLK2
 
-__global__ void opt_genResponce_ker(cuRespPln pln)
+__global__ void opt_genResponse_ker(cuRespPln pln)
 {
   const int ix  = blockIdx.x * blockDim.x + threadIdx.x;
   const int iy  = blockIdx.y * blockDim.y + threadIdx.y;
@@ -116,11 +116,11 @@ __global__ void opt_genResponce_ker(cuRespPln pln)
     double     zVal   = pln.zMax - (double)iy*pln.dZ ;
     double     offSet = -pln.halfWidth - frac  +  firstBin ;
 
-    double2 responce = calc_response_off(offSet, zVal);
+    double2 response = calc_response_off(offSet, zVal);
 
     // Write values to memory
-    pln.d_pln[iy*pln.oStride + ix ].x = (float)responce.x;
-    pln.d_pln[iy*pln.oStride + ix ].y = (float)responce.y;
+    pln.d_pln[iy*pln.oStride + ix ].x = (float)response.x;
+    pln.d_pln[iy*pln.oStride + ix ].y = (float)response.y;
   }
 }
 
@@ -702,7 +702,7 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* fft, int halfwidth, double
 
 #endif
 
-void opt_genResponce(cuRespPln* pln, cudaStream_t stream)
+void opt_genResponse(cuRespPln* pln, cudaStream_t stream)
 {
 #ifdef WITH_OPT_BLK2
   infoMSG(5, 5, "Generating optimisation response function values.\n" );
@@ -722,13 +722,13 @@ void opt_genResponce(cuRespPln* pln, cudaStream_t stream)
   dimGrid.x = ceil(pln->noR / (float)dimBlock.x);
   dimGrid.y = ceil(pln->noZ / (float)dimBlock.y);
 
-  opt_genResponce_ker<<<dimGrid, dimBlock, 0, stream >>>(*pln);
+  opt_genResponse_ker<<<dimGrid, dimBlock, 0, stream >>>(*pln);
 
   cudaDeviceSynchronize();
   CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
 #else
-  fprintf(stderr, "ERROR: Not compiled with responce usingk block optemising kernel.\n");
+  fprintf(stderr, "ERROR: Not compiled with response using block optimising kernel.\n");
   exit(EXIT_FAILURE);
 #endif
 }
@@ -882,7 +882,7 @@ template<typename T>
 int ffdotPln( cuOptCand* pln, fftInfo* fft )
 {
   searchSpecs*  sSpec   	= pln->cuSrch->sSpec;
-  cuRespPln* 	rpln 		= pln->responcePln;
+  cuRespPln* 	rpln 		= pln->responsePln;
 
   int     	noBlk		= 1;	// The number of blocks each thread will cover
   int     	blkWidth	= 0;	// The width of a block
