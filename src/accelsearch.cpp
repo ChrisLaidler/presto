@@ -346,7 +346,8 @@ int main(int argc, char *argv[])
 
       if ( cmd->gpuP )			// --=== The GPU Search == --  .
       {
-#ifdef CUDA
+
+#ifdef CUDA	// CUDA search
 
 	if ( cmd->cpuP ) // Duplicate the CPU candidates  .
 	{

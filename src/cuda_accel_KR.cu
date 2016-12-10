@@ -51,17 +51,21 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
     // In bound
 
     // Calculate the z value for the row
-    genT z = zStart + (zEnd-zStart)/(genT)(noZ-1)*cy;		/// The Fourier Frequency derivative
+    genT z;
+    if ( noZ == 0 )
+      z = zStart + (zEnd-zStart)/(genT)(noZ-1)*cy;		/// The Fourier Frequency derivative
+    else
+      z = zStart;
 
-    if      ( half_width == 0  )
+    if      ( half_width == 0  )				// Standard low accuracy half width
     {
       half_width    = cu_z_resp_halfwidth_low<genT>(z);
     }
-    else if ( half_width == 1  )  // Use high accuracy kernels
+    else if ( half_width == 1  )				// Use high accuracy kernels
     {
       half_width    = cu_z_resp_halfwidth_high<genT>(z);
     }
-    else
+    else							// Only used for debug purposes
     {
       // Use the actual halfwidth value for all rows
 
@@ -71,8 +75,8 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
       //half_width    = cu_z_resp_halfwidth((double) z);
     }
 
-    int noResp	= half_width * rSteps;			// The number of response variables per side
-    genT offset	= 0;					// The distance of the response value from 0 (negative to the leaf)
+    int noResp	= half_width * rSteps;				// The number of response variables per side
+    genT offset	= 0;						// The distance of the response value from 0 (negative to the leaf)
 
     // Calculate the kernel index for this thread (centred on zero inverted and wrapped)
     if		( cx < noResp )
