@@ -490,13 +490,13 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
 	for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
 	{
-	  cuHarmInfo* cHInfo    = &cStack->harmInf[plainNo];          // The current harmonic we are working on
+	  cuHarmInfo* cHInfo    = &cStack->harmInf[plainNo];		// The current harmonic we are working on
 	  void*       tmpRow      = malloc(batch->inpDataSize);
-	  cuFFdot*    plan      = &cStack->planes[plainNo];          // The current plane
+	  cuFFdot*    plan      = &cStack->planes[plainNo];		// The current plane
 
 	  int harm = cStack->startIdx+plainNo;
 
-	  for ( int step = 0; step < batch->noSteps; step ++)    // Loop over steps
+	  for ( int step = 0; step < batch->noSteps; step ++)		// Loop over steps
 	  {
 	    rVals* rVal = &(((*batch->rAraays)[batch->rActive])[step][harm]);
 

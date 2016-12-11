@@ -52,7 +52,7 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
 
     // Calculate the z value for the row
     genT z;
-    if ( noZ == 0 )
+    if ( noZ > 1 )
       z = zStart + (zEnd-zStart)/(genT)(noZ-1)*cy;		/// The Fourier Frequency derivative
     else
       z = zStart;
