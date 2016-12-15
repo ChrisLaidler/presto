@@ -5585,7 +5585,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuSearch.");
 
-  if ( srch ) 	                    // Check if the search values have been pre-initialised  .
+  if ( srch )				// Check if the search values have been pre-initialised  .
   {
     if ( srch->noHarmStages != sSpec->noHarmStages )
     {
@@ -5622,7 +5622,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     }
   }
 
-  if ( !srch || !same )      	// Create a new search data structure  .
+  if ( !srch || !same )			// Create a new search data structure  .
   {
     infoMSG(2,2,"Create a new search data structure\n");
 
@@ -5657,7 +5657,6 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
   FOLD // Calculate power cutoff and number of independent values  .
   {
     infoMSG(3,2,"Calculate power cutoff and number of independent values\n");
-
 
     // Calculate appropriate z-max
     int numz = round(sSpec->zMax / sSpec->zRes) * 2 + 1;
@@ -5708,14 +5707,14 @@ cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
   NV_RANGE_PUSH("GPU Initialise");
 
-  if ( !srch )
+  if ( !srch )			// Create basic data structure
   {
     srch = initSearchInf(sSpec, gSpec, srch);
   }
 
-  if ( !srch->pInf )
+  if ( !srch->pInf )		// Populate data structure and create correlation kernels
   {
-    initPlanes( srch ); // This initialises the plane info
+    initPlanes( srch );		// This initialises the plane info
   }
   else
   {
@@ -7111,7 +7110,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 
     // Timing of device setup and kernel creation
     gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_GPU_KER] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    cuSrch->timings[TIME_GPU_INIT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
     if ( master->flags & FLAG_SYNCH )
       fprintf(stderr, "WARNING: Running synchronous search, this will slow things down and should only be used for debug and testing.\n");

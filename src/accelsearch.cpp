@@ -259,7 +259,7 @@ int main(int argc, char *argv[])
 	{
 	  NV_RANGE_POP(); // CPU kernel
 	  gettimeofday(&end, NULL);
-	  cuSrch->timings[TIME_CPU_KER] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+	  cuSrch->timings[TIME_CPU_INIT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 	  NV_RANGE_PUSH("CPU Cand Gen");
 	}
 #endif
@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
 	  NV_RANGE_POP(); // CPU
 	  gettimeofday(&end, NULL);
 	  cuSrch->timings[TIME_CPU_SRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-	  cuSrch->timings[TIME_CPU_CND_GEN] = cuSrch->timings[TIME_CPU_SRCH] - cuSrch->timings[TIME_CPU_KER];
+	  cuSrch->timings[TIME_CPU_CND_GEN] = cuSrch->timings[TIME_CPU_SRCH] - cuSrch->timings[TIME_CPU_INIT];
 	}
 
 	printf("\nCPU found %i initial candidates. In %.4f ms\n", g_slist_length(candsCPU), cuSrch->timings[TIME_CPU_SRCH]/1000.0 );
@@ -851,12 +851,12 @@ int main(int argc, char *argv[])
       slog.csvWrite(" Context",  "%9.06f", cuSrch->timings[TIME_CONTEXT]	* 1e-6 );
       slog.csvWrite("  Prep  ",  "%9.06f", cuSrch->timings[TIME_PREP]		* 1e-6 );
 
-      slog.csvWrite(" CPU Ker",  "%9.06f", cuSrch->timings[TIME_CPU_KER]	* 1e-6 );
+      slog.csvWrite("CPU Init",  "%9.06f", cuSrch->timings[TIME_CPU_INIT]	* 1e-6 );
       slog.csvWrite(" CPU Gen",  "%9.06f", cuSrch->timings[TIME_CPU_CND_GEN]	* 1e-6 );
       slog.csvWrite("CPU Srch",  "%9.06f", cuSrch->timings[TIME_CPU_SRCH]	* 1e-6 );
       slog.csvWrite("CPU Rfne",  "%9.06f", cuSrch->timings[TIME_CPU_REFINE]	* 1e-6 );
 
-      slog.csvWrite(" GPU ker",  "%9.06f", cuSrch->timings[TIME_GPU_KER]	* 1e-6 );
+      slog.csvWrite("GPU Init",  "%9.06f", cuSrch->timings[TIME_GPU_INIT]	* 1e-6 );
       slog.csvWrite(" GPU Gen",  "%9.06f", cuSrch->timings[TIME_GPU_CND_GEN]	* 1e-6 );
       slog.csvWrite("GPU Srch",  "%9.06f", cuSrch->timings[TIME_GPU_SRCHALL]	* 1e-6 );
       slog.csvWrite("CPU Rfne",  "%9.06f", cuSrch->timings[TIME_GPU_REFINE]	* 1e-6 );

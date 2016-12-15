@@ -194,7 +194,7 @@ extern "C"
 #define     CU_STR_QUAD         	BIT(23)         ///< Candidates are stored in a dynamic quadtree
 #define     CU_SRT_ALL          	(CU_STR_ARR | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
-// ----------- This is a ??????
+// ----------- This is ??????
 
 #define     HAVE_INPUT          	BIT(1)
 #define     HAVE_MULT           	BIT(2)
@@ -207,8 +207,8 @@ extern "C"
 
 #define  TIME_CONTEXT		0			/// Time for CUDA context initialisation
 #define  TIME_PREP		1			/// CPU preparation - parse command line, read, (FFT), and normalise input
-#define  TIME_CPU_KER		2			/// CPU - Initialisation
-#define  TIME_GPU_KER		3			/// GPU - Initialisation
+#define  TIME_CPU_INIT		2			/// CPU - Initialisation
+#define  TIME_GPU_INIT		3			/// GPU - Initialisation
 #define  TIME_ALL_SRCH		4			/// CPU & GPU - Initialisation and Candidate Generation
 #define  TIME_GPU_SRCHALL	5			/// GPU - Initialisation & Generation stages & Candidate copy and clear memory
 #define  TIME_CPU_CND_GEN	6			/// CPU - Candidate generation stage
