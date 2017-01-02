@@ -23,17 +23,11 @@ int main(int argc, char *argv[])
   if ( argc != 4 )
     usage = true;
 
-  if (usage )
-  {
-    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 10 <= zmanx <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
-    return(1);
-  }
-
   float zmax    = atof(argv[1]);
   float width   = atof(argv[2]);
   int   noHarms = atof(argv[3]);
 
-  if ( zmax < 10 || zmax > 1200 )
+  if ( zmax < 0 || zmax > 1200 )
   {
     fprintf(stderr,"ERROR: invalid zmax.\n");
     usage = true;
@@ -47,6 +41,11 @@ int main(int argc, char *argv[])
     usage = true;
   }
 
+  if (usage )
+  {
+    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 10 <= zmanx <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
+    return(1);
+  }
 
 
   presto_interp_acc  accuracy = LOWACC;
