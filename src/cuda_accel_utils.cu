@@ -883,8 +883,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      exit(EXIT_FAILURE);
 	    }
 	  }
-	  infoMSG(6,6,"Second optimal accel len  %i using half plane width of %i.\n", oAccelLen, oAccelLen2);
-	  infoMSG(6,6,"accel len %i is divisible by ( # harms * r-res) [ (%i*%i) -> %i ].\n", kernel->accelLen, kernel->noSrchHarms, cuSrch->sSpec->noResPerBin, kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
 	}
 
 	FOLD // Print kernel accuracy  .

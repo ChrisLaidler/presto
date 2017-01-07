@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 
   if (usage )
   {
-    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 10 <= zmanx <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
+    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 0 <= z-max <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
     return(1);
   }
 
@@ -57,9 +57,11 @@ int main(int argc, char *argv[])
 
     int   oAccelLen1, oAccelLen2;
 
+    float halfZ	= cu_calc_required_z<double>(0.5, zmax, 2);			// The z-max of the hlaf plane
+
     // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-    oAccelLen1  = calcAccellen(width,     zmax, accuracy, 2);
-    oAccelLen2  = calcAccellen(width/2.0, zmax/2.0, accuracy, 2);
+    oAccelLen1  = calcAccellen(width,     zmax,  accuracy, 2);
+    oAccelLen2  = calcAccellen(width/2.0, halfZ, accuracy, 2);
 
     if ( width > 100 )
     {
@@ -108,24 +110,6 @@ int main(int argc, char *argv[])
   }
 
   printf("%u\n", accelLen);
-
-//  {
-//    float szzz = pow(2 , idx );
-//
-//    float accelLen = 0;
-//
-//    float halfwidth =  cu_z_resp_halfwidth<double>(zmax);
-//
-//    accelLen    = floor(szzz - 2 - 2 * ACCEL_NUMBETWEEN * halfwidth);
-//    if (accelLen < 100 )
-//    {
-//      printf("Got a accelLen of: %.0f but thats too small.\n", accelLen);
-//      return 3;
-//    }
-//
-//    printf("%.0f\n", accelLen);
-//    return 0;
-//  }
 
   return 2;
 }
