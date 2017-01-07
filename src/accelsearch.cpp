@@ -633,6 +633,7 @@ int main(int argc, char *argv[])
       /* Write the fundamentals to the output text file */
 
 #ifdef CUDA
+      NV_RANGE_PUSH("Write");
       NV_RANGE_PUSH("Fundamentals");
 #endif
 
@@ -652,6 +653,7 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA
       NV_RANGE_POP(); //Harmonics
+      NV_RANGE_POP(); //Write
 #endif
 
       /* Write the fundamental fourierprops to the cand file */

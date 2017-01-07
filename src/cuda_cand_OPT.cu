@@ -2100,6 +2100,8 @@ void* optCandDerivs(void* ptr)
   searchSpecs*  sSpec = srch->sSpec;
   fftInfo*      fft   = &sSpec->fftInf;
 
+  infoMSG(4,4,"optCandDerivs\n");
+
   if ( srch->sSpec->flags & FLAG_TIME ) // Timing  .
   {
     gettimeofday(&start, NULL);
@@ -2111,6 +2113,8 @@ void* optCandDerivs(void* ptr)
     {
       NV_RANGE_PUSH("NM_REFINE");
     }
+
+    infoMSG(5,5,"NM_REFINE\n");
 
     initCand iCand;
     iCand.numharm = cand->numharm;
@@ -2156,6 +2160,8 @@ void* optCandDerivs(void* ptr)
       NV_RANGE_PUSH("DERIVS");
     }
 
+    infoMSG(5,5,"DERIVS\n");
+
     float   	maxSig		= 0;
     int     	bestH		= 0;
     float   	bestP		= 0;
@@ -2173,7 +2179,7 @@ void* optCandDerivs(void* ptr)
 
     for( ii = 1; ii <= maxHarms; ii++ )
     {
-      infoMSG(5,5,"Harm %i\n",ii );
+      infoMSG(6,6,"Harm %i\n",ii );
 
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
       {
