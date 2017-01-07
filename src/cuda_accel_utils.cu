@@ -1,3 +1,26 @@
+/** @file cuda_accel_utils.cu
+ *  @brief Utility functions for CUDA accelsearch
+ *
+ *  This contains the various utility functions for the CUDA accelsearch
+ *  These include:
+ *    Determining plane - widths and step size and accellen
+ *    Generating kernel structures
+ *    Generating plane structures
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.02] [2017-01-07 10:25]
+ *    Fixed bug in determining optimal plane width - half plane using correct z-max
+ *
+ */
+
 #include <cufft.h>
 #include <algorithm>
 
@@ -40,7 +63,7 @@ __device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  hei
 __device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
 __device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
 __device__ __constant__ void*         KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointer in stage order
-__device__ __constant__ int           KERNEL_OFF_HARM[MAX_HARM_NO];	///< The offset of the first row of each plane in thier respective kernels
+__device__ __constant__ int           KERNEL_OFF_HARM[MAX_HARM_NO];	///< The offset of the first row of each plane in their respective kernels
 __device__ __constant__ stackInfo     STACKS[64];
 __device__ __constant__ int           STK_STRD[MAX_STACKS];		///< Stride of the stacks
 __device__ __constant__ char          STK_INP[MAX_STACKS][4069];	///< input details
@@ -164,9 +187,9 @@ float half2float(const ushort h)
  */
 uint optAccellen(float width, int zmax, presto_interp_acc accuracy, int noResPerBin)
 {
-  double halfwidth       = cu_z_resp_halfwidth<double>(zmax, accuracy); /// The halfwidth of the maximum zmax, to calculate accel len
-  double pow2            = pow(2 , round(log2(width)) );
-  uint oAccelLen        = floor(pow2 - 2 - 2 * halfwidth * noResPerBin );
+  double halfwidth	= cu_z_resp_halfwidth<double>(zmax, accuracy); /// The halfwidth of the maximum zmax, to calculate accel len
+  double pow2		= pow(2 , round(log2(width)) );
+  uint oAccelLen	= floor(pow2 - 2 - 2 * halfwidth * noResPerBin );
 
   return oAccelLen;
 }
@@ -791,7 +814,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
-  FOLD // Determine how many stacks and how many planes in each stack  .
+  FOLD // Determine accellen and step size and how many stacks and how many planes in each stack  .
   {
     if ( master == NULL ) 	// Calculate details for the batch  .
     {
@@ -806,21 +829,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	int   oAccelLen, oAccelLen1, oAccelLen2;
 
 	oAccelLen1  = calcAccellen(cuSrch->sSpec->pWidth,     cuSrch->sSpec->zMax, accuracy, cuSrch->sSpec->noResPerBin);
+	infoMSG(6,6,"Initial optimal accel len %i for a plane of width %i with z-max %i \n", oAccelLen1, cuSrch->sSpec->pWidth, cuSrch->sSpec->zMax, accuracy);
 
 	if ( kernel->noSrchHarms > 1 )
 	{
 	  // Working with a family of planes
 
-	  if ( cuSrch->sSpec->pWidth > 100 )
+	  if ( cuSrch->sSpec->pWidth > 100 )		// The user specified the exact width they want to use for accellen  .
 	  {
-	    // The user specified the exact width they want to use for accellen
 	    kernel->accelLen  = oAccelLen1;
+	    infoMSG(6,6,"User specified accel len %i - using %i \n", cuSrch->sSpec->pWidth, oAccelLen1);
 	  }
-	  else
-	  {  // Examin the accel len at the secon stack
-	    oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth/2.0, cuSrch->sSpec->zMax/2.0, accuracy, cuSrch->sSpec->noResPerBin);
+	  else						// Determine accellen by, examining the accellen at the second stack  .
+	  {
+	    float halfZ	= cu_calc_required_z<double>(0.5, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
+	    oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth*0.5, halfZ, accuracy, cuSrch->sSpec->noResPerBin);
 	    oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
 	    oAccelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
+	    infoMSG(6,6,"Second optimal accel len  %i using half plane width of %i.\n", oAccelLen, oAccelLen2);
 
 	    // Use double the accellen of the half plane
 	    kernel->accelLen  = oAccelLen;
@@ -857,6 +883,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      exit(EXIT_FAILURE);
 	    }
 	  }
+	  infoMSG(6,6,"Second optimal accel len  %i using half plane width of %i.\n", oAccelLen, oAccelLen2);
+	  infoMSG(6,6,"accel len %i is divisible by ( # harms * r-res) [ (%i*%i) -> %i ].\n", kernel->accelLen, kernel->noSrchHarms, cuSrch->sSpec->noResPerBin, kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
 	}
 
 	FOLD // Print kernel accuracy  .
@@ -883,9 +911,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  double fftLen      = cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
 	  double l2          = log2( fftLen ) - 10 ;
 	  double fWidth      = pow(2, l2);
+	  float halfZ	     = cu_calc_required_z<double>(0.5, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
+
+	  oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth*0.5, halfZ, accuracy, cuSrch->sSpec->noResPerBin);
 
 	  oAccelLen1  = calcAccellen(fWidth,     cuSrch->sSpec->zMax, accuracy, cuSrch->sSpec->noResPerBin);
-	  oAccelLen2  = calcAccellen(fWidth/2.0, cuSrch->sSpec->zMax/2.0, accuracy, cuSrch->sSpec->noResPerBin);
+	  oAccelLen2  = calcAccellen(fWidth/2.0, halfZ,               accuracy, cuSrch->sSpec->noResPerBin);
 	  oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
 	  oAccelLen   = floor( oAccelLen/(double)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
 	  ratio       = kernel->accelLen/double(oAccelLen);
@@ -894,12 +925,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	  if ( ratio < 1 )
 	  {
-	    printf(" step-size of %i. (%.2f%% of optimal) \n",  kernel->accelLen, ratio*100 );
+	    printf(" a suboptimal step-size of %i. (%.2f%% of optimal) \n",  kernel->accelLen, ratio*100 );
 	    printf("   > For a zmax of %.1f using %iK FFTs the optimal step-size is %i.\n", cuSrch->sSpec->zMax, (int)fWidth, oAccelLen);
 
 	    if ( cuSrch->sSpec->pWidth > 100 )
 	    {
-	      fprintf(stderr,"     WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 46 32.\n");
+	      fprintf(stderr,"     WARNING: Using manual width\\step-size is not advised rather set width to one of 2 4 8 16 32.\n");
 	    }
 	  }
 	  else
