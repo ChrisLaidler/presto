@@ -831,59 +831,56 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	oAccelLen1  = calcAccellen(cuSrch->sSpec->pWidth,     cuSrch->sSpec->zMax, accuracy, cuSrch->sSpec->noResPerBin);
 	infoMSG(6,6,"Initial optimal accel len %i for a plane of width %i with z-max %i \n", oAccelLen1, cuSrch->sSpec->pWidth, cuSrch->sSpec->zMax, accuracy);
 
-	if ( kernel->noSrchHarms > 1 )
+	if ( cuSrch->sSpec->pWidth > 100 )		// The user specified the exact width they want to use for accellen  .
 	{
-	  // Working with a family of planes
+	  // Now make sure that accelLen is divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
+	  oAccelLen1 = floor( oAccelLen1/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
 
-	  if ( cuSrch->sSpec->pWidth > 100 )		// The user specified the exact width they want to use for accellen  .
+	  if ( cuSrch->sSpec->pWidth != oAccelLen1 )
 	  {
-	    kernel->accelLen  = oAccelLen1;
-	    infoMSG(6,6,"User specified accel len %i - using %i \n", cuSrch->sSpec->pWidth, oAccelLen1);
+	    fprintf(stderr,"ERROR: Using manual step size, value must be divisible by numharm x R_RESOLUTION so (%i x %i = %i ) try %i.\n", kernel->noSrchHarms, cuSrch->sSpec->noResPerBin, kernel->noSrchHarms*cuSrch->sSpec->noResPerBin, kernel->accelLen );
+	    exit(EXIT_FAILURE);
 	  }
-	  else						// Determine accellen by, examining the accellen at the second stack  .
+
+	  kernel->accelLen  = oAccelLen1;
+	  infoMSG(6,6,"User specified accel len %i - using %i \n", cuSrch->sSpec->pWidth, oAccelLen1);
+	}
+	else						// Determine accellen by, examining the accellen at the second stack  .
+	{
+	  if ( kernel->noSrchHarms > 1 )		// Working with a family of planes
 	  {
 	    float halfZ	= cu_calc_required_z<double>(0.5, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
 	    oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth*0.5, halfZ, accuracy, cuSrch->sSpec->noResPerBin);
 	    oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
-	    oAccelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
-	    infoMSG(6,6,"Second optimal accel len  %i using half plane width of %i.\n", oAccelLen, oAccelLen2);
-
-	    // Use double the accellen of the half plane
-	    kernel->accelLen  = oAccelLen;
-
-	    FOLD // Check  .
-	    {
-	      double ss        = cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes) ;
-	      double l2        = log2( ss ) - 10 ;
-	      double fWidth    = pow(2, l2);
-
-	      if ( fWidth != cuSrch->sSpec->pWidth )
-	      {
-		fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
-		exit(EXIT_FAILURE);
-	      }
-	    }
 	  }
-	}
-	else
-	{
-	  // Just a single plane
-	  kernel->accelLen = oAccelLen1;
-	}
-
-	FOLD // Now make sure that accelLen is divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
-	{
-	  kernel->accelLen = floor( kernel->accelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
-
-	  if ( cuSrch->sSpec->pWidth > 100 ) // Check  .
+	  else
 	  {
-	    if ( cuSrch->sSpec->pWidth != kernel->accelLen )
+	    // Just a single plane
+	    kernel->accelLen = oAccelLen1;
+	  }
+
+	  infoMSG(6,6,"Second optimal accel len  %i using half plane width of %i.\n", oAccelLen, oAccelLen2);
+
+	  // Make accelLen divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum & search kernel
+	  kernel->accelLen   = floor( kernel->accelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
+
+	  // Use double the accellen of the half plane
+	  kernel->accelLen  = oAccelLen;
+
+	  FOLD // Check  .
+	  {
+	    double ss        = cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes) ;
+	    double l2        = log2( ss ) - 10 ;
+	    double fWidth    = pow(2, l2);
+
+	    if ( fWidth != cuSrch->sSpec->pWidth )
 	    {
-	      fprintf(stderr,"ERROR: Using manual step size, value must be divisible by numharm x R_RESOLUTION so (%i x %i = %i ) try %i.\n", kernel->noSrchHarms, cuSrch->sSpec->noResPerBin, kernel->noSrchHarms*cuSrch->sSpec->noResPerBin, kernel->accelLen );
+	      fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
 	      exit(EXIT_FAILURE);
 	    }
 	  }
 	}
+
 
 	FOLD // Print kernel accuracy  .
 	{
@@ -5696,7 +5693,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
       {
 	if ( sSpec->zMax == 1 )
 	{
-	  srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) / srch->noGenHarms;
+	  srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) / (double)(1<<ii) ;
 	}
 	else
 	{
@@ -5704,7 +5701,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 	}
 
 	// Power cutoff
-	srch->powerCut[ii]  = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
+	srch->powerCut[ii]    = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
 
 	FOLD // Adjust for some lack in precision, if using half precision
 	{
