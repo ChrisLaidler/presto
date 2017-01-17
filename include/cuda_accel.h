@@ -368,7 +368,7 @@ typedef struct candOpt
 typedef struct gpuInf
 {
     int     devid;                      ///<
-    int     alignment;                  ///<
+    int     alignment;                  ///< The alignment of memory, in bytes
     float   capability;                 ///<
     char*   name;                       ///<
 } gpuInf;
@@ -566,10 +566,10 @@ typedef struct searchSpecs
 {
     int                 noHarmStages;                   ///< The number of stages of harmonic summing
 
-    int			noResPerBin;			///< The number of respocne values per bin
+    int			noResPerBin;			///< The number of response values per bin
 
     float               zMax;                           ///< The highest z drift of the fundamental
-    double		zRes;				///< Th resolution in the z dimension
+    double		zRes;				///< The resolution in the z dimension
 
     int                 pWidth;                         ///< The desired width of the planes
     int                 ssStepSize;                     ///< The size of the steps to take through the in-memory plane

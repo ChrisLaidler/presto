@@ -818,11 +818,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
   {
     if ( master == NULL ) 	// Calculate details for the batch  .
     {
-      infoMSG(4,4,"Determine number of stacks and planes\n");
-
       FOLD // Determine accellen and step size  .
       {
-	infoMSG(4,5,"Determining step size and width\n");
+	infoMSG(4,4,"Determining step size and width\n");
 
 	printf("Determining GPU step size and plane width:\n");
 
@@ -852,20 +850,17 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    float halfZ	= cu_calc_required_z<double>(0.5, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
 	    oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth*0.5, halfZ, accuracy, cuSrch->sSpec->noResPerBin);
 	    oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
+
+	    infoMSG(6,6,"Second optimal accel len %i from half plane width of %i.\n", oAccelLen, oAccelLen2);
 	  }
 	  else
 	  {
 	    // Just a single plane
-	    kernel->accelLen = oAccelLen1;
+	    oAccelLen = oAccelLen1;
 	  }
 
-	  infoMSG(6,6,"Second optimal accel len  %i using half plane width of %i.\n", oAccelLen, oAccelLen2);
-
 	  // Make accelLen divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum & search kernel
-	  kernel->accelLen   = floor( kernel->accelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
-
-	  // Use double the accellen of the half plane
-	  kernel->accelLen  = oAccelLen;
+	  kernel->accelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
 
 	  FOLD // Check  .
 	  {
@@ -950,6 +945,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	FOLD // Set up basic details of all the harmonics  .
 	{
+	  infoMSG(4,4,"Determine number of stacks and planes\n");
+
 	  for (int i = kernel->noSrchHarms; i > 0; i--)
 	  {
 	    cuHarmInfo* hInfs;
@@ -976,8 +973,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    }
 	    hInfs->noZ       	= round(fabs(hInfs->zEnd - hInfs->zStart) / cuSrch->sSpec->zRes) + 1;
 
-	    if ( prevWidth != hInfs->width )
+	    if ( prevWidth != hInfs->width )	// Stack creation and checks
 	    {
+	      infoMSG(5,5,"New stack\n");
+
 	      // We have a new stack
 	      noStacks++;
 
@@ -991,20 +990,26 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      stackHW                       = cu_z_resp_halfwidth<double>(hInfs->zmax, accuracy);
 
 	      // Maximise, centre and align halfwidth
-	      int   sWidth                  = (int) ( ceil(kernel->accelLen * hInfs->harmFrac / (double)cuSrch->sSpec->noResPerBin ) * cuSrch->sSpec->noResPerBin ) + 1 ;     // Width of usable data for this plane
-	      float centHW                  = (hInfs->width  - sWidth)/2.0/(double)cuSrch->sSpec->noResPerBin;                                    //
-	      float noAlg                   = gInf->alignment / float(sizeof(fcomplex)) / (double)cuSrch->sSpec->noResPerBin ;                          // halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
-	      float centAlgnHW              = floor(centHW/noAlg) * noAlg ;                                                                     // Centre and aligned half width
+	      int   sWidth                  = (int) ( ceil(kernel->accelLen * hInfs->harmFrac / (double)cuSrch->sSpec->noResPerBin ) * cuSrch->sSpec->noResPerBin ) + 1 ;	// Width of usable data for this plane
+	      float centHW                  = (hInfs->width  - sWidth)/2.0/(double)cuSrch->sSpec->noResPerBin;									//
+	      float noAlg                   = gInf->alignment / float(sizeof(fcomplex)) / (double)cuSrch->sSpec->noResPerBin ;							// halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
+	      float centAlgnHW              = floor(centHW/noAlg) * noAlg ;													// Centre and aligned half width
 
 	      if ( stackHW > centAlgnHW )
 	      {
 		stackHW                     = floor(centHW);
+
+		infoMSG(6,6,"can not align stack half width GPU value. Using %i \n", stackHW );
 	      }
 	      else
 	      {
 		stackHW                     = centAlgnHW;
+
+		infoMSG(6,6,"aligned stack half width for GPU is %i \n", stackHW );
 	      }
 	    }
+
+	    infoMSG(6,6,"Harm: %2i  frac %5.3f  z-max: %5.1f  z: %7.2f to %7.2f  width: %5i half width %4i \n", i, hFrac, hInfs->zmax, hInfs->zStart, hInfs->zEnd, hInfs->width, hInfs->halfWidth );
 
 	    hInfs->stackNo      = noStacks-1;
 
@@ -1026,19 +1031,26 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	FOLD // Set up the indexing details of all the harmonics  .
 	{
+
+	  infoMSG(4,4,"index harmonics \n");
+
 	  // Calculate the stage order of the harmonics
 	  sIdx = 0;
 
 	  for ( int stage = 0; stage < kernel->noHarmStages; stage++ )
 	  {
+	    infoMSG(5,5,"Stage %i \n", stage);
+
 	    int harmtosum = 1 << stage;
 	    for (int harm = 1; harm <= harmtosum; harm += 2, sIdx++)
 	    {
-	      hFrac     = harm/float(harmtosum);
-	      hIdx      = hFrac == 1 ? 0 : round(hFrac*kernel->noSrchHarms);
+	      hFrac       = harm/float(harmtosum);
+	      hIdx        = hFrac == 1 ? 0 : round(hFrac*kernel->noSrchHarms);
 
 	      kernel->hInfos[hIdx].stageIndex	= sIdx;
 	      cuSrch->sIdx[sIdx]		= hIdx;
+
+	      infoMSG(6,6,"Harm idx %2i - %5.3f ( %i/%i ), stage idx %2i \n", hIdx, hFrac, harm, harmtosum, sIdx );
 	    }
 	  }
 	}
@@ -5686,6 +5698,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 
     // Calculate appropriate z-max
     int numz = round(sSpec->zMax / sSpec->zRes) * 2 + 1;
+    float adjust = 0;
 
     FOLD // Calculate power cutoff and number of independent values  .
     {
@@ -5700,8 +5713,10 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 	  srch->numindep[ii]  = (sSpec->fftInf.rhi - sSpec->fftInf.rlo) * (numz + 1) * ( sSpec->zRes / 6.95 ) / (double)(1<<ii);
 	}
 
+
 	// Power cutoff
 	srch->powerCut[ii]    = power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
+
 
 	FOLD // Adjust for some lack in precision, if using half precision
 	{
@@ -5710,9 +5725,12 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 	    float noP = log10( srch->powerCut[ii] );
 	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
 
-	    srch->powerCut[ii] -= dp*(1<<ii);			// Subtract one significant value for each harmonic
+	    adjust = -dp*(1<<ii);			// Subtract one significant "value" for each harmonic
+	    srch->powerCut[ii] += adjust;
 	  }
 	}
+
+	infoMSG(6,6,"Stage %i numindep %12lli  threshold power %9.7f  adjusted %9.7f  \n", ii, srch->numindep[ii], srch->powerCut[ii], adjust);
       }
     }
   }
