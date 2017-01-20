@@ -215,6 +215,52 @@ uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noRes
   return accelLen;
 }
 
+uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes)
+{
+  int   oAccelLen, oAccelLen1, oAccelLen2;
+  uint	accelLen;
+
+  oAccelLen1  = calcAccellen(width, zmax, accuracy, noResPerBin);
+  infoMSG(6,6,"Initial optimal accel len %i for a plane of width %i with z-max %i \n", oAccelLen1, width, zmax, accuracy);
+
+  if ( width > 100 )		// The user specified the exact width they want to use for accellen  .
+  {
+    accelLen  = oAccelLen1;
+    infoMSG(6,6,"User specified accel len %i - using %i \n", width, oAccelLen1);
+  }
+  else						// Determine accellen by, examining the accellen at the second stack  .
+  {
+    if ( noHarms > 1 )		// Working with a family of planes
+    {
+      float halfZ	= cu_calc_required_z<double>(0.5, zmax, zRes);
+      oAccelLen2	= calcAccellen(width*0.5, halfZ, accuracy, noResPerBin);
+      accelLen		= MIN(oAccelLen2*2, oAccelLen1);
+
+      infoMSG(6,6,"Second optimal accel len %i from half plane width of %i.\n", oAccelLen, oAccelLen2);
+    }
+    else
+    {
+      // Just a single plane
+      accelLen		= oAccelLen1;
+    }
+
+    FOLD // Check  .
+    {
+      double ss        = cu_calc_fftlen<double>(1, zmax, accelLen, accuracy, noResPerBin, zRes) ;
+      double l2        = log2( ss ) - 10 ;
+      double fWidth    = pow(2, l2);
+
+      if ( fWidth != width )
+      {
+	fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
+	exit(EXIT_FAILURE);
+      }
+    }
+  }
+
+  return accelLen;
+}
+
 /** Allocate R value array  .
  *
  */
@@ -824,58 +870,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	printf("Determining GPU step size and plane width:\n");
 
-	int   oAccelLen, oAccelLen1, oAccelLen2;
+	// Get accellen
+	kernel->accelLen = calcAccellen(cuSrch->sSpec->pWidth, cuSrch->sSpec->zMax, kernel->noSrchHarms, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
 
-	oAccelLen1  = calcAccellen(cuSrch->sSpec->pWidth,     cuSrch->sSpec->zMax, accuracy, cuSrch->sSpec->noResPerBin);
-	infoMSG(6,6,"Initial optimal accel len %i for a plane of width %i with z-max %i \n", oAccelLen1, cuSrch->sSpec->pWidth, cuSrch->sSpec->zMax, accuracy);
-
-	if ( cuSrch->sSpec->pWidth > 100 )		// The user specified the exact width they want to use for accellen  .
-	{
-	  // Now make sure that accelLen is divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum and search kernel
-	  oAccelLen1 = floor( oAccelLen1/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
-
-	  if ( cuSrch->sSpec->pWidth != oAccelLen1 )
-	  {
-	    fprintf(stderr,"ERROR: Using manual step size, value must be divisible by numharm x R_RESOLUTION so (%i x %i = %i ) try %i.\n", kernel->noSrchHarms, cuSrch->sSpec->noResPerBin, kernel->noSrchHarms*cuSrch->sSpec->noResPerBin, kernel->accelLen );
-	    exit(EXIT_FAILURE);
-	  }
-
-	  kernel->accelLen  = oAccelLen1;
-	  infoMSG(6,6,"User specified accel len %i - using %i \n", cuSrch->sSpec->pWidth, oAccelLen1);
-	}
-	else						// Determine accellen by, examining the accellen at the second stack  .
-	{
-	  if ( kernel->noSrchHarms > 1 )		// Working with a family of planes
-	  {
-	    float halfZ	= cu_calc_required_z<double>(0.5, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
-	    oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth*0.5, halfZ, accuracy, cuSrch->sSpec->noResPerBin);
-	    oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
-
-	    infoMSG(6,6,"Second optimal accel len %i from half plane width of %i.\n", oAccelLen, oAccelLen2);
-	  }
-	  else
-	  {
-	    // Just a single plane
-	    oAccelLen = oAccelLen1;
-	  }
-
-	  // Make accelLen divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum & search kernel
-	  kernel->accelLen   = floor( oAccelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
-
-	  FOLD // Check  .
-	  {
-	    double ss        = cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes) ;
-	    double l2        = log2( ss ) - 10 ;
-	    double fWidth    = pow(2, l2);
-
-	    if ( fWidth != cuSrch->sSpec->pWidth )
-	    {
-	      fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
-	      exit(EXIT_FAILURE);
-	    }
-	  }
-	}
-
+	// Make accelLen divisible by (noSrchHarms*ACCEL_RDR) this "rule" is used for indexing in the sum & search kernel
+	kernel->accelLen = floor( kernel->accelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
 
 	FOLD // Print kernel accuracy  .
 	{
@@ -897,19 +896,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	if ( kernel->accelLen > 100 ) // Print output
 	{
-	  double ratio;
-	  double fftLen      = cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
-	  double l2          = log2( fftLen ) - 10 ;
-	  double fWidth      = pow(2, l2);
-	  float halfZ	     = cu_calc_required_z<double>(0.5, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
+	  double ratio	= 1;
+	  double fftLen	= cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
+	  double fWidth;
+	  int oAccelLen;
 
-	  oAccelLen2  = calcAccellen(cuSrch->sSpec->pWidth*0.5, halfZ, accuracy, cuSrch->sSpec->noResPerBin);
-
-	  oAccelLen1  = calcAccellen(fWidth,     cuSrch->sSpec->zMax, accuracy, cuSrch->sSpec->noResPerBin);
-	  oAccelLen2  = calcAccellen(fWidth/2.0, halfZ,               accuracy, cuSrch->sSpec->noResPerBin);
-	  oAccelLen   = MIN(oAccelLen2*2, oAccelLen1);
-	  oAccelLen   = floor( oAccelLen/(double)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);
-	  ratio       = kernel->accelLen/double(oAccelLen);
+	  if ( cuSrch->sSpec->pWidth > 100 )
+	  {
+	    double l2	= log2( fftLen ) - 10 ;
+	    fWidth	= pow(2, l2);
+	    oAccelLen	= calcAccellen(fWidth, cuSrch->sSpec->zMax, kernel->noSrchHarms, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
+	    oAccelLen	= floor( oAccelLen/(float)(kernel->noSrchHarms*cuSrch->sSpec->noResPerBin) ) * (kernel->noSrchHarms*cuSrch->sSpec->noResPerBin);	// Make accelLen divisible
+	    ratio	= kernel->accelLen/double(oAccelLen);
+	  }
 
 	  printf(" • Using max plane width of %.0f and", fftLen);
 
@@ -1953,7 +1952,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	CUDA_SAFE_CALL(cudaMemsetAsync(cuSrch->d_planeFull, 0, stride*nY, kernel->stacks->initStream),"Failed to initiate in-memory plane to zero");
 
 	// Round down to units
-	cuSrch->inmemStride = ceil(stride / (double)plnElsSZ); // NOTE: tihis will mostlightly be a int
+	cuSrch->inmemStride = ceil(stride / (double)plnElsSZ); // NOTE: this will most lightly be a int
 
 	NV_RANGE_POP();
       }

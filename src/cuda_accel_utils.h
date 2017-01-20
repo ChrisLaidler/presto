@@ -738,6 +738,13 @@ int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t s
  */
 uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin);
 
+/** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
+ *
+ * @param width
+ * @param zmax
+ * @return
+ */
+uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes);
 
 
 ///////////////////////////////////////// Init prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

@@ -16,100 +16,55 @@ extern "C"
 
 int main(int argc, char *argv[])
 {
-  bool usage = 0 ;
+  bool usage		= 0 ;
+  float zmax		= 0;
+  float width		= 0;
+  int   noHarms		= 16;
+  uint accelLen 	= 0;
+  float zRes		= 2;
+  int noResPerBin	= 2;
 
-  uint accelLen = 0;
 
   if ( argc != 4 )
     usage = true;
-
-  float zmax    = atof(argv[1]);
-  float width   = atof(argv[2]);
-  int   noHarms = atof(argv[3]);
-
-  if ( zmax < 0 || zmax > 1200 )
+  else
   {
-    fprintf(stderr,"ERROR: invalid zmax.\n");
-    usage = true;
-  }
+    zmax    = atof(argv[1]);
+    width   = atof(argv[2]);
+    noHarms = atof(argv[3]);
 
-  int idx = round(log2(width*1000.0));
+    if ( zmax < 0 || zmax > 1200 )
+    {
+      fprintf(stderr,"ERROR: invalid zmax.\n");
+      usage = true;
+    }
 
-  if ( idx < 10 || idx > 15 )
-  {
-    fprintf(stderr,"ERROR: invalid width\n");
-    usage = true;
+    zmax    = cu_calc_required_z<double>(1.0, zmax, zRes);
+
+    int idx = round(log2(width*1000.0));
+
+    if ( idx < 10 || idx > 15 )
+    {
+      fprintf(stderr,"ERROR: invalid width\n");
+      usage = true;
+    }
   }
 
   if (usage )
   {
-    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher 0 <= z-max <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
+    printf("\nUsage:\n  getAccelLen zmax width harms\n\nWher: 0 <= z-max <= 1200 and width is approximate width in 1000's ( ie. a width of 8 will give plains of width 8192 ) \n\n");
     return(1);
-  }
-
-
-  presto_interp_acc  accuracy = LOWACC;
-
-  if ( noHarms > 1 )
-  {
-
-    // Working with a family of planes
-
-    int   oAccelLen1, oAccelLen2;
-
-    float halfZ	= cu_calc_required_z<double>(0.5, zmax, 2);			// The z-max of the hlaf plane
-
-    // This adjustment makes sure no more than half the harmonics are in the largest stack (reduce waisted work - gives a 0.01 - 0.12 speed increase )
-    oAccelLen1  = calcAccellen(width,     zmax,  accuracy, 2);
-    oAccelLen2  = calcAccellen(width/2.0, halfZ, accuracy, 2);
-
-    if ( width > 100 )
-    {
-      // The user specified the exact width they want to use for accellen
-      accelLen  = oAccelLen1;
-    }
-    else
-    {
-      // Use double the accellen of the half plane
-      accelLen  = MIN(oAccelLen2*2, oAccelLen1);
-    }
-
-    if ( width < 100 ) // Check  .
-    {
-      float fWidth    = floor(cu_calc_fftlen<double>(1, zmax, accelLen, accuracy, 2, 2.0)/1000.0);
-
-      float ss        = cu_calc_fftlen<double>(1, zmax, accelLen, accuracy, 2, 2.0) ;
-      float l2        = log2( ss );
-
-      if      ( l2 == 10 )
-        fWidth = 1 ;
-      else if ( l2 == 11 )
-        fWidth = 2 ;
-      else if ( l2 == 12 )
-        fWidth = 4 ;
-      else if ( l2 == 13 )
-        fWidth = 8 ;
-      else if ( l2 == 14 )
-        fWidth = 16 ;
-      else if ( l2 == 15 )
-        fWidth = 32 ;
-      else if ( l2 == 16 )
-        fWidth = 64 ;
-
-      if ( fWidth != width )
-      {
-        fprintf(stderr,"ERROR: Width calculation did not give the desired value.\n");
-        exit(EXIT_FAILURE);
-      }
-    }
   }
   else
   {
-    // Just a single plane
-    accelLen = calcAccellen(width, zmax, accuracy, 2);
+    //accelLen = calcAccellen(width, zmax, noHarms, LOWACC, noResPerBin, zRes);
   }
 
-  printf("%u\n", accelLen);
+  uint accelLenBasic = calcAccellen(width, zmax, LOWACC, noResPerBin);
+  uint accelLenHalf  = calcAccellen(width, zmax, noHarms, LOWACC, noResPerBin, zRes);
+  uint accelLenDivs  = floor(accelLenHalf/float(noHarms*noResPerBin))*(noHarms*noResPerBin);
+
+  printf("%u	%u	%u\n", accelLenBasic, accelLenHalf, accelLenDivs );
 
   return 2;
 }
