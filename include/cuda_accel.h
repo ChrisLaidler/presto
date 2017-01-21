@@ -665,7 +665,7 @@ typedef struct cuFFdotBatch
     int             	mulChunk;           ///< The Sum and search chunk size
 
     // Batch independent search parameters
-    uint            	accelLen;           ///< The size to step through the input fft
+    uint            	accelLen;           ///< The size to step through the input fft to generate the plane
 
     ////////////////// Memory information \\\\\\\\\\\\\\\\\\
 

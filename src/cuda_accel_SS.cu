@@ -726,7 +726,7 @@ void processSearchResults(cuFFdotBatch* batch)
     struct timeval start, end;          // Timing variables
     resultData* thrdDat;
 
-    infoMSG(1,2,"Process previous results\n");
+    infoMSG(2,2,"Process previous results\n");
 
     NV_RANGE_PUSH("CPU Process results");
 
@@ -752,7 +752,7 @@ void processSearchResults(cuFFdotBatch* batch)
     {
       rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
 
-      infoMSG(3,3,"Initialise data structure\n");
+      infoMSG(3,3,"Initialise thread data structure\n");
 
       thrdDat->cuSrch		= batch->cuSrch;
       thrdDat->cndType  	= batch->cndType;
@@ -817,9 +817,11 @@ void processSearchResults(cuFFdotBatch* batch)
 
     FOLD // Copy data from device  .
     {
+      infoMSG(3,3,"copy to temporary memory\n");
+
       FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
       {
-        infoMSG(3,4,"pre synchronisation [blocking] candCpyComp\n");
+        infoMSG(4,4,"pre synchronisation [blocking] candCpyComp\n");
 
         NV_RANGE_PUSH("EventSynch");
         CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
@@ -836,7 +838,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
       FOLD // Copy data  .
       {
-        infoMSG(3,3,"copy to temporary memory\n");
+        infoMSG(4,4,"memcpy\n");
 
         NV_RANGE_PUSH("memcpy");
 
@@ -857,7 +859,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
           FOLD // Synchronisation  .
           {
-            infoMSG(3,4,"synchronise\n");
+            infoMSG(4,4,"synchronise\n");
 
             // This will allow kernels to run while the CPU continues
             CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
@@ -895,7 +897,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
       if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
       {
-        infoMSG(3,4,"create thread\n");
+        infoMSG(3,3,"create thread\n");
 
         sem_post(&batch->cuSrch->threasdInfo->running_threads); // Increase the count number of running threads, processSearchResults will decrease it when its finished
 
@@ -920,7 +922,7 @@ void processSearchResults(cuFFdotBatch* batch)
       }
       else                              	// Just call the function  .
       {
-        infoMSG(3,4,"non thread\n");
+        infoMSG(3,3,"non thread\n");
 
         processSearchResults( (void*) thrdDat );
 
@@ -930,7 +932,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
           FOLD // Synchronisation  .
           {
-            infoMSG(3,4,"synchronise\n");
+            infoMSG(4,4,"synchronise\n");
 
             // This will allow kernels to run while the CPU continues
             CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
@@ -962,7 +964,7 @@ void getResults(cuFFdotBatch* batch)
 
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    infoMSG(1,2,"Copy results from device to host\n");
+    infoMSG(2,2,"Copy results from device to host\n");
 
     FOLD // Synchronisations  .
     {
@@ -1053,7 +1055,7 @@ void sumAndMax(cuFFdotBatch* batch)
 
 void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 {
-  infoMSG(1,2,"Inmem Search\n");
+  infoMSG(2,1,"Inmem Search\n");
 
   setActiveBatch(batch, 0);
   setSearchRVals(batch, drlo, len);

@@ -38,7 +38,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
       {
 	for ( int harm = 0; harm < noHarms; harm++ )			// Loop over harmonics (batch) in this stage  .
 	{
-	  // TODO: check if float has large enough "integer" presisision
+	  // TODO: check if float has large enough "integer" precision
 	  int  ix	= lroundf( idx*FRAC_STAGE[harm] ) - firstBin;
 	  inds[harm]	= ix;
 	}
@@ -165,7 +165,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 
   FOLD // Check if we can use the specific data types in the kernel  .
   {
-    // Check the length of the adressable
+    // Check the length of the addressable
     double lastBin_d  = batch->cuSrch->SrchSz->searchRLow*batch->cuSrch->sSpec->noResPerBin + batch->cuSrch->inmemStride ;
     double maxUint    = std::numeric_limits<int>::max();
     if ( maxUint <= lastBin_d )
@@ -174,7 +174,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
       exit(EXIT_FAILURE);
     }
 
-    lastBin_d  = batch->cuSrch->inmemStride * batch->hInfos->noZ;
+    lastBin_d        = batch->cuSrch->inmemStride * batch->hInfos->noZ;
     double maxInt    = std::numeric_limits<unsigned long long>::max();
     if ( maxInt <= lastBin_d )
     {
@@ -184,10 +184,12 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 
   }
 
-  int firstBin = batch->cuSrch->SrchSz->searchRLow * batch->cuSrch->sSpec->noResPerBin ;
-  int start    = rVal->drlo * batch->cuSrch->sSpec->noResPerBin ;
-  int end      = start + rVal->numrs;
-  int noBins   = end - start;
+  int firstBin  = batch->cuSrch->SrchSz->searchRLow * batch->cuSrch->sSpec->noResPerBin ;
+  int start     = rVal->drlo * batch->cuSrch->sSpec->noResPerBin ;
+  int end       = start + rVal->numrs;
+  int noBins    = end - start;
+
+  infoMSG(6,6,"%i harms summed - r from %i to %i (%i)\n", noHarms, start, end, noBins);
 
   dimBlock.x    = SSIM_X;
   dimBlock.y    = SSIM_Y;
@@ -331,7 +333,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    infoMSG(1,2,"In-mem sum and search\n");
+    infoMSG(2,2,"In-mem sum and search\n");
 
     FOLD // Synchronisation  .
     {
@@ -385,7 +387,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 #ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is. In debug mode extra synchronisation is necessary
       if ( batch->flags & FLAG_SYNCH )
       {
-	infoMSG(4,4,"DEBUG synchronisation blocking.\n");
+	infoMSG(4,4,"DEBUG only synchronisation, blocking.\n");
 
 	CUDA_SAFE_CALL(cudaEventSynchronize(batch->searchComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 	CUDA_SAFE_CALL(cudaGetLastError(), "Calling searchINMEM kernel.");

@@ -738,13 +738,27 @@ int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t s
  */
 uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin);
 
-/** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
+/** Calculate the optimal step size from a desired plane width
  *
- * @param width
- * @param zmax
- * @return
+ * This calculates the optimal step size from a desired plane width.
+ * This applies the rule that the second plane should fall in the second stack (if there is more than one plane in the family).
+ * If you want to ignore this rule just set noHarms to one.
+ *
+ * If hamrDevis is true, the step size will be scaled down until it is divisible by the number of harmonics, as is need by the SS10 Kernel.
+ *
+ * If the width is greater than 100 it it is assumed the user is manually specifying the step size.
+ * This should only be used for DEBUG purposes, if hamrDevis is set to true the "manual" step size WILL be scaled back.
+ *
+ * @param width		The width, if < 100 plane width in k, if not assumed to be the actual step size.
+ * @param zmax		The zmax of the plane (should be divisible by zRes)
+ * @param noHarms	The number of harmonics being summed
+ * @param accuracy	LOWACC or HIGHACC - Determines the size and shape of the response function
+ * @param noResPerBin	The number of r per FT bin, must be an integer, defaults to 2 (interbinning)
+ * @param zRes		The z resolution (defaults to 2)
+ * @param hamrDevis	Weather to make the step size divisible by the number of harmonics summed, as is need by the GPU SS10 kernel
+ * @return 		The step optimal size
  */
-uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes);
+uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes, bool hamrDevis);
 
 
 ///////////////////////////////////////// Init prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

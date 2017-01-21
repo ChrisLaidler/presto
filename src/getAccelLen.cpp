@@ -60,9 +60,9 @@ int main(int argc, char *argv[])
     //accelLen = calcAccellen(width, zmax, noHarms, LOWACC, noResPerBin, zRes);
   }
 
-  uint accelLenBasic = calcAccellen(width, zmax, LOWACC, noResPerBin);
-  uint accelLenHalf  = calcAccellen(width, zmax, noHarms, LOWACC, noResPerBin, zRes);
-  uint accelLenDivs  = floor(accelLenHalf/float(noHarms*noResPerBin))*(noHarms*noResPerBin);
+  uint accelLenBasic = calcAccellen(width, zmax, 1,       LOWACC, noResPerBin, zRes, false );	// Fundamental only
+  uint accelLenHalf  = calcAccellen(width, zmax, noHarms, LOWACC, noResPerBin, zRes, false );	// Adjusted so second plane is in second stack
+  uint accelLenDivs  = calcAccellen(width, zmax, noHarms, LOWACC, noResPerBin, zRes, true  );	// Divisible only necessary on the GPU
 
   printf("%u	%u	%u\n", accelLenBasic, accelLenHalf, accelLenDivs );
 
