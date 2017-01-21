@@ -259,11 +259,17 @@ uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accura
     }
   }
 
-  if ( hamrDevis )				// Adjust to be divisible by number of harmonics  .
+  FOLD						// Ensure divisibility  .
   {
-    accelLen = floor( accelLen/(float)(noHarms*noResPerBin) ) * (noHarms*noResPerBin);
+    float devisNo = 2;				// Divisible by 2, not sure why, its not noResPerBin its 2?
 
-    infoMSG(6,6,"Divisible step size %i.\n", accelLen);
+    if ( hamrDevis )				// Adjust to be divisible by number of harmonics  .
+    {
+      devisNo = noResPerBin*noHarms;
+    }
+    accelLen = floor( accelLen/devisNo ) * (devisNo);
+
+    infoMSG(6,6,"Divisible %i.\n", accelLen);
   }
 
   return accelLen;

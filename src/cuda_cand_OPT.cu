@@ -2413,7 +2413,7 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 	    }
 	    else
 	    {
-	      // wer just going to move the plane
+	      // we'r just going to move the plane
 	    }
 	  }
 	  else

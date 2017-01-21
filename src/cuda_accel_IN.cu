@@ -180,8 +180,6 @@ void setGenRVals(cuFFdotBatch* batch)
     noResPerBin			= cHInfo->noResPerBin;
     binoffset			= cHInfo->kerStart / noResPerBin;		// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
 
-
-
     for (int step = 0; step < batch->noSteps; step++)
     {
       rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][harm];
@@ -209,14 +207,14 @@ void setGenRVals(cuFFdotBatch* batch)
           // GPU normalisation now relies on all input for a stack being of the same length
           numdata		= ceil(cHInfo->width / (float)noResPerBin); // Thus may use much more input data than is strictly necessary but thats OK!
         }
-
         else
         {
           // CPU normalisation can normalise differing length data so use the correct lengths
           numdata		= hibin - lobin + 1;
         }
 
-        numrs			= (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
+        //numrs			= (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
+        numrs			= (int) ((ceil(drhi) - floor(drlo)) * noResPerBin);	// DBG This is a test, I found it gave erros with r-res that was greater than 2
         if ( harm == 0 )
           numrs			= batch->accelLen;
         else if ( numrs % noResPerBin )
