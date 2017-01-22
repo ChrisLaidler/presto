@@ -1,7 +1,7 @@
 #include <stdio.h>      /* printf, fgets */
 #include <stdlib.h>     /* atof */
 #include <math.h>       /* sin */
-
+ 
 
 extern "C"
 {
