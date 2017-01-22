@@ -41,12 +41,14 @@ int main(int argc, char *argv[])
 
     zmax    = cu_calc_required_z<double>(1.0, zmax, zRes);
 
-    int idx = round(log2(width*1000.0));
-
-    if ( idx < 10 || idx > 15 )
+    if ( width < 100 )
     {
-      fprintf(stderr,"ERROR: invalid width\n");
-      usage = true;
+      int idx = round(log2(width*1000.0));
+      if ( idx < 10 || idx > 15 )
+      {
+	fprintf(stderr,"ERROR: invalid width\n");
+	usage = true;
+      }
     }
   }
 
