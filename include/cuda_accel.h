@@ -222,6 +222,25 @@ extern "C"
 #define  TIME_CPU_REFINE	14			/// CPU - Candidate refine and properties
 #define  TIME_END		15			/// Nothing - A value to indicate the array length
 
+
+#define  NO_STKS		(batch->noStacks)
+
+#define  TIME_CMP_RESP		0			///
+#define  TIME_CMP_KERFFT	1			///
+#define  TIME_CMP_H2D		2			///
+#define  TIME_CMP_NRM		3			///
+#define  TIME_CMP_FFT		4			/// Input FFT
+#define  TIME_CMP_MULT		5			///
+#define  TIME_CMP_IFFT		6			///
+#define  TIME_CMP_D2D		7			///
+#define  TIME_CMP_SS		8			///
+#define  TIME_CMP_D2H		9			///
+#define  TIME_CMP_STR		10			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
+#define  TIME_CMP_REFINE	11			///
+#define  TIME_CMP_DERIVS	12			///
+#define  TIME_CMP_END		13			///
+
+
 //========================================== Macros ======================================================
 
 ///< Defines for safe calling usable in C
@@ -632,117 +651,108 @@ typedef struct cuFFdotBatch
     ////////////////// Batch parameters \\\\\\\\\\\\\\\\\\
 
     // Batch specific info
-    int             	noStacks;           ///< The number of stacks in this batch
-    int             	noHarmStages;       ///< The number of stages of harmonic summing
+    int             	noStacks;		///< The number of stacks in this batch
+    int             	noHarmStages;		///< The number of stages of harmonic summing
 
-    int             	noGenHarms;         ///< The number of harmonics in the family
-    int             	noSrchHarms;        ///< The number of harmonics in the family
+    int             	noGenHarms;		///< The number of harmonics in the family
+    int             	noSrchHarms;		///< The number of harmonics in the family
 
-    int             	noSteps;            ///< The number of steps processed by the batch
-    uint            	noResults;          ///< The number of results from the previous search
-    int             	srchMaster;         ///< Weather this is the master batch
-    int             	isKernel;           ///< Weather this is the master batch
+    int             	noSteps;		///< The number of steps processed by the batch
+    uint            	noResults;		///< The number of results from the previous search
+    int             	srchMaster;		///< Weather this is the master batch
+    int             	isKernel;		///< Weather this is the master batch
 
     ////////////////// sub-structures \\\\\\\\\\\\\\\\\\
 
     // Pointers to sub-structures
-    cuFfdotStack*   	stacks;             ///< A list of the stacks
-    cuFFdot*        	planes;             ///< A list of the planes
-    cuKernel*       	kernels;            ///< A list of the kernels
-    cuHarmInfo*     	hInfos;             ///< A list of the harmonic information
+    cuFfdotStack*   	stacks;			///< A list of the stacks
+    cuFFdot*        	planes;			///< A list of the planes
+    cuKernel*       	kernels;		///< A list of the kernels
+    cuHarmInfo*     	hInfos;			///< A list of the harmonic information
 
     ////////////////// Search parameters \\\\\\\\\\\\\\\\\\
 
     // Bit flags
-    int             	retType;            ///< The type of output
-    int             	cndType;            ///< The type of output
-    int64_t         	flags;              ///< CUDA accel search bit flags
+    int             	retType;		///< The type of output
+    int             	cndType;		///< The type of output
+    int64_t         	flags;			///< CUDA accel search bit flags
 
     // Batch specific search parameters
-    int             	mulSlices;          ///< The number of slices to do multiplication with
-    int             	ssSlices;           ///< The number of slices to do sum and search with
-    int             	ssChunk;            ///< The multiplication chunk size
-    int             	mulChunk;           ///< The Sum and search chunk size
+    int             	mulSlices;		///< The number of slices to do multiplication with
+    int             	ssSlices;		///< The number of slices to do sum and search with
+    int             	ssChunk;		///< The multiplication chunk size
+    int             	mulChunk;		///< The Sum and search chunk size
 
     // Batch independent search parameters
-    uint            	accelLen;           ///< The size to step through the input fft to generate the plane
+    uint            	accelLen;		///< The size to step through the input fft to generate the plane
 
     ////////////////// Memory information \\\\\\\\\\\\\\\\\\
 
     // Data sizes in bytes
-    int             	inpDataSize;        ///< The size of the input data memory in bytes
-    int             	retDataSize;        ///< The size of data to return in bytes
-    int             	plnDataSize;        ///< The size of the complex plane data memory in bytes
-    int             	pwrDataSize;        ///< The size of the powers  plane data memory in bytes
-    int             	kerDataSize;        ///< The size of the plane data memory in bytes
+    int             	inpDataSize;		///< The size of the input data memory in bytes
+    int             	retDataSize;		///< The size of data to return in bytes
+    int             	plnDataSize;		///< The size of the complex plane data memory in bytes
+    int             	pwrDataSize;		///< The size of the powers  plane data memory in bytes
+    int             	kerDataSize;		///< The size of the plane data memory in bytes
 
     // Stride information (only the results are specific to the batch)
 
-    uint            	strideOut;          ///< The stride of the returned candidate data - The stride of one step
+    uint            	strideOut;		///< The stride of the returned candidate data - The stride of one step
 
-    fcomplexcu*     	h_iBuffer;          ///< Pointer to host memory to do CPU "work" on the Input data for the batch
-    fcomplexcu*     	h_iData;            ///< Pointer to page locked host memory of the input data for the batch
-    fcomplexcu*     	d_iData;            ///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
+    fcomplexcu*     	h_iBuffer;		///< Pointer to host memory to do CPU "work" on the Input data for the batch
+    fcomplexcu*     	h_iData;		///< Pointer to page locked host memory of the input data for the batch
+    fcomplexcu*     	d_iData;		///< Input data for the batch - NB: This could be a contiguous block of sections or all the input data depending on inpMethoud
 
-    float*          	h_normPowers;       ///< A array to store powers for running double-tophat local-power normalisation
+    float*          	h_normPowers;		///< A array to store powers for running double-tophat local-power normalisation
 
-    void*           	d_kerData;          ///< Kernel data for all the stacks, generally this is only allocated once per device
-    void*           	d_planeMult;        ///< Plane of complex data for multiplication
-    void*           	d_planePowr;        ///< Plane of float data for the search
+    void*           	d_kerData;		///< Kernel data for all the stacks, generally this is only allocated once per device
+    void*           	d_planeMult;		///< Plane of complex data for multiplication
+    void*           	d_planePowr;		///< Plane of float data for the search
 
-    void*           	h_outData1;         ///< The output
-    void*           	d_outData1;         ///< The output
+    void*           	h_outData1;		///< The output
+    void*           	d_outData1;		///< The output
 
-    void*           	h_outData2;         ///< The output
-    void*           	d_outData2;         ///< The output
+    void*           	h_outData2;		///< The output
+    void*           	d_outData2;		///< The output
 
     ////////////////// Step information \\\\\\\\\\\\\\\\\\
 
     // Information on the input for the batch
-    char            	noRArryas;          ///< The number of r value arrays
-    char            	rActive;            ///< The index of the r-array we are working on
-    rVals****       	rAraays;            ///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
+    char            	noRArryas;		///< The number of r value arrays
+    char            	rActive;		///< The index of the r-array we are working on
+    rVals****       	rAraays;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
 
     rVals*         	rArr1;
     rVals*          	rArr2;
 
-    rVals***        	rArraysPlane;       ///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
-    rVals***        	rArraysSrch;        ///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
+    rVals***        	rArraysPlane;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
+    rVals***        	rArraysSrch;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
 
 
     ////////////////// Asynchronous CUDA information \\\\\\\\\\\\\\\\\\
 
     // Streams
-    cudaStream_t    	inpStream;          ///< CUDA stream for work on input data for the batch
-    cudaStream_t    	multStream;         ///< CUDA stream for multiplication
-    cudaStream_t    	srchStream;         ///< CUDA stream for summing and searching the data
-    cudaStream_t    	resStream;          ///< CUDA stream for
+    cudaStream_t    	inpStream;		///< CUDA stream for work on input data for the batch
+    cudaStream_t    	multStream;		///< CUDA stream for multiplication
+    cudaStream_t    	srchStream;		///< CUDA stream for summing and searching the data
+    cudaStream_t    	resStream;		///< CUDA stream for
 
     // TIMING events
-    cudaEvent_t     	iDataCpyInit;       ///< Copying input data to device
-    cudaEvent_t     	multInit;           ///< Start of batch multiplication
-    cudaEvent_t    	searchInit;         ///< Sum & Search start
-    cudaEvent_t     	candCpyInit;        ///< Finished reading candidates from the device
+    cudaEvent_t     	iDataCpyInit;		///< Copying input data to device
+    cudaEvent_t     	multInit;		///< Start of batch multiplication
+    cudaEvent_t    	searchInit;		///< Sum & Search start
+    cudaEvent_t     	candCpyInit;		///< Finished reading candidates from the device
 
     // Synchronisation events
-    cudaEvent_t     	iDataCpyComp;       ///< Copying input data to device
-    cudaEvent_t     	normComp;           ///< Normalise and spread input data
-    cudaEvent_t     	multComp;           ///< Sum & Search complete (candidates ready for reading)
-    cudaEvent_t     	searchComp;         ///< Sum & Search complete (candidates ready for reading)
-    cudaEvent_t     	candCpyComp;        ///< Finished reading candidates from the device
-    cudaEvent_t     	processComp;        ///< Process candidates (usually done on CPU)
+    cudaEvent_t     	iDataCpyComp;		///< Copying input data to device
+    cudaEvent_t     	normComp;		///< Normalise and spread input data
+    cudaEvent_t     	multComp;		///< Sum & Search complete (candidates ready for reading)
+    cudaEvent_t     	searchComp;		///< Sum & Search complete (candidates ready for reading)
+    cudaEvent_t     	candCpyComp;		///< Finished reading candidates from the device
+    cudaEvent_t     	processComp;		///< Process candidates (usually done on CPU)
 
     // TIMING values
-    float*          	kerGenTime;         ///< Array of floats from timing one for each stack
-    float*          	copyH2DTime;        ///< Array of floats from timing one for each stack
-    float*          	normTime;           ///< Array of floats from timing one for each stack
-    float*          	InpFFTTime;         ///< Array of floats from timing one for each stack
-    float*          	multTime;           ///< Array of floats from timing one for each stack
-    float*          	InvFFTTime;         ///< Array of floats from timing one for each stack
-    float*          	copyToPlnTime;      ///< Array of floats from timing one for each stack
-    float*          	searchTime;         ///< Array of floats from timing one for each stack
-    float*          	resultTime;         ///< Array of floats from timing one for each stack
-    float*          	copyD2HTime;        ///< Array of floats from timing one for each stack
+    float*          	compTime;		///< Array of floats from timing, one float for each stack
 
 #if CUDA_VERSION >= 6050
     cufftCallbackLoadC    h_ldCallbackPtr;

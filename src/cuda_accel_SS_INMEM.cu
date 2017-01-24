@@ -326,7 +326,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
       if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
 	// Inmem Sum and Search kernel
-	timeEvents( batch->searchInit, batch->searchComp, &batch->searchTime[0],   "Search kernel");
+	timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*TIME_CMP_SS],   "Search kernel");
       }
     }
   }

@@ -758,7 +758,7 @@ void processSearchResults(cuFFdotBatch* batch)
       thrdDat->cndType  	= batch->cndType;
       thrdDat->retType  	= batch->retType;
       thrdDat->flags    	= batch->flags;
-      thrdDat->resultTime 	= batch->resultTime;
+      thrdDat->resultTime 	= &batch->compTime[NO_STKS*TIME_CMP_STR];
       thrdDat->noResults  	= &batch->noResults;
 
       thrdDat->rLow       	= rVal->drlo;
@@ -810,7 +810,7 @@ void processSearchResults(cuFFdotBatch* batch)
         int idx = MIN(2, batch->noStacks-1);
 
         pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
-        batch->resultTime[idx] += time;
+        batch->compTime[NO_STKS*TIME_CMP_STR+idx] += time;
         pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
       }
     }
@@ -882,7 +882,7 @@ void processSearchResults(cuFFdotBatch* batch)
           int idx = MIN(1, batch->noStacks-1);
 
           pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
-          batch->resultTime[idx] += time;
+          batch->compTime[NO_STKS*TIME_CMP_STR+idx] += time;
           pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
         }
       }
@@ -957,8 +957,8 @@ void getResults(cuFFdotBatch* batch)
   {
     if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
     {
-      // Sum & Search kernel
-      timeEvents( batch->candCpyInit, batch->candCpyComp, &batch->copyD2HTime[0],   "Copy device to host");
+      // Results copying
+      timeEvents( batch->candCpyInit, batch->candCpyComp, &batch->compTime[NO_STKS*TIME_CMP_D2H],   "Copy device to host");
     }
   }
 
@@ -1020,7 +1020,7 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
     if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
     {
       // Sum & Search kernel
-      timeEvents( batch->searchInit, batch->searchComp, &batch->searchTime[0],   "Sum & Search");
+      timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*TIME_CMP_SS],   "Sum & Search");
     }
   }
 

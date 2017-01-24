@@ -867,8 +867,7 @@ int main(int argc, char *argv[])
       slog.csvWrite(" GPU S&S",  "%9.06f", cuSrch->timings[TIME_GPU_SS]		* 1e-6 );
       slog.csvWrite(" GPU Cand", "%9.06f", cuSrch->timings[TIME_CND]		* 1e-6 );
 
-      //slog.csvWrite(" Srch All", "%9.06f", cuSrch->timings[TIME_ALL_SRCH] * 1e-6 );
-      slog.csvWrite(" Opt All",  "%9.06f", cuSrch->timings[TIME_ALL_OPT]  * 1e-6 );
+      slog.csvWrite(" Opt All",  "%9.06f", cuSrch->timings[TIME_ALL_OPT]	* 1e-6 );
 
       slog.csvWrite("    x    ", "%9.06f", ( cuSrch->timings[TIME_CPU_SRCH] + cuSrch->timings[TIME_CPU_REFINE] )/ (float)( cuSrch->timings[TIME_GPU_SRCHALL] + cuSrch->timings[TIME_GPU_REFINE] ) );
 
@@ -880,15 +879,10 @@ int main(int argc, char *argv[])
       if ( sSpec.flags & FLAG_TIME )  // Advanced timing massage  .
       {
 	int batch, stack;
-	float copyH2DT  = 0;
-	float InpNorm   = 0;
-	float InpFFT    = 0;
-	float multT     = 0;
-	float InvFFT    = 0;
-	float plnCpy    = 0;
-	float ss        = 0;
-	float resultT   = 0;
-	float copyD2HT  = 0;
+	float sums[TIME_CMP_END];
+	for ( int i = 0; i < TIME_CMP_END; i++)
+	  sums[i] = 0;
+
 
 	printf("\n===========================================================================================================================================\n");
 	printf("\nAdvanced timing, all times are in ms\n");
@@ -900,113 +894,98 @@ int main(int argc, char *argv[])
 
 	  cuFFdotBatch*   batches = &cuSrch->pInf->batches[batch];
 
-	  float l_copyH2DT  = 0;
-	  float l_InpNorm   = 0;
-	  float l_InpFFT    = 0;
-	  float l_multT     = 0;
-	  float l_InvFFT    = 0;
-	  float l_plnCpy    = 0;
-	  float l_ss        = 0;
-	  float l_resultT   = 0;
-	  float l_copyD2HT  = 0;
+	  char heads[TIME_CMP_END][15];
+	  float	bsums[TIME_CMP_END];
+	  for ( int i = 0; i < TIME_CMP_END; i++)
+	    bsums[i] = 0;
 
 	  FOLD // Heading  .
 	  {
-	    printf("\t\t");
-	    printf("%s\t","Copy H2D");
+	    sprintf(heads[TIME_CMP_RESP],		"Response");
+
+	    sprintf(heads[TIME_CMP_KERFFT],		"Kernel FFT");
+
+	    sprintf(heads[TIME_CMP_H2D],		"Copy H2D");
 
 	    if      ( batches->flags & CU_NORM_GPU_SM )
-	      printf("%s\t","Norm GPU SM");
+	      sprintf(heads[TIME_CMP_NRM],		"Norm GPU SM");
 	    else if ( batches->flags & CU_NORM_GPU_OS )
-	      printf("%s\t","Norm GPU RDIX");
+	      sprintf(heads[TIME_CMP_NRM],		"Norm GPU RDIX");
 	    else
-	      printf("%s\t","Norm CPU");
+	      sprintf(heads[TIME_CMP_NRM],		"Norm CPU");
 
 	    if ( batches->flags & CU_INPT_FFT_CPU )
-	      printf("%s\t","Inp FFT CPU");
+	      sprintf(heads[TIME_CMP_FFT],		"Inp FFT CPU");
 	    else
-	      printf("%s\t","Inp FFT GPU");
+	      sprintf(heads[TIME_CMP_FFT],		"Inp FFT GPU");
 
-	    printf("%s\t","Multiplication");
+	    sprintf(heads[TIME_CMP_MULT],		"Multiplication");
 
-	    printf("%s\t","Inverse FFT");
+	    sprintf(heads[TIME_CMP_IFFT],		"Inverse FFT");
 
-	    printf("%s\t","Sum & Search");
+	    sprintf(heads[TIME_CMP_D2D],		"Copy D2D");
 
-	    if ( batches->flags & FLAG_SIG_GPU )
-	      printf("%s\t","Sigma GPU");
-	    else
-	      printf("%s\t","Sigma CPU");
+	    sprintf(heads[TIME_CMP_SS],			"Sum & Search");
 
-	    printf("%s\t","Copy D2H");
+	    sprintf(heads[TIME_CMP_D2H],		"Copy D2H");
 
-	    if ( batches->flags & FLAG_SS_INMEM )
-	    {
-	      printf("%s\t","Cpy to pln");
-	    }
+	    sprintf(heads[TIME_CMP_STR],		"iCand storage");
+
+	    sprintf(heads[TIME_CMP_REFINE],		"Opt refine");
+
+	    sprintf(heads[TIME_CMP_DERIVS],		"Opt deriv");
+
+	    printf("\t\t");
+	    for ( int i = 0; i < TIME_CMP_END; i++)
+	      printf("%s\t", heads[i] );
 
 	    printf("\n");
 	  }
 
 	  for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
 	  {
-	    printf("Stack\t%02i\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", stack, batches->copyH2DTime[stack], batches->normTime[stack], batches->InpFFTTime[stack], batches->multTime[stack], batches->InvFFTTime[stack], batches->searchTime[stack], batches->resultTime[stack], batches->copyD2HTime[stack]  );
-	    if ( batches->flags & FLAG_SS_INMEM )
+
+	    printf("Stack\t%02i\t", stack);
+
+	    for ( int i = 0; i < TIME_CMP_END; i++)
 	    {
-	      printf("\t%9.04f", batches->copyToPlnTime[stack]);
+	      float val = batches->compTime[i*batches->noStacks+stack];
+	      printf("%9.04f\t", val );
+	      bsums[i] += val;
 	    }
 	    printf("\n");
-
-	    l_copyH2DT  += batches->copyH2DTime[stack];
-	    l_InpNorm   += batches->normTime[stack];
-	    l_InpFFT    += batches->InpFFTTime[stack];
-	    l_multT     += batches->multTime[stack];
-	    l_InvFFT    += batches->InvFFTTime[stack];
-	    l_plnCpy    += batches->copyToPlnTime[stack];
-	    l_ss        += batches->searchTime[stack];
-	    l_resultT   += batches->resultTime[stack];
-	    l_copyD2HT  += batches->copyD2HTime[stack];
 	  }
 
 	  if ( cuSrch->pInf->noBatches > 1 )
 	  {
-	    printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------");
-	    if ( batches->flags & FLAG_SS_INMEM )
-	    {
-	      printf("\t---------");
-	    }
+	    printf("\t\t");
+	    for ( int i = 0; i < TIME_CMP_END; i++)
+	      printf("%s\t", "---------" );
 	    printf("\n");
 
-
-	    printf("\t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", l_copyH2DT, l_InpNorm, l_InpFFT, l_multT, l_InvFFT, l_ss, l_resultT, l_copyD2HT );
-	    if ( batches->flags & FLAG_SS_INMEM )
+	    printf("\t\t");
+	    for ( int i = 0; i < TIME_CMP_END; i++)
 	    {
-	      printf("\t%9.04f",l_plnCpy);
+	      printf("%9.04f\t", bsums[i] );
 	    }
 	    printf("\n");
 	  }
 
-	  copyH2DT  += l_copyH2DT;
-	  InpNorm   += l_InpNorm;
-	  InpFFT    += l_InpFFT;
-	  multT     += l_multT;
-	  InvFFT    += l_InvFFT;
-	  plnCpy    += l_plnCpy;
-	  ss        += l_ss;
-	  resultT   += l_resultT;
-	  copyD2HT  += l_copyD2HT;
+	  for ( int i = 0; i < TIME_CMP_END; i++)
+	  {
+	    sums[i] += bsums[i];
+	  }
+
 	}
-	printf("\t\t---------\t---------\t---------\t---------\t---------\t---------\t---------\t---------");
-	if ( cuSrch->pInf->batches->flags & FLAG_SS_INMEM )
-	{
-	  printf("\t---------");
-	}
+	printf("\t\t");
+	for ( int i = 0; i < TIME_CMP_END; i++)
+	  printf("%s\t", "---------" );
 	printf("\n");
 
-	printf("TotalT \t\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f\t%9.04f", copyH2DT, InpNorm, InpFFT, multT, InvFFT, ss, resultT, copyD2HT );
-	if ( cuSrch->pInf->batches->flags & FLAG_SS_INMEM )
+	printf("TotalT\t\t");
+	for ( int i = 0; i < TIME_CMP_END; i++)
 	{
-	  printf("\t%9.04f",plnCpy);
+	  printf("%9.04f\t", sums[i] );
 	}
 	printf("\n");
 
