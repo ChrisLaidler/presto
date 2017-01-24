@@ -1281,7 +1281,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
   FOLD // Multiplication kernels  .
   {
-
     FOLD // Set the sizes values of the harmonics and kernels and pointers to kernel data  .
     {
       setKernelPointers(kernel);
@@ -2790,10 +2789,19 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       if ( batch->flags & FLAG_TIME )
       {
+	if ( kernel->compTime )
+	{
+	  // The float array was already created and populated with values for kernel creation
+	  batch->compTime = kernel->compTime;
+	  kernel->compTime = NULL;
+	}
+	else
+	{
 	int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
 
 	batch->compTime       = (float*)malloc(sz);
 	memset(batch->compTime,    0, sz);
+	}
       }
     }
   }
@@ -2986,27 +2994,27 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  if ( batch->flags & FLAG_TIME )
 	  {
 	    // in  events (with timing)
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    "Creating input normalisation event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinit),  "Creating input FFT initialisation event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->multInit),    "Creating multiplication initialisation event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftInit), 	  "Creating inverse FFT initialisation event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemInit), "Creating inverse FFT copy initialisation event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    	"Creating input normalisation event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinit),  	"Creating input FFT initialisation event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->multInit),    	"Creating multiplication initialisation event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftInit), 	  	"Creating inverse FFT initialisation event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemInit), 	"Creating inverse FFT copy initialisation event");
 
 	    // out events (with timing)
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),    "Creating input normalisation event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinitComp), 		"Creating input data preparation complete event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),		"Creating input normalisation event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinitComp),	"Creating input data preparation complete event");
 	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->multComp), 		"Creating multiplication complete event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftComp),    "Creating IFFT complete event");
-	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemComp), "Creating IFFT memory copy complete event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftComp),    	"Creating IFFT complete event");
+	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->ifftMemComp), 	"Creating IFFT memory copy complete event");
 	  }
 	  else
 	  {
 	    // out events (without timing)
-	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
+	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp,    	cudaEventDisableTiming), "Creating input data preparation complete event");
 	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->inpFFTinitComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
-	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->multComp,    cudaEventDisableTiming), "Creating multiplication complete event");
-	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftComp,    cudaEventDisableTiming), "Creating IFFT complete event");
-	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftMemComp, cudaEventDisableTiming), "Creating IFFT memory copy complete event");
+	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->multComp,    	cudaEventDisableTiming), "Creating multiplication complete event");
+	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftComp,    	cudaEventDisableTiming), "Creating IFFT complete event");
+	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->ifftMemComp, 	cudaEventDisableTiming), "Creating IFFT memory copy complete event");
 	  }
 	}
       }

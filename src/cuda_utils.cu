@@ -525,7 +525,6 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
     CUDA_SAFE_CALL(cudaEventSynchronize(end), msg2 );
 
     NV_RANGE_POP();
-
   }
 
   // Do the actual timing

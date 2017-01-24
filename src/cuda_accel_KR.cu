@@ -137,13 +137,18 @@ int createStackKernel(cuFfdotStack* cStack)
     if ( cStack->flags & FLAG_KER_HIGH )
     {
       // high accuracy
-       halfWidth = 1;
+      halfWidth = 1;
     }
     else
     {
       // Standard "low" accuracy
       halfWidth = 0;
     }
+  }
+
+  if ( cStack->flags & FLAG_TIME )
+  {
+    CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
   }
 
   FOLD // Call the CUDA kernels  .
@@ -165,9 +170,13 @@ int createStackKernel(cuFfdotStack* cStack)
     CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
   }
 
+  if ( cStack->flags & FLAG_TIME )
+  {
+    CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
+  }
+
   return 0;
 }
-
 
 int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t stream) //   cuFfdotStack* cStack, float* d_orrKer)
 {
@@ -221,6 +230,34 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
     }
   }
 
+
+  FOLD // Timing  .
+  {
+    if ( batch->flags & FLAG_TIME )
+    {
+      // NOTE: Timing kernel creation is tricky, no events or place to store the results has been allocated so do it here, the first batch made from this kernel will take over the component timing array
+
+      for (int i = 0; i< batch->noStacks; i++)
+      {
+	cuFfdotStack* cStack  = &batch->stacks[i];
+
+	// in  events (with timing)
+	CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    		"Creating input normalisation event");
+
+	// out events (with timing)
+	CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),		"Creating input normalisation event");
+      }
+
+      FOLD // Create timing values  .
+      {
+	int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
+
+	batch->compTime       = (float*)malloc(sz);
+	memset(batch->compTime,    0, sz);
+      }
+    }
+  }
+
   FOLD // Calculate the response values  .
   {
     infoMSG(4,5,"Calculate the response values\n");
@@ -238,6 +275,20 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
     NV_RANGE_POP();
   }
 
+  FOLD // Timing  .
+  {
+    if ( batch->flags & FLAG_TIME )
+    {
+      for (int stack = 0; stack < batch->noStacks; stack++)
+      {
+	cuFfdotStack* cStack = &batch->stacks[stack];
+
+	// Sum & Search kernel
+	timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*TIME_CMP_RESP + stack],   "Response value calculation");
+      }
+    }
+  }
+
   FOLD // FFT the kernels  .
   {
     infoMSG(4,5,"FFT the  response values\n");
@@ -249,6 +300,8 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       infoMSG(4,6,"Stack %i\n",i);
 
       cuFfdotStack* cStack = &batch->stacks[i];
+
+
 
       if ( (batch->flags & FLAG_KER_DOUBFFT) || (batch->flags & FLAG_DOUBLE) )
       {
@@ -275,6 +328,14 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  NV_RANGE_POP();
 	}
 
+	FOLD // Timing  .
+	{
+	  if ( cStack->flags & FLAG_TIME )
+	  {
+	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
+	  }
+	}
+
 	FOLD // Call the plan  .
 	{
 	  infoMSG(4,6,"Call the plan\n");
@@ -287,6 +348,14 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
 	  NV_RANGE_POP();
+	}
+
+	FOLD // Timing  .
+	{
+	  if ( cStack->flags & FLAG_TIME )
+	  {
+	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
+	  }
 	}
 
 	FOLD // Destroy the plan  .
@@ -321,7 +390,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  int odist           = cStack->strideCmplx;
 	  int height          = cStack->kerHeigth;
 
-          // Normal plans
+	  // Normal plans
 	  if (buffer)
 	  {
 	    // use pre allocated memory
@@ -335,8 +404,16 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	    CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
 	    CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 	  }
-	  
+
 	  NV_RANGE_POP();
+	}
+
+	FOLD // Timing  .
+	{
+	  if ( cStack->flags & FLAG_TIME )
+	  {
+	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
+	  }
 	}
 
 	FOLD // Call the plan  .
@@ -351,6 +428,14 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
 	  NV_RANGE_POP();
+	}
+
+	FOLD // Timing  .
+	{
+	  if ( cStack->flags & FLAG_TIME )
+	  {
+	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
+	  }
 	}
 
 	FOLD // Destroy the plan  .
@@ -374,6 +459,28 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
     CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
     NV_RANGE_POP();
+  }
+
+  FOLD // Timing  .
+  {
+    if ( batch->flags & FLAG_TIME )
+    {
+      for (int stack = 0; stack < batch->noStacks; stack++)
+      {
+	cuFfdotStack* cStack = &batch->stacks[stack];
+
+	// Sum & Search kernel
+	timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*TIME_CMP_KERFFT + stack],   "Response value calculation");
+
+	// Done timing this stack so destroy the events
+
+	// in  events (with timing)
+	CUDA_SAFE_CALL(cudaEventDestroy(cStack->normInit),    		"Creating input normalisation event");
+
+	// out events (with timing)
+	CUDA_SAFE_CALL(cudaEventDestroy(cStack->normComp),		"Creating input normalisation event");
+      }
+    }
   }
 
   FOLD // Copy double FFT'ed data back to the float kernel  .
