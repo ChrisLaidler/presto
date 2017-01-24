@@ -284,7 +284,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
       for (int stack = 0; stack < batch->noStacks; stack++)
       {
         cuFfdotStack* cStack = &batch->stacks[stack];
-        timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->copyToPlnTime[stack],  "Copy to full plane");
+        timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->compTime[NO_STKS*TIME_CMP_D2D + stack ],  "Copy to full plane");
       }
     }
   }

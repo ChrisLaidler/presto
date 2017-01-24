@@ -2568,10 +2568,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( batch->flags & FLAG_SS_INMEM )
 	{
-	  // With the inmem serch only only one "step" is done at a time
+	  // With the inmem search only only one "step" is done at a time
 	  // Tested with a 750 Ti, 770 and 970, 6 was the best chunk size on the Maxwell card
 	  // The Kepler cards could go to 8
-	  // This was teste by Chris L - 12/07/2016
+	  // This was tested by Chris L - 12/07/2016
 	  batch->ssChunk = 6;
 	}
 	else
@@ -2580,20 +2580,20 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
 	  {
-	    // Kepler cards have fewer regsiters so this limit chunk size
-	    // I did some testing and found a roughly linier relationship between
+	    // Kepler cards have fewer registers so this limit chunk size
+	    // I did some testing and found a roughly liner relationship between
 	    // Optimal chink size and number of steps with the standard search kernel on Kepler cards.
-	    // This was teste on a GTX 770 by Chris L - 12/07/2016
+	    // This was tested on a GTX 770 by Chris L - 12/07/2016
 	    batch->ssChunk = round(9.5 - 0.75*batch->noSteps );
 	  }
 	  else					// Maxwell  .
 	  {
 	    // More register
 
-	    // Well this looks crazy, but from my testing this gives a pretty good apprximation to the optimal cunksize for a range of
+	    // Well this looks crazy, but from my testing this gives a pretty good approximation to the optimal cunk size for a range of
 	    // steps, harmonics and widths.  Importantly this works well for many steps (~8) and 16 harmonics.
-	    // Diagrams and numbers can be produced on request if you dont believe me ;-)
-	    // This was teste on a GTX 970 by Chris L - 12/07/2016
+	    // Diagrams and numbers can be produced on request if you don't believe me ;-)
+	    // This was tested on a GTX 970 by Chris L - 12/07/2016
 	    batch->ssChunk = round(-0.256 * batch->noSteps*batch->noSteps + 2.4 * batch->noSteps + 2.8 );
 	  }
 	}
@@ -2790,27 +2790,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       if ( batch->flags & FLAG_TIME )
       {
-	int sz = batch->noStacks*sizeof(float) ;
+	int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
 
-	batch->copyH2DTime    = (float*)malloc(sz);
-	batch->normTime       = (float*)malloc(sz);
-	batch->InpFFTTime     = (float*)malloc(sz);
-	batch->multTime       = (float*)malloc(sz);
-	batch->InvFFTTime     = (float*)malloc(sz);
-	batch->copyToPlnTime  = (float*)malloc(sz);
-	batch->searchTime     = (float*)malloc(sz);
-	batch->resultTime     = (float*)malloc(sz);
-	batch->copyD2HTime    = (float*)malloc(sz);
-
-	memset(batch->copyH2DTime,    0, sz);
-	memset(batch->normTime,       0, sz);
-	memset(batch->InpFFTTime,     0, sz);
-	memset(batch->multTime,       0, sz);
-	memset(batch->InvFFTTime,     0, sz);
-	memset(batch->copyToPlnTime,  0, sz);
-	memset(batch->searchTime,     0, sz);
-	memset(batch->resultTime,     0, sz);
-	memset(batch->copyD2HTime,    0, sz);
+	batch->compTime       = (float*)malloc(sz);
+	memset(batch->compTime,    0, sz);
       }
     }
   }
@@ -3251,15 +3234,7 @@ void freeBatch(cuFFdotBatch* batch)
 
     if ( batch->flags & FLAG_TIME )
     {
-      freeNull(batch->copyH2DTime   );
-      freeNull(batch->normTime      );
-      freeNull(batch->InpFFTTime    );
-      freeNull(batch->multTime      );
-      freeNull(batch->InvFFTTime    );
-      freeNull(batch->copyToPlnTime );
-      freeNull(batch->searchTime    );
-      freeNull(batch->resultTime    );
-      freeNull(batch->copyD2HTime   );
+      freeNull(batch->compTime);
     }
   }
 
@@ -3641,16 +3616,16 @@ void timeSynch(cuFFdotBatch* batch)
       {
 	if ( (batch->flags & CU_NORM_GPU) )
 	{
-	  for (int ss = 0; ss < batch->noStacks; ss++)
+	  for (int stack = 0; stack < batch->noStacks; stack++)
 	  {
-	    cuFfdotStack* cStack = &batch->stacks[ss];
+	    cuFfdotStack* cStack = &batch->stacks[stack];
 
 	    ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
 
 	    if ( ret != cudaErrorNotReady )
 	    {
 #pragma omp atomic
-batch->normTime[ss] += time;
+	      batch->compTime[batch->noStacks*TIME_CMP_NRM + stack ] += time;
 	    }
 	  }
 
@@ -3662,16 +3637,16 @@ batch->normTime[ss] += time;
       {
 	if ( !(batch->flags & CU_INPT_FFT_CPU) )
 	{
-	  for (int ss = 0; ss < batch->noStacks; ss++)
+	  for (int stack = 0; stack < batch->noStacks; stack++)
 	  {
-	    cuFfdotStack* cStack = &batch->stacks[ss];
+	    cuFfdotStack* cStack = &batch->stacks[stack];
 
 	    ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->inpFFTinitComp);
 
 	    if ( ret != cudaErrorNotReady )
 	    {
 #pragma omp atomic
-batch->InpFFTTime[ss] += time;
+	      batch->compTime[batch->noStacks*TIME_CMP_FFT + stack ] += time;
 	    }
 	  }
 
@@ -3686,7 +3661,7 @@ batch->InpFFTTime[ss] += time;
 	if ( ret != cudaErrorNotReady )
 	{
 #pragma omp atomic
-	  batch->copyH2DTime[0] += time;
+	  batch->compTime[batch->noStacks*TIME_CMP_H2D] += time;
 	}
 
 	CUDA_SAFE_CALL(cudaGetLastError(), "Copy input timing");
@@ -3705,21 +3680,21 @@ batch->InpFFTTime[ss] += time;
 	    if ( ret != cudaErrorNotReady )
 	    {
 #pragma omp atomic
-	      batch->multTime[0] += time;
+	      batch->compTime[NO_STKS*TIME_CMP_MULT] += time;
 	    }
 	  }
 	  else                                    // Convolution was on a per stack basis  .
 	  {
-	    for (int ss = 0; ss < batch->noStacks; ss++)              // Loop through Stacks
+	    for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
 	    {
-	      cuFfdotStack* cStack = &batch->stacks[ss];
+	      cuFfdotStack* cStack = &batch->stacks[stack];
 
 	      ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
 
 	      if ( ret != cudaErrorNotReady )
 	      {
 #pragma omp atomic
-		batch->multTime[ss] += time;
+		batch->compTime[NO_STKS*TIME_CMP_MULT + stack ] += time;
 	      }
 	    }
 	  }
@@ -3730,15 +3705,15 @@ batch->InpFFTTime[ss] += time;
 
       FOLD // Inverse FFT timing  .
       {
-	for (int ss = 0; ss < batch->noStacks; ss++)
+	for (int stack = 0; stack < batch->noStacks; stack++)
 	{
-	  cuFfdotStack* cStack = &batch->stacks[ss];
+	  cuFfdotStack* cStack = &batch->stacks[stack];
 
 	  ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
 	  if ( ret != cudaErrorNotReady )
 	  {
 #pragma omp atomic
-	    batch->InvFFTTime[ss] += time;
+	    batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ] += time;
 	  }
 	}
 
@@ -3749,15 +3724,15 @@ batch->InpFFTTime[ss] += time;
       {
 	if ( batch->flags & FLAG_SS_INMEM )
 	{
-	  for (int ss = 0; ss < batch->noStacks; ss++)
+	  for (int stack = 0; stack < batch->noStacks; stack++)
 	  {
-	    cuFfdotStack* cStack = &batch->stacks[ss];
+	    cuFfdotStack* cStack = &batch->stacks[stack];
 
 	    ret = cudaEventElapsedTime(&time, cStack->ifftMemInit, cStack->ifftMemComp);
 	    if ( ret != cudaErrorNotReady )
 	    {
 #pragma omp atomic
-batch->copyToPlnTime[ss] += time;
+	      batch->compTime[NO_STKS*TIME_CMP_D2D + stack ] += time;
 	    }
 	  }
 
@@ -3774,7 +3749,7 @@ batch->copyToPlnTime[ss] += time;
 	  if ( ret != cudaErrorNotReady )
 	  {
 #pragma omp atomic
-	    batch->searchTime[0] += time;
+	    batch->compTime[NO_STKS*TIME_CMP_SS] += time;
 	  }
 
 	  CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
@@ -3790,7 +3765,7 @@ batch->copyToPlnTime[ss] += time;
 	  if ( ret != cudaErrorNotReady )
 	  {
 #pragma omp atomic
-	    batch->copyD2HTime[0] += time;
+	    batch->compTime[NO_STKS*TIME_CMP_D2H] += time;
 	  }
 
 	  CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
@@ -6253,65 +6228,40 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
     cvsLog->csvWrite("GPU Opt",   "s", "%9.4f",   gpuOptTime  * 1e-6);
   }
 
-  FOLD // Advanced Timing  .
+  FOUT // Advanced Timing  .
   {
-    float copyH2DT  = 0;
-    float InpNorm   = 0;
-    float InpFFT    = 0;
-    float multT     = 0;
-    float InvFFT    = 0;
-    float plnCpy    = 0;
-    float ss        = 0;
-    float resultT   = 0;
-    float copyD2HT  = 0;
+    float	bsums[TIME_CMP_END];
+    for ( int i = 0; i < TIME_CMP_END; i++)
+      bsums[i] = 0;
 
     if ( batch->flags & FLAG_TIME )
     {
-      for (int batch = 0; batch < cuSrch->pInf->noBatches; batch++)
+      for ( int comp=0; comp < TIME_CMP_END; comp++)
       {
-	float l_copyH2DT  = 0;
-	float l_InpNorm   = 0;
-	float l_InpFFT    = 0;
-	float l_multT     = 0;
-	float l_InvFFT    = 0;
-	float l_plnCpy    = 0;
-	float l_ss        = 0;
-	float l_resultT   = 0;
-	float l_copyD2HT  = 0;
-
-	for (int stack = 0; stack < cuSrch->pInf->batches[batch].noStacks; stack++)
+	for (int batch = 0; batch < cuSrch->pInf->noBatches; batch++)
 	{
-	  cuFFdotBatch* batches = &cuSrch->pInf->batches[batch];
-	  l_copyH2DT  += batches->copyH2DTime[stack];
-	  l_InpNorm   += batches->normTime[stack];
-	  l_InpFFT    += batches->InpFFTTime[stack];
-	  l_multT     += batches->multTime[stack];
-	  l_InvFFT    += batches->InvFFTTime[stack];
-	  l_plnCpy    += batches->copyToPlnTime[stack];
-	  l_ss        += batches->searchTime[stack];
-	  l_resultT   += batches->resultTime[stack];
-	  l_copyD2HT  += batches->copyD2HTime[stack];
+	  for (int stack = 0; stack < cuSrch->pInf->batches[batch].noStacks; stack++)
+	  {
+	    cuFFdotBatch* batches = &cuSrch->pInf->batches[batch];
+
+	    bsums[comp] += batches->compTime[comp*batches->noStacks+stack];
+	  }
 	}
-	copyH2DT  += l_copyH2DT;
-	InpNorm   += l_InpNorm;
-	InpFFT    += l_InpFFT;
-	multT     += l_multT;
-	InvFFT    += l_InvFFT;
-	plnCpy    += l_plnCpy;
-	ss        += l_ss;
-	resultT   += l_resultT;
-	copyD2HT  += l_copyD2HT;
       }
     }
-    cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", copyH2DT);
-    cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", InpNorm);
-    cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", InpFFT);
-    cvsLog->csvWrite("Mult",        "ms", "%12.6f", multT);
-    cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", InvFFT);
-    cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", plnCpy);
-    cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", ss);
-    cvsLog->csvWrite("result",      "ms", "%12.6f", resultT);
-    cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", copyD2HT);
+    cvsLog->csvWrite("Response",    "ms", "%12.6f", bsums[TIME_CMP_RESP]);
+    cvsLog->csvWrite("kerFFT",      "ms", "%12.6f", bsums[TIME_CMP_KERFFT]);
+    cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", bsums[TIME_CMP_H2D]);
+    cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", bsums[TIME_CMP_NRM]);
+    cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", bsums[TIME_CMP_FFT]);
+    cvsLog->csvWrite("Mult",        "ms", "%12.6f", bsums[TIME_CMP_MULT]);
+    cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", bsums[TIME_CMP_IFFT]);
+    cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", bsums[TIME_CMP_D2D]);
+    cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", bsums[TIME_CMP_SS]);
+    cvsLog->csvWrite("Result",      "ms", "%12.6f", bsums[TIME_CMP_STR]);
+    cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", bsums[TIME_CMP_D2H]);
+    cvsLog->csvWrite("Refine",      "ms", "%12.6f", bsums[TIME_CMP_REFINE]);
+    cvsLog->csvWrite("Derivs",      "ms", "%12.6f", bsums[TIME_CMP_DERIVS]);
   }
 
   cvsLog->csvEndLine();
@@ -7244,7 +7194,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 	  poww    = 0;
 
 	  for (cdx = 0; cdx < (int)cuSrch->SrchSz->noOutpR; cdx++)  // Loop
-	      {
+	  {
 	    poww        = candidate[cdx].power;
 
 	    if ( poww > 0 )
@@ -7258,7 +7208,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 
 	      noCands++;
 	    }
-	      }
+	  }
 
 	  NV_RANGE_POP(); // Add to list
 	}

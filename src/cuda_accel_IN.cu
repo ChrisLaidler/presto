@@ -145,7 +145,7 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
         gettimeofday(&end, NULL);
 
         float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-        batch->normTime[stack] += v1;
+        batch->compTime[batch->noStacks*TIME_CMP_NRM + stack ] += v1;
       }
     }
   }
@@ -307,7 +307,7 @@ void prepInputCPU(cuFFdotBatch* batch )
         {
           cuFfdotStack* cStack = &batch->stacks[stack];
 
-          timeEvents( cStack->normInit, cStack->normComp, &batch->normTime[stack],    "Stack input normalisation");
+          timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*TIME_CMP_NRM + stack ],    "Stack input normalisation");
         }
       }
 
@@ -318,12 +318,12 @@ void prepInputCPU(cuFFdotBatch* batch )
         {
           cuFfdotStack* cStack = &batch->stacks[stack];
 
-          timeEvents( cStack->inpFFTinit, cStack->inpFFTinitComp, &batch->InpFFTTime[stack],    "Stack input FFT");
+          timeEvents( cStack->inpFFTinit, cStack->inpFFTinitComp, &batch->compTime[NO_STKS*TIME_CMP_FFT + stack ],    "Stack input FFT");
         }
       }
 
       // Copying Data to device
-      timeEvents( batch->iDataCpyInit, batch->iDataCpyComp, &batch->copyH2DTime[0],   "Copy to device");
+      timeEvents( batch->iDataCpyInit, batch->iDataCpyComp, &batch->compTime[NO_STKS*TIME_CMP_H2D],   "Copy to device");
     }
   }
 
@@ -381,7 +381,7 @@ void prepInputCPU(cuFFdotBatch* batch )
                 gettimeofday(&end, NULL);
 
                 float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-                batch->InpFFTTime[stack] += v1;
+                batch->compTime[NO_STKS*TIME_CMP_FFT + stack ] += v1;
               }
             }
           }

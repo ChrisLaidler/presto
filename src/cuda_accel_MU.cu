@@ -214,14 +214,14 @@ void multiplyBatch(cuFFdotBatch* batch)
     {
       if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
-	timeEvents( batch->multInit, batch->multComp, &batch->multTime[0], "Batch multiplication");
+	timeEvents( batch->multInit, batch->multComp, &batch->compTime[NO_STKS*TIME_CMP_MULT], "Batch multiplication");
 
 	for (int stack = 0; stack < batch->noStacks; stack++)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[stack];
 
-	  timeEvents( cStack->multInit, cStack->multComp, &batch->multTime[stack],    "Stack multiplication");
-	  timeEvents( cStack->ifftInit, cStack->ifftComp, &batch->InvFFTTime[stack],  "Stack iFFT");
+	  timeEvents( cStack->multInit, cStack->multComp, &batch->compTime[NO_STKS*TIME_CMP_MULT + stack ],  "Stack multiplication");
+	  timeEvents( cStack->ifftInit, cStack->ifftComp, &batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ],  "Stack iFFT");
 	}
       }
     }

@@ -2256,7 +2256,7 @@ void* optCandDerivs(void* ptr)
     pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
     gettimeofday(&end, NULL);
     float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-    res->cuSrch->pInf->batches->resultTime[0] += v1;
+    res->cuSrch->pInf->batches->compTime[res->cuSrch->pInf->batches->noStacks*TIME_CMP_DERIVS] += v1;
     pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
   }
 
@@ -2462,6 +2462,13 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
   iCand.power		= cand->power;
   iCand.numharm 	= cand->numharm;
 
+  struct timeval start, end;    // Timing variables
+
+  if ( sSpec->flags & FLAG_TIME ) // Timing  .
+  {
+    gettimeofday(&start, NULL);
+  }
+
   if      ( sSpec->flags & FLAG_OPT_NM )
   {
     NV_RANGE_PUSH("Simplex");
@@ -2477,6 +2484,14 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
   else // Default use planes
   {
     optInitCandLocPlns(&iCand, pln, candNo);
+  }
+
+  if ( sSpec->flags & FLAG_TIME ) // Timing  .
+  {
+    gettimeofday(&end, NULL);
+    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+#pragma omp atomic
+    pln->cuSrch->pInf->batches->compTime[pln->cuSrch->pInf->batches->noStacks*TIME_CMP_REFINE] += v1;
   }
 
   cand->r 		= iCand.r;
