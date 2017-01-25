@@ -277,7 +277,11 @@ void initGPUs(gpuSpecs* gSpec)
     else // call something to initialise the device
     {
       sprintf(txt,"Init device %02i", device );
-      NV_RANGE_PUSH(txt);
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH(txt);
+      }
 
       cudaDeviceProp deviceProp;
       CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
@@ -291,7 +295,10 @@ void initGPUs(gpuSpecs* gSpec)
 
       sprintf(gInf->name, "%s", deviceProp.name );
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // txt
+      }
     }
   }
 }
@@ -519,12 +526,19 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
     char msg2[1024];
     cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
     sprintf(msg2, "Blocking on %s", msg);
-    NV_RANGE_PUSH(msg2);
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH(msg2);
+    }
 
     sprintf(msg2, "At a timing blocking synchronisation \"%s\"", msg);
     CUDA_SAFE_CALL(cudaEventSynchronize(end), msg2 );
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // msg2
+    }
   }
 
   // Do the actual timing

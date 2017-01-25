@@ -49,9 +49,9 @@ void multiplyPlane(cuFFdotBatch* batch)
       }
     }
 
-    FOLD // Timing event  .
+    PROF // Profiling  .
     {
-      if ( batch->flags & FLAG_TIME )
+      if ( batch->flags & FLAG_PROF )
       {
 	CUDA_SAFE_CALL(cudaEventRecord(cStack->multInit, cStack->multStream),"Recording event: multInit");
       }
@@ -155,9 +155,9 @@ void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pSta
     }
   }
 
-  FOLD // Timing event  .
+  PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_TIME )
+    if ( batch->flags & FLAG_PROF )
     {
       CUDA_SAFE_CALL(cudaEventRecord(cStack->multInit, cStack->multStream),"Recording event: multInit");
     }
@@ -207,27 +207,29 @@ void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pSta
  */
 void multiplyBatch(cuFFdotBatch* batch)
 {
-  // Timing
-  if ( (batch->flags & FLAG_TIME) )
+  PROF // Profiling  .
   {
-    if ( batch->rActive < batch->noRArryas-1 )
+    if ( (batch->flags & FLAG_PROF) )
     {
-      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+      if ( batch->rActive < batch->noRArryas-1 )
       {
-	timeEvents( batch->multInit, batch->multComp, &batch->compTime[NO_STKS*TIME_CMP_MULT], "Batch multiplication");
-
-	for (int stack = 0; stack < batch->noStacks; stack++)
+	if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
 	{
-	  cuFfdotStack* cStack = &batch->stacks[stack];
+	  timeEvents( batch->multInit, batch->multComp, &batch->compTime[NO_STKS*TIME_CMP_MULT], "Batch multiplication");
 
-	  timeEvents( cStack->multInit, cStack->multComp, &batch->compTime[NO_STKS*TIME_CMP_MULT + stack ],  "Stack multiplication");
-	  timeEvents( cStack->ifftInit, cStack->ifftComp, &batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ],  "Stack iFFT");
+	  for (int stack = 0; stack < batch->noStacks; stack++)
+	  {
+	    cuFfdotStack* cStack = &batch->stacks[stack];
+
+	    timeEvents( cStack->multInit, cStack->multComp, &batch->compTime[NO_STKS*TIME_CMP_MULT + stack ],  "Stack multiplication");
+	    timeEvents( cStack->ifftInit, cStack->ifftComp, &batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ],  "Stack iFFT");
+	  }
 	}
       }
-    }
-    else
-    {
-      fprintf(stderr,"ERROR: previous of the active step is out of bounds.");
+      else
+      {
+	fprintf(stderr,"ERROR: previous of the active step is out of bounds.");
+      }
     }
   }
 
@@ -235,7 +237,10 @@ void multiplyBatch(cuFFdotBatch* batch)
   {
     infoMSG(1,2,"Multiply\n");
 
-    NV_RANGE_PUSH("Multiply");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Multiply");
+    }
 
     if      ( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications one family at a time  .
     {
@@ -266,9 +271,12 @@ void multiplyBatch(cuFFdotBatch* batch)
 
       FOLD // Call kernel  .
       {
-	if ( batch->flags & FLAG_TIME ) // Timing event  .
+	PROF // Profiling  .
 	{
-	  CUDA_SAFE_CALL(cudaEventRecord(batch->multInit, batch->multStream),"Recording event: multInit");
+	  if ( batch->flags & FLAG_PROF )
+	  {
+	    CUDA_SAFE_CALL(cudaEventRecord(batch->multInit, batch->multStream),"Recording event: multInit");
+	  }
 	}
 
 	mult31(batch->multStream, batch);
@@ -338,7 +346,10 @@ void multiplyBatch(cuFFdotBatch* batch)
       exit(EXIT_FAILURE);
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP();
+    }
   }
 }
 
@@ -399,9 +410,9 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
     {
       //#pragma omp critical
       {
-	FOLD // Timing  .
+	PROF // Profiling  .
 	{
-	  if ( batch->flags & FLAG_TIME )
+	  if ( batch->flags & FLAG_PROF )
 	  {
 	    cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 	  }
@@ -429,9 +440,9 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
     {
 #pragma omp critical
       {
-	FOLD // Timing  .
+	PROF // Profiling  .
 	{
-	  if ( batch->flags & FLAG_TIME )
+	  if ( batch->flags & FLAG_PROF )
 	  {
 	    cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
 	  }
@@ -600,11 +611,19 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 	      {
 		infoMSG(4,4,"Image\n");
 
-		NV_RANGE_PUSH("Image");
+		PROF // Profiling  .
+		{
+		  NV_RANGE_PUSH("Image");
+		}
+
 		char cmd[1024];
 		sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s 2.5 > /dev/null 2>&1", tName);
 		system(cmd);
-		NV_RANGE_POP();
+
+		PROF // Profiling  .
+		{
+		  NV_RANGE_POP();
+		}
 	      }
 
 	      sz += cStack->strideCmplx;
@@ -630,7 +649,10 @@ void IFFTBatch(cuFFdotBatch* batch)
     {
       infoMSG(1,2,"Inverse FFT Batch\n");
 
-      NV_RANGE_PUSH("IFFT");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("IFFT");
+      }
 
       cuFfdotStack* pStack = NULL;  // Previous stack
 
@@ -659,7 +681,10 @@ void IFFTBatch(cuFFdotBatch* batch)
 	pStack = cStack;
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP();
+      }
     }
   }
 }

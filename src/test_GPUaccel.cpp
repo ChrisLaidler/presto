@@ -15,12 +15,6 @@ extern "C"
 #include "cuda_accel.h"
 #include "cuda_accel_utils.h"
 
-#ifdef CUDA_PROF
-#include <nvToolsExt.h>
-#include <nvToolsExtCuda.h>
-#include <cuda_profiler_api.h>
-#endif
-
 #include "cuda_response.h"
 #include "cuda_cand_OPT.h"
 #endif
