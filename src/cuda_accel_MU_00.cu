@@ -147,7 +147,6 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 
 //-----------------------------------------//
 
-
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
  * Each thread loops down a column of the plane
  * Reads the input and multiplies it with the kernel and writes result to plane
@@ -178,7 +177,9 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
       const int plnStrd       = pln*stride*noSteps;
       const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
       const int kerYOffset    = (HEIGHT_HARM[firstPlane] - plnHeight)/2;
+#ifdef WITH_ITLV_PLN
       const int ns2           = plnHeight * stride;
+#endif
 
       FOLD // Read input data for this plane
       {

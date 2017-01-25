@@ -62,7 +62,9 @@ __global__ void mult23_k(const __restrict__ fcomplexcu* kernels, const __restric
 
         const int kerAddd       = MAX(0, kerYOffset - c0);
 
+#ifdef WITH_ITLV_PLN
         const int ns2           = plnHeight * stride;
+#endif
 
         __restrict__ fcomplexcu inpDat[noSteps];              // Set of input data for this thread/column
         FOLD // Read all input data  .

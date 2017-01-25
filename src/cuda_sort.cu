@@ -665,7 +665,7 @@ __device__ inline float boundsReduce1(int* offset, T *val, T *array, float *lftB
   const int noMels 	= noTotMels / 32 ;	// 2
   const int NoArr 	= noVals / 1024 ;	// 4
 
-  int warpActive = 0;							///< Weather or not a warp is active
+  //int warpActive = 0;							///< Weather or not a warp is active
   float lft, rht;
 
   __shared__ int	belowlft;					///< SM for communication
@@ -888,7 +888,9 @@ __device__ inline float boundsReduce1(int* offset, T *val, T *array, float *lftB
 template <typename T, int noEls>
 __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, const int printVals)
 {
+#ifdef SORT_DBG
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        	/// Block ID (flat index)
+#endif
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;       	/// Thread ID in block (flat index)
   const int wId = tid / 32;						/// Warp ID
   const int laneId = tid % 32;						/// Lane ID 	// TODO: get from PTX register
@@ -2376,6 +2378,8 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
     return array[offset];
   }
+
+  return NAN; // This should not be reached
 }
 
 /**
@@ -2674,64 +2678,6 @@ __device__ inline float boundsReduce2(int* offset, T *val, T* array, float *lftB
     __syncthreads(); 							// SM reads (this may be unnecessary)  .
   }
 
-//  FOLD // Write values back to array  .
-//  {
-//    float wVal = __shfl(val[3], 31);
-//
-//    if ( warpActive && wId >= noTotMels/2 )
-//    {
-//      int keep = 0;
-//      int excl = 0;
-//
-//      if ( wVal <= lft )
-//      {
-//	// Keep second half so
-//	keep = 4;
-//      }
-//      else
-//      {
-//	// Exclude second half so
-//	excl = 4;
-//      }
-//
-//      // Move second half to first half
-//      for ( int a = 0; a < 4; a++)
-//      {
-//	int idx = (wId-noTotMels/2)*hLen + 32*a + laneId;
-//	array[idx] = val[keep+a];
-//      }
-//    }
-//
-//    __syncthreads(); 							// SM writes  .
-//
-//    if ( warpActive && wId < noTotMels/2 )
-//    {
-//      int keep = 0;
-//      int excl = 0;
-//
-//      if ( wVal <= lft )
-//      {
-//	// Keep second half so
-//	keep = 4;
-//      }
-//      else
-//      {
-//	// Exclude second half so
-//	excl = 4;
-//      }
-//
-//      // Move second half to first half
-//      for ( int a = 0; a < 4; a++)
-//      {
-//	int idx = (wId)*hLen + 32*a + laneId;
-//	val[excl+a] = array[idx];
-//      }
-//
-//    }
-//
-//    __syncthreads(); 							// SM reads (this may be unnecessary)  .
-//  }
-
 #ifdef SORT_DBG // DBG New line  .
   if ( tid == 0 )
   {
@@ -2915,6 +2861,8 @@ __device__ float cuOrderStatPow2_radix_local_warps(int offset, T *val, const int
 
     return array[offset];
   }
+
+  return NAN; // This should not be reached
 }
 
 

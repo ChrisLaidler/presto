@@ -22,11 +22,6 @@ extern "C"
 #include "cuda_response.h"
 #endif
 
-#ifdef CUDA_PROF
-#include <cuda_profiler_api.h>
-#include <nvToolsExt.h>
-#endif
-
 #ifdef USEDMALLOC
 #include "dmalloc.h"
 #endif
@@ -128,8 +123,11 @@ int main(int argc, char *argv[])
 
   pthread_t     cntxThread = 0;
 
-  // Start the timer
-  gettimeofday(&start, NULL);
+  TIME // Start the timer
+  {
+    NV_RANGE_PUSH("Prep");
+    gettimeofday(&start, NULL);
+  }
 
   if ( cmd->gpuP ) // Initialises CUDA context(s)  .
   {
@@ -140,11 +138,10 @@ int main(int argc, char *argv[])
 
     gSpec         = readGPUcmd(cmd);
 
-    // Initalise coda context
+    // Initialise CUDA context
     contextInit += initCudaContext(&gSpec);
   }
 
-  NV_RANGE_PUSH("Prep");
 #endif
 
   /* Create the accelobs structure */
@@ -192,9 +189,14 @@ int main(int argc, char *argv[])
   char candsFile[1024];
   sprintf(candsFile,"%s.unoptcands", fname );
 
-  NV_RANGE_POP(); // Prep
-  gettimeofday(&end, NULL);
-  cuSrch->timings[TIME_PREP] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  TIME // Timing  .
+  {
+    NV_RANGE_POP(); // Prep
+
+    gettimeofday(&end, NULL);
+    cuSrch->timings[TIME_PREP] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  }
+
 
 #endif
 
@@ -217,7 +219,12 @@ int main(int argc, char *argv[])
     fclose(file);
 
     // Wait for the context thread to complete
-    cuSrch->timings[TIME_CONTEXT] = compltCudaContext(&gSpec);
+    long long contextTinme = compltCudaContext(&gSpec);
+
+    TIME // Timing  .
+    {
+      cuSrch->timings[TIME_CONTEXT] = contextTinme;
+    }
   }
   else								// Run Search  .
 #endif
@@ -234,9 +241,12 @@ int main(int argc, char *argv[])
 #ifdef CUDA // Profiling  .
 	printf("\n*************************************************************************************************\n                         Doing CPU Search\n*************************************************************************************************\n");
 
-	NV_RANGE_PUSH("CPU");
-	NV_RANGE_PUSH("CPU kernel");
-	gettimeofday(&start, NULL);
+	TIME // Timing  .
+	{
+	  NV_RANGE_PUSH("CPU Srch");
+	  NV_RANGE_PUSH("CPU kernel");
+	  gettimeofday(&start, NULL);
+	}
 #endif
 
 	subharminfo **subharminfs;
@@ -255,12 +265,13 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA  // Profiling  .
 
-	FOLD // Basic timing  .
+	TIME // Timing  .
 	{
 	  NV_RANGE_POP(); // CPU kernel
+	  NV_RANGE_PUSH("CPU Cand Gen");
+
 	  gettimeofday(&end, NULL);
 	  cuSrch->timings[TIME_CPU_INIT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
-	  NV_RANGE_PUSH("CPU Cand Gen");
 	}
 #endif
 
@@ -323,16 +334,21 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA  // Profiling  .
 
-	FOLD // Basic timing  .
+	printf("\nCPU found %i initial candidates.", g_slist_length(candsCPU));
+
+	TIME // Timing  .
 	{
 	  NV_RANGE_POP(); // CPU Cand Gen
-	  NV_RANGE_POP(); // CPU
+	  NV_RANGE_POP(); // CPU Srch
+
 	  gettimeofday(&end, NULL);
-	  cuSrch->timings[TIME_CPU_SRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 	  cuSrch->timings[TIME_CPU_CND_GEN] = cuSrch->timings[TIME_CPU_SRCH] - cuSrch->timings[TIME_CPU_INIT];
+	  cuSrch->timings[TIME_CPU_SRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+	  printf("In %.4f ms.\n", cuSrch->timings[TIME_CPU_SRCH]/1000.0 );
 	}
 
-	printf("\nCPU found %i initial candidates. In %.4f ms\n", g_slist_length(candsCPU), cuSrch->timings[TIME_CPU_SRCH]/1000.0 );
+	printf("\n");
 
 	if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
 	{
@@ -422,8 +438,11 @@ int main(int argc, char *argv[])
     time_t rawtime;
     struct tm* ptm;
 
-    NV_RANGE_PUSH("Optimisation");
-    gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+    TIME // Timing  .
+    {
+	NV_RANGE_PUSH("Optimisation All");
+	gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+    }
 
 #ifdef CBL
     if ( sSpec.flags & FLAG_DPG_PLT_OPT )
@@ -482,16 +501,19 @@ int main(int argc, char *argv[])
 
       printf("Optimising the remaining %i initial candidates.\n\n", numcands);
 
-      if ( cmd->cpuP ) 	 	// --=== The CPU Optimisation == --  .
+      if ( cmd->cpuP ) 	 	// --=== The CPU position refinement == --  .
       {
-#ifdef CUDA // Profiling  .
+#ifdef CUDA // Timing  .
 
 	// Doing a GPU search as well so duplicate candidates
 	if (cmd->gpuP)
 	  cuSrch->cands = duplicate_accelcands(cands);
 
-	NV_RANGE_PUSH("CPU Optimisation");
-	gettimeofday(&start01, NULL);       // Profiling
+	TIME // Timing  .
+	{
+	  NV_RANGE_PUSH("CPU refine");
+	  gettimeofday(&start01, NULL);       // Profiling
+	}
 #endif
 
 	accelcand *candCPU;
@@ -506,15 +528,20 @@ int main(int argc, char *argv[])
 	  print_percent_complete(ii, numcands, "optimization", 0);
 	}
 
-#ifdef CUDA // Profiling  .
-	NV_RANGE_POP(); // CPU Optimisation
-	gettimeofday(&end01, NULL);
-	cuSrch->timings[TIME_CPU_REFINE] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+#ifdef CUDA // Timing  .
+
+	TIME // Timing  .
+	{
+	  NV_RANGE_POP(); // CPU refine
+
+	  gettimeofday(&end01, NULL);
+	  cuSrch->timings[TIME_CPU_REFINE] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+	}
 #endif
 
       }
 
-      if ( cmd->gpuP )        	// --=== The GPU Optimisation == --  .
+      if ( cmd->gpuP )        	// --=== The GPU position refinement == --  .
       {
 #ifdef CUDA
 
@@ -524,9 +551,11 @@ int main(int argc, char *argv[])
 	  cands = duplicate_accelcands(cuSrch->cands);
 	}
 
-	NV_RANGE_PUSH("GPU Optimisation");
-
-	gettimeofday(&start01, NULL);       // Profiling
+	TIME // Timing  .
+	{
+	  NV_RANGE_PUSH("GPU refine");
+	  gettimeofday(&start01, NULL);       // Profiling
+	}
 
 	// Initialise optimisation details!
 	initCuOpt(&sSpec, &gSpec, cuSrch);
@@ -534,10 +563,14 @@ int main(int argc, char *argv[])
 	// Optimise all the candidates
 	optList(cands, cuSrch);
 
-	gettimeofday(&end01, NULL);
-	cuSrch->timings[TIME_GPU_REFINE] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+	TIME // Timing  .
+	{
+	  NV_RANGE_POP(); // GPU refine
 
-	NV_RANGE_POP(); // GPU Optimisation
+	  gettimeofday(&end01, NULL);
+	  cuSrch->timings[TIME_GPU_REFINE] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+	}
+
 #else
 	fprintf(stderr,"ERROR: not compiled with CUDA!\n");
 #endif
@@ -633,27 +666,44 @@ int main(int argc, char *argv[])
       /* Write the fundamentals to the output text file */
 
 #ifdef CUDA
-      NV_RANGE_PUSH("Write");
-      NV_RANGE_PUSH("Fundamentals");
+      TIME // Basic timing  .
+      {
+	NV_RANGE_PUSH("Write");
+	NV_RANGE_PUSH("Fundamentals");
+
+	gettimeofday(&start01, NULL);       // Note could start the timer after kernel init
+      }
 #endif
 
       output_fundamentals(props, cands, &obs, &idata);
 
 #ifdef CUDA
-      NV_RANGE_POP(); // Fundamentals
+      TIME // Basic timing  .
+      {
+	NV_RANGE_POP(); // Fundamentals
+      }
 #endif
 
       /* Write the harmonics to the output text file */
 
 #ifdef CUDA
-      NV_RANGE_PUSH("Harmonics");
+      TIME // Basic timing  .
+      {
+	NV_RANGE_PUSH("Harmonics");
+      }
 #endif
 
       output_harmonics(cands, &obs, &idata);
 
 #ifdef CUDA
-      NV_RANGE_POP(); //Harmonics
-      NV_RANGE_POP(); //Write
+      TIME // Basic timing  .
+      {
+	NV_RANGE_POP(); //Harmonics
+	NV_RANGE_POP(); //Write
+
+	gettimeofday(&end01, NULL);
+	cuSrch->timings[TIME_FILE_WRITE] += ((end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec));
+      }
 #endif
 
       /* Write the fundamental fourierprops to the cand file */
@@ -812,10 +862,14 @@ int main(int argc, char *argv[])
     }
 
 #ifdef CUDA	// Timing and debug stuff  .
-    NV_RANGE_POP();	// Optimisation
 
-    gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_ALL_OPT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    TIME // Timing  .
+    {
+      NV_RANGE_POP();	// Optimisation All
+
+      gettimeofday(&end, NULL);
+      cuSrch->timings[TIME_ALL_OPT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    }
 
 #ifdef CBL
     if ( sSpec.flags & FLAG_DPG_PLT_OPT )
@@ -842,154 +896,164 @@ int main(int argc, char *argv[])
     {
       printf("\n*************************************************************************************************\n                            Timing\n*************************************************************************************************\n");
 
-#ifdef CBL
-      printf("\n");
-
-      Logger slog(stdout);
-      slog.setCsvDeliminator('\t');
-      slog.setCsvLineNums(false);
-
-      slog.csvWrite("Timing:",   "<secs>");
-      slog.csvWrite(" Context",  "%9.06f", cuSrch->timings[TIME_CONTEXT]	* 1e-6 );
-      slog.csvWrite("  Prep  ",  "%9.06f", cuSrch->timings[TIME_PREP]		* 1e-6 );
-
-      slog.csvWrite("CPU Init",  "%9.06f", cuSrch->timings[TIME_CPU_INIT]	* 1e-6 );
-      slog.csvWrite(" CPU Gen",  "%9.06f", cuSrch->timings[TIME_CPU_CND_GEN]	* 1e-6 );
-      slog.csvWrite("CPU Srch",  "%9.06f", cuSrch->timings[TIME_CPU_SRCH]	* 1e-6 );
-      slog.csvWrite("CPU Rfne",  "%9.06f", cuSrch->timings[TIME_CPU_REFINE]	* 1e-6 );
-
-      slog.csvWrite("GPU Init",  "%9.06f", cuSrch->timings[TIME_GPU_INIT]	* 1e-6 );
-      slog.csvWrite(" GPU Gen",  "%9.06f", cuSrch->timings[TIME_GPU_CND_GEN]	* 1e-6 );
-      slog.csvWrite("GPU Srch",  "%9.06f", cuSrch->timings[TIME_GPU_SRCHALL]	* 1e-6 );
-      slog.csvWrite("CPU Rfne",  "%9.06f", cuSrch->timings[TIME_GPU_REFINE]	* 1e-6 );
-
-      slog.csvWrite(" GPU Pln",  "%9.06f", cuSrch->timings[TIME_GPU_PLN]	* 1e-6 );
-      slog.csvWrite(" GPU S&S",  "%9.06f", cuSrch->timings[TIME_GPU_SS]		* 1e-6 );
-      slog.csvWrite(" GPU Cand", "%9.06f", cuSrch->timings[TIME_CND]		* 1e-6 );
-
-      slog.csvWrite(" Opt All",  "%9.06f", cuSrch->timings[TIME_ALL_OPT]	* 1e-6 );
-
-      slog.csvWrite("    x    ", "%9.06f", ( cuSrch->timings[TIME_CPU_SRCH] + cuSrch->timings[TIME_CPU_REFINE] )/ (float)( cuSrch->timings[TIME_GPU_SRCHALL] + cuSrch->timings[TIME_GPU_REFINE] ) );
-
-      slog.csvEndLine();
-
-      printf("\n\n");
-#endif
-
-      if ( sSpec.flags & FLAG_TIME )  // Advanced timing massage  .
+      TIME // Timing  .
       {
-	int batch, stack;
-	float sums[TIME_CMP_END];
-	for ( int i = 0; i < TIME_CMP_END; i++)
-	  sums[i] = 0;
+#ifdef CBL
+	printf("\n");
 
+	Logger slog(stdout);
+	slog.setCsvDeliminator('\t');
+	slog.setCsvLineNums(false);
 
-	printf("\n===========================================================================================================================================\n");
-	printf("\nAdvanced timing, all times are in ms\n");
+	slog.csvWrite("Timing:",   "<secs>");
 
-	for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
+	slog.csvWrite(" Context",  "%9.06f", cuSrch->timings[TIME_CONTEXT]	* 1e-6 );
+	slog.csvWrite("  Prep  ",  "%9.06f", cuSrch->timings[TIME_PREP]		* 1e-6 );
+
+	slog.csvWrite("CPU Init",  "%9.06f", cuSrch->timings[TIME_CPU_INIT]	* 1e-6 );
+	slog.csvWrite(" CPU Gen",  "%9.06f", cuSrch->timings[TIME_CPU_CND_GEN]	* 1e-6 );
+	slog.csvWrite("CPU Srch",  "%9.06f", cuSrch->timings[TIME_CPU_SRCH]	* 1e-6 );
+	slog.csvWrite("CPU Rfne",  "%9.06f", cuSrch->timings[TIME_CPU_REFINE]	* 1e-6 );
+
+	slog.csvWrite("GPU Init",  "%9.06f", cuSrch->timings[TIME_GPU_INIT]	* 1e-6 );
+	slog.csvWrite(" GPU Gen",  "%9.06f", cuSrch->timings[TIME_GPU_CND_GEN]	* 1e-6 );
+	slog.csvWrite("GPU Srch",  "%9.06f", cuSrch->timings[TIME_GPU_SRCHALL]	* 1e-6 );
+	slog.csvWrite("CPU Rfne",  "%9.06f", cuSrch->timings[TIME_GPU_REFINE]	* 1e-6 );
+
+	slog.csvWrite(" GPU Pln",  "%9.06f", cuSrch->timings[TIME_GPU_PLN]	* 1e-6 );
+	slog.csvWrite(" GPU S&S",  "%9.06f", cuSrch->timings[TIME_GPU_SS]	* 1e-6 );
+	slog.csvWrite("GPU Cand",  "%9.06f", cuSrch->timings[TIME_CND]		* 1e-6 );
+
+	slog.csvWrite("  Output",  "%9.06f", cuSrch->timings[TIME_FILE_WRITE]	* 1e-6 );
+	slog.csvWrite(" Opt All",  "%9.06f", cuSrch->timings[TIME_ALL_OPT]	* 1e-6 );
+
+	slog.csvWrite("    x    ", "%9.06f", ( cuSrch->timings[TIME_CPU_SRCH] + cuSrch->timings[TIME_CPU_REFINE] )/ (float)( cuSrch->timings[TIME_GPU_SRCHALL] + cuSrch->timings[TIME_GPU_REFINE] ) );
+
+	slog.csvEndLine();
+
+	printf("\n\n");
+#endif
+      }
+
+      PROF // Profiling  .
+      {
+	if ( sSpec.flags & FLAG_PROF )  // Advanced timing massage  .
 	{
-	  if ( cuSrch->pInf->noBatches > 1 )
-	    printf("Batch %02i\n",batch);
-
-	  cuFFdotBatch*   batches = &cuSrch->pInf->batches[batch];
-
-	  char heads[TIME_CMP_END][15];
-	  float	bsums[TIME_CMP_END];
+	  int batch, stack;
+	  float sums[TIME_CMP_END];
 	  for ( int i = 0; i < TIME_CMP_END; i++)
-	    bsums[i] = 0;
+	    sums[i] = 0;
 
-	  FOLD // Heading  .
+
+	  printf("\n===========================================================================================================================================\n");
+	  printf("\nProfiling, all times are in ms\n");
+
+	  for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
 	  {
-	    sprintf(heads[TIME_CMP_RESP],		"Response");
+	    if ( cuSrch->pInf->noBatches > 1 )
+	      printf("Batch %02i\n",batch);
 
-	    sprintf(heads[TIME_CMP_KERFFT],		"Kernel FFT");
+	    cuFFdotBatch*   batches = &cuSrch->pInf->batches[batch];
 
-	    sprintf(heads[TIME_CMP_H2D],		"Copy H2D");
-
-	    if      ( batches->flags & CU_NORM_GPU_SM )
-	      sprintf(heads[TIME_CMP_NRM],		"Norm GPU SM");
-	    else if ( batches->flags & CU_NORM_GPU_OS )
-	      sprintf(heads[TIME_CMP_NRM],		"Norm GPU RDIX");
-	    else
-	      sprintf(heads[TIME_CMP_NRM],		"Norm CPU");
-
-	    if ( batches->flags & CU_INPT_FFT_CPU )
-	      sprintf(heads[TIME_CMP_FFT],		"Inp FFT CPU");
-	    else
-	      sprintf(heads[TIME_CMP_FFT],		"Inp FFT GPU");
-
-	    sprintf(heads[TIME_CMP_MULT],		"Multiplication");
-
-	    sprintf(heads[TIME_CMP_IFFT],		"Inverse FFT");
-
-	    sprintf(heads[TIME_CMP_D2D],		"Copy D2D");
-
-	    sprintf(heads[TIME_CMP_SS],			"Sum & Search");
-
-	    sprintf(heads[TIME_CMP_D2H],		"Copy D2H");
-
-	    sprintf(heads[TIME_CMP_STR],		"iCand storage");
-
-	    sprintf(heads[TIME_CMP_REFINE],		"Opt refine");
-
-	    sprintf(heads[TIME_CMP_DERIVS],		"Opt deriv");
-
-	    printf("\t\t");
+	    char heads[TIME_CMP_END][15];
+	    float	bsums[TIME_CMP_END];
 	    for ( int i = 0; i < TIME_CMP_END; i++)
-	      printf("%s\t", heads[i] );
+	      bsums[i] = 0;
 
-	    printf("\n");
-	  }
+	    FOLD // Heading  .
+	    {
+	      sprintf(heads[TIME_CMP_RESP],		"Response");
 
-	  for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
-	  {
+	      sprintf(heads[TIME_CMP_KERFFT],		"Kernel FFT");
 
-	    printf("Stack\t%02i\t", stack);
+	      sprintf(heads[TIME_CMP_H2D],		"Copy H2D");
+
+	      if      ( batches->flags & CU_NORM_GPU_SM )
+		sprintf(heads[TIME_CMP_NRM],		"Norm GPU SM");
+	      else if ( batches->flags & CU_NORM_GPU_OS )
+		sprintf(heads[TIME_CMP_NRM],		"Norm GPU RDIX");
+	      else
+		sprintf(heads[TIME_CMP_NRM],		"Norm CPU");
+
+	      sprintf(heads[TIME_CMP_MEM],		"Input Mem");
+
+	      if ( batches->flags & CU_INPT_FFT_CPU )
+		sprintf(heads[TIME_CMP_FFT],		"Inp FFT CPU");
+	      else
+		sprintf(heads[TIME_CMP_FFT],		"Inp FFT GPU");
+
+	      sprintf(heads[TIME_CMP_MULT],		"Multiplication");
+
+	      sprintf(heads[TIME_CMP_IFFT],		"Inverse FFT");
+
+	      sprintf(heads[TIME_CMP_D2D],		"Copy D2D");
+
+	      sprintf(heads[TIME_CMP_SS],		"Sum & Search");
+
+	      sprintf(heads[TIME_CMP_D2H],		"Copy D2H");
+
+	      sprintf(heads[TIME_CMP_STR],		"iCand storage");
+
+	      sprintf(heads[TIME_CMP_REFINE],		"Opt refine");
+
+	      sprintf(heads[TIME_CMP_DERIVS],		"Opt derivs");
+
+	      printf("\t\t");
+	      for ( int i = 0; i < TIME_CMP_END; i++)
+		printf("%s\t", heads[i] );
+
+	      printf("\n");
+	    }
+
+	    for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
+	    {
+
+	      printf("Stack\t%02i\t", stack);
+
+	      for ( int i = 0; i < TIME_CMP_END; i++)
+	      {
+		float val = batches->compTime[i*batches->noStacks+stack];
+		printf("%9.04f\t", val );
+		bsums[i] += val;
+	      }
+	      printf("\n");
+	    }
+
+	    if ( cuSrch->pInf->noBatches > 1 )
+	    {
+	      printf("\t\t");
+	      for ( int i = 0; i < TIME_CMP_END; i++)
+		printf("%s\t", "---------" );
+	      printf("\n");
+
+	      printf("\t\t");
+	      for ( int i = 0; i < TIME_CMP_END; i++)
+	      {
+		printf("%9.04f\t", bsums[i] );
+	      }
+	      printf("\n");
+	    }
 
 	    for ( int i = 0; i < TIME_CMP_END; i++)
 	    {
-	      float val = batches->compTime[i*batches->noStacks+stack];
-	      printf("%9.04f\t", val );
-	      bsums[i] += val;
+	      sums[i] += bsums[i];
 	    }
-	    printf("\n");
+
 	  }
+	  printf("\t\t");
+	  for ( int i = 0; i < TIME_CMP_END; i++)
+	    printf("%s\t", "---------" );
+	  printf("\n");
 
-	  if ( cuSrch->pInf->noBatches > 1 )
-	  {
-	    printf("\t\t");
-	    for ( int i = 0; i < TIME_CMP_END; i++)
-	      printf("%s\t", "---------" );
-	    printf("\n");
-
-	    printf("\t\t");
-	    for ( int i = 0; i < TIME_CMP_END; i++)
-	    {
-	      printf("%9.04f\t", bsums[i] );
-	    }
-	    printf("\n");
-	  }
-
+	  printf("TotalT\t\t");
 	  for ( int i = 0; i < TIME_CMP_END; i++)
 	  {
-	    sums[i] += bsums[i];
+	    printf("%9.04f\t", sums[i] );
 	  }
+	  printf("\n");
 
+	  printf("\n===========================================================================================================================================\n\n");
 	}
-	printf("\t\t");
-	for ( int i = 0; i < TIME_CMP_END; i++)
-	  printf("%s\t", "---------" );
-	printf("\n");
-
-	printf("TotalT\t\t");
-	for ( int i = 0; i < TIME_CMP_END; i++)
-	{
-	  printf("%9.04f\t", sums[i] );
-	}
-	printf("\n");
-
-	printf("\n===========================================================================================================================================\n\n");
       }
     }
 #endif
@@ -999,21 +1063,24 @@ int main(int argc, char *argv[])
 
   printf("Searched the following approx numbers of independent points:\n");
   for (ii = 0; ii < obs.numharmstages; ii++)
-    printf("  %2d harmonics:  %9lld  cutoff of %5.2f \n", (1 << ii), obs.numindep[ii], obs.powcut[ii] );
+    printf("  %2d harmonics:  %9lld  Threshold power: %5.2f \n", (1 << ii), obs.numindep[ii], obs.powcut[ii] );
 
   printf("\nTiming summary:\n");
 
 #ifdef CUDA // More timing  .
 
-  printf("     Prep time: %7.3f sec\n",		cuSrch->timings[TIME_PREP]		* 1e-6 );
-  if ( cmd->cpuP )
-    printf("    CPU search: %7.3f sec\n",	cuSrch->timings[TIME_CPU_SRCH]		* 1e-6 );
-  if ( cmd->gpuP )
+  TIME // Timing that does not need the CBL libraries  .
   {
-    printf("  CUDA Context: %7.3f sec\n",	cuSrch->timings[TIME_CONTEXT]		* 1e-6 );
-    printf("    GPU search: %7.3f sec\n",	cuSrch->timings[TIME_GPU_SRCHALL]	* 1e-6 );
+    printf("     Prep time: %7.3f sec\n",	cuSrch->timings[TIME_PREP]		* 1e-6 );
+    if ( cmd->cpuP )
+      printf("    CPU search: %7.3f sec\n",	cuSrch->timings[TIME_CPU_SRCH]		* 1e-6 );
+    if ( cmd->gpuP )
+    {
+      printf("  CUDA Context: %7.3f sec\n",	cuSrch->timings[TIME_CONTEXT]		* 1e-6 );
+      printf("    GPU search: %7.3f sec\n",	cuSrch->timings[TIME_GPU_SRCHALL]	* 1e-6 );
+    }
+    printf("  Optimization: %7.3f sec\n",	cuSrch->timings[TIME_ALL_OPT]		* 1e-6 );
   }
-  printf("  Optimization: %7.3f sec\n",		cuSrch->timings[TIME_ALL_OPT]		* 1e-6 );
 #endif
 
   tott = times(&runtimes)   / (double) CLK_TCK - tott;

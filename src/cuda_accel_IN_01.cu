@@ -4,7 +4,7 @@
 template<int batches>
 __device__ void scaleAndSpread(fcomplexcu* data, int stride, int noRespPerBin, const float factor, const int noEls)
 {
-  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
+  //const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
   const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
 

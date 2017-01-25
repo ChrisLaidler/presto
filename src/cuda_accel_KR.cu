@@ -146,9 +146,12 @@ int createStackKernel(cuFfdotStack* cStack)
     }
   }
 
-  if ( cStack->flags & FLAG_TIME )
+  PROF // Profiling  .
   {
-    CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
+    if ( cStack->flags & FLAG_PROF )
+    {
+      CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
+    }
   }
 
   FOLD // Call the CUDA kernels  .
@@ -170,9 +173,12 @@ int createStackKernel(cuFfdotStack* cStack)
     CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
   }
 
-  if ( cStack->flags & FLAG_TIME )
+  PROF // Profiling  .
   {
-    CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
+    if ( cStack->flags & FLAG_PROF )
+    {
+      CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
+    }
   }
 
   return 0;
@@ -230,10 +236,9 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
     }
   }
 
-
-  FOLD // Timing  .
+  PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_TIME )
+    if ( batch->flags & FLAG_PROF )
     {
       // NOTE: Timing kernel creation is tricky, no events or place to store the results has been allocated so do it here, the first batch made from this kernel will take over the component timing array
 
@@ -262,7 +267,10 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
   {
     infoMSG(4,5,"Calculate the response values\n");
 
-    NV_RANGE_PUSH("Calc stack response");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Calc stack response");
+    }
 
     for (int i = 0; i < batch->noStacks; i++)
     {
@@ -272,12 +280,15 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       createStackKernel(cStack);
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Calc stack response
+    }
   }
 
-  FOLD // Timing  .
+  PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_TIME )
+    if ( batch->flags & FLAG_PROF )
     {
       for (int stack = 0; stack < batch->noStacks; stack++)
       {
@@ -293,7 +304,10 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
   {
     infoMSG(4,5,"FFT the  response values\n");
 
-    NV_RANGE_PUSH("FFT kernels");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("FFT kernels");
+    }
 
     for (int i = 0; i < batch->noStacks; i++)
     {
@@ -301,16 +315,17 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
       cuFfdotStack* cStack = &batch->stacks[i];
 
-
-
       if ( (batch->flags & FLAG_KER_DOUBFFT) || (batch->flags & FLAG_DOUBLE) )
       {
 	FOLD // Create the plan  .
 	{
 	  infoMSG(4,6,"Create plan\n");
 
-	  sprintf(msg,"Plan %i",i);
-	  NV_RANGE_PUSH(msg);
+	  PROF // Profiling  .
+	  {
+	    sprintf(msg,"Plan %i",i);
+	    NV_RANGE_PUSH(msg);
+	  }
 
 	  int n[]             = {cStack->width};
 	  int inembed[]       = {cStack->strideCmplx* sizeof(double2)};
@@ -325,12 +340,15 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, height), "Creating plan for FFT'ing the kernel.");
 	  CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 
-	  NV_RANGE_POP();
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // msg
+	  }
 	}
 
-	FOLD // Timing  .
+	PROF // Profiling  .
 	{
-	  if ( cStack->flags & FLAG_TIME )
+	  if ( cStack->flags & FLAG_PROF )
 	  {
 	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
 	  }
@@ -340,19 +358,25 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	{
 	  infoMSG(4,6,"Call the plan\n");
 
-	  sprintf(msg,"Call %i",i);
-	  NV_RANGE_PUSH(msg);
+	  PROF // Profiling  .
+	  {
+	    sprintf(msg,"Call %i",i);
+	    NV_RANGE_PUSH(msg);
+	  }
 
 	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
 	  CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *)doubleKres[i].d_kerData, (cufftDoubleComplex *) doubleKres[i].d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
 	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
-	  NV_RANGE_POP();
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); //msg
+	  }
 	}
 
-	FOLD // Timing  .
+	PROF // Profiling  .
 	{
-	  if ( cStack->flags & FLAG_TIME )
+	  if ( cStack->flags & FLAG_PROF )
 	  {
 	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
 	  }
@@ -362,13 +386,19 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	{
 	  infoMSG(4,6,"Destroy the plan\n");
 
-	  sprintf(msg,"Dest %i",i);
-	  NV_RANGE_PUSH(msg);
+	  PROF // Profiling  .
+	  {
+	    sprintf(msg,"Dest %i",i);
+	    NV_RANGE_PUSH(msg);
+	  }
 
 	  CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
 	  CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
 
-	  NV_RANGE_POP();
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); //msg
+	  }
 	}
       }
       else
@@ -377,10 +407,13 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	{
 	  infoMSG(4,6,"Create plan\n");
 
-	  sprintf(msg,"Plan %i",i);
-	  NV_RANGE_PUSH(msg);
-	  size_t workSize;
+	  PROF // Profiling  .
+	  {
+	    sprintf(msg,"Plan %i",i);
+	    NV_RANGE_PUSH(msg);
+	  }
 
+	  size_t workSize;
 	  int n[]             = {cStack->width};
 	  int inembed[]       = {cStack->strideCmplx* sizeof(fcomplexcu)};
 	  int istride         = 1;
@@ -393,10 +426,10 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  // Normal plans
 	  if (buffer)
 	  {
-	    // use pre allocated memory
+	    // use pre-allocated memory
 	    CUFFT_SAFE_CALL( cufftCreate(&cStack->plnPlan), "cufftCreate");
 	    CUFFT_SAFE_CALL( cufftSetAutoAllocation(cStack->plnPlan, 0), "cufftSetAutoAllocation");
-	    CUFFT_SAFE_CALL( cufftSetWorkArea(cStack->plnPlan, buffer), "cufftSetWorkArea" ); // Assighn pre allocated memory
+	    CUFFT_SAFE_CALL( cufftSetWorkArea(cStack->plnPlan, buffer), "cufftSetWorkArea" ); // Assign pre-allocated memory
 	    CUFFT_SAFE_CALL( cufftMakePlanMany(cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height, &workSize), "cufftMakePlanMany" );
 	  }
 	  else
@@ -405,12 +438,15 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	    CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 	  }
 
-	  NV_RANGE_POP();
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); //msg
+	  }
 	}
 
-	FOLD // Timing  .
+	PROF // Profiling  .
 	{
-	  if ( cStack->flags & FLAG_TIME )
+	  if ( cStack->flags & FLAG_PROF )
 	  {
 	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normInit,  cStack->initStream),"Recording event: searchInit");
 	  }
@@ -420,19 +456,25 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	{
 	  infoMSG(4,6,"Call the plan\n");
 
-	  sprintf(msg,"Call %i",i);
-	  NV_RANGE_PUSH(msg);
+	  PROF // Profiling  .
+	  {
+	    sprintf(msg,"Call %i",i);
+	    NV_RANGE_PUSH(msg);
+	  }
 
 	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
 	  CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->kernels->d_kerData, (cufftComplex *) cStack->kernels->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
 	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
-	  NV_RANGE_POP();
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // msg
+	  }
 	}
 
-	FOLD // Timing  .
+	PROF // Profiling  .
 	{
-	  if ( cStack->flags & FLAG_TIME )
+	  if ( cStack->flags & FLAG_PROF )
 	  {
 	    CUDA_SAFE_CALL(cudaEventRecord(cStack->normComp,  cStack->initStream),"Recording event: searchInit");
 	  }
@@ -444,13 +486,19 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  {
 	    infoMSG(4,6,"Destroy the plan\n");
 
-	    sprintf(msg,"Dest %i",i);
-	    NV_RANGE_PUSH(msg);
+	    PROF // Profiling  .
+	    {
+	      sprintf(msg,"Dest %i",i);
+	      NV_RANGE_PUSH(msg);
+	    }
 
 	    CUFFT_SAFE_CALL(cufftDestroy(cStack->plnPlan), "Destroying plan for complex data of stack. [cufftDestroy]");
 	    CUDA_SAFE_CALL(cudaGetLastError(), "Destroying the plan.");
 
-	    NV_RANGE_POP();
+	    PROF // Profiling  .
+	    {
+	      NV_RANGE_POP(); //msg
+	    }
 	  }
 	}
       }
@@ -458,12 +506,15 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
     CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // FFT kernels
+    }
   }
 
-  FOLD // Timing  .
+  PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_TIME )
+    if ( batch->flags & FLAG_PROF )
     {
       for (int stack = 0; stack < batch->noStacks; stack++)
       {
@@ -506,6 +557,4 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       }
     }
   }
-
-
 }

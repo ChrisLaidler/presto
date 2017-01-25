@@ -55,7 +55,9 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
         const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
         const int kerYOffset    = KERNEL_OFF_HARM[firstPlane + pln];
         const int planeY        = kerY - kerYOffset;
+#ifdef WITH_ITLV_PLN
         const int ns2           = plnHeight * stride;
+#endif
 
         if( planeY >= 0 && planeY < plnHeight )
         {

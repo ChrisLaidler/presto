@@ -23,11 +23,14 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
     if ( ix < stride )
     {
       const int plnHeight = HEIGHT_HARM[n];
-      const int plnStride = plnHeight*stride;
       const short lDepth  = ceilf(plnHeight/(float)gridDim.y);
       const short y0      = lDepth*blockIdx.y;
       const short y1      = MIN(y0+lDepth, plnHeight);
       fcomplexcu* ker     = (fcomplexcu*)KERNEL_HARM[n] + y0 * stride + ix;
+
+#ifdef WITH_ITLV_PLN
+      const int plnStride = plnHeight*stride;
+#endif
 
       // read input for each step into registers
       for (int step = 0; step < noSteps; step++)      // Loop over planes  .

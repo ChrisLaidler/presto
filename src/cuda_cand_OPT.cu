@@ -1,7 +1,8 @@
 #include <curand.h>
-#include <math.h>             // log
+#include <math.h>		// log
 #include <curand_kernel.h>
 #include <stdlib.h>
+#include <stdint.h>		// uint64_t
 
 #include "cuda_math_ext.h"
 #include "cuda_accel.h"
@@ -747,7 +748,10 @@ void opt_genResponse(cuRespPln* pln, cudaStream_t stream)
 
 int chKpn( cuOptCand* pln, fftInfo* fft )
 {
-  NV_RANGE_PUSH("Harm INP");
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Harm INP");
+  }
 
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 
@@ -807,7 +811,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
   if ( newInp ) // Calculate normalisation factor  .
   {
-    infoMSG(3,3,"New Input\n");
+    infoMSG(4,4,"New Input\n");
 
     pln->input->stride = inpStride;
     pln->input->noHarms = pln->noHarms;
@@ -821,7 +825,10 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
     FOLD // Calculate normalisation factor  .
     {
-      NV_RANGE_PUSH("Calc Norm factor");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Calc Norm factor");
+      }
 
       for ( int i = 1; i <= pln->noHarms; i++ )
       {
@@ -835,13 +842,16 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 	}
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // Calc Norm factor
+      }
     }
   }
 
   if ( newInp ) // A blocking synchronisation to make sure we can write to host memory  .
   {
-    infoMSG(3,4,"pre synchronisation [blocking]\n");
+    infoMSG(5,5,"pre synchronisation [blocking]\n");
 
     CUDA_SAFE_CALL(cudaEventSynchronize(pln->inpCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
   }
@@ -885,7 +895,10 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
     }
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // Harm INP
+  }
 
   return newInp;
 }
@@ -913,6 +926,8 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   int lftIdx;
   int topZidx;
+
+  infoMSG(4,4,"ff section, Height: %5.4f z - Width: %5.4f r   Centred on (%.6f, %.6f)\n", pln->zSize, pln->rSize, pln->centR, pln->centZ );
 
   FOLD // Determine optimisation kernels  .
   {
@@ -1000,7 +1015,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   if ( newInp ) // Copy input data to the device  .
   {
-    infoMSG(3,4,"Copy input to device\n");
+    infoMSG(5,5,"Copy input to device\n");
 
     CUDA_SAFE_CALL(cudaMemcpyAsync(pln->input->d_inp, pln->input->h_inp, pln->input->stride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, pln->stream), "Copying optimisation input to the device");
     CUDA_SAFE_CALL(cudaEventRecord(pln->inpCmp, pln->stream),"Recording event: inpCmp");
@@ -1049,11 +1064,14 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
     if ( optKer & OPT_KER_PLN_BLK )		// Use block kernel
     {
-      infoMSG(4,5,"Block kernel [ No threads %i  Width %i no Blocks %i]\n", (int)noR, blkWidth, noBlk);
+      infoMSG(4,4,"Block kernel [ No threads %i  Width %i no Blocks %i]", (int)noR, blkWidth, noBlk);
 
       if ( optKer & OPT_KER_PLN_BLK_NRM )		// Use block kernel
       {
 #ifdef WITH_OPT_BLK1
+
+	infoMSG(5,5,"Block kernel 1");
+
 	// Thread blocks
 	dimBlock.x = noR;
 	dimBlock.y = 16;
@@ -1112,6 +1130,9 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
       if ( optKer & OPT_KER_PLN_BLK_EXP )
       {
 #ifdef WITH_OPT_BLK2
+
+	infoMSG(5,5,"Block kernel 2");
+
 	dimBlock.x = 16;
 	dimBlock.y = 16;
 
@@ -1191,6 +1212,8 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
       if ( optKer & OPT_KER_PLN_BLK_3 )
       {
+	infoMSG(5,5,"Block kernel 3");
+
 	dimBlock.x = 16;
 	dimBlock.y = 16;
 
@@ -1202,7 +1225,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 	cudaMemsetAsync ( pln->d_out, 0, outSz, pln->stream );
 	CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory");
 
-	// One block per harmonic, thus we can sort input powers in Shared memory
+	// One block per harmonic, thus we can sort input powers in shared memory
 	dimGrid.x = noX * pln->noHarms ;
 	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
@@ -1248,7 +1271,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     }
     else                  // Use normal kernel
     {
-      //      slog.csvWrite("Type","PNTS");
+      infoMSG(4,4,"Grid kernel");
 
       dimBlock.x = 16;
       dimBlock.y = 16;
@@ -1272,7 +1295,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 	if ( smSz < 6144*0.9 ) // ~% of SM	10: 4915
 	{
 
-	  infoMSG(3,5,"Flat kernel\n");
+	  infoMSG(5,5,"Flat kernel\n");
 
 	  // One block per harmonic, thus we can sort input powers in Shared memory
 	  dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
@@ -1308,10 +1331,10 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 #endif
       }
 
-      if ( optKer & OPT_KER_PLN_PTS_NRM ) // thread point  .
+      if ( optKer & OPT_KER_PLN_PTS_NRM ) // Thread point  .
       {
 #ifdef WITH_OPT_PLN1
-	infoMSG(3,5,"Flat kernel\n");
+	infoMSG(5,5,"Flat kernel 1\n");
 
 	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit1, pln->stream),"Recording event: tInit1");
 
@@ -1332,7 +1355,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
       if ( optKer & OPT_KER_PLN_PTS_EXP ) // Thread response pos  .
       {
 #ifdef WITH_OPT_PLN2
-	infoMSG(3,5,"Mult ker kernel\n");
+	infoMSG(5,5,"Mult ker kernel\n");
 
 	CUDA_SAFE_CALL(cudaEventRecord(pln->tInit2, pln->stream),"Recording event: tInit2");
 
@@ -1355,10 +1378,10 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 #endif
       }
 
-      if ( optKer & OPT_KER_PLN_PTS_3 ) // Thread response pos  .
+      if ( optKer & OPT_KER_PLN_PTS_3   ) // Thread response pos  .
       {
 #ifdef WITH_OPT_PLN3
-	infoMSG(3,5,"Pln by point kernel 3\n");
+	infoMSG(5,5,"Grid kernel 3");
 
 	int noX = ceil(pln->noR / (float)dimBlock.x);
 	int harmWidth = noX*dimBlock.x;
@@ -1393,7 +1416,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   FOLD // Copy data back to host  .
   {
-    infoMSG(3,4,"Copy data back\n");
+    infoMSG(4,4,"Copy data back\n");
 
     CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, outSz, cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
     CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
@@ -1403,22 +1426,33 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
     {
-      infoMSG(3,4,"pre synchronisation [blocking]\n");
+      infoMSG(5,5,"pre synchronisation [blocking]\n");
 
-      NV_RANGE_PUSH("EventSynch");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("EventSynch");
+      }
+
       CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-      NV_RANGE_POP();
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // EventSynch
+      }
     }
 
     FOLD // Calc Powers  .
     {
       if ( optKer & ( OPT_KER_PLN_BLK_EXP | OPT_KER_PLN_PTS_EXP ) )
       {
-	NV_RANGE_PUSH("Calc Powers");
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Calc Powers");
+	}
 
 	int noHarms = pln->noHarms;
 
-	// Complex harminic output
+	// Complex harmonic output
 	for (int indy = 0; indy < pln->noZ; indy++ )
 	{
 	  for (int indx = 0; indx < pln->noR ; indx++ )
@@ -1432,7 +1466,10 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 	  }
 	}
 
-	NV_RANGE_POP();
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // Calc Powers
+	}
       }
     }
   }
@@ -1452,7 +1489,10 @@ void optemiseTree(candTree* tree, cuOptCand* oPlnPln)
 
 int addPlnToTree(candTree* tree, cuOptCand* pln)
 {
-  NV_RANGE_PUSH("addPlnToTree");
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("addPlnToTree");
+  }
 
   FOLD // Get new max  .
   {
@@ -1482,14 +1522,20 @@ int addPlnToTree(candTree* tree, cuOptCand* pln)
     }
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // addPlnToTree
+  }
 
   return 0;
 }
 
 candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn)
 {
-  //  NV_RANGE_PUSH("opt_cont");
+  //  PROF // Profiling  .
+  //  {
+  //    NV_RANGE_PUSH("opt_cont");
+  //  }
   //
   //  searchSpecs*  sSpec   = pln->cuSrch->sSpec;
   //  initCand* iCand 	= (initCand*)cont->data;
@@ -1739,7 +1785,7 @@ candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* ff
 template<typename T>
 int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int plt = -1, int nn = 0, int lv = 0 )
 {
-  infoMSG(3,2,"Gen plain\n");
+
   int newInput = 0;
 
   fftInfo*	fft	= &pln->cuSrch->sSpec->fftInf;
@@ -1766,7 +1812,7 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
       pln->centZ          = cand->z - zRes/2.0;
     }
 
-    if ( ffdotPln<T>(pln, fft) )
+    if ( ffdotPln<T>(pln, fft) ) // Create the section of ff plane  .
     {
       // New input was used so don't maintain the old max
       cand->power = 0;
@@ -1774,18 +1820,12 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
     }
   }
 
-//  FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
-//  {
-//    infoMSG(3,4,"pre synchronisation [blocking]\n");
-//
-//    NV_RANGE_PUSH("EventSynch");
-//    CUDA_SAFE_CALL(cudaEventSynchronize(pln->outCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-//    NV_RANGE_POP();
-//  }
-
   FOLD // Get new max  .
   {
-    NV_RANGE_PUSH("Get Max");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Get Max");
+    }
 
     for (int indy = 0; indy < pln->noZ; indy++ )
     {
@@ -1803,9 +1843,12 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
       }
     }
 
-    infoMSG(4,4,"Max Power %8.3f at (%.4f %.4f)\n", cand->power, cand->r, cand->z);
+    infoMSG(4,4,"Max Power %8.3f at (%.6f %.6f)\n", cand->power, cand->r, cand->z);
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Get Max
+    }
   }
 
   FOLD // Write CVS & plot output  .
@@ -1817,14 +1860,18 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
     {
       infoMSG(4,4,"Write CVS\n");
 
-      NV_RANGE_PUSH("Write CVS");
-
       char tName[1024];
       sprintf(tName,"/home/chris/accel/Cand_%05i_Rep_%02i_Lv_%i_h%02i.csv", nn, plt, lv, cand->numharm );
       FILE *f2 = fopen(tName, "w");
 
       FOLD // Write CSV
       {
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Write CVS");
+	}
+
 	fprintf(f2,"%i",pln->noHarms);
 
 	for (int indx = 0; indx < pln->noR ; indx++ )
@@ -1839,7 +1886,7 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
 	  double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
 	  if ( pln->noZ == 1 )
 	    z = 0;
-	  
+
 	  fprintf(f2,"%.15f",z);
 
 	  for (int indx = 0; indx < pln->noR ; indx++ )
@@ -1850,20 +1897,33 @@ int optInitCandPosPln(initCand* cand, cuOptCand* pln, int noP, double scale, int
 	  fprintf(f2,"\n");
 	}
 	fclose(f2);
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // Write CVS
+	}
       }
 
       FOLD // Make image  .
       {
 	infoMSG(4,4,"Image\n");
 
-	NV_RANGE_PUSH("Image");
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Image");
+	}
+
 	char cmd[1024];
 	sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s > /dev/null 2>&1", tName);
 	system(cmd);
-	NV_RANGE_POP();
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // Image
+	}
       }
 
-      NV_RANGE_POP();
+
     }
 #endif
   }
@@ -1920,6 +1980,13 @@ int prepInput(initCand* cand, cuOptCand* pln, double sz)
 template<typename T>
 int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int plt = 0, int nn = 0, int lv = 0 )
 {
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Simplex");
+  }
+
+  infoMSG(3,3,"Simplex refine position - lvl %i  size %f by %f \n", lv+1, rSize, zSize);
+
   // These are the Nelder–Mead parameter values
   double reflect	= 1.0;
   double expand		= 2.0;
@@ -1952,6 +2019,8 @@ int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, doub
 
   int ite = 0;
   double rtol;			///< Ratio of low to high
+
+  infoMSG(4,4,"Start - Power: %8.3f at (%.6f %.6f)", cnds[0].power, cnds[0].r, cnds[0].z);
 
   while (1)
   {
@@ -2052,6 +2121,13 @@ int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, doub
   cand->z = olst[NM_BEST]->z;
   cand->power = olst[NM_BEST]->power;
 
+  infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) after %3i iterations.", cand->power, cand->r, cand->z, ite);
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // Simplex
+  }
+
   return 1;
 }
 
@@ -2061,7 +2137,10 @@ cuHarmInput* duplicateHost(cuHarmInput* orr)
   {
     size_t sz = MIN(orr->size, orr->noHarms * orr->stride * sizeof(fcomplexcu) * 1.1);
 
-    NV_RANGE_PUSH("Opt derivs");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Opt derivs");
+    }
 
     cuHarmInput* res = (cuHarmInput*)malloc(sizeof(cuHarmInput));
 
@@ -2069,11 +2148,12 @@ cuHarmInput* duplicateHost(cuHarmInput* orr)
     res->d_inp = NULL;
     res->h_inp = (fcomplexcu*)malloc(sz);
 
-    NV_RANGE_PUSH("memcpy");
     memcpy(res->h_inp, orr->h_inp, res->noHarms * res->stride * sizeof(fcomplexcu));
-    NV_RANGE_POP();
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); //Opt derivs
+    }
 
     return res;
   }
@@ -2094,27 +2174,29 @@ void* optCandDerivs(void* ptr)
   cuSearch*	srch	= res->cuSrch;
 
   int ii;
-  struct timeval start, end;    // Timing variables
+  struct timeval start, end;    // Profiling variables
 
   accelcand*    cand  = res->cand;
   searchSpecs*  sSpec = srch->sSpec;
   fftInfo*      fft   = &sSpec->fftInf;
 
-  infoMSG(4,4,"optCandDerivs\n");
-
-  if ( srch->sSpec->flags & FLAG_TIME ) // Timing  .
+  PROF // Profiling  .
   {
-    gettimeofday(&start, NULL);
+    if ( srch->sSpec->flags & FLAG_PROF )
+    {
+      gettimeofday(&start, NULL);
+    }
   }
 
   if ( srch->sSpec->flags & FLAG_OPT_NM_REFINE )
   {
-    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    PROF // Profiling  .
     {
-      NV_RANGE_PUSH("NM_REFINE");
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      {
+	NV_RANGE_PUSH("NM_REFINE");
+      }
     }
-
-    infoMSG(5,5,"NM_REFINE\n");
 
     initCand iCand;
     iCand.numharm = cand->numharm;
@@ -2132,9 +2214,12 @@ void* optCandDerivs(void* ptr)
     freeHarmInput(res->input);
     res->input = NULL;
 
-    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    PROF // Profiling  .
     {
-      NV_RANGE_POP();
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      {
+	NV_RANGE_POP(); // NM_REFINE
+      }
     }
   }
 
@@ -2155,9 +2240,12 @@ void* optCandDerivs(void* ptr)
 
   FOLD // Update fundamental values to the optimised ones  .
   {
-    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    PROF // Profiling  .
     {
-      NV_RANGE_PUSH("DERIVS");
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      {
+	NV_RANGE_PUSH("DERIVS");
+      }
     }
 
     infoMSG(5,5,"DERIVS\n");
@@ -2179,8 +2267,6 @@ void* optCandDerivs(void* ptr)
 
     for( ii = 1; ii <= maxHarms; ii++ )
     {
-      infoMSG(6,6,"Harm %i\n",ii );
-
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
       {
 	locpow = get_localpower3d(fft->fft, fft->noBins, cand->r*ii, cand->z*ii, 0.0);
@@ -2208,6 +2294,8 @@ void* optCandDerivs(void* ptr)
 
 	sig		= candidate_sigma_cu(cand->power, (ii), numindep );
 
+	infoMSG(6,6,"Harm %2i  local power %6.3f, normalised power %8.3f,   sigma %5.2f \n", ii, locpow, power, sig );
+
 	if ( sig > maxSig || ii == 1 )
 	{
 	  maxSig        = sig;
@@ -2233,7 +2321,7 @@ void* optCandDerivs(void* ptr)
       cand->sigma	= maxSig;
       cand->power	= bestP;
 
-      infoMSG(4,4,"Cand best val Sigma: %5.2f Power: %6.4f\n", maxSig, bestP);
+      infoMSG(4,4,"Cand best val Sigma: %5.2f Power: %6.4f  %i harmonics summed.", maxSig, bestP, bestH);
     }
     else
     {
@@ -2242,22 +2330,28 @@ void* optCandDerivs(void* ptr)
       numindep		= srch->numindep[noStages];
       cand->sigma	= candidate_sigma_cu(candHPower, cand->numharm, numindep);
 
-      infoMSG(4,4,"Cand harm val Sigma: %5.2f Power: %6.4f\n", cand->sigma, cand->power);
+      infoMSG(4,4,"Cand harm val Sigma: %5.2f Power: %6.4f  %i harmonics summed.", cand->sigma, cand->power, cand->numharm);
     }
 
-    if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+    PROF // Profiling  .
     {
-      NV_RANGE_POP();
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      {
+	NV_RANGE_POP(); // DERIVS
+      }
     }
   }
 
-  if ( srch->sSpec->flags & FLAG_TIME ) // Timing  .
+  PROF // Profiling  .
   {
-    pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
-    gettimeofday(&end, NULL);
-    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-    res->cuSrch->pInf->batches->compTime[res->cuSrch->pInf->batches->noStacks*TIME_CMP_DERIVS] += v1;
-    pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
+    if ( srch->sSpec->flags & FLAG_PROF )
+    {
+      pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
+      gettimeofday(&end, NULL);
+      float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+      res->cuSrch->pInf->batches->compTime[res->cuSrch->pInf->batches->noStacks*TIME_CMP_DERIVS] += v1;
+      pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
+    }
   }
 
   // Decrease the count number of running threads
@@ -2274,7 +2368,7 @@ void* optCandDerivs(void* ptr)
  */
 void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, int candNo = -1)
 {
-  infoMSG(2,2,"Calc Cand Derivatives \n");
+  infoMSG(2,2,"Calc Cand Derivatives.\n");
 
   candSrch*     thrdDat  = new candSrch;
   memset(thrdDat, 0, sizeof(candSrch));
@@ -2288,7 +2382,10 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
     thrdDat->input = duplicateHost(inp);
   }
 
-  NV_RANGE_PUSH("Post Thred");
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Post Thread");
+  }
 
   // Increase the count number of running threads
   sem_post(&srch->threasdInfo->running_threads);
@@ -2309,7 +2406,10 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
     optCandDerivs( (void*) thrdDat );
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // Post Thred
+  }
 
   infoMSG(2,2,"Done");
 }
@@ -2317,18 +2417,18 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
 
 /** This is the main function called by external elements  .
  *
- * @param cand
- * @param srch
- * @param obs
- * @param nn
- * @param pln
+ * @param cand		The canidate to refine
+ * @param pln		The plane data structure to use for the GPU position refinement
+ * @param candNo	The index of the candidate being optimised
  */
-
 void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 {
-  infoMSG(2,2,"Optimise candidate by plain\n");
+  infoMSG(2,2,"Refine location by plain\n");
 
-  NV_RANGE_PUSH("Plns");
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Plns");
+  }
 
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 
@@ -2365,7 +2465,7 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
       sz = sSpec->optPlnSiz[4];
 
     pln->halfWidth 	= 0;
-    cand->power	= 0;				// Set initial power to zero
+    cand->power	= 0;					// Set initial power to zero
 
     for ( int lvl = 0; lvl < NO_OPT_LEVS; lvl++ )
     {
@@ -2374,26 +2474,30 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
       lrep		= 0;
       depth		= 1;
 
-      if ( ( lvl == NO_OPT_LEVS-1 ) || (sz < 0.002) /*|| ( (sz < 0.06) && (abs(pln->centZ) < 0.05) )*/ )
+      if ( noP )					// Check if there are points in this plane ie. are we optimising position at this level  .
       {
-	// Last if last plane is not 0, it will be done with double precision
-	if (!doub)
-	  cand->power = 0;
+	if ( ( lvl == NO_OPT_LEVS-1 ) || (sz < 0.002) /*|| ( (sz < 0.06) && (abs(pln->centZ) < 0.05) )*/ )	// Potently force double precision
+	{
+	  // Last if last plane is not 0, it will be done with double precision
+	  if (!doub)
+	    cand->power = 0;
 
-	doub = true;
-      }
+	  doub = true;
+	}
 
-      if ( noP )
-      {
-	while ( (depth > 0) && (lrep < mxRep) )
+	while ( (depth > 0) && (lrep < mxRep) )		// Recursively make planes at this scale  .
 	{
 	  if ( doub )
 	  {
+	    infoMSG(3,3,"Generate double precision plane - lvl %i  depth: %i  iteration %2i\n", lvl+1, depth, lrep);
+
 	    // Double precision
 	    optInitCandPosPln<double>(cand, pln, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
 	  else
 	  {
+	    infoMSG(3,3,"Generate single precision plane - lvl %i  depth: %i  iteration %2i\n", lvl+1, depth, lrep);
+
 	    // Standard single precision
 	    optInitCandPosPln<float>(cand, pln, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
@@ -2409,11 +2513,12 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 	      // Zoom out
 	      sz *= sSpec->optPlnScale / 2.0 ;
 	      depth++;
-	      infoMSG(7,7,"Zoom out\n");
+	      infoMSG(5,5,"Zoom out");
 	    }
 	    else
 	    {
 	      // we'r just going to move the plane
+	      infoMSG(5,5,"Move plain");
 	    }
 	  }
 	  else
@@ -2421,14 +2526,14 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 	    // Break condition
 	    if ( rRes < 1e-5 )
 	    {
-	      infoMSG(7,7,"Break SZ small enough\n");
+	      infoMSG(5,5,"Break size is small enough\n");
 	      break;
 	    }
 
 	    // Zoom in
 	    sz /= sSpec->optPlnScale;
 	    depth--;
-	    infoMSG(7,7,"Zoom in\n");
+	    infoMSG(5,5,"Zoom in\n");
 	    if ( sz < 2.0*rRes )
 	      sz = rRes*2.0;
 	  }
@@ -2436,10 +2541,20 @@ void optInitCandLocPlns(initCand* cand, cuOptCand* pln, int candNo )
 	  ++lrep;
 	}
       }
+      else
+      {
+	if ( doub )
+	  infoMSG(3,3,"Skip plane lvl %i (double precision)", lvl+1);
+	else
+	  infoMSG(3,3,"Skip plane lvl %i (single precision)", lvl+1);
+      }
     }
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // Plns
+  }
 }
 
 /** This is the main function called by external elements  .
@@ -2452,48 +2567,64 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
 {
   searchSpecs*  sSpec   = pln->cuSrch->sSpec;
 
-  char Txt[1024];
-  sprintf(Txt, "Opt Cand %03i", candNo);
-  NV_RANGE_PUSH(Txt);
+  PROF // Profiling  .
+  {
+    char Txt[1024];
+    sprintf(Txt, "Opt Cand %03i", candNo);
 
-  initCand iCand;
+    NV_RANGE_PUSH(Txt);
+  }
+
+  initCand iCand;				// plane refining uses an initial candidate data structure
   iCand.r 		= cand->r;
   iCand.z 		= cand->z;
   iCand.power		= cand->power;
   iCand.numharm 	= cand->numharm;
 
-  struct timeval start, end;    // Timing variables
+  FOLD // Refine position in ff space  .
+  {
+    struct timeval start, end;    // Profiling variables
 
-  if ( sSpec->flags & FLAG_TIME ) // Timing  .
-  {
-    gettimeofday(&start, NULL);
-  }
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Refine pos");
 
-  if      ( sSpec->flags & FLAG_OPT_NM )
-  {
-    NV_RANGE_PUSH("Simplex");
-    prepInput(&iCand, pln, 15);
-    optInitCandPosSim<double>(&iCand, pln->input, 0.5, 0.5*sSpec->optPlnScale);
-    NV_RANGE_POP();
-  }
-  else if ( sSpec->flags & FLAG_OPT_SWARM )
-  {
-    fprintf(stderr,"ERROR: Particle swarm optimisation has been removed.\n");
-    exit(EXIT_FAILURE);
-  }
-  else // Default use planes
-  {
-    optInitCandLocPlns(&iCand, pln, candNo);
-  }
+      if ( sSpec->flags & FLAG_PROF )
+      {
+	gettimeofday(&start, NULL);
+      }
+    }
 
-  if ( sSpec->flags & FLAG_TIME ) // Timing  .
-  {
-    gettimeofday(&end, NULL);
-    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+    if      ( sSpec->flags & FLAG_OPT_NM )
+    {
+      prepInput(&iCand, pln, 15);
+      optInitCandPosSim<double>(&iCand, pln->input, 0.5, 0.5*sSpec->optPlnScale);
+    }
+    else if ( sSpec->flags & FLAG_OPT_SWARM )
+    {
+      fprintf(stderr,"ERROR: Particle swarm optimisation has been removed.\n");
+      exit(EXIT_FAILURE);
+    }
+    else // Default use planes
+    {
+      optInitCandLocPlns(&iCand, pln, candNo);
+    }
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP();	// Refine pos
+
+      if ( sSpec->flags & FLAG_PROF )
+      {
+	gettimeofday(&end, NULL);
+	float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
 #pragma omp atomic
-    pln->cuSrch->pInf->batches->compTime[pln->cuSrch->pInf->batches->noStacks*TIME_CMP_REFINE] += v1;
+	pln->cuSrch->pInf->batches->compTime[pln->cuSrch->pInf->batches->noStacks*TIME_CMP_REFINE] += v1;
+      }
+    }
   }
 
+  // Update the details of the final candidate from the updated initial candidate
   cand->r 		= iCand.r;
   cand->z 		= iCand.z;
   cand->power		= iCand.power;
@@ -2505,13 +2636,18 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
     processCandDerivs(cand, pln->cuSrch, pln->input,  candNo);
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // Txt
+  }
 }
 
 int optList(GSList *listptr, cuSearch* cuSrch)
 {
-
-  NV_RANGE_PUSH("GPU Kernels");
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("GPU Kernels");
+  }
 
   int numcands 	= g_slist_length(listptr);
 
@@ -2600,7 +2736,10 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
   printf("\rGPU optimisation %5.1f%% complete                      \n", 100.0f );
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // GPU Kernels
+  }
 
   // Wait for CPU derivative threads to finish
   waitForThreads(&cuSrch->threasdInfo->running_threads, "Waiting for CPU threads to complete.", 200 );

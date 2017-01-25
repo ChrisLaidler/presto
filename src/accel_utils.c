@@ -1196,7 +1196,7 @@ void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs)
 {
   // This moves the fundamental's ffdot plane powers
   // into the one for the full array
-  // Conver to unsigned long to handle planes greater than 8GB
+  // Convert to unsigned long to handle planes greater than 8GB
   unsigned long ii;
   unsigned long rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
   float *outpow;

@@ -317,9 +317,9 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
 
 __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 {
-  FOLD // Timing  .
+  PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_TIME )
+    if ( batch->flags & FLAG_PROF )
     {
       infoMSG(3,3,"Timing\n");
 
@@ -349,9 +349,9 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
       }
     }
 
-    FOLD // Timing event  .
+    PROF // Profiling event  .
     {
-      if ( batch->flags & FLAG_TIME ) // Timing event
+      if ( batch->flags & FLAG_PROF )
       {
 	CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->srchStream),        "Recording event: searchInit");
       }

@@ -41,19 +41,19 @@ __global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  s
     {
       for ( iy = 0 ; iy < height - buffLen ; iy+=buffLen)
       {
-        for ( int by = 0 ; by < buffLen; by++)
-        {
-          int gy = iy + by;
+	for ( int by = 0 ; by < buffLen; by++)
+	{
+	  int gy = iy + by;
 
-          buff[by]          = getPower(src, gy*spitch + ix);
-        }
+	  buff[by]          = getPower(src, gy*spitch + ix);
+	}
 
-        for ( int by = 0 ; by < buffLen; by++)
-        {
-          int gy = iy + by;
+	for ( int by = 0 ; by < buffLen; by++)
+	{
+	  int gy = iy + by;
 
-          set(dst, gy*dpitch + ix, buff[by]);
-        }
+	  set(dst, gy*dpitch + ix, buff[by]);
+	}
       }
     }
 
@@ -61,22 +61,22 @@ __global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  s
     {
       for ( int by = 0 ; by < buffLen; by++)
       {
-        int gy = iy + by;
+	int gy = iy + by;
 
-        if ( gy < height)
-        {
-          buff[by]          = getPower(src, gy*spitch + ix);
-        }
+	if ( gy < height)
+	{
+	  buff[by]          = getPower(src, gy*spitch + ix);
+	}
       }
 
       for ( int by = 0 ; by < buffLen; by++)
       {
-        int gy = iy + by;
+	int gy = iy + by;
 
-        if ( gy < height)
-        {
-          set(dst, gy*dpitch + ix, buff[by]);
-        }
+	if ( gy < height)
+	{
+	  set(dst, gy*dpitch + ix, buff[by]);
+	}
       }
     }
   }
@@ -167,20 +167,20 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
-        spitch  = cStack->stridePower*batch->noSteps*inSz;
+	src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
+	spitch  = cStack->stridePower*batch->noSteps*inSz;
       }
 #ifdef WITH_ITLV_PLN
       else
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
+	src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
       }
 #else
-    else
-    {
-      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-      exit(EXIT_FAILURE);
-    }
+      else
+      {
+	fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	exit(EXIT_FAILURE);
+      }
 #endif
 
       CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
@@ -226,46 +226,46 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
     {
       FOLD // Calculate striding info
       {
-        // Source data location
-        if ( batch->flags & FLAG_ITLV_ROW )
-        {
-          src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
-          spitch  = cStack->strideCmplx*batch->noSteps;
-        }
+	// Source data location
+	if ( batch->flags & FLAG_ITLV_ROW )
+	{
+	  src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
+	  spitch  = cStack->strideCmplx*batch->noSteps;
+	}
 #ifdef WITH_ITLV_PLN
-        else
-        {
-          src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
-        }
+	else
+	{
+	  src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
+	}
 #else
-    else
-    {
-      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-      exit(EXIT_FAILURE);
-    }
+  else
+  {
+    fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
 #endif
       }
 
       if ( batch->flags & FLAG_POW_HALF )
       {
 #if CUDA_VERSION >= 7050
-        // Each Step has its own start location in the inmem plane
-        half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
+	// Each Step has its own start location in the inmem plane
+	half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
-        // Call kernel
-        cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+	// Call kernel
+	cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
 #else
-        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-        exit(EXIT_FAILURE);
+	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+	exit(EXIT_FAILURE);
 #endif
       }
       else
       {
-        // Each Step has its own start location in the inmem plane
-        float *dst  = ((float*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
+	// Each Step has its own start location in the inmem plane
+	float *dst  = ((float*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
-        // Call kernel
-        cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+	// Call kernel
+	cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
       }
     }
   }
@@ -276,15 +276,17 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
  */
 void copyToInMemPln(cuFFdotBatch* batch)
 {
-  // Timing
-  if ( (batch->flags & FLAG_TIME) )
+  PROF // Profiling  .
   {
-    if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+    if ( (batch->flags & FLAG_PROF) )
     {
-      for (int stack = 0; stack < batch->noStacks; stack++)
+      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
-        cuFfdotStack* cStack = &batch->stacks[stack];
-        timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->compTime[NO_STKS*TIME_CMP_D2D + stack ],  "Copy to full plane");
+	for (int stack = 0; stack < batch->noStacks; stack++)
+	{
+	  cuFfdotStack* cStack = &batch->stacks[stack];
+	  timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->compTime[NO_STKS*TIME_CMP_D2D + stack ],  "Copy to full plane");
+	}
       }
     }
   }
@@ -295,94 +297,110 @@ void copyToInMemPln(cuFFdotBatch* batch)
     {
       infoMSG(2,2,"Copy to in-mem plane\n");
 
-      NV_RANGE_PUSH("CPY2IM");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("CPY2IM");
+      }
 
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
-        // Copying was done by the callback directly
-        return;
+	// Copying was done by the callback directly
+	return;
       }
 
       // Error check
       if (batch->noStacks > 1 )
       {
-        fprintf(stderr,"ERROR: %s cannot handle a family with more than one plane.\n", __FUNCTION__);
-        exit(EXIT_FAILURE);
+	fprintf(stderr,"ERROR: %s cannot handle a family with more than one plane.\n", __FUNCTION__);
+	exit(EXIT_FAILURE);
       }
 
       FOLD // Copy back data  .
       {
-        cuFfdotStack* cStack = &batch->stacks[0];
+	cuFfdotStack* cStack = &batch->stacks[0];
 
-        FOLD // Synchronisation  .
-        {
-          infoMSG(3,4,"pre synchronisation\n");
+	FOLD // Synchronisation  .
+	{
+	  infoMSG(3,4,"pre synchronisation\n");
 
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-        }
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+	}
 
-        FOLD // Timing event  .
-        {
-          if ( batch->flags & FLAG_TIME )
-          {
-            CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: ifftMemInit");
-          }
-        }
+	PROF // Profiling  .
+	{
+	  if ( batch->flags & FLAG_PROF )
+	  {
+	    CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: ifftMemInit");
+	  }
+	}
 
-        FOLD // Copy memory on the device  .
-        {
-          if ( batch->flags & FLAG_CUFFT_CB_POW )
-          {
-            infoMSG(3,4,"2D async memory copy\n");
+	FOLD // Copy memory on the device  .
+	{
+	  if ( batch->flags & FLAG_CUFFT_CB_POW )
+	  {
+	    infoMSG(3,4,"2D async memory copy\n");
 
-            // Copy memory using a 2D async memory copy
-            if ( batch->flags & FLAG_POW_HALF )
-            {
+	    // Copy memory using a 2D async memory copy
+	    if ( batch->flags & FLAG_POW_HALF )
+	    {
 #if CUDA_VERSION >= 7050
-              copyIFFTtoPln<half,half>( batch, cStack );
+	      copyIFFTtoPln<half,half>( batch, cStack );
 #else
-              fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-              exit(EXIT_FAILURE);
+	      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+	      exit(EXIT_FAILURE);
 #endif
-            }
-            else
-            {
-              copyIFFTtoPln<float, float>( batch, cStack );
-            }
-          }
-          else
-          {
-            infoMSG(3,4,"kernel memory copy\n");
+	    }
+	    else
+	    {
+	      copyIFFTtoPln<float, float>( batch, cStack );
+	    }
+	  }
+	  else
+	  {
+	    infoMSG(3,4,"kernel memory copy\n");
 
-            // Use kernel to copy powers from powers plane to the inmem plane
-            cmplxToPln( batch, cStack );
-          }
+	    // Use kernel to copy powers from powers plane to the inmem plane
+	    cmplxToPln( batch, cStack );
+	  }
 
-          CUDA_SAFE_CALL(cudaGetLastError(), "At IFFT - copyToInMemPln");
-        }
+	  CUDA_SAFE_CALL(cudaGetLastError(), "At IFFT - copyToInMemPln");
+	}
 
-        FOLD // Synchronisation  .
-        {
-          CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, batch->srchStream),"Recording event: ifftMemComp");
-        }
+	FOLD // Synchronisation  .
+	{
+	  CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, batch->srchStream),"Recording event: ifftMemComp");
+	}
       }
 
       FOLD // Blocking if synchronises  .
       {
-        if ( batch->flags & FLAG_SYNCH )
-        {
-          infoMSG(3,4,"post synchronisation [blocking] ifftMemComp\n");
+	if ( batch->flags & FLAG_SYNCH )
+	{
+	  infoMSG(3,4,"post synchronisation [blocking] ifftMemComp\n");
 
-          cuFfdotStack* cStack = &batch->stacks[0];
+	  cuFfdotStack* cStack = &batch->stacks[0];
 
-          // This is a hack
-          NV_RANGE_PUSH("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          NV_RANGE_POP();
-        }
+	  FOLD // This is a hack, it gave errors with ought it =/
+	  {
+	    PROF // Profiling  .
+	    {
+	      NV_RANGE_PUSH("EventSynch");
+	    }
+
+	    CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
+	    PROF // Profiling  .
+	    {
+	      NV_RANGE_POP(); // EventSynch
+	    }
+	  }
+	}
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // CPY2IM
+      }
     }
   }
 }

@@ -43,15 +43,6 @@ extern "C"
 #include "cuda_accel_IN.h"
 #include "cuda_cand_OPT.h"
 
-#ifdef CUDA_PROF
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
-#endif
-
-#ifdef NVVP
-#include <cuda_profiler_api.h>
-#endif
-
 #ifdef CBL
 #include <unistd.h>
 #include "log.h"
@@ -330,15 +321,21 @@ void createFFTPlans(cuFFdotBatch* kernel)
 {
   char msg[1024];
 
-  NV_RANGE_PUSH("FFT plans");
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("FFT plans");
+  }
 
   // Note creating the plans is the most expensive task in the GPU init, I tried doing it in parallel but it was slower
   for (int i = 0; i < kernel->noStacks; i++)
   {
     cuFfdotStack* cStack  = &kernel->stacks[i];
 
-    sprintf(msg,"Stack %i",i);
-    NV_RANGE_PUSH(msg);
+    PROF // Profiling  .
+    {
+      sprintf(msg,"Stack %i",i);
+      NV_RANGE_PUSH(msg);
+    }
 
     FOLD // Input FFT's  .
     {
@@ -356,15 +353,31 @@ void createFFTPlans(cuFFdotBatch* kernel)
       {
 	if ( kernel->flags & CU_INPT_FFT_CPU )
 	{
-	  NV_RANGE_PUSH("FFTW");
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("FFTW");
+	  }
+
 	  cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
-	  NV_RANGE_POP();
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // FFTW
+	  }
 	}
 	else
 	{
-	  NV_RANGE_PUSH("CUFFT Inp");
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("CUFFT Inp");
+	  }
+
 	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps), "Creating plan for input data of stack.");
-	  NV_RANGE_POP();
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); //CUFFT Inp
+	  }
 	}
       }
     }
@@ -385,9 +398,17 @@ void createFFTPlans(cuFFdotBatch* kernel)
 
 	FOLD // Create the stack iFFT plan  .
 	{
-	  NV_RANGE_PUSH("CUFFT Pln");
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("CUFFT Pln");
+	  }
+
 	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
-	  NV_RANGE_POP();
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // CUFFT Pln
+	  }
 	}
       }
       else
@@ -404,20 +425,34 @@ void createFFTPlans(cuFFdotBatch* kernel)
 
 	FOLD // Create the stack iFFT plan  .
 	{
-	  NV_RANGE_PUSH("CUFFT Pln");
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("CUFFT Pln");
+	  }
+
 	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
-	  NV_RANGE_POP();
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // CUFFT Pln
+	  }
 	}
 
       }
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // msg
+    }
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // FFT plans
+  }
 }
 
 /** Initialise a kernel data structure and values on a given device  .
@@ -473,15 +508,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
   infoMSG(3,3,"%s device %i\n",__FUNCTION__, gInf->devid);
 
-  char msg[1024];
-  sprintf(msg, "Dev %02i", gInf->devid );
-  NV_RANGE_PUSH(msg);
+  PROF // Profiling  .
+  {
+    char msg[1024];
+    sprintf(msg, "Dev %02i", gInf->devid );
+    NV_RANGE_PUSH(msg);
+  }
 
   FOLD // See if we can use the cuda device  .
   {
     infoMSG(4,4,"access device %i\n", gInf->devid);
 
-    NV_RANGE_PUSH("Get Device");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Get Device");
+    }
 
     if ( gInf->devid >= getGPUCount() )
     {
@@ -500,17 +541,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
 #ifdef MAX_GPU_MEM
-	  long  Diff = total - MAX_GPU_MEM;
-	  if( Diff > 0 )
-	  {
-	    free-= Diff;
-	    total-=Diff;
-	  }
+      long  Diff = total - MAX_GPU_MEM;
+      if( Diff > 0 )
+      {
+	free-= Diff;
+	total-=Diff;
+      }
 #endif
 
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Get Device
+    }
   }
 
   FOLD // See if this device could do a GPU in-mem search  .
@@ -627,28 +671,28 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       if ( doIm )
       {
-	  cuSrch->noGenHarms        = 1;				// Only one plane so generate the plane with only the fundamental plane of a batch
+	cuSrch->noGenHarms        = 1;				// Only one plane so generate the plane with only the fundamental plane of a batch
 
-	  if ( cuSrch->gSpec->noDevices > 1 )
-	  {
-	    fprintf(stderr,"  Warning: Reverting to single device search.\n");
-	    cuSrch->gSpec->noDevices = 1;
-	  }
+	if ( cuSrch->gSpec->noDevices > 1 )
+	{
+	  fprintf(stderr,"  Warning: Reverting to single device search.\n");
+	  cuSrch->gSpec->noDevices = 1;
+	}
 
-	  if ( (planeSize + familySz) < free * 0.5 )
-	  {
-	    if ( cuSrch->sSpec->flags & FLAG_Z_SPLIT )
-	      fprintf(stderr,"  WARNING: Opting to split the in-mem plane when you don't need to.\n");
-	    else
-	      printf("    No need to split the in-mem plane.\n");
-	  }
+	if ( (planeSize + familySz) < free * 0.5 )
+	{
+	  if ( cuSrch->sSpec->flags & FLAG_Z_SPLIT )
+	    fprintf(stderr,"  WARNING: Opting to split the in-mem plane when you don't need to.\n");
 	  else
-	  {
-	    printf("    Have to split the in-mem plane.\n");
-	    cuSrch->sSpec->flags |= FLAG_Z_SPLIT;
-	  }
+	    printf("    No need to split the in-mem plane.\n");
+	}
+	else
+	{
+	  printf("    Have to split the in-mem plane.\n");
+	  cuSrch->sSpec->flags |= FLAG_Z_SPLIT;
+	}
 
-	  cuSrch->sSpec->flags |= FLAG_SS_INMEM ;	// TODO: Don't edit sSpec directly?
+	cuSrch->sSpec->flags |= FLAG_SS_INMEM ;	// TODO: Don't edit sSpec directly?
 #if CUDA_VERSION >= 6050
 	if ( !(cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW) )
 	  fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
@@ -890,8 +934,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       FOLD // Determine step size  .
       {
-      	bool devisSS = false;						//< Weather to make the step size divisible for SS10 kernel
-      	
+	bool devisSS = false;						//< Weather to make the step size divisible for SS10 kernel
+
 	printf("Determining GPU step size and plane width:\n");
 	infoMSG(4,4,"Determining step size and width\n");
 
@@ -1192,7 +1236,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
   FOLD // Batch specific streams  .
   {
-    NV_RANGE_PUSH("streams");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("streams");
+    }
 
     infoMSG(4,4,"Batch streams\n");
 
@@ -1255,12 +1302,18 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // streams
+    }
   }
 
   FOLD // Allocate device memory for all the kernels data  .
   {
-    NV_RANGE_PUSH("kernel malloc");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("kernel malloc");
+    }
 
     infoMSG(4,4,"Allocate device memory for all the kernels data\n");
 
@@ -1276,7 +1329,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       CUDA_SAFE_CALL(cudaGetLastError(), "Allocation of device memory for kernel?.\n");
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // kernel malloc
+    }
   }
 
   FOLD // Multiplication kernels  .
@@ -1333,7 +1389,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
   {
     infoMSG(4,4,"Input and output.\n");
 
-    NV_RANGE_PUSH("data");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("data");
+    }
 
     printf("\nInitializing GPU %i (%s)\n", kernel->gInf->devid, cuSrch->gSpec->devInfo[devID].name );
 
@@ -1491,9 +1550,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  candSZ = sizeof(accelcandBasic);
 	}
 	else if (kernel->cndType & CU_CANDFULL )  // This should be the default
-	    {
+	{
 	  candSZ = sizeof(initCand);
-	    }
+	}
 	else
 	{
 	  fprintf(stderr,"ERROR: No output type specified in %s setting to default.\n", __FUNCTION__);
@@ -1666,16 +1725,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
     {
-      NV_RANGE_PUSH("Calc steps");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Calc steps");
+      }
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information"); // TODO: This call may not be necessary we could calculate this from previous values
 #ifdef MAX_GPU_MEM
-	  long  Diff = total - MAX_GPU_MEM;
-	  if( Diff > 0 )
-	  {
-	    free-= Diff;
-	    total-=Diff;
-	  }
+      long  Diff = total - MAX_GPU_MEM;
+      if( Diff > 0 )
+      {
+	free-= Diff;
+	total-=Diff;
+      }
 #endif
       freeRam = getFreeRamCU();
 
@@ -1923,9 +1985,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	printf("                 Using: %5.2f GiB of %.2f [%.2f%%] of GPU memory for search.\n",  totUsed / 1073741824.0, total / 1073741824.0, totUsed / (float)total * 100.0f );
       }
 
-
-
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP();
+      }
     }
 
     FOLD // Scale data sizes by number of steps  .
@@ -1967,7 +2030,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       if ( kernel->flags & FLAG_SS_INMEM  )
       {
-	NV_RANGE_PUSH("in-mem alloc");
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("in-mem alloc");
+	}
 
 	size_t noStepsP =  ceil(cuSrch->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
 	size_t nX       = noStepsP * kernel->accelLen;
@@ -1980,7 +2046,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	// Round down to units
 	cuSrch->inmemStride = ceil(stride / (double)plnElsSZ); // NOTE: this will most lightly be a int
 
-	NV_RANGE_POP();
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP();
+	}
       }
 
     }
@@ -1990,7 +2059,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       // One set of global set of "candidates" for all devices
       if ( master == NULL )
       {
-	NV_RANGE_PUSH("host alloc");
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("host alloc");
+	}
 
 	if 	( kernel->cndType & CU_STR_ARR	)
 	{
@@ -2052,7 +2124,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  cuSrch->h_candidates = cuSrch->sSpec->outData;
 	}
 
-	NV_RANGE_POP();
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP();
+	}
       }
     }
 
@@ -2068,20 +2143,32 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     printf("  Done\n");
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // data
+    }
   }
 
   FOLD // Create FFT plans, ( 1 - set per device )  .
   {
-    NV_RANGE_PUSH("FFT plans");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("FFT plans");
+    }
 
     if ( ( kernel->flags & CU_INPT_FFT_CPU ) && master == NULL )
     {
-      NV_RANGE_PUSH("read_wisdom");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("read_wisdom");
+      }
 
       read_wisdom();
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // read_wisdom
+      }
     }
 
     if ( !(kernel->flags & CU_FFT_SEP) )
@@ -2091,7 +2178,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       createFFTPlans(kernel);
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // FFT plans
+    }
   }
 
   FOLD // Create texture memory from kernels  .
@@ -2100,7 +2190,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       infoMSG(4,4,"Create texture memory\n");
 
-      NV_RANGE_PUSH("text mem");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("text mem");
+      }
 
       cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
 
@@ -2146,7 +2239,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	}
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP();
+      }
     }
   }
 
@@ -2154,7 +2250,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
   {
     infoMSG(4,4,"Set constant memory values\n");
 
-    NV_RANGE_PUSH("const mem");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("const mem");
+    }
 
     setConstVals( kernel );
 
@@ -2178,13 +2277,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP();
+    }
   }
 
   printf("Done initializing GPU %i.\n", kernel->gInf->devid);
 
   std::cout.flush();
-  NV_RANGE_POP();
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // msg
+  }
 
   return noBatches;
 }
@@ -2361,16 +2467,16 @@ void setKernelPointers(cuFFdotBatch* batch)
     // Set the indevidaul kernel ifrtmation paramiters
     for (int j = 0; j < cStack->noInStack; j++)
     {
-	// Point the plane kernel data to the correct position in the "main" kernel
-	cStack->kernels[j].kreOff	= cu_index_from_z<double>(cStack->harmInf[j].zStart, cStack->harmInf->zStart, batch->cuSrch->sSpec->zRes);
-	cStack->kernels[j].stride	= cStack->strideCmplx;
+      // Point the plane kernel data to the correct position in the "main" kernel
+      cStack->kernels[j].kreOff	= cu_index_from_z<double>(cStack->harmInf[j].zStart, cStack->harmInf->zStart, batch->cuSrch->sSpec->zRes);
+      cStack->kernels[j].stride	= cStack->strideCmplx;
 
-	if ( batch->flags & FLAG_DOUBLE )
-	  cStack->kernels[j].d_kerData	= &((double2*)d_kerData)[cStack->strideCmplx*cStack->kernels[j].kreOff];
-	else
-	  cStack->kernels[j].d_kerData	= &((fcomplexcu*)d_kerData)[cStack->strideCmplx*cStack->kernels[j].kreOff];
+      if ( batch->flags & FLAG_DOUBLE )
+	cStack->kernels[j].d_kerData	= &((double2*)d_kerData)[cStack->strideCmplx*cStack->kernels[j].kreOff];
+      else
+	cStack->kernels[j].d_kerData	= &((fcomplexcu*)d_kerData)[cStack->strideCmplx*cStack->kernels[j].kreOff];
 
-	cStack->kernels[j].harmInf	= &cStack->harmInf[j];
+      cStack->kernels[j].harmInf	= &cStack->harmInf[j];
     }
     kerSiz				+= cStack->strideCmplx * cStack->kerHeigth;
   }
@@ -2386,9 +2492,12 @@ void setKernelPointers(cuFFdotBatch* batch)
  */
 int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 {
-  char msg[1024];
-  sprintf(msg,"%i of %i", no, of);
-  NV_RANGE_PUSH(msg);
+  PROF // Profiling  .
+  {
+    char msg[1024];
+    sprintf(msg,"%i of %i", no, of);
+    NV_RANGE_PUSH(msg); // # of #
+  }
 
   char strBuff[1024];
   size_t free, total;
@@ -2403,12 +2512,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
 #ifdef MAX_GPU_MEM
-	  long  Diff = total - MAX_GPU_MEM;
-	  if( Diff > 0 )
-	  {
-	    free-= Diff;
-	    total-=Diff;
-	  }
+    long  Diff = total - MAX_GPU_MEM;
+    if( Diff > 0 )
+    {
+      free-= Diff;
+      total-=Diff;
+    }
 #endif
   }
 
@@ -2626,12 +2735,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Allocate host input memory  .
     {
-      NV_RANGE_PUSH("Host");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Host");
+      }
 
       // Allocate page-locked host memory for input data  .
       infoMSG(5,5,"Allocate page-locked for input data.  %p  %i Bytes \n", &batch->h_iData, batch->inpDataSize);
 
       CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plane input data." );
+
+      // Allocate buffer for CPU to work on input data
+      batch->h_iBuffer = (fcomplexcu*)malloc(batch->inpDataSize);
 
       if ( !(batch->flags & CU_NORM_GPU) )
       {
@@ -2639,12 +2754,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	// Allocate CPU memory for normalisation
 	batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
-
-	// Allocate buffer for CPU to work on input data
-	batch->h_iBuffer = (fcomplexcu*)malloc(batch->inpDataSize);
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // Host
+      }
     }
 
     FOLD // Allocate R value lists  .
@@ -2662,7 +2777,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Allocate device Memory for Planes, Stacks & Input data (steps)  .
     {
-      NV_RANGE_PUSH("device");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("device");
+      }
 
       size_t req = batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize;
 
@@ -2699,12 +2817,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // device
+      }
     }
 
     FOLD // Allocate device & page-locked host memory for return data  .
     {
-      NV_RANGE_PUSH("Host");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Host");
+      }
 
       FOLD // Allocate device memory  .
       {
@@ -2768,7 +2892,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	}
       }
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // Host
+      }
     }
 
     FOLD // Create the planes structures  .
@@ -2785,9 +2912,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       }
     }
 
-    FOLD // Create timing arrays  .
+    PROF // Create timing arrays  .
     {
-      if ( batch->flags & FLAG_TIME )
+      if ( batch->flags & FLAG_PROF )
       {
 	if ( kernel->compTime )
 	{
@@ -2797,10 +2924,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	}
 	else
 	{
-	int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
+	  int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
 
-	batch->compTime       = (float*)malloc(sz);
-	memset(batch->compTime,    0, sz);
+	  batch->compTime       = (float*)malloc(sz);
+	  memset(batch->compTime,    0, sz);
 	}
       }
     }
@@ -2960,7 +3087,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       FOLD // Create batch events  .
       {
-	if ( batch->flags & FLAG_TIME )
+	if ( batch->flags & FLAG_PROF )
 	{
 	  CUDA_SAFE_CALL(cudaEventCreate(&batch->iDataCpyComp), "Creating input event iDataCpyComp.");
 	  CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyComp),  "Creating input event candCpyComp.");
@@ -2991,7 +3118,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  cuFfdotStack* cStack  = &batch->stacks[i];
 
-	  if ( batch->flags & FLAG_TIME )
+	  if ( batch->flags & FLAG_PROF )
 	  {
 	    // in  events (with timing)
 	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    	"Creating input normalisation event");
@@ -3126,7 +3253,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     }
   }
 
-  NV_RANGE_POP();
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); // # of #
+  }
 
   return (batch->noSteps);
 }
@@ -3240,9 +3370,12 @@ void freeBatch(cuFFdotBatch* batch)
     freeNull(batch->stacks);
     freeNull(batch->planes);
 
-    if ( batch->flags & FLAG_TIME )
+    PROF // Profiling
     {
-      freeNull(batch->compTime);
+      if ( batch->flags & FLAG_PROF )
+      {
+	freeNull(batch->compTime);
+      }
     }
   }
 
@@ -3400,12 +3533,12 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
 
       CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
 #ifdef MAX_GPU_MEM
-	  long  Diff = totalMem - MAX_GPU_MEM;
-	  if( Diff > 0 )
-	  {
-	    freeMem-= Diff;
-	    totalMem-=Diff;
-	  }
+      long  Diff = totalMem - MAX_GPU_MEM;
+      if( Diff > 0 )
+      {
+	freeMem-= Diff;
+	totalMem-=Diff;
+      }
 #endif
 
       if ( (oPln->input->size + oPln->outSz) > freeMem )
@@ -3613,170 +3746,173 @@ void timeSynch(cuFFdotBatch* batch)
 {
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    if ( batch->flags & FLAG_TIME ) // Timing  .
+    PROF // Profiling
     {
-      infoMSG(1,2,"Timing\n");
-
-      float time;         // Time in ms of the thing
-      cudaError_t ret;    // Return status of cudaEventElapsedTime
-
-      FOLD // Norm Timing  .
+      if ( batch->flags & FLAG_PROF )
       {
-	if ( (batch->flags & CU_NORM_GPU) )
+	infoMSG(1,2,"Profiling\n");
+
+	float time;         // Time in ms of the thing
+	cudaError_t ret;    // Return status of cudaEventElapsedTime
+
+	FOLD // Norm Timing  .
 	{
-	  for (int stack = 0; stack < batch->noStacks; stack++)
+	  if ( (batch->flags & CU_NORM_GPU) )
 	  {
-	    cuFfdotStack* cStack = &batch->stacks[stack];
-
-	    ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
-
-	    if ( ret != cudaErrorNotReady )
-	    {
-#pragma omp atomic
-	      batch->compTime[batch->noStacks*TIME_CMP_NRM + stack ] += time;
-	    }
-	  }
-
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Norm Timing");
-	}
-      }
-
-      FOLD // Input FFT timing  .
-      {
-	if ( !(batch->flags & CU_INPT_FFT_CPU) )
-	{
-	  for (int stack = 0; stack < batch->noStacks; stack++)
-	  {
-	    cuFfdotStack* cStack = &batch->stacks[stack];
-
-	    ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->inpFFTinitComp);
-
-	    if ( ret != cudaErrorNotReady )
-	    {
-#pragma omp atomic
-	      batch->compTime[batch->noStacks*TIME_CMP_FFT + stack ] += time;
-	    }
-	  }
-
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Input FFT timing");
-	}
-      }
-
-      FOLD // Copy input data  .
-      {
-	ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
-
-	if ( ret != cudaErrorNotReady )
-	{
-#pragma omp atomic
-	  batch->compTime[batch->noStacks*TIME_CMP_H2D] += time;
-	}
-
-	CUDA_SAFE_CALL(cudaGetLastError(), "Copy input timing");
-      }
-
-      FOLD // Multiplication timing  .
-      {
-	if ( !(batch->flags & FLAG_MUL_CB) )
-	{
-	  // Did the convolution by separate kernel
-
-	  if ( batch->flags & FLAG_MUL_BATCH )   	// Convolution was done on the entire batch  .
-	  {
-	    ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
-
-	    if ( ret != cudaErrorNotReady )
-	    {
-#pragma omp atomic
-	      batch->compTime[NO_STKS*TIME_CMP_MULT] += time;
-	    }
-	  }
-	  else                                    // Convolution was on a per stack basis  .
-	  {
-	    for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
+	    for (int stack = 0; stack < batch->noStacks; stack++)
 	    {
 	      cuFfdotStack* cStack = &batch->stacks[stack];
 
-	      ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
+	      ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
 
 	      if ( ret != cudaErrorNotReady )
 	      {
 #pragma omp atomic
-		batch->compTime[NO_STKS*TIME_CMP_MULT + stack ] += time;
+		batch->compTime[batch->noStacks*TIME_CMP_NRM + stack ] += time;
 	      }
 	    }
+
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Norm Timing");
 	  }
-
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Multiplication timing");
 	}
-      }
 
-      FOLD // Inverse FFT timing  .
-      {
-	for (int stack = 0; stack < batch->noStacks; stack++)
+	FOLD // Input FFT timing  .
 	{
-	  cuFfdotStack* cStack = &batch->stacks[stack];
+	  if ( !(batch->flags & CU_INPT_FFT_CPU) )
+	  {
+	    for (int stack = 0; stack < batch->noStacks; stack++)
+	    {
+	      cuFfdotStack* cStack = &batch->stacks[stack];
 
-	  ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
+	      ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->inpFFTinitComp);
+
+	      if ( ret != cudaErrorNotReady )
+	      {
+#pragma omp atomic
+		batch->compTime[batch->noStacks*TIME_CMP_FFT + stack ] += time;
+	      }
+	    }
+
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Input FFT timing");
+	  }
+	}
+
+	FOLD // Copy input data  .
+	{
+	  ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
+
 	  if ( ret != cudaErrorNotReady )
 	  {
 #pragma omp atomic
-	    batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ] += time;
+	    batch->compTime[batch->noStacks*TIME_CMP_H2D] += time;
+	  }
+
+	  CUDA_SAFE_CALL(cudaGetLastError(), "Copy input timing");
+	}
+
+	FOLD // Multiplication timing  .
+	{
+	  if ( !(batch->flags & FLAG_MUL_CB) )
+	  {
+	    // Did the convolution by separate kernel
+
+	    if ( batch->flags & FLAG_MUL_BATCH )   	// Convolution was done on the entire batch  .
+	    {
+	      ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
+
+	      if ( ret != cudaErrorNotReady )
+	      {
+#pragma omp atomic
+		batch->compTime[NO_STKS*TIME_CMP_MULT] += time;
+	      }
+	    }
+	    else                                    // Convolution was on a per stack basis  .
+	    {
+	      for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
+	      {
+		cuFfdotStack* cStack = &batch->stacks[stack];
+
+		ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
+
+		if ( ret != cudaErrorNotReady )
+		{
+#pragma omp atomic
+		  batch->compTime[NO_STKS*TIME_CMP_MULT + stack ] += time;
+		}
+	      }
+	    }
+
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Multiplication timing");
 	  }
 	}
 
-	CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
-      }
-
-      FOLD // Copy to in-mem plane timing  .
-      {
-	if ( batch->flags & FLAG_SS_INMEM )
+	FOLD // Inverse FFT timing  .
 	{
 	  for (int stack = 0; stack < batch->noStacks; stack++)
 	  {
 	    cuFfdotStack* cStack = &batch->stacks[stack];
 
-	    ret = cudaEventElapsedTime(&time, cStack->ifftMemInit, cStack->ifftMemComp);
+	    ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
 	    if ( ret != cudaErrorNotReady )
 	    {
 #pragma omp atomic
-	      batch->compTime[NO_STKS*TIME_CMP_D2D + stack ] += time;
+	      batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ] += time;
 	    }
 	  }
 
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Copy to in-mem plane timing");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
 	}
-      }
 
-      FOLD // Search Timing  .
-      {
-	if ( !(batch->flags & FLAG_SS_CPU) && !(batch->flags & FLAG_SS_INMEM ) )
+	FOLD // Copy to in-mem plane timing  .
 	{
-	  ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
-
-	  if ( ret != cudaErrorNotReady )
+	  if ( batch->flags & FLAG_SS_INMEM )
 	  {
-#pragma omp atomic
-	    batch->compTime[NO_STKS*TIME_CMP_SS] += time;
-	  }
+	    for (int stack = 0; stack < batch->noStacks; stack++)
+	    {
+	      cuFfdotStack* cStack = &batch->stacks[stack];
 
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
+	      ret = cudaEventElapsedTime(&time, cStack->ifftMemInit, cStack->ifftMemComp);
+	      if ( ret != cudaErrorNotReady )
+	      {
+#pragma omp atomic
+		batch->compTime[NO_STKS*TIME_CMP_D2D + stack ] += time;
+	      }
+	    }
+
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Copy to in-mem plane timing");
+	  }
 	}
-      }
 
-      FOLD // Copy D2H  .
-      {
-	if ( !(batch->flags & FLAG_SS_INMEM ) )
+	FOLD // Search Timing  .
 	{
-	  ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
-
-	  if ( ret != cudaErrorNotReady )
+	  if ( !(batch->flags & FLAG_SS_CPU) && !(batch->flags & FLAG_SS_INMEM ) )
 	  {
-#pragma omp atomic
-	    batch->compTime[NO_STKS*TIME_CMP_D2H] += time;
-	  }
+	    ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
 
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
+	    if ( ret != cudaErrorNotReady )
+	    {
+#pragma omp atomic
+	      batch->compTime[NO_STKS*TIME_CMP_SS] += time;
+	    }
+
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
+	  }
+	}
+
+	FOLD // Copy D2H  .
+	{
+	  if ( !(batch->flags & FLAG_SS_INMEM ) )
+	  {
+	    ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
+
+	    if ( ret != cudaErrorNotReady )
+	    {
+#pragma omp atomic
+	      batch->compTime[NO_STKS*TIME_CMP_D2H] += time;
+	    }
+
+	    CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
+	  }
 	}
       }
     }
@@ -3920,17 +4056,33 @@ void finish_Search(cuFFdotBatch* batch)
     {
       infoMSG(4,5,"Stack %i\n", ss);
 
-      NV_RANGE_PUSH("EventSynch");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("EventSynch");
+      }
+
       cuFfdotStack* cStack = &batch->stacks[ss];
       CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-      NV_RANGE_POP();
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // EventSynch
+      }
     }
 
     infoMSG(3,4,"pre synchronisation [blocking] processComp\n");
 
-    NV_RANGE_PUSH("EventSynch");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("EventSynch");
+    }
+
     CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-    NV_RANGE_POP();
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // EventSynch
+    }
   }
 }
 
@@ -4591,7 +4743,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
 	else if ( strCom("CPU", str2 ) )
 	{
-	  fprintf(stderr, "ERROR: CPU Sum and search is no longer supported\n\n");
+	  fprintf(stderr, "ERROR: CPU Sum and search is no longer supported.\n\n");
 	  continue;
 
 	  (*flags) &= ~FLAG_SS_ALL;
@@ -4758,7 +4910,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
 	else if ( strCom("QUAD", str2 ) )
 	{
-	  fprintf(stderr, "ERROR: quadtree storage not yet implemented. Doing nothing!\n");
+	  fprintf(stderr, "ERROR: Quadtree storage not yet implemented. Doing nothing!\n");
 	  continue;
 
 	  // Candidate type
@@ -5010,9 +5162,14 @@ void readAccelDefalts(searchSpecs *sSpec)
 	singleFlag ( flags, str1, str2, FLAG_SYNCH, "", "0", lineno, fName );
       }
 
-      else if ( strCom("FLAG_DBG_TIMING", str1 ) )
+      else if ( strCom("FLAG_DBG_PROFILING", str1 ) )
       {
-	singleFlag ( flags, str1, str2, FLAG_TIME, "", "0", lineno, fName );
+#ifdef PROFILING
+	singleFlag ( flags, str1, str2, FLAG_PROF, "", "0", lineno, fName );
+#else
+	fprintf(stderr, "ERROR: Found %s on line %i of %s, the program has not been compile with profiling enabled. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
+	exit(EXIT_FAILURE); // TMP - Added to mark an error for thesis timing
+#endif
       }
 
       else if ( strCom("FLAG_DPG_PLT_OPT", str1 ) )
@@ -5116,6 +5273,7 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
 	line[flagLen] = 0;
 	fprintf(stderr, "ERROR: Found unknown flag \"%s\" on line %i of %s.\n", line, lineno, fName);
+	exit(EXIT_FAILURE); // TMP - Added to mark an error for thesis timing
       }
     }
 
@@ -5124,6 +5282,7 @@ void readAccelDefalts(searchSpecs *sSpec)
   else
   {
     printf("Unable to read GPU accel settings from %s\n", fName);
+    exit(EXIT_FAILURE); // TMP - Added to mark an error for thesis timing
   }
 }
 
@@ -5241,7 +5400,10 @@ void initPlanes(cuSearch* sSrch )
 
     infoMSG(2,2,"Create the primary stack/kernel on each device\n");
 
-    NV_RANGE_PUSH("Initialise Kernels");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Init Kernels");
+    }
 
     sSrch->pInf->kernels = (cuFFdotBatch*)malloc(sSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
 
@@ -5272,7 +5434,10 @@ void initPlanes(cuSearch* sSrch )
       }
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Init Kernels
+    }
 
     if ( sSrch->pInf->noDevices <= 0 ) // Check if we got any devices  .
     {
@@ -5286,7 +5451,10 @@ void initPlanes(cuSearch* sSrch )
   {
     infoMSG(2,2,"Create planes\n");
 
-    NV_RANGE_PUSH("Initialise Batches");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Init Batches");
+    }
 
     sSrch->pInf->noSteps       = 0;
     sSrch->pInf->batches       = (cuFFdotBatch*)malloc(sSrch->pInf->noBatches*sizeof(cuFFdotBatch));
@@ -5367,7 +5535,10 @@ void initPlanes(cuSearch* sSrch )
       sSrch->pInf->noBatches = bNo;
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Init Batches
+    }
   }
 }
 
@@ -5397,7 +5568,10 @@ void initOptimisers(cuSearch* sSrch )
 
   FOLD // Create the primary stack on each device, this contains the kernel  .
   {
-    NV_RANGE_PUSH("Initialise Optimisers");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Init Optimisers");
+    }
 
     // Determine the number of optimisers to make
     sSrch->oInf->noOpts = 0;
@@ -5439,7 +5613,10 @@ void initOptimisers(cuSearch* sSrch )
       }
     }
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Init Optimisers
+    }
   }
 
   // Note I found the response plane method to be slower or just equivalent
@@ -5459,7 +5636,10 @@ void initOptimisers(cuSearch* sSrch )
       {
 	infoMSG(5,6,"access device %i\n", device);
 
-	NV_RANGE_PUSH("Get Device");
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Get Device");
+	}
 
 	if ( device >= getGPUCount() )
 	{
@@ -5487,7 +5667,10 @@ void initOptimisers(cuSearch* sSrch )
 #endif
 	}
 
-	NV_RANGE_POP();
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // Get Device
+	}
       }
 
       FOLD // Calculate the size of a response function plane  .
@@ -5538,6 +5721,11 @@ void freeAccelGPUMem(cuPlnInfo* aInf)
 {
   infoMSG(2,0,"FreeAccelGPUMem\n");
 
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Free GPU Mem");
+  }
+
   FOLD // Free planes  .
   {
     for ( int batch = 0 ; batch < aInf->noBatches; batch++ )  // Batches
@@ -5557,6 +5745,11 @@ void freeAccelGPUMem(cuPlnInfo* aInf)
       freeKernelGPUmem(&aInf->kernels[dev]);
     }
   }
+
+  PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Free GPU Mem
+    }
 }
 
 void freeCuAccel(cuPlnInfo* mInf)
@@ -5628,6 +5821,11 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   infoMSG(2,1,"Initialise search data structure\n");
 
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("init Search inf");
+  }
+
   bool same   = true;
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initCuSearch.");
@@ -5677,13 +5875,6 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     {
       srch = new cuSearch;
     }
-    //    else
-    //    {
-    //      freeNull(srch->sIdx);
-    //      freeNull(srch->powerCut);
-    //      freeNull(srch->numindep);
-    //      freeNull(srch->timings);
-    //    }
     memset(srch, 0, sizeof(cuSearch));
 
     srch->noHarmStages    = sSpec->noHarmStages;
@@ -5751,14 +5942,17 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     intSrchThrd(srch);
   }
 
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP();	// init Search inf
+  }
+
   return srch;
 }
 
 cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   infoMSG(1,0,"Initialise CU search data structures\n");
-
-  NV_RANGE_PUSH("GPU Initialise");
 
   if ( !srch )			// Create basic data structure
   {
@@ -5776,8 +5970,6 @@ cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     exit(EXIT_FAILURE);
   }
 
-  NV_RANGE_POP();
-
   return srch;
 }
 
@@ -5785,6 +5977,11 @@ cuSearch* initCuOpt(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 {
   if ( !srch )
     srch = initSearchInf(sSpec, gSpec, srch);
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Init CUDA optimisers");
+  }
 
   if ( !srch->oInf )
   {
@@ -5795,6 +5992,11 @@ cuSearch* initCuOpt(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
     // TODO: Do a whole bunch of checks here!
     fprintf(stderr, "ERROR: %s has not been set up to handle a pre-initialised memory info data structure.\n", __FUNCTION__);
     exit(EXIT_FAILURE);
+  }
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP();	// Init CUDA optemisers
   }
 
   return srch;
@@ -6236,14 +6438,14 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
     cvsLog->csvWrite("GPU Opt",   "s", "%9.4f",   gpuOptTime  * 1e-6);
   }
 
-  FOUT // Advanced Timing  .
+  PROF // Profiling
   {
-    float	bsums[TIME_CMP_END];
-    for ( int i = 0; i < TIME_CMP_END; i++)
-      bsums[i] = 0;
-
-    if ( batch->flags & FLAG_TIME )
+    if ( batch->flags & FLAG_PROF )
     {
+      float	bsums[TIME_CMP_END];
+      for ( int i = 0; i < TIME_CMP_END; i++)
+	bsums[i] = 0;
+
       for ( int comp=0; comp < TIME_CMP_END; comp++)
       {
 	for (int batch = 0; batch < cuSrch->pInf->noBatches; batch++)
@@ -6256,20 +6458,21 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
 	  }
 	}
       }
+
+      cvsLog->csvWrite("Response",    "ms", "%12.6f", bsums[TIME_CMP_RESP]);
+      cvsLog->csvWrite("kerFFT",      "ms", "%12.6f", bsums[TIME_CMP_KERFFT]);
+      cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", bsums[TIME_CMP_H2D]);
+      cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", bsums[TIME_CMP_NRM]);
+      cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", bsums[TIME_CMP_FFT]);
+      cvsLog->csvWrite("Mult",        "ms", "%12.6f", bsums[TIME_CMP_MULT]);
+      cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", bsums[TIME_CMP_IFFT]);
+      cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", bsums[TIME_CMP_D2D]);
+      cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", bsums[TIME_CMP_SS]);
+      cvsLog->csvWrite("Result",      "ms", "%12.6f", bsums[TIME_CMP_STR]);
+      cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", bsums[TIME_CMP_D2H]);
+      cvsLog->csvWrite("Refine",      "ms", "%12.6f", bsums[TIME_CMP_REFINE]);
+      cvsLog->csvWrite("Derivs",      "ms", "%12.6f", bsums[TIME_CMP_DERIVS]);
     }
-    cvsLog->csvWrite("Response",    "ms", "%12.6f", bsums[TIME_CMP_RESP]);
-    cvsLog->csvWrite("kerFFT",      "ms", "%12.6f", bsums[TIME_CMP_KERFFT]);
-    cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", bsums[TIME_CMP_H2D]);
-    cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", bsums[TIME_CMP_NRM]);
-    cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", bsums[TIME_CMP_FFT]);
-    cvsLog->csvWrite("Mult",        "ms", "%12.6f", bsums[TIME_CMP_MULT]);
-    cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", bsums[TIME_CMP_IFFT]);
-    cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", bsums[TIME_CMP_D2D]);
-    cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", bsums[TIME_CMP_SS]);
-    cvsLog->csvWrite("Result",      "ms", "%12.6f", bsums[TIME_CMP_STR]);
-    cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", bsums[TIME_CMP_D2H]);
-    cvsLog->csvWrite("Refine",      "ms", "%12.6f", bsums[TIME_CMP_REFINE]);
-    cvsLog->csvWrite("Derivs",      "ms", "%12.6f", bsums[TIME_CMP_DERIVS]);
   }
 
   cvsLog->csvEndLine();
@@ -6653,11 +6856,17 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
     char waitMsg[1024];
     int ite = 0;
 
-    NV_RANGE_PUSH("Wait on CPU threads");
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Wait on CPU threads");
+    }
 
     while ( noTrd > 0 )
     {
-      NV_RANGE_PUSH("Sleep");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Sleep");
+      }
 
       ite++;
 
@@ -6685,13 +6894,19 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
       usleep(sleepMS);
       sem_getvalue(running_threads, &noTrd );
 
-      NV_RANGE_POP();
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // Sleep
+      }
     }
 
     if (ite >= 10 )
       printf("\n\n");
 
-    NV_RANGE_POP();
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // Wait on CPU threads
+    }
 
     return (ite);
   }
@@ -6707,15 +6922,22 @@ void* contextInitTrd(void* ptr)
   struct timeval start, end;
   gpuSpecs* gSpec = (gpuSpecs*)ptr;
 
-  // Start the timer
-  gettimeofday(&start, NULL);
+  TIME // Start the timer  .
+  {
+    NV_RANGE_PUSH("Context");
 
-  NV_RANGE_PUSH("Context");
+    gettimeofday(&start, NULL);
+  }
+
   initGPUs(gSpec);
-  NV_RANGE_POP();
 
-  gettimeofday(&end, NULL);
-  gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  TIME // End the timer  .
+  {
+    NV_RANGE_POP(); // Context
+
+    gettimeofday(&end, NULL);
+    gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  }
 
   pthread_exit(&gSpec->nctxTime);
 
@@ -6737,16 +6959,23 @@ long long initCudaContext(gpuSpecs* gSpec)
       fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
       gSpec->cntxThread = 0;
 
-      // Start the timer
-      gettimeofday(&start, NULL);
+      TIME // Start the timer  .
+      {
+	gettimeofday(&start, NULL);
 
-      NV_RANGE_PUSH("Context");
+	NV_RANGE_PUSH("Context");
+      }
+
       printf("Initializing CUDA context's\n");
       initGPUs(gSpec);
-      NV_RANGE_POP();
 
-      gettimeofday(&end, NULL);
-      gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+      TIME // End the timer  .
+      {
+	NV_RANGE_POP(); // Context
+
+	gettimeofday(&end, NULL);
+	gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+      }
     }
   }
 
@@ -6759,8 +6988,12 @@ long long compltCudaContext(gpuSpecs* gSpec)
   {
     if ( gSpec->cntxThread )
     {
-      NV_RANGE_PUSH("Wait on context thread");
       infoMSG(4, 4, "Wait on CUDA context thread\n");
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Wait on context thread");
+      }
 
       printf("Waiting for CUDA context initialisation complete ...");
       fflush(stdout);
@@ -6797,7 +7030,11 @@ long long compltCudaContext(gpuSpecs* gSpec)
       gSpec->cntxThread = 0;
 
       infoMSG(4, 4, "Done\n");
-      NV_RANGE_POP();
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // Wait on context thread
+      }
     }
 
     return gSpec->nctxTime;
@@ -6886,8 +7123,6 @@ void genPlane(cuSearch* cuSrch, char* msg)
 {
   infoMSG(2,2,"Candidate generation\n");
 
-  NV_RANGE_PUSH("Pln Gen");
-
   struct timeval start, end;
   double startr			= 0;
   int maxxx;
@@ -6895,8 +7130,9 @@ void genPlane(cuSearch* cuSrch, char* msg)
   int   ss			= 0;
   int iteration 		= 0;
 
-  FOLD // Basic timing  .
+  TIME // Basic timing  .
   {
+    NV_RANGE_PUSH("Pln Gen");
     gettimeofday(&start, NULL);
   }
 
@@ -7085,13 +7321,15 @@ void genPlane(cuSearch* cuSrch, char* msg)
     waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU ", 200 );
   }
 
-  FOLD // Basic timing  .
+  TIME // Basic timing  .
   {
+    NV_RANGE_POP(); // Pln Gen
+
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_GPU_PLN] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
   }
 
-  NV_RANGE_POP();
+
 }
 
 cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
@@ -7103,31 +7341,44 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
   long noCands = 0;
 
   // Wait for the context thread to complete, NOTE: cuSrch might not be initialised at this point?
-  cuSrch->timings[TIME_CONTEXT] = compltCudaContext(gSpec);
+  long long contextTime = compltCudaContext(gSpec);
+
+  TIME // Basic timing  .
+  {
+    NV_RANGE_PUSH("GPU Srch");
+    cuSrch->timings[TIME_CONTEXT] = contextTime;
+  }
 
 #ifdef NVVP // Start profiler
   cudaProfilerStart();              // Start profiling, only really necessary for debug and profiling, surprise surprise
 #endif
 
-  NV_RANGE_PUSH("GPU Srch");
-
   printf("\n*************************************************************************************************\n                         Doing GPU Search \n*************************************************************************************************\n");
 
   char srcTyp[1024];
 
-  FOLD // Basic timing  .
+  TIME // Basic timing of device setup and kernel creation  .
   {
     gettimeofday(&start, NULL);
   }
 
   FOLD // Init GPU kernels and planes  .
   {
+    TIME // Basic timing of device setup and kernel creation  .
+    {
+      NV_RANGE_PUSH("GPU Initialise");
+    }
+
     cuSrch    = initCuKernels(sSpec, gSpec, cuSrch);
     master    = &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
 
-    // Timing of device setup and kernel creation
-    gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_GPU_INIT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    TIME // Basic timing of device setup and kernel creation  .
+    {
+      NV_RANGE_POP();	// GPU Initialise
+
+      gettimeofday(&end, NULL);
+      cuSrch->timings[TIME_GPU_INIT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    }
 
     if ( master->flags & FLAG_SYNCH )
       fprintf(stderr, "WARNING: Running synchronous search, this will slow things down and should only be used for debug and testing.\n");
@@ -7135,10 +7386,10 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 
   FOLD // Candidate generation  .
   {
-    FOLD // Basic timing  .
+    TIME // Basic timing  .
     {
-      gettimeofday(&start01, NULL);
       NV_RANGE_PUSH("Cand Gen");
+      gettimeofday(&start01, NULL);
     }
 
     printf("\nRunning GPU search of %lli steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", cuSrch->SrchSz->noSteps, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
@@ -7170,28 +7421,31 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
       genPlane(cuSrch, srcTyp);
     }
 
-    FOLD // Basic timing  .
+    TIME // Basic timing  .
     {
-      gettimeofday(&end01, NULL);
+      gettimeofday(&end01, NULL); // This is not used???
+    }
+
+    TIME // Basic timing  .
+    {
+      NV_RANGE_PUSH("GPU Cand");
+      gettimeofday(&start02, NULL);
     }
 
     FOLD // Process candidates  .
     {
       infoMSG(1,1,"\nProcess candidates\n");
 
-      FOLD // Basic timing  .
-      {
-	gettimeofday(&start02, NULL);
-	NV_RANGE_PUSH("GPU Cand");
-      }
-
-      if      ( master->cndType & CU_STR_ARR ) // Copying candidates from array to list for optimisation  .
+      if      ( master->cndType & CU_STR_ARR    ) // Copying candidates from array to list for optimisation  .
       {
 	if ( !(master->flags & FLAG_DPG_SKP_OPT) )
 	{
 	  printf("\nCopying initial candidates from array to list for optimisation.\n");
 
-	  NV_RANGE_PUSH("Add to list");
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("Add to list");
+	  }
 
 	  int     cdx;
 	  double  poww, sig;
@@ -7218,7 +7472,10 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 	    }
 	  }
 
-	  NV_RANGE_POP(); // Add to list
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // Add to list
+	  }
 	}
       }
       else if ( master->cndType & CU_STR_LST    )
@@ -7254,15 +7511,15 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 	fprintf(stderr, "ERROR: Bad candidate storage method?\n");
 	exit(EXIT_FAILURE);
       }
+    }
 
-      FOLD // Basic timing  .
-      {
-	NV_RANGE_POP(); // GPU Cand
-	NV_RANGE_POP(); // Cand Gen
-	gettimeofday(&end02, NULL);
-	cuSrch->timings[TIME_CND] += ((end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec));
-	cuSrch->timings[TIME_GPU_CND_GEN] += ((end02.tv_sec - start01.tv_sec) * 1e6 + (end02.tv_usec - start01.tv_usec));
-      }
+    TIME // Basic timing  .
+    {
+      NV_RANGE_POP(); // GPU Cand
+      NV_RANGE_POP(); // Cand Gen
+      gettimeofday(&end02, NULL);
+      cuSrch->timings[TIME_CND] += ((end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec));
+      cuSrch->timings[TIME_GPU_CND_GEN] += ((end02.tv_sec - start01.tv_sec) * 1e6 + (end02.tv_usec - start01.tv_usec));
     }
   }
 
@@ -7271,15 +7528,21 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
     freeAccelGPUMem(cuSrch->pInf);
   }
 
-  FOLD // Basic timing  .
+  printf("\nGPU found %li initial candidates of which %i are unique", noCands, g_slist_length(cuSrch->cands));
+
+  TIME // Basic timing  .
   {
-    NV_RANGE_POP(); // GPU
+    NV_RANGE_POP(); // GPU Srch
     gettimeofday(&end, NULL);
 
     cuSrch->timings[TIME_GPU_SRCHALL] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+
+    printf(", it Took %.4f ms", cuSrch->timings[TIME_GPU_SRCHALL]/1000.0);
   }
 
-  printf("\nGPU found %li initial candidates of which %i are unique. In %.4f ms\n", noCands, g_slist_length(cuSrch->cands), cuSrch->timings[TIME_GPU_SRCHALL]/1000.0 );
+  printf(".\n");
+
+
 
   return cuSrch;
 }

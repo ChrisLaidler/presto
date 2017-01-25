@@ -39,20 +39,47 @@ extern "C"
 #endif
 
 
+//====================================== Section Enables =================================================
+
+// Just encase these define have been used elsewhere
+#undef  TIMING
+#undef  PROFILING
 #undef  NVVP
-//#define NVVP                // Uncomment to allow CUDA profiling
-
 #undef  CUDA_PROF
-#define CUDA_PROF
 
-#ifdef CUDA_PROF
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
-#endif
+// A user can enable or disable GPU functionality with the defines below, if any of them are changed a full recompile is required (including an make clean!)
 
-#define		BIT(x)			(1ULL<<(x))
+//     Timing
+#define TIMING  		// Implement basic timing of sections, very low overhead, generally a good idea
+
+//     Profiling
+#define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
+
+//	Visual profiler
+//#define NVVP			// Uncomment to allow CUDA profiling
+
+//     Normalisation
+#define 		WITH_NORM_GPU
+#define 		WITH_NORM_GPU_OS
+
+//     Optimisation
+//#define		WITH_OPT_BLK1
+//#define		WITH_OPT_BLK2
+#define 		WITH_OPT_BLK3
+//#define 		WITH_OPT_PLN1
+//#define 		WITH_OPT_PLN2
+#define 		WITH_OPT_PLN3
+//#define 		WITH_OPT_PLN4
+
+//	General
+//#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
+
+
+
 
 //=========================================== Defines ====================================================
+
+#define		BIT(x)			(1ULL<<(x))
 
 #define		MAX_IN_STACK		10		///< NOTE: this is 1 to big to handle the init problem
 #define		MAX_STACKS		5		///< The maximum number stacks in a family of plains
@@ -161,7 +188,7 @@ extern "C"
 
 // ---- Debug ----//
 
-#define		FLAG_TIME		BIT(55)		///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
+#define		FLAG_PROF		BIT(55)		///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
 #define		FLAG_SYNCH		BIT(56)		///< Run the search in synchronous mode, this is slow and should only be used for testing
 #define		FLAG_DPG_PRNT_CAND	BIT(57)		///< Print candidates to
 #define		FLAG_DPG_SKP_OPT	BIT(58)		///< Skip optimisation stage
@@ -212,7 +239,7 @@ extern "C"
 #define  TIME_ALL_SRCH		4			/// CPU & GPU - Initialisation and Candidate Generation
 #define  TIME_GPU_SRCHALL	5			/// GPU - Initialisation & Generation stages & Candidate copy and clear memory
 #define  TIME_CPU_CND_GEN	6			/// CPU - Candidate generation stage
-#define  TIME_GPU_CND_GEN	7			/// GPU - Candidate generation stage
+#define  TIME_GPU_CND_GEN	7			/// GPU - Candidate generation stage - Includes the time to copy initial candidates [TIME_CND]
 #define  TIME_GPU_PLN		8			/// GPU - Plane generation & Sum & Search in standard search
 #define  TIME_GPU_SS		9			/// GPU - Sum and search (only in in-mem) of full plane (Not including plane creation)
 #define  TIME_CPU_SRCH		10			/// CPU - Initialisation & Generation stage
@@ -220,7 +247,8 @@ extern "C"
 #define  TIME_ALL_OPT		12			///     - All Optimisation (duplicates, CPU and GPU refine, writing results to file
 #define  TIME_GPU_REFINE	13			/// GPU - Candidate refine and properties
 #define  TIME_CPU_REFINE	14			/// CPU - Candidate refine and properties
-#define  TIME_END		15			/// Nothing - A value to indicate the array length
+#define  TIME_FILE_WRITE	15			///     - Write candidates to file
+#define  TIME_END		20			/// Nothing - A value to indicate the maximum array length
 
 
 #define  NO_STKS		(batch->noStacks)
@@ -229,16 +257,17 @@ extern "C"
 #define  TIME_CMP_KERFFT	1			///
 #define  TIME_CMP_H2D		2			///
 #define  TIME_CMP_NRM		3			///
-#define  TIME_CMP_FFT		4			/// Input FFT
-#define  TIME_CMP_MULT		5			///
-#define  TIME_CMP_IFFT		6			///
-#define  TIME_CMP_D2D		7			///
-#define  TIME_CMP_SS		8			///
-#define  TIME_CMP_D2H		9			///
-#define  TIME_CMP_STR		10			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
-#define  TIME_CMP_REFINE	11			///
-#define  TIME_CMP_DERIVS	12			///
-#define  TIME_CMP_END		13			///
+#define  TIME_CMP_MEM		4			/// Stack0: Zeroing host buffer, Stack1: Copy input FFT to buffer, Stack2: Copy buffer over pinned
+#define  TIME_CMP_FFT		5			/// Input FFT
+#define  TIME_CMP_MULT		6			///
+#define  TIME_CMP_IFFT		7			///
+#define  TIME_CMP_D2D		8			///
+#define  TIME_CMP_SS		9			///
+#define  TIME_CMP_D2H		10			///
+#define  TIME_CMP_STR		11			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
+#define  TIME_CMP_REFINE	12			///
+#define  TIME_CMP_DERIVS	13			///
+#define  TIME_CMP_END		14			/// Nothing - A value to indicate the maximum array length
 
 
 //========================================== Macros ======================================================
@@ -248,15 +277,41 @@ extern "C"
 #define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
 
 
-#ifdef  CUDA_PROF
+#ifdef	TIMING
+  #define TIME if(1)			//< A macro used to encapsulate timing code, if TIMING is not defined all timing code should be omitted at compile time
+#else
+  #define TIME if(0)			//< A macro used to encapsulate timing code, if TIMING is not defined all timing code should be omitted at compile time
+#endif
+
+#ifdef PROFILING
+  // This macro will allow blocks to contain profiling code, if profiling is disabled this will become if(0) and the compiler SHOULD omit it at build time
+  #define PROF if(1)
+#else
+  // Compiler should ship all profiling blocks at compile time
+  #define PROF if(0)
+#endif
+
+
+#ifdef NVVP
+
+// Includes for CUDA profiler (nvvp)
+#include <nvToolsExt.h>
+#include <nvToolsExtCudaRt.h>
+#include <cuda_profiler_api.h>
+
+// Macro for adding CUDA ranges
 #define NV_RANGE_POP()          nvtxRangePop()
 #define NV_RANGE_PUSH(x)        nvtxRangePush(x)
 #define NV_NAME_STREAM(x,y)     nvtxNameCudaStreamA(x,y)
+
 #else
+
 #define NV_RANGE_POP(x)
 #define NV_RANGE_PUSH(x)
 #define NV_NAME_STREAM(x,y)
+
 #endif
+
 
 //====================================== Global variables ================================================
 
@@ -267,24 +322,6 @@ extern int    msgLevel;                                                         
 
 typedef struct cuSearch cuSearch;
 typedef struct resThrds resThrds;
-
-//====================================== Section Enables =================================================
-
-
-//     Normalisation
-#define 		WITH_NORM_GPU
-#define 		WITH_NORM_GPU_OS
-
-//     Optimisation
-//#define		WITH_OPT_BLK1
-//#define		WITH_OPT_BLK2
-#define 		WITH_OPT_BLK3
-//#define 		WITH_OPT_PLN1
-//#define 		WITH_OPT_PLN2
-#define 		WITH_OPT_PLN3
-//#define 		WITH_OPT_PLN4
-
-//#define  		WITH_ITLV_PLN
 
 //======================================== Type defines ==================================================
 
@@ -507,9 +544,9 @@ typedef struct cuFfdotStack
     ////////////////// Memory information \\\\\\\\\\\\\\\\\\
 
     size_t          strideCmplx;        ///< The stride of the block of memory  [ in complex numbers! ]
-    size_t          stridePower;        ///< The stride of the powerss
+    size_t          stridePower;        ///< The stride of the powers
 
-    fcomplexcu*     h_iBuffer;          ///< Pointer to host memory to do CPU "work" on the Input data for the batch
+    fcomplexcu*     h_iBuffer;          ///< Pointer to host memory to do CPU "work" on the Input data for the batch, this allows delaying the input data synchronisation
     fcomplexcu*     h_iData;            ///< Paged locked input data for this stack
     fcomplexcu*     d_iData;            ///< Device       input data for this stack
 
@@ -539,7 +576,7 @@ typedef struct cuFfdotStack
     cudaEvent_t     ifftComp;           ///< Creation (multiplication and FFT) of the complex plane complete
     cudaEvent_t     ifftMemComp;        ///< IFFT memory copy
 
-    // CUDA TIMING events
+    // CUDA Profiling events
     cudaEvent_t     normInit;           ///< Multiplication starting
     cudaEvent_t     inpFFTinit;         ///< Start of the input FFT
     cudaEvent_t     multInit;           ///< Multiplication starting
@@ -737,7 +774,7 @@ typedef struct cuFFdotBatch
     cudaStream_t    	srchStream;		///< CUDA stream for summing and searching the data
     cudaStream_t    	resStream;		///< CUDA stream for
 
-    // TIMING events
+    // CUDA Profiling events
     cudaEvent_t     	iDataCpyInit;		///< Copying input data to device
     cudaEvent_t     	multInit;		///< Start of batch multiplication
     cudaEvent_t    	searchInit;		///< Sum & Search start
@@ -905,7 +942,7 @@ struct cuSearch
     int                 noSrchHarms;        ///<
     int                 noSteps;            ///< The number of steps to cover the entire input data
 
-    long long           timings[TIME_END];  ///< Array for timing values (values stored in ms)
+    long long           timings[TIME_END];  ///< Array for timing values (values stored in ms) - These are only used if the TIMING is defined in cuda_accel.h
 
     // Search power cutoff values
     int*                sIdx;               ///< The index of the planes in the Presto harmonic summing order
