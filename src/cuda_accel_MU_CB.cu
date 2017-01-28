@@ -549,7 +549,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
   if ( batch->flags & FLAG_CUFFT_CB_OUT )
   {
-    infoMSG(4,6,"Set CB powers output\n");
+    infoMSG(5,5,"Set CB powers output\n");
 
 #if CUDA_VERSION >= 6050
 
@@ -593,7 +593,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
 
   if ( batch->flags & FLAG_MUL_CB )
   {
-    infoMSG(4,6,"Set CB input\n");
+    infoMSG(5,5,"Set CB input\n");
 
     CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
 

@@ -183,7 +183,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
       }
 #endif
 
-      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
+      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ), "Calling cudaMemcpy2DAsync after IFFT.");
     }
   }
 }
@@ -282,10 +282,12 @@ void copyToInMemPln(cuFFdotBatch* batch)
     {
       if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
+	infoMSG(5,5,"Time previous components");
+
 	for (int stack = 0; stack < batch->noStacks; stack++)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[stack];
-	  timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->compTime[NO_STKS*TIME_CMP_D2D + stack ],  "Copy to full plane");
+	  timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->compTime[NO_STKS*COMP_GEN_D2D + stack ],  "Copy to full plane");
 	}
       }
     }
@@ -295,7 +297,9 @@ void copyToInMemPln(cuFFdotBatch* batch)
   {
     if ( batch->flags & FLAG_SS_INMEM )
     {
-      infoMSG(2,2,"Copy to in-mem plane\n");
+      infoMSG(2,2,"Copy powers to in-mem plane - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+
+      cuFfdotStack* cStack = batch->stacks;
 
       PROF // Profiling  .
       {
@@ -317,11 +321,9 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
       FOLD // Copy back data  .
       {
-	cuFfdotStack* cStack = &batch->stacks[0];
-
 	FOLD // Synchronisation  .
 	{
-	  infoMSG(3,4,"pre synchronisation\n");
+	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "ifftComp");
 
 	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 	}
@@ -338,7 +340,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 	{
 	  if ( batch->flags & FLAG_CUFFT_CB_POW )
 	  {
-	    infoMSG(3,4,"2D async memory copy\n");
+	    infoMSG(4,4,"2D async memory copy");
 
 	    // Copy memory using a 2D async memory copy
 	    if ( batch->flags & FLAG_POW_HALF )
@@ -357,7 +359,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 	  }
 	  else
 	  {
-	    infoMSG(3,4,"kernel memory copy\n");
+	    infoMSG(4,4,"Kernel memory copy\n");
 
 	    // Use kernel to copy powers from powers plane to the inmem plane
 	    cmplxToPln( batch, cStack );
@@ -368,32 +370,9 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
 	FOLD // Synchronisation  .
 	{
+	  infoMSG(4,4,"event: cStack->ifftMemComp");
+
 	  CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, batch->srchStream),"Recording event: ifftMemComp");
-	}
-      }
-
-      FOLD // Blocking if synchronises  .
-      {
-	if ( batch->flags & FLAG_SYNCH )
-	{
-	  infoMSG(3,4,"post synchronisation [blocking] ifftMemComp\n");
-
-	  cuFfdotStack* cStack = &batch->stacks[0];
-
-	  FOLD // This is a hack, it gave errors with ought it =/
-	  {
-	    PROF // Profiling  .
-	    {
-	      NV_RANGE_PUSH("EventSynch");
-	    }
-
-	    CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-
-	    PROF // Profiling  .
-	    {
-	      NV_RANGE_POP(); // EventSynch
-	    }
-	  }
 	}
       }
 

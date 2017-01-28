@@ -96,7 +96,7 @@ typedef struct accelcand{
   rderivs *derivs;     /* An rderivs structure for each harmonic */
 
 //#ifdef CBL
-  //TMP Remove these vars
+  // REM : Remove these vars
   float   init_power;
   float   init_sigma;
   int     init_numharm;

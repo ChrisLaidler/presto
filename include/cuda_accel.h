@@ -232,42 +232,56 @@ extern "C"
 
 //=========================================== enums ======================================================
 
-#define  TIME_CONTEXT		0			/// Time for CUDA context initialisation
-#define  TIME_PREP		1			/// CPU preparation - parse command line, read, (FFT), and normalise input
-#define  TIME_CPU_INIT		2			/// CPU - Initialisation
-#define  TIME_GPU_INIT		3			/// GPU - Initialisation
-#define  TIME_ALL_SRCH		4			/// CPU & GPU - Initialisation and Candidate Generation
-#define  TIME_GPU_SRCHALL	5			/// GPU - Initialisation & Generation stages & Candidate copy and clear memory
-#define  TIME_CPU_CND_GEN	6			/// CPU - Candidate generation stage
-#define  TIME_GPU_CND_GEN	7			/// GPU - Candidate generation stage - Includes the time to copy initial candidates [TIME_CND]
-#define  TIME_GPU_PLN		8			/// GPU - Plane generation & Sum & Search in standard search
-#define  TIME_GPU_SS		9			/// GPU - Sum and search (only in in-mem) of full plane (Not including plane creation)
-#define  TIME_CPU_SRCH		10			/// CPU - Initialisation & Generation stage
-#define  TIME_CND		11			/// GPU - Time to copy candidates from GPU data structure to list for optimisation
-#define  TIME_ALL_OPT		12			///     - All Optimisation (duplicates, CPU and GPU refine, writing results to file
-#define  TIME_GPU_REFINE	13			/// GPU - Candidate refine and properties
-#define  TIME_CPU_REFINE	14			/// CPU - Candidate refine and properties
-#define  TIME_FILE_WRITE	15			///     - Write candidates to file
-#define  TIME_END		20			/// Nothing - A value to indicate the maximum array length
+#define  TIME_CPU_INIT		0			/// CPU - Initialisation
+#define  TIME_GPU_INIT		1			/// GPU - Initialisation
+#define  TIME_ALL_SRCH		2			/// CPU & GPU - Initialisation and Candidate Generation
+#define  TIME_GPU_SRCH		3			/// GPU - Initialisation & Generation stages & Candidate copy and clear memory
+#define  TIME_CPU_SRCH		4			/// CPU - Initialisation & Generation stage
+#define  TIME_CPU_CND_GEN	5			/// CPU - Candidate generation stage
+#define  TIME_GPU_CND_GEN	6			/// GPU - Candidate generation stage - Includes the time to copy initial candidates [TIME_CND]
+#define  TIME_CPU_OPT		7			/// CPU - Candidate generation stage
+#define  TIME_GPU_OPT		8			/// GPU - Candidate generation stage - Includes the time to copy initial candidates [TIME_CND]
+#define  TIME_ALL_OPT		9			///     - All Optimisation (duplicates, CPU and GPU refine, writing results to file
+
+#define  TIME_CONTEXT		10			/// Time for CUDA context initialisation
+#define  TIME_PREP		11			/// CPU preparation - parse command line, read, (FFT), and normalise input
+#define  TIME_GPU_PLN		12			/// GPU - Plane generation & Sum & Search in standard search
+#define  TIME_GPU_SS		13			/// GPU - Sum and search (only in in-mem) of full plane (Not including plane creation)
+#define  TIME_GPU_REFINE	14			/// GPU - Candidate refine and properties
+#define  TIME_CPU_REFINE	15			/// CPU - Candidate refine and properties
+#define  TIME_CND		16			/// GPU - Time to copy candidates from GPU data structure to list for optimisation
+#define  TIME_GEN_WAIT		17			/// Time waited for CPU threads to complete in generation stage
+#define  TIME_OPT_FILE_WRITE	18			///     - Write candidates to file
+#define  TIME_OPT_WAIT		19			/// Time waited for CPU threads to complete in optimisation stage
+
+#define  COMP_RESP		21			/// Initialisation - response function calculations
+#define  COMP_KERFFT		22			/// Convolution kernel FFT's
+#define  COMP_OPT_REFINE_1	23			/// First round of candidate position refinement - CPU Simplex or GPU planes
+#define  COMP_OPT_REFINE_2	24			/// Second round of candidate position refinement - Small scale CPU Simplex usual run is separate CPU thread
+#define  COMP_OPT_DERIVS	25			/// Calculate candidate derivatives - run is separate CPU thread
+
+#define  COMP_MAX		30			/// Nothing - A value to indicate the maximum array length
 
 
-#define  NO_STKS		(batch->noStacks)
+#define  NO_STKS		(batch->noStacks)	/// A value used to index, components values
 
-#define  TIME_CMP_RESP		0			///
-#define  TIME_CMP_KERFFT	1			///
-#define  TIME_CMP_H2D		2			///
-#define  TIME_CMP_NRM		3			///
-#define  TIME_CMP_MEM		4			/// Stack0: Zeroing host buffer, Stack1: Copy input FFT to buffer, Stack2: Copy buffer over pinned
-#define  TIME_CMP_FFT		5			/// Input FFT
-#define  TIME_CMP_MULT		6			///
-#define  TIME_CMP_IFFT		7			///
-#define  TIME_CMP_D2D		8			///
-#define  TIME_CMP_SS		9			///
-#define  TIME_CMP_D2H		10			///
-#define  TIME_CMP_STR		11			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
-#define  TIME_CMP_REFINE	12			///
-#define  TIME_CMP_DERIVS	13			///
-#define  TIME_CMP_END		14			/// Nothing - A value to indicate the maximum array length
+#define  COMP_GEN_H2D		0			///
+#define  COMP_GEN_CINP		1			/// GPU input stuff - Mem copies, Normalisation and FFT
+#define  COMP_GEN_GINP		2			/// GPU input stuff - The time for the CPU thread to call all the GPU input stuff this potently included: Normalisation, FFTs, Mem copies
+#define  COMP_GEN_NRM		3			///
+#define  COMP_GEN_MEM		4			/// Stack0: Zeroing host buffer, Stack1: Copy input FFT to buffer, Stack2: Copy buffer over pinned
+#define  COMP_GEN_FFT		5			/// Input FFT
+#define  COMP_GEN_MULT		6			///
+#define  COMP_GEN_IFFT		7			///
+#define  COMP_GEN_D2D		8			///
+#define  COMP_GEN_SS		9			///
+#define  COMP_GEN_D2H		10			///
+#define  COMP_GEN_STR		11			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
+#define  COMP_GEN_END		12			/// Nothing - A value to indicate the end of the used variables
+#define  COMP_GEN_MAX		20			/// Nothing - A value to indicate the maximum array length
+
+
+
 
 
 //========================================== Macros ======================================================
@@ -429,13 +443,6 @@ typedef struct gpuInf
     char*   name;                       ///<
 } gpuInf;
 
-/** Details of a GPU  .
- */
-typedef struct runInf
-{
-    long long           runTimes[TIME_END];             ///<
-} runInf;
-
 typedef struct cuHarmInput
 {
     fcomplexcu*	h_inp;				///< A pointer to host memory size bytes big
@@ -514,6 +521,7 @@ typedef struct cuFfdotStack
 
     int             noInStack;          ///< The number of planes in this stack
     int             startIdx;           ///< The family index the first plane of the stack
+    int             stackIdx;           ///< The index of the stack in the batch
     size_t          width;              ///< The width of  the entire stack, for one step [ in complex numbers! ]
     size_t          height;             ///< The height of the entire stack, for one step
     size_t          kerHeigth;          ///< The height of the multiplication kernel for this stack (this is equivalent to the height of the largest plane in the stack)
@@ -555,7 +563,7 @@ typedef struct cuFfdotStack
     void*           d_planePowr;        ///< Plane of float data for the search
 
     stackInfo*      d_sInf;             ///< Stack info structure on the device (usually in constant memory)
-    int             stkIdx;             ///< The index of this stack in the constant device memory list of stacks
+    int             stkConstIdx;        ///< The index of this stack in the constant device memory list of stacks
 
     ////////////////// Asynchronous CUDA information \\\\\\\\\\\\\\\\\\
 
@@ -605,14 +613,15 @@ typedef struct searchScale
  */
 typedef struct rVals
 {
-    int             step;               ///< The step these r values cover
-    double          drlo;               ///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
-    double          drhi;               ///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
-    long long       lobin;              ///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
-    long            numdata;            ///< The number of input FFT points to read
-    long            numrs;              ///< The number of good values in the plane ( expanded units ) NOTE: This is used to denote an active "section' if this is set to 0 many of the processes wont run on
-    long long       expBin;             ///< The index of the expanded bin of the first good value
-    double          norm;               ///< The normalisation factor used to normalise the input - Not always set
+    int             step;				///< The step these r values cover
+    int             iteration;				///< Iteration - in the candidate generation loop
+    double          drlo;				///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    double          drhi;				///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    long long       lobin;				///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
+    long            numdata;				///< The number of input FFT points to read
+    long            numrs;				///< The number of good values in the plane ( expanded units ) NOTE: This is used to denote an active "section' if this is set to 0 many of the processes wont run on
+    long long       expBin;				///< The index of the expanded bin of the first good value
+    double          norm;				///< The normalisation factor used to normalise the input - Not always set
 } rVals;
 
 /** User specified search details  .
@@ -789,7 +798,7 @@ typedef struct cuFFdotBatch
     cudaEvent_t     	processComp;		///< Process candidates (usually done on CPU)
 
     // TIMING values
-    float*          	compTime;		///< Array of floats from timing, one float for each stack
+    long long*         	compTime;		///< Array of floats from timing, one float for each stack
 
 #if CUDA_VERSION >= 6050
     cufftCallbackLoadC    h_ldCallbackPtr;
@@ -835,7 +844,6 @@ typedef struct cuRespPln
     int			noZ;			///< The number of elements in the z Direction
     size_t		size;			///< The size in bytes of the response plane
 } cuRespPln;
-
 
 /** Data structure to hold the GPU information for performing GPU optimisation  .
  *
@@ -934,7 +942,6 @@ struct cuSearch
     resThrds*           threasdInfo;        ///< Information on threads to handle returned candidates.
     cuPlnInfo*          pInf;               ///< The allocated Device and host memory and data structures to create planes including the kernels
     cuOptInfo*          oInf;               ///< Details of optimisations
-    runInf*             rInf;               ///< Information of the actual run
 
     // Some extra search details
     int                 noHarmStages;       ///< The number of stages of harmonic summing
@@ -942,7 +949,7 @@ struct cuSearch
     int                 noSrchHarms;        ///<
     int                 noSteps;            ///< The number of steps to cover the entire input data
 
-    long long           timings[TIME_END];  ///< Array for timing values (values stored in ms) - These are only used if the TIMING is defined in cuda_accel.h
+    long long           timings[COMP_MAX];  ///< Array for timing values (values stored in μs) - These are used for both timing and profiling, they are only filled if TIMING and or PROFILING are defined in cuda_accel.h
 
     // Search power cutoff values
     int*                sIdx;               ///< The index of the planes in the Presto harmonic summing order
@@ -955,7 +962,7 @@ struct cuSearch
     void*               d_planeFull;        ///< Device memory for the in-mem f-∂f plane
     GSList*		cands;              ///< The candidates from the GPU search
 
-    unsigned int        inmemStride;        ///< The stride (in units) of the in-memory plane data in device memory
+    unsigned int	inmemStride;        ///< The stride (in units) of the in-memory plane data in device memory
 };
 
 /** Information of the P-threads used in the search  .
@@ -1002,7 +1009,7 @@ typedef struct resultData
     rVals               rVal;
 
     uint*               noResults;
-    float*              resultTime;
+    long long*          resultTime;
 
 } resultData;
 

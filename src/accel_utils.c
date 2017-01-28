@@ -1783,8 +1783,11 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 	obs->inmem = 0;
 	obs->ffdotplane = NULL;
 
-	printf("Temporary testing exit...\n");		// REM
-	exit(EXIT_FAILURE);				// REM
+	FOLD // TMP REM - Added to mark an error for thesis timing
+	{
+	  printf("Temporary testing exit...\n");
+	  exit(EXIT_FAILURE);
+	}
 
 	return;
       }

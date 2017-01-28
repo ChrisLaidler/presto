@@ -780,7 +780,7 @@ __device__ inline float boundsReduce1(int* offset, T *val, T *array, float *lftB
 
 	__syncthreads(); 					// Atomic SM sums  .
 
-#ifdef SORT_DBG // DBG - Bounds New line  .
+#ifdef SORT_DBG // Bounds New line  .
 	if ( tid == 0 && printVals )
 	{
 	  printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, *lftBound, *rhtBound, belowlft, lft, belowRht, rht, *offset);
@@ -919,8 +919,8 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
     return array[offset];
   }
 
-#ifdef SORT_DBG // DBG New line  .
-  if ( printVals && (tid == 0) && (bid==0) ) // DBG
+#ifdef SORT_DBG // New line  .
+  if ( printVals && (tid == 0) && (bid==0) )
   {
     printf("\n");
   }
@@ -1064,7 +1064,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //
 //	  __syncthreads(); 						// Atomic SM sums  .
 //
-//#ifdef SORT_DBG // DBG - Bounds New line  .
+//#ifdef SORT_DBG // Bounds New line  .
 //	  if ( tid == 0 && printVals )
 //	  {
 //	    printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, lftBound, rhtBound, belowlft, lft, belowRht, rht, offset);
@@ -1286,7 +1286,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //
 //	  __syncthreads(); 						// Atomic SM sums  .
 //
-//#ifdef SORT_DBG // DBG - Bounds New line  .
+//#ifdef SORT_DBG // Bounds New line  .
 //	  if ( tid == 0 && printVals )
 //	  {
 //	    printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, lftBound, rhtBound, belowlft, lft, belowRht, rht, offset);
@@ -1509,7 +1509,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //
 //	  __syncthreads(); 						// Atomic SM sums  .
 //
-//#ifdef SORT_DBG // DBG - Bounds New line  .
+//#ifdef SORT_DBG // Bounds New line  .
 //	  if ( tid == 0 && printVals )
 //	  {
 //	    printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, lftBound, rhtBound, belowlft, lft, belowRht, rht, offset);
@@ -1744,7 +1744,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
 	  __syncthreads(); 						// Atomic SM sums  .
 
-#ifdef SORT_DBG // DBG - Bounds New line  .
+#ifdef SORT_DBG // Bounds New line  .
 	  if ( tid == 0 && printVals )
 	  {
 	    printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, lftBound, rhtBound, belowlft, lft, belowRht, rht, offset);
@@ -1998,7 +1998,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
 	  __syncthreads(); 						// Atomic SM sums  .
 
-#ifdef SORT_DBG // DBG - Bounds New line  .
+#ifdef SORT_DBG // Bounds New line  .
 	  if ( tid == 0 && printVals )
 	  {
 	    printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, lftBound, rhtBound, belowlft, lft, belowRht, rht, offset);
@@ -2250,7 +2250,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
 	  __syncthreads(); 						// Atomic SM sums  .
 
-#ifdef SORT_DBG // DBG - Bounds New line  .
+#ifdef SORT_DBG // Bounds New line  .
 	  if ( tid == 0 && printVals )
 	  {
 	    printf("%2i %4i pOffset = %3i/%3i  Bound [%9.6f - %9.6f]  Below %4i < %9.6f -  %4i < %9.6f -  looking for %i  \n", bid, noVals, pOffset+1, noTotMels, lftBound, rhtBound, belowlft, lft, belowRht, rht, offset);
@@ -2395,7 +2395,7 @@ __device__ inline float boundsReduce2(int* offset, T *val, T* array, float *lftB
   __shared__ int	belowlft;					///< SM for communication
   __shared__ int	belowRht;					///< SM for communication
 
-#ifdef SORT_DBG // DBG New line  .
+#ifdef SORT_DBG // New line  .
   if ( tid == 0 )
   {
     printf( "Enter %4i %i %i - %i \n", noVals, sLen, hLen, noTotMels );
@@ -2538,7 +2538,7 @@ __device__ inline float boundsReduce2(int* offset, T *val, T* array, float *lftB
 
 	__syncthreads(); 						// Atomic SM sums  .
 
-#ifdef SORT_DBG // DBG - Bounds New line  .
+#ifdef SORT_DBG // Bounds New line  .
 	if ( tid == 0 && printVals )
 	{
 	  const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;        /// Block ID (flat index)
@@ -2678,7 +2678,7 @@ __device__ inline float boundsReduce2(int* offset, T *val, T* array, float *lftB
     __syncthreads(); 							// SM reads (this may be unnecessary)  .
   }
 
-#ifdef SORT_DBG // DBG New line  .
+#ifdef SORT_DBG // New line  .
   if ( tid == 0 )
   {
     printf( "Exit  %4i %i %i \n\n", noVals, sLen, hLen);

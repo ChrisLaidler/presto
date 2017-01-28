@@ -90,6 +90,10 @@ ExternC int getMemAlignment();
  */
 ExternC int getStrie(int noEls, int elSz, int blockSz);
 
-void timeEvents( cudaEvent_t start, cudaEvent_t end, float* timeSum, const char* msg );
+ExternC void streamSleep(cudaStream_t stream, long long int clock_count );
+
+ExternC void queryEvents( cudaEvent_t   evnt, const char* msg );
+
+ExternC void timeEvents( cudaEvent_t   start, cudaEvent_t   end, long long* timeSum, const char* msg );
 
 #endif /* CUDA_UTILS_H_ */

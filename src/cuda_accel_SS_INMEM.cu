@@ -317,34 +317,34 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
 
 __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 {
-  PROF // Profiling  .
+  PROF // Profiling - Time previous components  .
   {
-    if ( batch->flags & FLAG_PROF )
+    if ( (batch->flags & FLAG_PROF) )
     {
-      infoMSG(3,3,"Timing\n");
-
       if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
+	infoMSG(5,5,"Time previous components");
+
 	// Inmem Sum and Search kernel
-	timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*TIME_CMP_SS],   "Search kernel");
+	timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*COMP_GEN_SS],   "Search kernel");
       }
     }
   }
 
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    infoMSG(2,2,"In-mem sum and search\n");
+    infoMSG(2,2,"In-mem sum and search - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
 
     FOLD // Synchronisation  .
     {
-      infoMSG(3,3,"pre synchronisation\n");
-
       if      ( batch->flags & FLAG_SS_INMEM )
       {
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "searchComp");
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, batch->searchComp, 0),  "Waiting on event searchComp");
       }
       else
       {
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "candCpyComp");
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, batch->candCpyComp, 0), "Waiting on event candCpyComp");
       }
     }
@@ -380,19 +380,19 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
     FOLD // Synchronisation  .
     {
-      infoMSG(3,3,"post synchronisation\n");
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "searchComp", "srchStream");
 
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
 
-#ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is. In debug mode extra synchronisation is necessary
-      if ( batch->flags & FLAG_SYNCH )
-      {
-	infoMSG(4,4,"DEBUG only synchronisation, blocking.\n");
-
-	CUDA_SAFE_CALL(cudaEventSynchronize(batch->searchComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-	CUDA_SAFE_CALL(cudaGetLastError(), "Calling searchINMEM kernel.");
-      }
-#endif
+//#ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is. In debug mode extra synchronisation is necessary
+//      if ( batch->flags & FLAG_SYNCH )
+//      {
+//	infoMSG(4,4,"DEBUG only synchronisation, blocking.\n");
+//
+//	CUDA_SAFE_CALL(cudaEventSynchronize(batch->searchComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+//	CUDA_SAFE_CALL(cudaGetLastError(), "Calling searchINMEM kernel.");
+//      }
+//#endif
     }
   }
 }

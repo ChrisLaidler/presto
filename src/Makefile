@@ -681,17 +681,17 @@ cleanALEN:
 	rm -f build/*/accelsearch.o
 	rm -f build/*/test_GPUaccel.o
 
-cleanTIMING:
+cleanPROFILE:
 	rm -rf build/*/accelsearch*.o
+	rm -rf build/*/cuda_accel_KR.cu.o
 	rm -rf build/*/cuda_accel_IN.cu.o
-	rm -rf build/*/cuda_accel_MU_10.cu.o
+	rm -rf build/*/cuda_accel_MU_IM.cu.o
 	rm -rf build/*/cuda_accel_MU.cu.o
 	rm -rf build/*/cuda_accel_SS_CPU.cu.o
 	rm -rf build/*/cuda_accel_SS_INMEM.cu.o
 	rm -rf build/*/cuda_accel_SS.cu.o
 	rm -rf build/*/cuda_accel_utils.cu.o
 	rm -rf build/*/cuda_cand_OPT.cu.o
-	rm -rf build/*/test_GPUaccel*.o
 
 cleanMULT:
 	rm -rf build/*/accelsearch*.o

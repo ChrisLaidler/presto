@@ -233,8 +233,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       if ( batch->flags & FLAG_PROF )
       {
 	gettimeofday(&end, NULL);
-	float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-	batch->compTime[NO_STKS*TIME_CMP_SS] += v1;
+	float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec) ;
+	batch->compTime[NO_STKS*COMP_GEN_SS] += v1;
       }
 
 
@@ -264,8 +264,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       if ( batch->flags & FLAG_PROF )
       {
 	gettimeofday(&end, NULL);
-	float v2 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-	batch->compTime[NO_STKS*TIME_CMP_STR] += v2;
+	float v2 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	batch->compTime[NO_STKS*COMP_GEN_STR] += v2;
       }
 
 
