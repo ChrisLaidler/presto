@@ -1,3 +1,27 @@
+/** @file cuda_accel_IN.cu
+ *  @brief Functions to manage normalisation and FFT'ing of input data for CUDA accelsearch
+ *
+ *  This contains the various functions that controle and undertake input normalisation and FFT
+ *  These include:
+ *    Input Normalisation
+ *    Input FFT
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.02] [2017-01-28 10:25]
+ *    Fixed bug in syncronouse in-mem runs (added a block on event ifftMemComp)
+ *    Added some debug messages on stream synchronisation on events
+ *
+ */
+
+
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
@@ -603,6 +627,8 @@ void copyInputToDevice(cuFFdotBatch* batch)
     {
       FOLD // Previous  .
       {
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "inpStream", "multComp (batch and stacks)");
+
 	// Wait for previous per-stack multiplications to finish
 	for (int ss = 0; ss < batch->noStacks; ss++)
 	{
@@ -626,9 +652,15 @@ void copyInputToDevice(cuFFdotBatch* batch)
 
 	    infoMSG(4,4,"HACK! - Adding GPU delay");
 
-	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->searchComp, 0), "Waiting for Search to complete\n");
-	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftComp, 0), "Waiting for iFFT complete\n");
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "inpStream", "searchComp");
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "inpStream", "ifftComp");
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "inpStream", "ifftMemComp");
+
+	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->searchComp, 0), 	"Waiting for Search to complete\n");
+	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftComp, 0), 	"Waiting for iFFT complete\n");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftMemComp, 0), "Waiting for Search to complete\n");
+
+	    infoMSG(5,5,"Call Delay kernel.\n");
 
 	    streamSleep(batch->inpStream, 3e5*batch->noStacks );	// The length of the delay is tuned to the number of stacks and is device dependent
 	  }
@@ -717,12 +749,12 @@ void prepInputGPU(cuFFdotBatch* batch)
 
     PROF // Profiling  .
     {
-	NV_RANGE_PUSH("GPU prep input");
+      NV_RANGE_PUSH("GPU prep input");
 
-	if ( batch->flags & FLAG_PROF )
-	{
-	  gettimeofday(&start, NULL);
-	}
+      if ( batch->flags & FLAG_PROF )
+      {
+	gettimeofday(&start, NULL);
+      }
     }
 
     FOLD // Normalise and spread on GPU  .
@@ -747,13 +779,25 @@ void prepInputGPU(cuFFdotBatch* batch)
 	  FOLD // Synchronisation  .
 	  {
 	    // This iteration
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "iDataCpyComp");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->inptStream, batch->iDataCpyComp, 0), "Waiting for GPU to be ready to copy data to device\n");
 
 	    if ( batch->flags & FLAG_SYNCH )
 	    {
-	      // Wait for previous FFT to complete
+	      // Wait for the search to complete before FFT'ing the next set of input
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "searchComp");
+	      cudaStreamWaitEvent(cStack->inptStream, batch->searchComp, 0);
+
+	      // Wait for iFFT mem copy to finish
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "ifftMemComp");
+	      cudaStreamWaitEvent(cStack->inptStream, batch->stacks->ifftMemComp, 0);
+
+	      // Wait for previous normalisation to complete
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "normComp (neighbours)");
 	      if ( pStack != NULL )
+	      {
 		cudaStreamWaitEvent(cStack->inptStream, pStack->normComp, 0);
+	      }
 	    }
 
 	    PROF // Profiling  .
@@ -813,6 +857,9 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	  FOLD // Synchronisation  .
 	  {
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "normComp (stack and batch)");
+    	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "iDataCpyComp");
+
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, cStack->normComp,     0), "Waiting for event stack normComp");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->normComp,      0), "Waiting for event batch normComp");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->iDataCpyComp,  0), "Waiting for event iDataCpyComp");
@@ -820,16 +867,22 @@ void prepInputGPU(cuFFdotBatch* batch)
 	    if ( batch->flags & FLAG_SYNCH )	// Synchronous execution  .
 	    {
 	      // Wait for the search to complete before FFT'ing the next set of input
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "searchComp");
 	      cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
 
-	      // Wait for all normalisation to be completed
-	      cudaStreamWaitEvent(cStack->fftIStream, batch->normComp, 0);
+	      // Wait for iFFT mem copy to finish
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "ifftMemComp");
+	      cudaStreamWaitEvent(cStack->fftIStream, batch->stacks->ifftMemComp, 0);
 
 	      // Wait for previous FFT to complete
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "inpFFTinitComp (neighbours)");
 	      if ( pStack != NULL )
+	      {
 		cudaStreamWaitEvent(cStack->fftIStream, pStack->inpFFTinitComp, 0);
+	      }
 
 	      // Wait for all GPU normalisations to complete
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "normComp  (all)");
 	      for (int stack2Idx = 0; stack2Idx < batch->noStacks; stack2Idx++)
 	      {
 		cuFfdotStack* stack2 = &batch->stacks[stackIdx];
