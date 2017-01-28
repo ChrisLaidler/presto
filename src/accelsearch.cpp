@@ -342,8 +342,8 @@ int main(int argc, char *argv[])
 	  NV_RANGE_POP(); // CPU Srch
 
 	  gettimeofday(&end, NULL);
-	  cuSrch->timings[TIME_CPU_CND_GEN] = cuSrch->timings[TIME_CPU_SRCH] - cuSrch->timings[TIME_CPU_INIT];
 	  cuSrch->timings[TIME_CPU_SRCH] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	  cuSrch->timings[TIME_CPU_CND_GEN] = cuSrch->timings[TIME_CPU_SRCH] - cuSrch->timings[TIME_CPU_INIT];
 
 	  printf("In %.4f ms.\n", cuSrch->timings[TIME_CPU_SRCH]/1000.0 );
 	}
