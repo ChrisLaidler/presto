@@ -25,13 +25,16 @@ void multiplyPlane(cuFFdotBatch* batch)
     FOLD // Synchronisation  .
     {
       // This iteration
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp");
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->inpFFTinitComp,0),       "Waiting for GPU to be ready to copy data to device.");  // Need input data
 
       // CFF output callback has its own data so can start once FFT is complete
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "ifftComp");
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),      "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
       if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
       {
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "candCpyComp");
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
       }
 
@@ -46,7 +49,9 @@ void multiplyPlane(cuFFdotBatch* batch)
 
 	// Wait for the previous multiplication to complete
 	if ( pStack != NULL )
+	{
 	  cudaStreamWaitEvent(cStack->multStream, pStack->multComp, 0);
+	}
       }
     }
 
@@ -391,7 +396,8 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
   FOLD // Synchronisation  .
   {
-    infoMSG(3,5,"pre synchronisation\n");
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "multComp");
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftComp");
 
     // Wait for multiplication to finish
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,      0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
@@ -401,14 +407,17 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftComp,      0), "Waiting for GPU to be ready to copy data to device.");
     if ( batch->flags & FLAG_SS_INMEM  )
     {
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftMemComp");
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
     }
 
     // Wait for previous search to finish
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "searchComp");
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,     0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
     if ( (batch->retType & CU_STR_PLN) && (batch->flags & FLAG_CUFFT_CB_OUT) ) // This has been deprecated!
     {
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "candCpyComp");
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
     }
 
@@ -417,20 +426,25 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
       // Wait for all the multiplications to complete
       for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
       {
+	infoMSG(5,5,"Synchronise stream %s on %s (stack %i - synch).\n", "fftPStream", "multComp", synchIdx);
+
 	cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
 	cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
       }
 
       // Wait for the previous fft to complete
       if ( pStack != NULL )
+      {
+	infoMSG(5,5,"Synchronise stream %s on %s (previous stack synch).\n", "fftPStream", "ifftComp");
 	cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
+      }
     }
 
   }
 
   FOLD // Call the inverse CUFFT  .
   {
-    infoMSG(5,5,"Call the inverse CUFFT\n");
+    infoMSG(4,4,"Call the inverse CUFFT\n");
 
     if ( cStack->flags & CU_FFT_SEP )
     {
