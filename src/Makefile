@@ -683,8 +683,9 @@ cleanALEN:
 
 cleanPROFILE:
 	rm -rf build/*/accelsearch*.o
-	rm -rf build/*/cuda_accel_KR.cu.o
 	rm -rf build/*/cuda_accel_IN.cu.o
+	rm -rf build/*/cuda_accel_KR.cu.o
+	rm -rf build/*/cuda_accel_MU_CB.cu.o
 	rm -rf build/*/cuda_accel_MU_IM.cu.o
 	rm -rf build/*/cuda_accel_MU.cu.o
 	rm -rf build/*/cuda_accel_SS_CPU.cu.o
@@ -692,6 +693,7 @@ cleanPROFILE:
 	rm -rf build/*/cuda_accel_SS.cu.o
 	rm -rf build/*/cuda_accel_utils.cu.o
 	rm -rf build/*/cuda_cand_OPT.cu.o
+	rm -rf build/*/cuda_utils.cu.o
 
 cleanMULT:
 	rm -rf build/*/accelsearch*.o

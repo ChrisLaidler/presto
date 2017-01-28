@@ -19,6 +19,13 @@
  *  [0.0.02] [2017-01-07 10:25]
  *    Fixed bug in determining optimal plane width - half plane using correct z-max
  *
+ *  [0.0.02] [2017-01-31 18:50]
+ *    Fixed more bugs in accel len calculation
+ *    Chaged the way profiling and timing happens, introduced the PROF macro
+ *    Canges to GPUDefaylts text values
+ *    New better ordering for asynchrenouse & profiling standard serarch (faster overlap GPU and CPU)
+ *    Added many more debug messages in initalisation routines
+ *    Fixed bug in iFFT stream creation
  */
 
 #include <cufft.h>
@@ -353,6 +360,8 @@ void createFFTPlans(cuFFdotBatch* kernel)
       {
 	if ( kernel->flags & CU_INPT_FFT_CPU )
 	{
+	  infoMSG(5,5,"Creating Single FFTW plan for input FFT.\n");
+
 	  PROF // Profiling  .
 	  {
 	    NV_RANGE_PUSH("FFTW");
@@ -367,6 +376,8 @@ void createFFTPlans(cuFFdotBatch* kernel)
 	}
 	else
 	{
+	  infoMSG(5,5,"Creating Single CUFFT plan for input FFT.\n");
+
 	  PROF // Profiling  .
 	  {
 	    NV_RANGE_PUSH("CUFFT Inp");
@@ -386,6 +397,8 @@ void createFFTPlans(cuFFdotBatch* kernel)
     {
       if ( kernel->flags & FLAG_DOUBLE )
       {
+	infoMSG(5,5,"Creating Double CUFFT plan for iFFT\n");
+	
 	int n[]             = {cStack->width};
 
 	int inembed[]       = {cStack->strideCmplx * sizeof(double2)};            /// Storage dimensions of the input data in memory
@@ -413,6 +426,8 @@ void createFFTPlans(cuFFdotBatch* kernel)
       }
       else
       {
+	infoMSG(5,5,"Creating Single CUFFT plan for iFFT\n");
+
 	int n[]             = {cStack->width};
 
 	int inembed[]       = {cStack->strideCmplx * sizeof(fcomplexcu)};         /// Storage dimensions of the input data in memory
@@ -437,7 +452,6 @@ void createFFTPlans(cuFFdotBatch* kernel)
 	    NV_RANGE_POP(); // CUFFT Pln
 	  }
 	}
-
       }
     }
 
@@ -809,7 +823,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       if ( !(cuSrch->sSpec->flags & FLAG_SS_INMEM) && (cuSrch->sSpec->flags & FLAG_Z_SPLIT) )
       {
-	infoMSG(6,6,"Disabling in-mem plane split\n");
+	infoMSG(5,5,"Disabling in-mem plane split\n");
 
 	cuSrch->sSpec->flags &= ~FLAG_Z_SPLIT;
       }
@@ -1255,9 +1269,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       CUDA_SAFE_CALL(cudaStreamCreate(&fStack->initStream),"Creating CUDA stream for initialisation");
 
-      sprintf(strBuff,"%i.0.0.0 Initialisation", kernel->gInf->devid );
-      NV_NAME_STREAM(fStack->initStream, strBuff);
-      //printf("cudaStreamCreate: %s\n", strBuff);
+      PROF // Profiling, name stream  .
+      {
+	sprintf(strBuff,"%i.0.0.0 Initialisation", kernel->gInf->devid );
+	NV_NAME_STREAM(fStack->initStream, strBuff);
+      }
 
       for (int i = 0; i < kernel->noStacks; i++)
       {
@@ -1273,9 +1289,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	CUDA_SAFE_CALL(cudaStreamCreate(&cStack->initStream),"Creating CUDA stream for initialisation");
 
-	sprintf(strBuff,"%i.0.0.%i Initialisation", kernel->gInf->devid, i);
-	NV_NAME_STREAM(cStack->initStream, strBuff);
-	//printf("cudaStreamCreate: %s\n", strBuff);
+	PROF // Profiling, name stream  .
+	{
+	  sprintf(strBuff,"%i.0.0.%i Initialisation", kernel->gInf->devid, i);
+	  NV_NAME_STREAM(cStack->initStream, strBuff);
+	}
       }
     }
 
@@ -1288,9 +1306,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  cuFfdotStack* cStack = &kernel->stacks[i];
 
 	  CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-	  sprintf(strBuff,"%i.0.2.%i FFT Input Dev", kernel->gInf->devid, i);
-	  NV_NAME_STREAM(cStack->fftIStream, strBuff);
-	  //printf("cudaStreamCreate: %s\n", strBuff);
+
+	  PROF // Profiling, name stream  .
+	  {
+	    sprintf(strBuff,"%i.0.2.%i FFT Input Dev", kernel->gInf->devid, i);
+	    NV_NAME_STREAM(cStack->fftIStream, strBuff);
+	  }
 	}
       }
 
@@ -1299,9 +1320,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	cuFfdotStack* cStack = &kernel->stacks[i];
 
 	CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-	sprintf(strBuff,"%i.0.4.%i FFT Plane Dev", kernel->gInf->devid, i);
-	NV_NAME_STREAM(cStack->fftPStream, strBuff);
-	//printf("cudaStreamCreate: %s\n", strBuff);
+
+	PROF // Profiling, name stream  .
+	{
+	  sprintf(strBuff,"%i.0.4.%i FFT Plane Dev", kernel->gInf->devid, i);
+	  NV_NAME_STREAM(cStack->fftPStream, strBuff);
+	}
       }
     }
 
@@ -1318,7 +1342,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       NV_RANGE_PUSH("kernel malloc");
     }
 
-    infoMSG(4,4,"Allocate device memory for all the kernels data\n");
+    infoMSG(4,4,"Allocate device memory for all the kernels data.\n");
 
     if ( kernel->kerDataSize > free )
     {
@@ -1424,7 +1448,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	int maxR              = ceil  ( cuSrch->sSpec->fftInf.rhi  + kernel->hInfos->halfWidth );
 
 	searchScale* SrchSz   = new searchScale;
-	cuSrch->SrchSz          = SrchSz;
+	cuSrch->SrchSz        = SrchSz;
 	memset(SrchSz, 0, sizeof(searchScale));
 
 	SrchSz->searchRLow    = cuSrch->sSpec->fftInf.rlo / (double)kernel->noSrchHarms;
@@ -1443,7 +1467,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  SrchSz->noSteps       = ( cuSrch->sSpec->fftInf.rhi - cuSrch->sSpec->fftInf.rlo ) * cuSrch->sSpec->noResPerBin / (float)( kernel->accelLen ) ; // The number of planes to make
 	}
 
-	// Determin the number of canidate 'r' values
+	// Determine the number of candidate 'r' values
 	if ( kernel->flags  & FLAG_STORE_EXP )
 	{
 	  SrchSz->noOutpR     = ceil( (SrchSz->searchRHigh - SrchSz->searchRLow)*cuSrch->sSpec->noResPerBin );
@@ -1598,7 +1622,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	}
       }
 
-      if      (kernel->retType & CU_CMPLXF    )
+      if      (kernel->retType & CU_POWERZ_S  )		// Default
+      {
+	retSZ = sizeof(candPZs);
+      }
+      else if (kernel->retType & CU_CMPLXF    )
       {
 	retSZ = sizeof(fcomplexcu);
       }
@@ -1622,11 +1650,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       else if (kernel->retType & CU_DOUBLE    )
       {
 	retSZ = sizeof(double);
-      }
-      else if (kernel->retType & CU_POWERZ_S  )
-      {
-	retSZ = sizeof(candPZs);
-      }
+      }      
       else if (kernel->retType & CU_POWERZ_I  )
       {
 	retSZ = sizeof(candPZi);
@@ -2195,7 +2219,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     if ( !(kernel->flags & CU_FFT_SEP) )
     {
-      infoMSG(4,4,"Create FFT plans\n");
+      infoMSG(4,4,"Create \"Global\" FFT plans.\n");
 
       createFFTPlans(kernel);
     }
@@ -2517,18 +2541,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   PROF // Profiling  .
   {
     char msg[1024];
-    sprintf(msg,"%i of %i", no, of);
+    sprintf(msg,"%i of %i", no+1, of+1);
     NV_RANGE_PUSH(msg); // # of #
   }
 
   char strBuff[1024];
   size_t free, total;
 
-  infoMSG(3,3,"%s device %i, batch %i of %i \n",__FUNCTION__, kernel->gInf->devid, no+1, of);
+  infoMSG(3,3,"\n%s - Device %i, batch %i of %i \n",__FUNCTION__, kernel->gInf->devid, no+1, of+1);
 
   FOLD // See if we can use the cuda device  .
   {
-    infoMSG(4,4,"Device %i\n", kernel->gInf->devid);
+    infoMSG(4,4,"Set device to %i.\n", kernel->gInf->devid);
 
     setDevice(kernel->gInf->devid) ;
 
@@ -2545,7 +2569,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Copy details from kernel and allocate stacks .
   {
-    infoMSG(4,4,"Copy kernel\n");
+    infoMSG(4,4,"Copy kernel data struct.\n");
 
     // Copy the basic batch parameters from the kernel
     memcpy(batch, kernel, sizeof(cuFFdotBatch));
@@ -2553,7 +2577,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     batch->srchMaster   = 0;
     batch->isKernel     = 0;
 
-    infoMSG(4,4,"Create and copy stacks\n");
+    infoMSG(4,4,"Create and copy stack data structs.\n");
 
     // Allocate memory for the stacks
     batch->stacks = (cuFfdotStack*) malloc(batch->noStacks * sizeof(cuFfdotStack));
@@ -2576,6 +2600,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  if ( !(cStack->flags & FLAG_MUL_ALL) )	// Default to multiplication  .
 	  {
+	    infoMSG(5,5,"No multiplication kernel specifyed, auto select (Good).");
 	    int64_t mFlag = 0;
 
 	    // In my testing I found multiplying each plane separately works fastest so it is the "default"
@@ -2584,36 +2609,51 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    if ( batch->gInf->capability > 3.0 )
 	    {
 	      // Lots of registers per thread so 2.1 is good
+	      infoMSG(5,5,"Compute caperbility %.1f > 3.0. Easy, use multiplication kernel 2.1\n", batch->gInf->capability);
 	      mFlag |= FLAG_MUL_21;
 	    }
 	    else
 	    {
+	      infoMSG(5,5,"Compute caperbility %.1f <= 3.0. (device has a smaller number registers)\n", batch->gInf->capability);
+
 	      // We require fewer registers per thread, so use Multiplication kernel 2.1
 	      if ( noInp <= 20 )
 	      {
+		infoMSG(5,5,"# input for stack %i is %i, this is <= 20 so use mult 2.1 \n", i, noInp);
+
 		// TODO: Check small, looks like some times 22 may be faster.
 		mFlag |= FLAG_MUL_21;
 	      }
 	      else
 	      {
+		infoMSG(5,5,"# input for stack %i is %i, this is > 20\n", i, noInp);
+
 		if ( kernel->noSteps <= 4 )
 		{
+		  infoMSG(5,5,"steps (%i) < 4\n", kernel->noSteps );
+
 		  // very few steps so 2.2 not always the best option
 		  if ( kernel->hInfos->zmax > 100 )
 		  {
+		    infoMSG(5,5,"zmax > 100 use mult 2.3.\n");
+
 		    // This only really holds for 16 harmonics summed with 3 or 4 steps
 		    // In my testing it is generally true for zmax greater than 100
 		    mFlag |= FLAG_MUL_23;
 		  }
 		  else
 		  {
+		    infoMSG(5,5,"zmax <= 100 use mult 2.2.\n");
+
 		    // Here 22 is usually better
 		    mFlag |= FLAG_MUL_22;
 		  }
 		}
 		else
 		{
-		  // Enough steps to justify Multiplication kernel 2.1
+		  infoMSG(5,5,"Plenty steps so use mult 2.2 \n");
+
+		  // Enough steps to justify Multiplication kernel 2.2
 		  mFlag |= FLAG_MUL_22;
 		}
 	      }
@@ -2682,6 +2722,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  if ( i == 0 )
 	    batch->mulChunk = cStack->mulChunk;
+
+	  infoMSG(5,5,"stack %i  mulChunk %2i \n",i, cStack->mulChunk);
 	}
       }
 
@@ -2689,6 +2731,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     FOLD // Sum and search flags  .
     {
+
       if ( !(batch->flags & FLAG_SS_ALL ) )   // Default to multiplication  .
       {
 	batch->flags |= FLAG_SS_10;
@@ -2730,6 +2773,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	// Clamp to valid bounds
 	batch->ssChunk = MAX(MIN(floor(batch->ssChunk), 9),1);
+
+	infoMSG(5,5,"ssChunk %2i \n",batch->ssChunk);
       }
     }
   }
@@ -2738,7 +2783,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     if ( kernel->flags & CU_FFT_SEP )
     {
-      infoMSG(4,4,"Create FFT plans\n");
+      infoMSG(4,4,"Create batch FFT plans.\n");
 
       createFFTPlans(batch);
 
@@ -2763,7 +2808,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       }
 
       // Allocate page-locked host memory for input data  .
-      infoMSG(5,5,"Allocate page-locked for input data.  %p  %i Bytes \n", &batch->h_iData, batch->inpDataSize);
+      infoMSG(5,5,"Allocate page-locked for input data. (%.2f MB)\n", batch->inpDataSize*1e-6 );
 
       CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plane input data." );
 
@@ -2772,7 +2817,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       if ( !(batch->flags & CU_NORM_GPU) )
       {
-	infoMSG(5,5,"Allocate host memory for normalisation powers.\n");
+	infoMSG(5,5,"Allocate host memory for normalisation powers. (%.2f MB)\n", batch->hInfos->width * sizeof(float)*1e-6 );
 
 	// Allocate CPU memory for normalisation
 	batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
@@ -2815,7 +2860,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( batch->inpDataSize )
 	{
-	  infoMSG(5,5,"Allocate device memory for input.\n");
+	  infoMSG(5,5,"Allocate device memory for input. (%.2f MB)\n", batch->inpDataSize*1e-6);
 
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_iData,       batch->inpDataSize ), "Failed to allocate device memory for batch input.");
 	  free -= batch->inpDataSize;
@@ -2823,7 +2868,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	if ( batch->plnDataSize )
 	{
-	  infoMSG(5,5,"Allocate device memory for complex plane.\n");
+	  infoMSG(5,5,"Allocate device memory for complex plane. (%.2f MB)\n", batch->plnDataSize*1e-6);
 
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planeMult,   batch->plnDataSize ), "Failed to allocate device memory for batch complex plane.");
 	  free -= batch->plnDataSize;
@@ -2831,7 +2876,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	if ( batch->pwrDataSize )
 	{
-	  infoMSG(5,5,"Allocate device memory for powers plane.\n");
+	  infoMSG(5,5,"Allocate device memory for powers plane. (%.2f MB)\n", batch->pwrDataSize*1e-6);
 
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planePowr,   batch->pwrDataSize ), "Failed to allocate device memory for batch powers plane.");
 	  free -= batch->pwrDataSize;
@@ -2864,23 +2909,25 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  }
 	  else
 	  {
-	    infoMSG(5,5,"Allocate device memory for return values.\n");
+	    infoMSG(5,5,"Allocate device memory for return values. (%.2f MB)\n", batch->retDataSize*1e-6);
 
 	    CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData1, batch->retDataSize ), "Failed to allocate device memory for return values.");
 	    free -= batch->retDataSize;
 
 	    if ( batch->flags & FLAG_SS_INMEM )
 	    {
+	      // NOTE: Most of the time could use complex plane for both sets of return data.
+
 	      if ( batch->retDataSize > batch->plnDataSize )
 	      {
-		infoMSG(4,5,"Complex plane is smaller than return data -> FLAG_SEPSRCH\n");
+		infoMSG(5,5,"Complex plane is smaller than return data -> FLAG_SEPSRCH\n");
 
 		batch->flags |= FLAG_SEPSRCH;
 	      }
 
 	      if ( batch->flags & FLAG_SEPSRCH )
 	      {
-		infoMSG(5,5,"Allocate device memory for second return values.\n");
+		infoMSG(5,5,"Allocate device memory for second return values. (%.2f MB)\n", batch->retDataSize*1e-6);
 
 		// Create a separate output space
 		CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData2, batch->retDataSize ), "Failed to allocate device memory for return values.");
@@ -2888,6 +2935,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	      }
 	      else
 	      {
+		infoMSG(5,5,"Using complex plane for second return values. (%.2f MB of %.2f MB)\n", batch->retDataSize*1e-6, batch->plnDataSize*1e-6 );
+
 		batch->d_outData2 = batch->d_planeMult;
 	      }
 	    }
@@ -2899,14 +2948,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( kernel->retDataSize )
 	{
-	  infoMSG(5,5,"Allocate page-locked for candidates.\n");
+	  infoMSG(5,5,"Allocate page-locked for candidates. (%.2f MB) \n", kernel->retDataSize*1e-6);
 
 	  CUDA_SAFE_CALL(cudaMallocHost(&batch->h_outData1, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
 	  memset(batch->h_outData1, 0, kernel->retDataSize );
 
 	  if ( kernel->flags & FLAG_SS_INMEM )
 	  {
-	    infoMSG(5,5,"Allocate page-locked for candidates.\n");
+	    infoMSG(5,5,"Allocate page-locked for second candidates. (%.2f MB) \n", kernel->retDataSize*1e-6);
 
 	    CUDA_SAFE_CALL(cudaMallocHost(&batch->h_outData2, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
 	    memset(batch->h_outData2, 0, kernel->retDataSize );
@@ -2929,6 +2978,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       }
       else
       {
+	infoMSG(5,5,"Allocate planes data structures.\n");
+
 	batch->planes = (cuFFdot*) malloc(batch->noGenHarms* sizeof(cuFFdot));
 	memset(batch->planes, 0, batch->noGenHarms* sizeof(cuFFdot));
       }
@@ -2938,6 +2989,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       if ( batch->flags & FLAG_PROF )
       {
+	infoMSG(5,5,"Allocate timing array.\n");
+
 	int sz = batch->noStacks*sizeof(long long)*(COMP_GEN_MAX) ;
 
 	batch->compTime       = (long long*)malloc(sz);
@@ -2955,12 +3008,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Set up the batch streams and events  .
   {
-    infoMSG(4,4,"Set up the batch streams and events\n");
+    infoMSG(4,4,"Set up the batch streams and events.\n");
 
     FOLD // Create Streams  .
     {
       FOLD // Input streams  .
       {
+	infoMSG(5,5,"Create input stream for batch.\n");
+
 	// Batch input ( Always needed, for copying input to device )
 	CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
 
@@ -2973,13 +3028,15 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	// Stack input
 	if ( (batch->flags & CU_NORM_GPU)  )
 	{
+	  infoMSG(5,5,"Create input stream for stacks to normalise with.\n");
+
 	  for (int i = 0; i < batch->noStacks; i++)
 	  {
 	    cuFfdotStack* cStack  = &batch->stacks[i];
 
 	    CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inptStream), "Creating input data multStream for stack");
 
-	    PROF 				// Profiling name streams  .
+	    PROF 				// Profiling, name stream  .
 	    {
 	      sprintf(strBuff,"%i.%i.1.%i Stack Input", batch->gInf->devid, no, i);
 	      NV_NAME_STREAM(cStack->inptStream, strBuff);
@@ -2990,27 +3047,31 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Input FFT streams  .
       {
-	for (int i = 0; i < kernel->noStacks; i++)
+	if ( !(kernel->flags & CU_INPT_FFT_CPU) )	// Using CUFFT for input  .
 	{
-	  cuFfdotStack* cStack = &batch->stacks[i];
-
-	  if ( kernel->flags & CU_FFT_SEP )       // Create stream  .
+	  for (int i = 0; i < kernel->noStacks; i++)
 	  {
-	    if ( !(kernel->flags & CU_INPT_FFT_CPU) )
+	    cuFfdotStack* cStack = &batch->stacks[i];
+
+	    if ( kernel->flags & CU_FFT_SEP )       	// Create stream  .
 	    {
+	      infoMSG(5,5,"Create stream for input FFT, stack %i.\n", i);
+
 	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for input fft's");
 
-	      PROF 				// Profiling name streams  .
+	      PROF 					// Profiling name streams  .
 	      {
 		sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->gInf->devid, no, i);
 		NV_NAME_STREAM(cStack->fftIStream, strBuff);
 	      }
 	    }
-	  }
-	  else                                    // Copy stream of the kernel  .
-	  {
-	    cuFfdotStack* kStack  = &kernel->stacks[i];
-	    cStack->fftIStream    = kStack->fftIStream;
+	    else					// Copy stream of the kernel  .
+	    {
+	      infoMSG(5,5,"Using global input FFT stream for stack %i.\n", i);
+
+	      cuFfdotStack* kStack  = &kernel->stacks[i];	// Kernel stack, has the "global" stream
+	      cStack->fftIStream    = kStack->fftIStream;
+	    }
 	  }
 	}
       }
@@ -3019,6 +3080,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if      ( batch->flags & FLAG_MUL_BATCH )
 	{
+	  infoMSG(5,5,"Create batch stream for multiplication.\n");
+
 	  CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
 
 	  PROF 					// Profiling name streams  .
@@ -3026,18 +3089,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->gInf->devid, no);
 	    NV_NAME_STREAM(batch->multStream, strBuff);
 	  }
-
 	}
 
 	if ( (batch->flags & FLAG_MUL_STK) || (batch->flags & FLAG_MUL_PLN)  )
 	{
+	  infoMSG(5,5,"Create streams for stack multiplication.\n");
 	  for (int i = 0; i< batch->noStacks; i++)
 	  {
 	    cuFfdotStack* cStack  = &batch->stacks[i];
+	    CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
 
 	    PROF 				// Profiling name streams  .
 	    {
-	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
 	      sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->gInf->devid, no, i);
 	      NV_NAME_STREAM(cStack->multStream, strBuff);
 	    }
@@ -3053,15 +3116,19 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  if ( batch->flags & CU_FFT_SEP )	// Create stream
 	  {
+	    infoMSG(5,5,"Create streams for stack iFFT, stack %i.\n",i);
+	    CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream), "Creating fftPStream for stack");
+
 	    PROF 				// Profiling name streams  .
 	    {
-	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
 	      sprintf(strBuff,"%i.%i.4.%i Stack iFFT", batch->gInf->devid, no, i);
 	      NV_NAME_STREAM(cStack->fftPStream, strBuff);
 	    }
 	  }
 	  else					// Copy stream of the kernel
 	  {
+	    infoMSG(5,5,"Using global iFFT stream for stack %i.\n", i);
+
 	    cuFfdotStack* kStack  = &kernel->stacks[i];
 	    cStack->fftPStream    = kStack->fftPStream;
 	  }
@@ -3070,6 +3137,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Search stream  .
       {
+	infoMSG(5,5,"Create stream for batch search.\n");
+
 	CUDA_SAFE_CALL(cudaStreamCreate(&batch->srchStream), "Creating strmSearch for batch.");
 
 	PROF 				// Profiling name streams  .
@@ -3081,8 +3150,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Result stream  .
       {
+	infoMSG(5,5,"Create stream top copy results back drom device.\n");
+
 	// Batch output ( Always needed, for copying results from device )
-	CUDA_SAFE_CALL(cudaStreamCreate(&batch->resStream), "Creating strmSearch for batch.");
+	CUDA_SAFE_CALL(cudaStreamCreate(&batch->resStream), "Creating resStream for batch.");
 
 	PROF 				// Profiling name streams  .
 	{
@@ -3101,6 +3172,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( batch->flags & FLAG_PROF )
 	{
+	  infoMSG(4,4,"Create batch events with timing enabled.\n");
+
 	  CUDA_SAFE_CALL(cudaEventCreate(&batch->iDataCpyComp), "Creating input event iDataCpyComp.");
 	  CUDA_SAFE_CALL(cudaEventCreate(&batch->candCpyComp),  "Creating input event candCpyComp.");
 	  CUDA_SAFE_CALL(cudaEventCreate(&batch->normComp),     "Creating input event normComp.");
@@ -3115,6 +3188,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	}
 	else
 	{
+	  infoMSG(4,4,"Create batch events with timing disabled.\n");
+
 	  CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->iDataCpyComp,   cudaEventDisableTiming ), "Creating input event iDataCpyComp.");
 	  CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->candCpyComp,    cudaEventDisableTiming ), "Creating input event candCpyComp.");
 	  CUDA_SAFE_CALL(cudaEventCreateWithFlags(&batch->normComp,       cudaEventDisableTiming ), "Creating input event normComp.");
@@ -3132,6 +3207,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  if ( batch->flags & FLAG_PROF )
 	  {
+	    infoMSG(4,4,"Create stack %i events with timing enabled.\n", i);
+
 	    // in  events (with timing)
 	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    	"Creating input normalisation event");
 	    CUDA_SAFE_CALL(cudaEventCreate(&cStack->inpFFTinit),  	"Creating input FFT initialisation event");
@@ -3148,6 +3225,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  }
 	  else
 	  {
+	    infoMSG(4,4,"Create stack %i events with timing disabled.\n", i);
+
 	    // out events (without timing)
 	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->normComp,    	cudaEventDisableTiming), "Creating input data preparation complete event");
 	    CUDA_SAFE_CALL(cudaEventCreateWithFlags(&cStack->inpFFTinitComp,    cudaEventDisableTiming), "Creating input data preparation complete event");
@@ -3168,11 +3247,11 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     if ( (batch->flags & FLAG_TEX_INTERP) && !( (batch->flags & FLAG_CUFFT_CB_POW) && (batch->flags & FLAG_SAS_TEX) ) )
     {
-      fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation\n");
+      fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation.\n");
       batch->flags &= ~FLAG_TEX_INTERP;
     }
 
-    if ( batch->flags & FLAG_SAS_TEX )
+    if ( batch->flags & FLAG_SAS_TEX ) // This is depricated, but could be woth revisiting   .
     {
       infoMSG(4,4,"Create textures\n");
 
@@ -3498,14 +3577,18 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
       infoMSG(5,6,"Create streams.\n");
 
       CUDA_SAFE_CALL(cudaStreamCreate(&oPln->stream),"Creating stream for candidate optimisation.");
-      char nmStr[1024];
-      sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
-      NV_NAME_STREAM(oPln->stream, nmStr);
+
+      PROF // Profiling, name stream  .
+      {
+	char nmStr[1024];
+	sprintf(nmStr,"Optimisation Stream %02i", oPln->pIdx);
+	NV_NAME_STREAM(oPln->stream, nmStr);
+      }
     }
 
     FOLD // Create events  .
     {
-      infoMSG(5,6,"Create Events.\n");
+      infoMSG(5,5,"Create Events.\n");
 
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpInit),     "Creating input event inpInit." );
       CUDA_SAFE_CALL(cudaEventCreate(&oPln->inpCmp),      "Creating input event inpCmp."  );
@@ -3561,7 +3644,7 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
       }
       else
       {
-	infoMSG(5,6,"Input %.1f MB output %.1f MB.\n", oPln->input->size/1e6, oPln->outSz/1e6 );
+	infoMSG(6,6,"Input %.2f MB output %.2f MB.\n", oPln->input->size/1e6, oPln->outSz/1e6 );
 
 	// Allocate device memory
 	CUDA_SAFE_CALL(cudaMalloc(&oPln->d_out,  oPln->outSz),   "Failed to allocate device memory for kernel stack.");
@@ -3731,7 +3814,7 @@ int setStackVals( cuFFdotBatch* batch )
  */
 int setConstStkInfo(stackInfo* h_inf, int noStacks,  cudaStream_t stream)
 {
-  infoMSG(4,4,"set ConstStkInfo(%i)\n", noStacks );
+  infoMSG(5,5,"set ConstStkInfo to %i\n", noStacks );
 
   void *dcoeffs;
 
@@ -5360,7 +5443,7 @@ void initPlanes(cuSearch* sSrch )
 	  }
 	  else
 	  {
-	    infoMSG(5,5,"%s - initBatch initialised %i steps in batch %i.\n", __FUNCTION__, noSteps, batch);
+	    infoMSG(3,3,"Sucsesfully initialised %i steps in batch %i.\n", noSteps, batch+1);
 
 	    sSrch->pInf->noSteps           += noSteps;
 	    sSrch->pInf->devNoStacks[dev]  += sSrch->pInf->batches[bNo].noStacks;
@@ -5371,7 +5454,7 @@ void initPlanes(cuSearch* sSrch )
 	int noStacks = sSrch->pInf->devNoStacks[dev] ;
 	if ( noStacks )
 	{
-	  infoMSG(3,3,"Initialise constant memory for stacks\n" );
+	  infoMSG(3,3,"\nInitialise constant memory for stacks\n" );
 
 	  sSrch->pInf->h_stackInfo[dev] = (stackInfo*)malloc(noStacks*sizeof(stackInfo));
 	  int idx = 0;
@@ -6325,7 +6408,6 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
 	  }
 	}
       }
-
 
       cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", bsums[COMP_GEN_H2D]);
       cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", bsums[COMP_GEN_NRM]);
