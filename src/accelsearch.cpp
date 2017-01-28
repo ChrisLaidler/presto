@@ -986,7 +986,7 @@ int main(int argc, char *argv[])
 	    slog.setCsvDeliminator('\t');
 	    slog.setCsvLineNums(false);
 
-	    slog.csvWrite("Comps:",   "<secs>");
+	    slog.csvWrite("Comps:",   "<cmps>");
 	    slog.csvWrite("         Resp",  pres, cuSrch->timings[COMP_RESP]		* 1e-6 );
 	    slog.csvWrite("      Ker FFT",  pres, cuSrch->timings[COMP_KERFFT]		* 1e-6 );
 	    slog.csvWrite("     Refine 1",  pres, cuSrch->timings[COMP_OPT_REFINE_1]	* 1e-6 );
