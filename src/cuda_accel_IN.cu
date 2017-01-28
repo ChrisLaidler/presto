@@ -12,6 +12,8 @@ int    cuMedianBuffSz = -1;             ///< The size of the sub sections to use
  */
 void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 {
+  infoMSG(3,3,"CPU normalise batch input.");
+
   PROF // Profiling  .
   {
     NV_RANGE_PUSH("CPU_Norm_Spread");
@@ -181,8 +183,8 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 	{
 	  gettimeofday(&end, NULL);
 
-	  float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-	  batch->compTime[batch->noStacks*TIME_CMP_NRM + stack ] += v1;
+	  float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	  batch->compTime[batch->noStacks*COMP_GEN_NRM + stack ] += v1;
 	}
       }
     }
@@ -204,11 +206,11 @@ void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
  */
 void setGenRVals(cuFFdotBatch* batch)
 {
-  infoMSG(2,2,"Set Stack R-Vals\n");
+  infoMSG(4,4,"Set Stack R-Vals");
 
   PROF // Profiling  .
   {
-    NV_RANGE_PUSH("Set R-Valst");
+    NV_RANGE_PUSH("Set R-Vals");
   }
 
   int       hibin;
@@ -238,6 +240,7 @@ void setGenRVals(cuFFdotBatch* batch)
 	rVal->numdata		= 0;
 	rVal->expBin		= 0;
 	rVal->step		= -1; // Invalid step!
+	rVal->iteration		= -1;
       }
       else
       {
@@ -271,6 +274,7 @@ void setGenRVals(cuFFdotBatch* batch)
 	rVal->numrs		= numrs;
 	rVal->numdata		= numdata;
 	rVal->expBin		= (lobin+binoffset)*noResPerBin;
+	rVal->iteration		= rValFund->iteration;
 
 	int noEls		= numrs + 2*cHInfo->kerStart;
 
@@ -285,7 +289,7 @@ void setGenRVals(cuFFdotBatch* batch)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // Set R-Valst
+    NV_RANGE_POP(); // Set R-Vals
   }
 }
 
@@ -299,7 +303,7 @@ void setGenRVals(cuFFdotBatch* batch)
  */
 void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
 {
-  infoMSG(2,2,"Set Stack R-Vals\n");
+  infoMSG(3,3,"Set Stack R-Vals");
 
   FOLD // Set the r values for this step  .
   {
@@ -311,20 +315,21 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
 
 	if ( (step != 0) || (len == 0) )
 	{
-	  rVal->drlo          = 0;
-	  rVal->lobin         = 0;
-	  rVal->numrs         = 0;
-	  rVal->numdata       = 0;
-	  rVal->expBin        = 0;
-	  rVal->step          = -1; // Invalid step!
+	  rVal->drlo		= 0;
+	  rVal->lobin		= 0;
+	  rVal->numrs		= 0;
+	  rVal->numdata		= 0;
+	  rVal->expBin		= 0;
+	  rVal->step		= -1; // Invalid step!
+	  rVal->iteration	= -1;
 	}
 	else
 	{
-	  rVal->drlo          = searchRLow;
-	  rVal->lobin         = 0;
-	  rVal->numrs         = len;
-	  rVal->numdata       = 0;
-	  rVal->expBin        = 0;
+	  rVal->drlo		= searchRLow;
+	  rVal->lobin		= 0;
+	  rVal->numrs		= len;
+	  rVal->numdata		= 0;
+	  rVal->expBin		= 0;
 	}
       }
     }
@@ -341,62 +346,38 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
  */
 void prepInputCPU(cuFFdotBatch* batch )
 {
+  // Calculate various values for the step
   setGenRVals(batch);
-
-  // Profiling variables  .
-  struct timeval start, end;
-
-  PROF // Profiling - Components using  CUDA events  .
-  {
-      if ( batch->flags & FLAG_PROF )
-      {
-	if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
-	{
-	  // GPU Normalisation
-	  if ( batch->flags & CU_NORM_GPU )
-	  {
-	    for (int stack = 0; stack < batch->noStacks; stack++)
-	    {
-	      cuFfdotStack* cStack = &batch->stacks[stack];
-
-	      timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*TIME_CMP_NRM + stack ],    "Stack input normalisation");
-	    }
-	  }
-
-	  // Input FFT
-	  if ( !(batch->flags & CU_INPT_FFT_CPU) )
-	  {
-	    for (int stack = 0; stack < batch->noStacks; stack++)
-	    {
-	      cuFfdotStack* cStack = &batch->stacks[stack];
-
-	      timeEvents( cStack->inpFFTinit, cStack->inpFFTinitComp, &batch->compTime[NO_STKS*TIME_CMP_FFT + stack ],    "Stack input FFT");
-	    }
-	  }
-
-	  // Copying Data to device
-	  timeEvents( batch->iDataCpyInit, batch->iDataCpyComp, &batch->compTime[NO_STKS*TIME_CMP_H2D],   "Copy to device");
-	}
-      }
-  }
 
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
-    infoMSG(2,2,"CPU prep input\n");
+    infoMSG(2,2,"CPU prep input - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+
+    CUDA_SAFE_CALL(cudaGetLastError(), "prepInputCPU");
+
+    // Profiling variables  .
+    struct timeval start, end, start0, end0;
 
     fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->sSpec->fftInf.fft;
 
     PROF // Profiling  .
     {
       NV_RANGE_PUSH("CPU prep input");
+
+      if ( batch->flags & FLAG_PROF )
+      {
+	gettimeofday(&start0, NULL);
+      }
     }
 
-    FOLD // Prepare the temporary host buffer
+    FOLD // Prepare the temporary host buffer  .
     {
       // NOTE: I use a temporary host buffer, so that the normalisation and FFT can be done before synchronisation
 
       FOLD // Zero host memory buffer  .
       {
+	infoMSG(4,4,"Zero tmp buffer");
+
 	PROF // Profiling  .
 	{
 	  NV_RANGE_PUSH("Zero buffer");
@@ -416,16 +397,16 @@ void prepInputCPU(cuFFdotBatch* batch )
 	  if ( batch->flags & FLAG_PROF )
 	  {
 	    gettimeofday(&end, NULL);
-	    float time = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+	    float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 	    int idx = MIN(0, batch->noStacks-1);
-	    batch->compTime[NO_STKS*TIME_CMP_MEM+idx] += time;
+	    batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
 	  }
 	}
       }
 
       if ( batch->flags & CU_NORM_GPU  )	// Write input data segments to contiguous page locked memory  .
       {
-	infoMSG(3,5,"Write fft data segments to contiguous page locked memory\n");
+	infoMSG(4,4,"GPU normalisation - Copy input data to buffer.");
 
 	int harm  = 0;
 	int sz    = 0;
@@ -472,9 +453,9 @@ void prepInputCPU(cuFFdotBatch* batch )
 	  if ( batch->flags & FLAG_PROF )
 	  {
 	    gettimeofday(&end, NULL);
-	    float time = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+	    float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 	    int idx = MIN(1, batch->noStacks-1);
-	    batch->compTime[NO_STKS*TIME_CMP_MEM+idx] += time;
+	    batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
 	  }
 	}
       }
@@ -489,7 +470,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 	{
 	  if ( batch->flags & CU_INPT_FFT_CPU ) // CPU FFT  .
 	  {
-	    infoMSG(2,3,"CPU FFT Input\n");
+	    infoMSG(3,3,"CPU FFT Input");
 
 #pragma omp critical
 	    FOLD
@@ -519,8 +500,8 @@ void prepInputCPU(cuFFdotBatch* batch )
 		  {
 		    gettimeofday(&end, NULL);
 
-		    float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-		    batch->compTime[NO_STKS*TIME_CMP_FFT + stack ] += v1;
+		    float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+		    batch->compTime[NO_STKS*COMP_GEN_FFT + stack ] += v1;
 		  }
 		}
 	      }
@@ -530,26 +511,27 @@ void prepInputCPU(cuFFdotBatch* batch )
       }
     }
 
-    FOLD // Synchronisation [ blocking ]  .
-    {
-      infoMSG(3,4,"pre synchronisation [blocking] iDataCpyComp\n");
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_PUSH("EventSynch");
-      }
-
-      CUDA_SAFE_CALL(cudaGetLastError(), "Before Synchronising");
-      CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_POP(); // EventSynch
-      }
-    }
-
     FOLD // Copy CPU prepped data to the pagelocked input data  .
     {
+      infoMSG(3,3,"Copy buffer over to pinned memory");
+
+      FOLD // Synchronisation [ blocking ]  .
+      {
+	infoMSG(4,4,"blocking synchronisation on %s", "iDataCpyComp" );
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("EventSynch iDataCpyComp");
+	}
+
+	CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // EventSynch
+	}
+      }
+
       PROF // Profiling  .
       {
 	NV_RANGE_PUSH("memcpy 1");
@@ -570,9 +552,9 @@ void prepInputCPU(cuFFdotBatch* batch )
 	if ( batch->flags & FLAG_PROF )
 	{
 	  gettimeofday(&end, NULL);
-	  float time = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+	  float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 	  int idx = MIN(2, batch->noStacks-1);
-	  batch->compTime[NO_STKS*TIME_CMP_MEM+idx] += time;
+	  batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
 	}
       }
     }
@@ -580,17 +562,46 @@ void prepInputCPU(cuFFdotBatch* batch )
     PROF // Profiling  .
     {
       NV_RANGE_POP(); // CPU prep input
+
+      if ( batch->flags & FLAG_PROF )
+      {
+	gettimeofday(&end0, NULL);
+
+	float v1 =  ((end0.tv_sec - start0.tv_sec) * 1e6 + (end0.tv_usec - start0.tv_usec))*1e-3  ;
+	batch->compTime[batch->noStacks*COMP_GEN_CINP] += v1;
+      }
     }
   }
 }
 
 void copyInputToDevice(cuFFdotBatch* batch)
 {
+  PROF // Profiling - Time previous components  .
+  {
+    if ( (batch->flags & FLAG_PROF) )
+    {
+      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+      {
+	infoMSG(5,5,"Time previous components");
+
+	// Copying Data to device
+	timeEvents( batch->iDataCpyInit, batch->iDataCpyComp, &batch->compTime[NO_STKS*COMP_GEN_H2D],   "Copy to device");
+      }
+    }
+  }
+
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs ) // This is real data ie this isn't just a call to finish off asynchronous work
   {
+    infoMSG(2,2,"Copy to device - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Inp Copy");
+    }
+
     FOLD // Synchronisation  .
     {
-      FOLD // Previous
+      FOLD // Previous  .
       {
 	// Wait for previous per-stack multiplications to finish
 	for (int ss = 0; ss < batch->noStacks; ss++)
@@ -603,12 +614,25 @@ void copyInputToDevice(cuFFdotBatch* batch)
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->multComp, 0), "Waiting for GPU to be ready to copy data to device.\n");
       }
 
-      // Note don't have to wait for GPU input work as it is done in the same stream
+      // NOTE: don't have to wait for GPU input work as it is done in the same stream
 
       PROF // Profiling  .
       {
 	if ( batch->flags & FLAG_PROF )
 	{
+	  FOLD // HACK  .
+	  {
+	    // This hack, adds a dummy kernel to delay the "real" kernels so they can be accurately timed with events
+
+	    infoMSG(4,4,"HACK! - Adding GPU delay");
+
+	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->searchComp, 0), "Waiting for Search to complete\n");
+	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftComp, 0), "Waiting for iFFT complete\n");
+	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftMemComp, 0), "Waiting for Search to complete\n");
+
+	    streamSleep(batch->inpStream, 3e5*batch->noStacks );	// The length of the delay is tuned to the number of stacks and is device dependent
+	  }
+
 	  cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
 	}
       }
@@ -616,7 +640,7 @@ void copyInputToDevice(cuFFdotBatch* batch)
 
     FOLD // Copy pinned memory to device  .
     {
-      infoMSG(2,3,"Copy to device\n");
+      infoMSG(5,5,"cudaMemcpyAsync");
 
       CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
       CUDA_SAFE_CALL(cudaGetLastError(), "Copying input data to the device.");
@@ -642,18 +666,63 @@ void copyInputToDevice(cuFFdotBatch* batch)
 	}
       }
     }
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP();		// Inp Copy
+    }
   }
 }
 
 void prepInputGPU(cuFFdotBatch* batch)
 {
+  PROF // Profiling - Time previous components  .
+  {
+    if ( (batch->flags & FLAG_PROF) )
+    {
+      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+      {
+	infoMSG(5,5,"Time previous components");
+
+	// GPU Normalisation
+	if ( batch->flags & CU_NORM_GPU )
+	{
+	  for (int stack = 0; stack < batch->noStacks; stack++)
+	  {
+	    cuFfdotStack* cStack = &batch->stacks[stack];
+
+	    timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*COMP_GEN_NRM + stack ],    "Stack input normalisation");
+	  }
+	}
+
+	// Input FFT
+	if ( !(batch->flags & CU_INPT_FFT_CPU) )
+	{
+	  for (int stack = 0; stack < batch->noStacks; stack++)
+	  {
+	    cuFfdotStack* cStack = &batch->stacks[stack];
+
+	    timeEvents( cStack->inpFFTinit, cStack->inpFFTinitComp, &batch->compTime[NO_STKS*COMP_GEN_FFT + stack ],    "Stack input FFT");
+	  }
+	}
+      }
+    }
+  }
+
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    infoMSG(1,2,"GPU prep input\n");
+    infoMSG(2,2,"GPU prep input - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+
+    struct timeval start, end;  // Profiling variables
 
     PROF // Profiling  .
     {
-      NV_RANGE_PUSH("GPU prep input");
+	NV_RANGE_PUSH("GPU prep input");
+
+	if ( batch->flags & FLAG_PROF )
+	{
+	  gettimeofday(&start, NULL);
+	}
     }
 
     FOLD // Normalise and spread on GPU  .
@@ -663,6 +732,11 @@ void prepInputGPU(cuFFdotBatch* batch)
 	infoMSG(3,4,"Normalise on device\n");
 
 	cuFfdotStack* pStack = NULL;  // Previous stack
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Norm");
+	}
 
 	for ( int stack = 0; stack < batch->noStacks; stack++)  // Loop over stacks  .
 	{
@@ -710,6 +784,11 @@ void prepInputGPU(cuFFdotBatch* batch)
 	  CUDA_SAFE_CALL(cudaStreamWaitEvent(lStack->inptStream, lStack->normComp, 0), "Waiting for event normComp");
 	  CUDA_SAFE_CALL(cudaEventRecord(batch->normComp, lStack->inptStream), "Recording for event inptStream");
 	}
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // Norm
+	}
       }
     }
 
@@ -717,14 +796,17 @@ void prepInputGPU(cuFFdotBatch* batch)
     {
       if ( !(batch->flags & CU_INPT_FFT_CPU) )
       {
-	infoMSG(2,3,"GPU FFT\n");
+	infoMSG(3,3,"GPU FFT\n");
 
 	cuFfdotStack* pStack = NULL;  // Previous stack
 
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("FFT");
+	}
+
 	for (int stackIdx = 0; stackIdx < batch->noStacks; stackIdx++)
 	{
-	  infoMSG(3,4,"Stack %i\n", stackIdx);
-
 	  cuFfdotStack* cStack = &batch->stacks[stackIdx];
 
 	  CUDA_SAFE_CALL(cudaGetLastError(), "Before input fft.");
@@ -735,7 +817,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->normComp,      0), "Waiting for event batch normComp");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftIStream, batch->iDataCpyComp,  0), "Waiting for event iDataCpyComp");
 
-	    if ( batch->flags & FLAG_SYNCH )
+	    if ( batch->flags & FLAG_SYNCH )	// Synchronous execution  .
 	    {
 	      // Wait for the search to complete before FFT'ing the next set of input
 	      cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
@@ -758,30 +840,71 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	  FOLD // Do the FFT on the GPU  .
 	  {
-#pragma omp critical
-	    FOLD // Kernel
+	    // NOTE: the critical section below is need not be critical if run using CU_FFT_SEP
+
+	    if ( batch->flags & CU_FFT_SEP )
 	    {
-	      PROF // Profiling  .
+	      FOLD // Kernel  .
 	      {
-		if ( batch->flags & FLAG_PROF )
+		PROF // Profiling  .
 		{
-		  cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
+		  NV_RANGE_PUSH("Stack");
+
+		  if ( batch->flags & FLAG_PROF )
+		  {
+		    cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
+		  }
+		}
+
+		CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
+		CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+
+		CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
+
+		FOLD // Synchronisation  .
+		{
+		  cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
+		}
+
+		PROF // Profiling  .
+		{
+		  NV_RANGE_POP();	// Stack
 		}
 	      }
-
-	      CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
-	      CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
-
-	      CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
 	    }
-	  }
+	    else
+	    {
+#pragma omp critical
+	      FOLD // Kernel  .
+	      {
+		PROF // Profiling  .
+		{
+		  if ( batch->flags & FLAG_PROF )
+		  {
+		    cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
+		  }
+		}
 
-	  FOLD // Synchronisation  .
-	  {
-	    cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
+		CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
+		CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+
+		CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
+
+		FOLD // Synchronisation  .
+		{
+		  cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
+		}
+	      }
+	    }
+
 	  }
 
 	  pStack = cStack;
+	}
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // FFT
 	}
       }
     }
@@ -789,6 +912,14 @@ void prepInputGPU(cuFFdotBatch* batch)
     PROF // Profiling  .
     {
       NV_RANGE_POP(); // GPU prep input
+
+      if ( batch->flags & FLAG_PROF )
+      {
+	gettimeofday(&end, NULL);
+
+	float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	batch->compTime[batch->noStacks*COMP_GEN_GINP] += v1;
+      }
     }
   }
 }
@@ -803,6 +934,8 @@ void prepInputGPU(cuFFdotBatch* batch)
  */
 void prepInput(cuFFdotBatch* batch)
 {
+  CUDA_SAFE_CALL(cudaGetLastError(), "prepInput");
+
   prepInputCPU(batch);
   copyInputToDevice(batch);
   prepInputGPU(batch);

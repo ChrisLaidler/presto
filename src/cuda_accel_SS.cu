@@ -124,7 +124,7 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
     {
       add_and_searchCU31(stream, batch );
     }
-    //		Depricated
+    //		Deprecated
     //
     //    else if ( FLAGS & FLAG_SS_20 )
     //    {
@@ -142,6 +142,9 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
   }
 }
 
+/**
+ *  This needs to be here because the constant variables are here
+ */
 int setConstVals( cuFFdotBatch* batch )
 {
   void *dcoeffs;
@@ -346,8 +349,6 @@ void SSKer(cuFFdotBatch* batch)
 
   FOLD // Synchronisations  .
   {
-    infoMSG(3,4,"pre synchronisations\n");
-
     // Current Synchronisations
     for (int ss = 0; ss < batch->noStacks; ss++)
     {
@@ -355,15 +356,18 @@ void SSKer(cuFFdotBatch* batch)
 
       if ( batch->flags & FLAG_SS_INMEM )
       {
+	infoMSG(5,5,"Synchronise stream %s on %s stack %i.\n", "srchStream", "ifftMemComp", ss);
 	cudaStreamWaitEvent(batch->srchStream, cStack->ifftMemComp,   0);
       }
       else
       {
+	infoMSG(5,5,"Synchronise stream %s on %s stack %i.\n", "srchStream", "ifftComp", ss);
 	cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,      0);
       }
     }
 
     // Previous Synchronisations
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "candCpyComp");
     cudaStreamWaitEvent(batch->srchStream, batch->candCpyComp,      0);
   }
 
@@ -377,7 +381,7 @@ void SSKer(cuFFdotBatch* batch)
 
   FOLD // Call the SS kernel  .
   {
-    infoMSG(3,4,"kernel\n");
+    infoMSG(4,4,"kernel\n");
 
     if ( batch->retType & CU_POWERZ_S )
     {
@@ -412,7 +416,7 @@ void SSKer(cuFFdotBatch* batch)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP();
+    NV_RANGE_POP(); // S&S Ker
   }
 }
 
@@ -694,7 +698,7 @@ void* processSearchResults(void* ptr)
     if ( res->flags & FLAG_PROF )
     {
       gettimeofday(&end, NULL);
-      float time =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+      float time =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 
       if ( res->flags & FLAG_THREAD )
       {
@@ -735,23 +739,22 @@ void processSearchResults(cuFFdotBatch* batch)
     struct timeval start, end;          // Profiling variables
     resultData* thrdDat;
 
-    infoMSG(2,2,"Process previous results\n");
+    infoMSG(2,2,"Process results - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
 
     PROF // Profiling  .
     {
       NV_RANGE_PUSH("CPU Process results");
 
-      PROF // Profiling  .
+      if ( batch->flags & FLAG_PROF )
       {
-	if ( batch->flags & FLAG_PROF )
-	{
-	  gettimeofday(&start, NULL);
-	}
+	gettimeofday(&start, NULL);
       }
     }
 
     FOLD // Allocate temporary memory to copy results back to  .
     {
+      infoMSG(4,4,"Allocate thread memory");
+
       thrdDat = new resultData;     // A data structure to hold info for the thread processing the results
       memset(thrdDat, 0, sizeof(resultData) );
 
@@ -766,7 +769,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP();
+	  NV_RANGE_POP(); // malloc
 	}
       }
     }
@@ -775,13 +778,13 @@ void processSearchResults(cuFFdotBatch* batch)
     {
       rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
 
-      infoMSG(3,3,"Initialise thread data structure\n");
+      infoMSG(3,3,"Initialise thread data structure");
 
       thrdDat->cuSrch		= batch->cuSrch;
       thrdDat->cndType  	= batch->cndType;
       thrdDat->retType  	= batch->retType;
       thrdDat->flags    	= batch->flags;
-      thrdDat->resultTime 	= &batch->compTime[NO_STKS*TIME_CMP_STR];
+      thrdDat->resultTime 	= &batch->compTime[NO_STKS*COMP_GEN_STR];
       thrdDat->noResults  	= &batch->noResults;
 
       thrdDat->rLow       	= rVal->drlo;
@@ -829,22 +832,22 @@ void processSearchResults(cuFFdotBatch* batch)
       if ( batch->flags & FLAG_PROF )
       {
 	gettimeofday(&end, NULL);
-	float time = ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+	float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 	int idx = MIN(2, batch->noStacks-1);
 
 	pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
-	batch->compTime[NO_STKS*TIME_CMP_STR+idx] += time;
+	batch->compTime[NO_STKS*COMP_GEN_STR+idx] += time;
 	pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
       }
     }
 
     FOLD // Copy data from device  .
     {
-      infoMSG(3,3,"copy to temporary memory\n");
+      infoMSG(3,3,"Copy to thread memory");
 
       FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
       {
-	infoMSG(4,4,"pre synchronisation [blocking] candCpyComp\n");
+	infoMSG(4,4,"blocking synchronisation on %s", "candCpyComp" );
 
 	PROF // Profiling  .
 	{
@@ -855,7 +858,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP();
+	  NV_RANGE_POP(); // EventSynch
 	}
       }
 
@@ -893,7 +896,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
 	  FOLD // Synchronisation  .
 	  {
-	    infoMSG(4,4,"synchronise\n");
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "processComp", "srchStream");
 
 	    // This will allow kernels to run while the CPU continues
 	    CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
@@ -906,7 +909,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP();
+	  NV_RANGE_POP(); // memcpy
 	}
       }
 
@@ -915,11 +918,11 @@ void processSearchResults(cuFFdotBatch* batch)
 	if ( batch->flags & FLAG_PROF )
 	{
 	  gettimeofday(&end, NULL);
-	  float time =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+	  float time =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 	  int idx = MIN(1, batch->noStacks-1);
 
 	  pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
-	  batch->compTime[NO_STKS*TIME_CMP_STR+idx] += time;
+	  batch->compTime[NO_STKS*COMP_GEN_STR+idx] += time;
 	  pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
 	}
       }
@@ -937,7 +940,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
       if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
       {
-	infoMSG(3,3,"create thread\n");
+	infoMSG(3,3,"Spawn thread");
 
 	sem_post(&batch->cuSrch->threasdInfo->running_threads); // Increase the count number of running threads, processSearchResults will decrease it when its finished
 
@@ -962,7 +965,7 @@ void processSearchResults(cuFFdotBatch* batch)
       }
       else                              	// Just call the function  .
       {
-	infoMSG(3,3,"non thread\n");
+	infoMSG(3,3,"Non thread");
 
 	processSearchResults( (void*) thrdDat );
 
@@ -972,7 +975,7 @@ void processSearchResults(cuFFdotBatch* batch)
 
 	  FOLD // Synchronisation  .
 	  {
-	    infoMSG(4,4,"synchronise\n");
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "processComp", "srchStream");
 
 	    // This will allow kernels to run while the CPU continues
 	    CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
@@ -984,7 +987,7 @@ void processSearchResults(cuFFdotBatch* batch)
       {
 	if ( batch->flags & FLAG_SYNCH )
 	{
-	  NV_RANGE_POP();
+	  NV_RANGE_POP(); // Thread
 	}
       }
     }
@@ -998,25 +1001,28 @@ void processSearchResults(cuFFdotBatch* batch)
 
 void getResults(cuFFdotBatch* batch)
 {
-  PROF // Profiling  .
+  PROF // Profiling - Time previous components  .
   {
-    if ( batch->flags & FLAG_PROF )
+    NV_RANGE_PUSH("Get results");
+
+    if ( (batch->flags & FLAG_PROF) )
     {
       if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
 	// Results copying
-	timeEvents( batch->candCpyInit, batch->candCpyComp, &batch->compTime[NO_STKS*TIME_CMP_D2H],   "Copy device to host");
+	timeEvents( batch->candCpyInit, batch->candCpyComp, &batch->compTime[NO_STKS*COMP_GEN_D2H],   "Copy device to host");
       }
     }
   }
 
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    infoMSG(2,2,"Copy results from device to host\n");
+    infoMSG(2,2,"Get batch results - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
 
     FOLD // Synchronisations  .
     {
-      infoMSG(3,3,"pre synchronise\n");
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "resStream", "resStream");
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "resStream", "processComp");
 
       // This iteration
       CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->searchComp,  0),"Waiting on event searchComp");
@@ -1058,18 +1064,25 @@ void getResults(cuFFdotBatch* batch)
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Leaving getResults.");
   }
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP(); //Get results
+  }
 }
 
 void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and process data in normal steps  .
 {
-  PROF // Profiling  .
+  PROF // Profiling - Time previous components  .
   {
-    if ( batch->flags & FLAG_PROF )
+    if ( (batch->flags & FLAG_PROF) )
     {
       if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
+	infoMSG(5,5,"Time previous components");
+
 	// Sum & Search kernel
-	timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*TIME_CMP_SS],   "Sum & Search");
+	timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*COMP_GEN_SS],   "Sum & Search");
       }
     }
   }
@@ -1077,7 +1090,7 @@ void sumAndSearch(cuFFdotBatch* batch)        // Function to call to SS and proc
   // Sum and search the IFFT'd data  .
   if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
   {
-    infoMSG(1,2,"Sum & Search\n");
+    infoMSG(2,2,"Sum & Search Batch - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
 
     if      ( batch->retType	& CU_STR_PLN 	  )
     {
@@ -1105,8 +1118,6 @@ void sumAndMax(cuFFdotBatch* batch)
 
 void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 {
-  infoMSG(2,1,"Inmem Search\n");
-
   setActiveBatch(batch, 0);
   setSearchRVals(batch, drlo, len);
 
@@ -1140,9 +1151,9 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
 void inmemSumAndSearch(cuSearch* cuSrch)
 {
-  infoMSG(2,2,"Inmem Sum And Search\n");
+  infoMSG(1,1,"Inmem Sum And Search\n");
 
-  struct timeval start, end;
+  struct timeval start01, start02, end;
   cuFFdotBatch* master	= &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
   long long startBin	= cuSrch->SrchSz->searchRLow * cuSrch->sSpec->noResPerBin;
   long long endBin	= startBin + cuSrch->SrchSz->noSteps * master->accelLen;
@@ -1152,7 +1163,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   TIME // Timing  .
   {
-    gettimeofday(&start, NULL);
+    gettimeofday(&start01, NULL);
     NV_RANGE_PUSH("GPU IMSS");
   }
 
@@ -1221,18 +1232,19 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
 	iteration++;
 
-	int step    = (currentBin-startBin)/batch->strideOut;
-	firstBin    = currentBin;
-	len         = MIN(batch->strideOut, endBin - firstBin) ;
-	currentBin += len;
-	rVals* rVal = &(*batch->rAraays)[0][0][0];
-	rVal->step  = step;
+	int step    	= (currentBin-startBin)/batch->strideOut;
+	firstBin    	= currentBin;
+	len         	= MIN(batch->strideOut, endBin - firstBin) ;
+	currentBin 	+= len;
+	rVals* rVal 	= &(*batch->rAraays)[0][0][0];
+	rVal->step  	= step;
+	rVal->iteration	= iteration;
 
 	if ( msgLevel >= 1 )
 	{
 	  int tot  = (endBin)/batch->strideOut;
 
-	  infoMSG(1,1,"\nStep %4i of %4i thread %02i processing %02i steps on GPU %i\n", step+1, tot, tid, 1, batch->gInf->devid );
+	  infoMSG(1,1,"\nIteration %4i Step %4i of %4i thread %02i processing %02i steps on GPU %i\n", iteration, step+1, tot, tid, 1, batch->gInf->devid );
 	}
       }
 
@@ -1265,6 +1277,11 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   printf("\rSearching  in-mem GPU plane. %5.1f%%                                                                                    \n\n", 100.0 );
 
+  TIME //  Timing  .
+  {
+    gettimeofday(&start02, NULL);
+  }
+
   FOLD // Wait for all processing threads to terminate
   {
     waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU.", 200 );
@@ -1274,8 +1291,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   {
     NV_RANGE_POP(); // GPU IMSS
     gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_GPU_SS] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    cuSrch->timings[TIME_GPU_SS] += (end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec);
+    cuSrch->timings[TIME_GEN_WAIT] += (end.tv_sec - start02.tv_sec) * 1e6 + (end.tv_usec - start02.tv_usec);
   }
-
-
 }

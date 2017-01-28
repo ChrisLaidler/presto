@@ -111,6 +111,40 @@ static SMVal nGpuArchCoresPerSM[] =
 };
 
 
+__global__ void clock_block(long long int clock_count)
+{
+  long long int start_clock = clock64();
+  long long int clock_offset = 0;
+
+    while (clock_offset < clock_count)
+    {
+        clock_offset = clock64() - start_clock;
+    }
+
+    if( clock_offset < 0 )
+    {
+      printf("This is a dummy string so that this wont get optimised out");
+    }
+}
+
+__host__ void streamSleep(cudaStream_t stream, long long int clock_count )
+{
+  dim3 dimBlock, dimGrid;
+
+  // Blocks of 1024 threads ( the maximum number of threads per block )
+  dimBlock.x = 1;
+  dimBlock.y = 1;
+  dimBlock.z = 1;
+
+  // One block per harmonic, thus we can sort input powers in Shared memory
+  dimGrid.x = 1;
+  dimGrid.y = 1;
+
+  clock_block<<< dimGrid,  dimBlock, 0, stream >>>(clock_count);
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Calling the clock_block kernel.");
+}
+
 void debugMessage ( const char* format, ... )
 {
 #ifdef DEBUG
@@ -507,10 +541,28 @@ void infoMSG ( int lev, int indent, const char* format, ... )
 }
 
 
-void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const char* msg )
+void queryEvents( cudaEvent_t   evmt, const char* msg )
 {
-  infoMSG(3,3,"timeEvent %s\n", msg);
+  cudaError_t ret;
 
+  ret = cudaEventQuery(evmt);
+
+  if ( ret == cudaSuccess )
+  {
+    infoMSG(6,6,"Event Query %s: Done or not called.\n", msg);
+  }
+  else if ( ret == cudaErrorNotReady )
+  {
+    infoMSG(6,6,"Event Query %s: Not finished.\n", msg);
+  }
+  else
+  {
+    infoMSG(6,6,"Event Query %s: Unknown.. %s ", msg, cudaGetErrorString(ret) );
+  }
+}
+
+void timeEvents( cudaEvent_t   start, cudaEvent_t   end, long long* timeSum, const char* msg )
+{
   // Check for previous errors
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering timing");
 
@@ -521,14 +573,14 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
   if ( ret == cudaErrorNotReady )
   {
     // This is not ideal!
-    infoMSG(3,4,"pre synchronisation [blocking] end\n");
+    infoMSG(6,6,"timeEvents, end event not complete, Blocking");
 
-    char msg2[1024];
     cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
-    sprintf(msg2, "Blocking on %s", msg);
+    char msg2[1024];
 
     PROF // Profiling  .
     {
+      sprintf(msg2, "Timing block [%s]", msg);
       NV_RANGE_PUSH(msg2);
     }
 
@@ -550,15 +602,18 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
     // This shouldn't happen if the checks were done correctly!
 
     cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
+    infoMSG(6,6,"Event not created yet?");
   }
   else if ( ret == cudaErrorNotReady )
   {
-    infoMSG(3,4,"\nnot ready!\n");
+    infoMSG(6,6,"Event no ready!\n");
   }
   else if ( ret == cudaSuccess )
   {
 #pragma omp atomic
-    (*timeSum) += time;
+    (*timeSum) += time*1e3; // Convert to Microsecond
+
+    infoMSG(6,6,"Event: \"%s\"  Time: %.3f ms \n", msg, time);
   }
   else
   {

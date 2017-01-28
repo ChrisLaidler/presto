@@ -349,12 +349,13 @@ optPlnSiz 16 8
 # The level of debug messages to print 0 -> non  more with increasing number
 # DBG_LEV:
 # D	0       		# None
-#	1       		# Information	- Basic information
-#	2       		# Stage info	- Initialisation - Candidate generation - Candidate optimisation
-#	3       		# Sub-stages	- Input FT - Multiplication - Power calculation - sum & search - etc....
-#	4       		# Detail	- Info on what is being done
-#	5       		# Debug		- Full debug information
+#	1       		# Stage info	- Initialisation - Candidate generation - Candidate optimisation
+#	2       		# Component	- Naming the components
+#	3       		# Component info- Details on the componets, Input FT - Multiplication - Power calculation - sum & search - etc....
+#	4       		# Detail	- Info on what task is being done - ie, zero memor, kernel calls etc.
+#	5       		# Debug		- Full debug information - CUDA Events etc.
 #	6       		# Super		- Details on the values of actual variables
+#	7			# Exsessive!
 DBG_LEV			0
 
 #FLAG_DPG_UNOPT  		# [ Debug ]	Use saved initial search values

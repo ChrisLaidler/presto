@@ -48,7 +48,7 @@ extern "C"
 #include "log.h"
 #endif
 
-#define MAX_GPU_MEM	3400000000					///< This is a TMP 970 memory hack.  REALLY NVIDIA, YOU SUCK!!!
+#define MAX_GPU_MEM	3400000000					///< This is a TMP REM: GTX 970 memory hack.  REALLY NVIDIA, YOU SUCK!!!
 
 __device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
 __device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
@@ -727,8 +727,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  // Warning
 	  fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible.\n\tThere is %.2f GB of free memory.\n\tIn-mem (split plane) GPU search would require ~%.2f GB\n\n", free*1e-9, (planeSize + familySz)*1e-9 );
 
-	  printf("Temporary exit search specs\n"); // TMP
-	  exit(EXIT_FAILURE); // TMP
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit search specs\n");
+	    exit(EXIT_FAILURE);
+	  }
 	}
 	else if ( possIm & !prefIm )
 	{
@@ -768,7 +771,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
   FOLD // Do a sanity check on Flags and CUDA version  .
   {
-    // TODO: do a check whether there is enough precision in an int to store the index of the largest point
+    // TODO: Do a check whether there is enough precision in an int to store the index of the largest point
 
     if ( master == NULL ) // For the moment lets try this on only the first card!
     {
@@ -1182,6 +1185,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	for (int i = 0; i < kernel->noStacks; i++)           // Loop through Stacks  .
 	{
 	  cuFfdotStack* cStack  = &kernel->stacks[i];
+	  cStack->stackIdx	= i;
 	  cStack->height        = 0;
 	  cStack->noInStack     = noInStack[i];
 	  cStack->startIdx      = prev;
@@ -1245,7 +1249,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     char strBuff[1024];
 
-    if ( kernel->flags & FLAG_SYNCH )
+    if ( kernel->flags & FLAG_SYNCH )	// Only one stream
     {
       cuFfdotStack* fStack = &kernel->stacks[0];
 
@@ -1257,12 +1261,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       for (int i = 0; i < kernel->noStacks; i++)
       {
-	cuFfdotStack* cStack = &kernel->stacks[i];
-
-	cStack->initStream = fStack->initStream;
+	cuFfdotStack* cStack	= &kernel->stacks[i];
+	cStack->initStream	= fStack->initStream;
       }
     }
-    else
+    else				// Separate streams
     {
       for (int i = 0; i < kernel->noStacks; i++)
       {
@@ -1762,7 +1765,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       kerSize                   = kernel->kerDataSize;
       familySz                  = kerSize + batchSize + fffTotSize;
 
-      infoMSG(5,5,"Free: %.3fGB  - in-mem plane: %.2f GB - Kernel: ~%.2f MB - batch: ~%.2f MB - fft: ~%.2f MB - full batch: ~%.2f MB  - %i \n", free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, familySz*1e-6, batchSize );
+      infoMSG(6,6,"Free: %.3fGB  - in-mem plane: %.2f GB - Kernel: ~%.2f MB - batch: ~%.2f MB - fft: ~%.2f MB - full batch: ~%.2f MB  - %i \n", free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, familySz*1e-6, batchSize );
 
       FOLD // Calculate how many batches and steps to do  .
       {
@@ -1770,6 +1773,27 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  float possSteps[MAX_BATCHES];
 	  bool trySomething = 0;
+
+	  noBatches       = cuSrch->gSpec->noDevBatches[devID];
+	  noSteps         = cuSrch->gSpec->noDevSteps[devID];
+
+	  if ( kernel->flags & FLAG_SYNCH  )		// Synchronous behaviour  .
+	  {
+	    if ( noBatches == 0 )
+	    {
+	      printf("     Synchronous run so auto selecting 1 batch.\n");
+	      noBatches = 1;
+	    }
+
+	    PROF
+	    {
+	      if ( noBatches == 1 )
+	      {
+		printf("     Profiling with single batch so setting to separate FFT mode.\n");
+		kernel->flags |= CU_FFT_SEP;
+	      }
+	    }
+	  }
 
 	  // Calculate the maximum number of steps for each possible number if steps
 	  for ( int i = 0; i < MAX_BATCHES; i++)
@@ -1785,8 +1809,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    }
 	  }
 
-	  noBatches       = cuSrch->gSpec->noDevBatches[devID];
-	  noSteps         = cuSrch->gSpec->noDevSteps[devID];
 
 	  if ( noBatches == 0 )
 	  {
@@ -1927,10 +1949,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    return (0);
 	  }
 
-#ifdef CBL        // DBG TMP remove this
+#ifdef CBL        // TMP REM - Added to mark an error for thesis timing
 	  if ( (cuSrch->gSpec->noDevSteps[devID] && ( kernel->noSteps != cuSrch->gSpec->noDevSteps[devID]) ) || (cuSrch->gSpec->noDevBatches[devID] && ( noBatches != cuSrch->gSpec->noDevBatches[devID]) )  )
 	  {
-	    fprintf(stderr, "ERROR: Dropping out cos we can't have the requested steps and batches.\n");
+	    fprintf(stderr, "ERROR: Dropping out because we can't have the requested steps and batches.\n");
 	    freeKernel(kernel);
 	    return (0);
 	  }
@@ -1987,7 +2009,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP();
+	NV_RANGE_POP(); // Calc steps
       }
     }
 
@@ -2048,7 +2070,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP();
+	  NV_RANGE_POP(); // in-mem alloc
 	}
       }
 
@@ -2126,7 +2148,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP();
+	  NV_RANGE_POP(); // host alloc
 	}
       }
     }
@@ -2241,7 +2263,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP();
+	NV_RANGE_POP(); // text mem
       }
     }
   }
@@ -2279,7 +2301,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP();
+      NV_RANGE_POP(); // const mem
     }
   }
 
@@ -2916,19 +2938,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
       if ( batch->flags & FLAG_PROF )
       {
-	if ( kernel->compTime )
-	{
-	  // The float array was already created and populated with values for kernel creation
-	  batch->compTime = kernel->compTime;
-	  kernel->compTime = NULL;
-	}
-	else
-	{
-	  int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
+	int sz = batch->noStacks*sizeof(long long)*(COMP_GEN_MAX) ;
 
-	  batch->compTime       = (float*)malloc(sz);
-	  memset(batch->compTime,    0, sz);
-	}
+	batch->compTime       = (long long*)malloc(sz);
+	memset(batch->compTime,    0, sz);
       }
     }
   }
@@ -2950,9 +2963,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	// Batch input ( Always needed, for copying input to device )
 	CUDA_SAFE_CALL(cudaStreamCreate(&batch->inpStream),"Creating input stream for batch.");
-	sprintf(strBuff,"%i.%i.1.0 Batch Input", batch->gInf->devid, no);
-	NV_NAME_STREAM(batch->inpStream, strBuff);
-	//printf("cudaStreamCreate: %s\n", strBuff);
+
+	PROF // Profiling name streams  .
+	{
+	  sprintf(strBuff,"%i.%i.1.0 Batch Input", batch->gInf->devid, no);
+	  NV_NAME_STREAM(batch->inpStream, strBuff);
+	}
 
 	// Stack input
 	if ( (batch->flags & CU_NORM_GPU)  )
@@ -2962,9 +2978,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    cuFfdotStack* cStack  = &batch->stacks[i];
 
 	    CUDA_SAFE_CALL(cudaStreamCreate(&cStack->inptStream), "Creating input data multStream for stack");
-	    sprintf(strBuff,"%i.%i.1.%i Stack Input", batch->gInf->devid, no, i);
-	    NV_NAME_STREAM(cStack->inptStream, strBuff);
-	    //printf("cudaStreamCreate: %s\n", strBuff);
+
+	    PROF 				// Profiling name streams  .
+	    {
+	      sprintf(strBuff,"%i.%i.1.%i Stack Input", batch->gInf->devid, no, i);
+	      NV_NAME_STREAM(cStack->inptStream, strBuff);
+	    }
 	  }
 	}
       }
@@ -2981,15 +3000,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    {
 	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for input fft's");
 
-	      //              if ( (batch->flags & CU_NORM_GPU)  )
-	      //              {
-	      //                cStack->fftIStream = cStack->inptStream;
-	      //              }
-	      //              else
+	      PROF 				// Profiling name streams  .
 	      {
 		sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->gInf->devid, no, i);
 		NV_NAME_STREAM(cStack->fftIStream, strBuff);
-		//printf("cudaStreamCreate: %s\n", strBuff);
 	      }
 	    }
 	  }
@@ -3006,9 +3020,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	if      ( batch->flags & FLAG_MUL_BATCH )
 	{
 	  CUDA_SAFE_CALL(cudaStreamCreate(&batch->multStream),"Creating multiplication stream for batch.");
-	  sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->gInf->devid, no);
-	  NV_NAME_STREAM(batch->multStream, strBuff);
-	  //printf("cudaStreamCreate: %s\n", strBuff);
+
+	  PROF 					// Profiling name streams  .
+	  {
+	    sprintf(strBuff,"%i.%i.3.0 Batch Multiply", batch->gInf->devid, no);
+	    NV_NAME_STREAM(batch->multStream, strBuff);
+	  }
 
 	}
 
@@ -3018,18 +3035,11 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  {
 	    cuFfdotStack* cStack  = &batch->stacks[i];
 
-	    //            if ( !(kernel->flags & CU_INPT_FFT_CPU) &&  (batch->flags & CU_FFT_SEP) )
-	    //            {
-	    //              cStack->multStream = cStack->fftIStream;
-	    //              sprintf(strBuff,"%i.%i.3.%i Stack", batch->gInf->devid, no, i);
-	    //              NV_NAME_STREAM(cStack->multStream, strBuff);
-	    //            }
-	    //            else
+	    PROF 				// Profiling name streams  .
 	    {
 	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->multStream), "Creating multStream for stack");
 	      sprintf(strBuff,"%i.%i.3.%i Stack Multiply", batch->gInf->devid, no, i);
 	      NV_NAME_STREAM(cStack->multStream, strBuff);
-	      //printf("cudaStreamCreate: %s\n", strBuff);
 	    }
 	  }
 	}
@@ -3041,21 +3051,16 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[i];
 
-	  if ( batch->flags & CU_FFT_SEP )           // Create stream
+	  if ( batch->flags & CU_FFT_SEP )	// Create stream
 	  {
-	    //            if ( (batch->flags & FLAG_MUL_STK) || (batch->flags & FLAG_MUL_PLN)  )
-	    //            {
-	    //              cStack->fftPStream = cStack->multStream;
-	    //            }
-	    //            else
+	    PROF 				// Profiling name streams  .
 	    {
 	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
 	      sprintf(strBuff,"%i.%i.4.%i Stack iFFT", batch->gInf->devid, no, i);
 	      NV_NAME_STREAM(cStack->fftPStream, strBuff);
-	      //printf("cudaStreamCreate: %s\n", strBuff);
 	    }
 	  }
-	  else                                        // Copy stream of the kernel
+	  else					// Copy stream of the kernel
 	  {
 	    cuFfdotStack* kStack  = &kernel->stacks[i];
 	    cStack->fftPStream    = kStack->fftPStream;
@@ -3066,18 +3071,25 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       FOLD // Search stream  .
       {
 	CUDA_SAFE_CALL(cudaStreamCreate(&batch->srchStream), "Creating strmSearch for batch.");
-	sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->gInf->devid, no);
-	NV_NAME_STREAM(batch->srchStream, strBuff);
-	//printf("cudaStreamCreate: %s\n", strBuff);
+
+	PROF 				// Profiling name streams  .
+	{
+	  sprintf(strBuff,"%i.%i.5.0 Batch Search", batch->gInf->devid, no);
+	  NV_NAME_STREAM(batch->srchStream, strBuff);
+	}
       }
 
       FOLD // Result stream  .
       {
 	// Batch output ( Always needed, for copying results from device )
 	CUDA_SAFE_CALL(cudaStreamCreate(&batch->resStream), "Creating strmSearch for batch.");
-	sprintf(strBuff,"%i.%i.6.0 Batch result", batch->gInf->devid, no);
-	NV_NAME_STREAM(batch->resStream, strBuff);
-	//printf("cudaStreamCreate: %s\n", strBuff);
+
+	PROF 				// Profiling name streams  .
+	{
+	  sprintf(strBuff,"%i.%i.6.0 Batch result", batch->gInf->devid, no);
+	  NV_NAME_STREAM(batch->resStream, strBuff);
+	}
+
       }
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams for the batch.");
@@ -3589,7 +3601,7 @@ int setStackInfo(cuFFdotBatch* batch, stackInfo* h_inf, int offset)
     cInf->d_planePowers   = cStack->d_planePowr;
 
     // Set the pointer to constant memory
-    cStack->stkIdx        = offset+i;
+    cStack->stkConstIdx   = offset+i;
     cStack->d_sInf        = dcoeffs + offset+i ;
   }
 
@@ -3742,190 +3754,13 @@ void drawPlaneCmplx(fcomplexcu* ffdotPlane, char* name, int stride, int height)
   free(h_fArr);
 }
 
-void timeSynch(cuFFdotBatch* batch)
-{
-  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
-  {
-    PROF // Profiling
-    {
-      if ( batch->flags & FLAG_PROF )
-      {
-	infoMSG(1,2,"Profiling\n");
-
-	float time;         // Time in ms of the thing
-	cudaError_t ret;    // Return status of cudaEventElapsedTime
-
-	FOLD // Norm Timing  .
-	{
-	  if ( (batch->flags & CU_NORM_GPU) )
-	  {
-	    for (int stack = 0; stack < batch->noStacks; stack++)
-	    {
-	      cuFfdotStack* cStack = &batch->stacks[stack];
-
-	      ret = cudaEventElapsedTime(&time, cStack->normInit, cStack->normComp);
-
-	      if ( ret != cudaErrorNotReady )
-	      {
-#pragma omp atomic
-		batch->compTime[batch->noStacks*TIME_CMP_NRM + stack ] += time;
-	      }
-	    }
-
-	    CUDA_SAFE_CALL(cudaGetLastError(), "Norm Timing");
-	  }
-	}
-
-	FOLD // Input FFT timing  .
-	{
-	  if ( !(batch->flags & CU_INPT_FFT_CPU) )
-	  {
-	    for (int stack = 0; stack < batch->noStacks; stack++)
-	    {
-	      cuFfdotStack* cStack = &batch->stacks[stack];
-
-	      ret = cudaEventElapsedTime(&time, cStack->inpFFTinit, cStack->inpFFTinitComp);
-
-	      if ( ret != cudaErrorNotReady )
-	      {
-#pragma omp atomic
-		batch->compTime[batch->noStacks*TIME_CMP_FFT + stack ] += time;
-	      }
-	    }
-
-	    CUDA_SAFE_CALL(cudaGetLastError(), "Input FFT timing");
-	  }
-	}
-
-	FOLD // Copy input data  .
-	{
-	  ret = cudaEventElapsedTime(&time, batch->iDataCpyInit, batch->iDataCpyComp);
-
-	  if ( ret != cudaErrorNotReady )
-	  {
-#pragma omp atomic
-	    batch->compTime[batch->noStacks*TIME_CMP_H2D] += time;
-	  }
-
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Copy input timing");
-	}
-
-	FOLD // Multiplication timing  .
-	{
-	  if ( !(batch->flags & FLAG_MUL_CB) )
-	  {
-	    // Did the convolution by separate kernel
-
-	    if ( batch->flags & FLAG_MUL_BATCH )   	// Convolution was done on the entire batch  .
-	    {
-	      ret = cudaEventElapsedTime(&time, batch->multInit, batch->multComp);
-
-	      if ( ret != cudaErrorNotReady )
-	      {
-#pragma omp atomic
-		batch->compTime[NO_STKS*TIME_CMP_MULT] += time;
-	      }
-	    }
-	    else                                    // Convolution was on a per stack basis  .
-	    {
-	      for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
-	      {
-		cuFfdotStack* cStack = &batch->stacks[stack];
-
-		ret = cudaEventElapsedTime(&time, cStack->multInit, cStack->multComp);
-
-		if ( ret != cudaErrorNotReady )
-		{
-#pragma omp atomic
-		  batch->compTime[NO_STKS*TIME_CMP_MULT + stack ] += time;
-		}
-	      }
-	    }
-
-	    CUDA_SAFE_CALL(cudaGetLastError(), "Multiplication timing");
-	  }
-	}
-
-	FOLD // Inverse FFT timing  .
-	{
-	  for (int stack = 0; stack < batch->noStacks; stack++)
-	  {
-	    cuFfdotStack* cStack = &batch->stacks[stack];
-
-	    ret = cudaEventElapsedTime(&time, cStack->ifftInit, cStack->ifftComp);
-	    if ( ret != cudaErrorNotReady )
-	    {
-#pragma omp atomic
-	      batch->compTime[NO_STKS*TIME_CMP_IFFT + stack ] += time;
-	    }
-	  }
-
-	  CUDA_SAFE_CALL(cudaGetLastError(), "Inverse FFT timing");
-	}
-
-	FOLD // Copy to in-mem plane timing  .
-	{
-	  if ( batch->flags & FLAG_SS_INMEM )
-	  {
-	    for (int stack = 0; stack < batch->noStacks; stack++)
-	    {
-	      cuFfdotStack* cStack = &batch->stacks[stack];
-
-	      ret = cudaEventElapsedTime(&time, cStack->ifftMemInit, cStack->ifftMemComp);
-	      if ( ret != cudaErrorNotReady )
-	      {
-#pragma omp atomic
-		batch->compTime[NO_STKS*TIME_CMP_D2D + stack ] += time;
-	      }
-	    }
-
-	    CUDA_SAFE_CALL(cudaGetLastError(), "Copy to in-mem plane timing");
-	  }
-	}
-
-	FOLD // Search Timing  .
-	{
-	  if ( !(batch->flags & FLAG_SS_CPU) && !(batch->flags & FLAG_SS_INMEM ) )
-	  {
-	    ret = cudaEventElapsedTime(&time, batch->searchInit, batch->searchComp);
-
-	    if ( ret != cudaErrorNotReady )
-	    {
-#pragma omp atomic
-	      batch->compTime[NO_STKS*TIME_CMP_SS] += time;
-	    }
-
-	    CUDA_SAFE_CALL(cudaGetLastError(), "Search Timing");
-	  }
-	}
-
-	FOLD // Copy D2H  .
-	{
-	  if ( !(batch->flags & FLAG_SS_INMEM ) )
-	  {
-	    ret = cudaEventElapsedTime(&time, batch->candCpyInit, batch->candCpyComp);
-
-	    if ( ret != cudaErrorNotReady )
-	    {
-#pragma omp atomic
-	      batch->compTime[NO_STKS*TIME_CMP_D2H] += time;
-	    }
-
-	    CUDA_SAFE_CALL(cudaGetLastError(), "Copy D2H Timing");
-	  }
-	}
-      }
-    }
-  }
-}
-
 /** Cycle the arrays of r-values  .
  *
  * @param batch
  */
 void cycleRlists(cuFFdotBatch* batch)
 {
-  infoMSG(2,2,"Cycle R lists\n");
+  infoMSG(4,4,"Cycle R lists\n");
 
   rVals** hold = (*batch->rAraays)[batch->noRArryas-1];
   for ( int i = batch->noRArryas-1; i > 0; i-- )
@@ -3933,16 +3768,6 @@ void cycleRlists(cuFFdotBatch* batch)
     (*batch->rAraays)[i] =  (*batch->rAraays)[i - 1];
   }
   (*batch->rAraays)[0] = hold;
-
-  //  if ( msgLevel >= 3 )
-  //  {
-  //    for ( int i = 0 ; i < batch->noRArryas; i++ )
-  //    {
-  //      rVals* rVal = &(*batch->rAraays)[i][0][0];
-  //
-  //      printf("%i  step: %03i  r-low: %8.1f  numrs: %06ld\n", i, rVal->step, rVal->drlo, rVal->numrs );
-  //    }
-  //  }
 }
 
 /** Cycle the arrays of r-values  .
@@ -3951,7 +3776,7 @@ void cycleRlists(cuFFdotBatch* batch)
  */
 void CycleBackRlists(cuFFdotBatch* batch)
 {
-  infoMSG(2,1,"CycleBackRlists\n");
+  infoMSG(4,4,"CycleBackRlists\n");
 
   rVals** hold = (*batch->rAraays)[0];
   for ( int i = 0; i < batch->noRArryas-1; i++ )
@@ -3964,7 +3789,7 @@ void CycleBackRlists(cuFFdotBatch* batch)
 
 void cycleOutput(cuFFdotBatch* batch)
 {
-  infoMSG(2,2,"Cycle output\n");
+  infoMSG(4,4,"Cycle output\n");
 
   void* d_hold = batch->d_outData1;
   void* h_hold = batch->h_outData1;
@@ -3978,35 +3803,74 @@ void cycleOutput(cuFFdotBatch* batch)
 
 void search_ffdot_batch_CU(cuFFdotBatch* batch)
 {
-  infoMSG(1,1,"search_ffdot_batch_CU\n");
-
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering search_ffdot_batch_CU.");
-
-  // Setup input
-  setActiveBatch(batch, 0);
-  prepInput(batch);
 
   if ( batch->flags & FLAG_SYNCH )
   {
-    multiplyBatch(batch);
-
-    IFFTBatch(batch);
-
     if  ( batch->flags & FLAG_SS_INMEM )
     {
+      // Setup input
+      setActiveBatch(batch, 0);
+      prepInput(batch);
+
+      multiplyBatch(batch);
+
+      IFFTBatch(batch);
+
       copyToInMemPln(batch);
     }
     else
     {
-      sumAndSearch(batch);
+      if (batch->cuSrch->pInf->noBatches > 1 ) // This is true inheritor synchronise behaviour, but that is over kill  .
+      {
+	// Setup input
+	setActiveBatch(batch, 0);
+	prepInput(batch);
 
-      getResults(batch);
+	setActiveBatch(batch, 0);
+	multiplyBatch(batch);
 
-      processSearchResults(batch);
+	setActiveBatch(batch, 0);
+	IFFTBatch(batch);
+
+	setActiveBatch(batch, 0);
+	sumAndSearch(batch);
+
+	setActiveBatch(batch, 0);
+	getResults(batch);
+
+	setActiveBatch(batch, 0);
+	processSearchResults(batch);
+      }
+      else					// This overlaps CPU and GPU but each runs its stuff synchronise, good enough for timing and a bit faster
+      {
+	setActiveBatch(batch, 1);
+	sumAndSearch(batch);
+
+	setActiveBatch(batch, 1);
+	getResults(batch);
+
+	// Setup input
+	setActiveBatch(batch, 0);
+	prepInput(batch);
+
+	setActiveBatch(batch, 0);
+	multiplyBatch(batch);
+
+	setActiveBatch(batch, 0);
+	IFFTBatch(batch);
+
+	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
+	processSearchResults(batch);
+      }
     }
   }
   else
   {
+    // Setup input
+    setActiveBatch(batch, 0);
+    prepInput(batch);
+
     if  ( batch->flags & FLAG_SS_INMEM )
     {
       setActiveBatch(batch, 0);
@@ -4032,11 +3896,10 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
       setActiveBatch(batch, 1);
       getResults(batch);
 
+      // Multiply and iFFT
       setActiveBatch(batch, 0);
       convolveBatch(batch);
     }
-
-
   }
 
   // Change R-values
@@ -4050,18 +3913,17 @@ void finish_Search(cuFFdotBatch* batch)
 
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host
   {
-    infoMSG(3,4,"pre synchronisation [blocking] ifftMemComp - stack\n");
-
-    for (int ss = 0; ss < batch->noStacks; ss++)
+    for (int stack = 0; stack < batch->noStacks; stack++)
     {
-      infoMSG(4,5,"Stack %i\n", ss);
+      cuFfdotStack* cStack = &batch->stacks[stack];
+
+      infoMSG(4,4,"blocking synchronisation on %s stack %i", "ifftMemComp", stack );
 
       PROF // Profiling  .
       {
 	NV_RANGE_PUSH("EventSynch");
       }
 
-      cuFfdotStack* cStack = &batch->stacks[ss];
       CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 
       PROF // Profiling  .
@@ -4070,22 +3932,26 @@ void finish_Search(cuFFdotBatch* batch)
       }
     }
 
-    infoMSG(3,4,"pre synchronisation [blocking] processComp\n");
-
-    PROF // Profiling  .
+    FOLD
     {
-      NV_RANGE_PUSH("EventSynch");
-    }
+      infoMSG(4,4,"Blocking synchronisation on %s", "processComp" );
 
-    CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("EventSynch");
+      }
 
-    PROF // Profiling  .
-    {
-      NV_RANGE_POP(); // EventSynch
+      CUDA_SAFE_CALL(cudaEventSynchronize(batch->processComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // EventSynch
+      }
     }
   }
 }
 
+// DEPRICTED?
 void max_ffdot_planeCU(cuFFdotBatch* batch, double* searchRLow, double* searchRHi, fcomplexcu* fft, long long* numindep, float* powers)
 {
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdot_planeCU2.");
@@ -5168,7 +5034,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	singleFlag ( flags, str1, str2, FLAG_PROF, "", "0", lineno, fName );
 #else
 	fprintf(stderr, "ERROR: Found %s on line %i of %s, the program has not been compile with profiling enabled. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
-	exit(EXIT_FAILURE); // TMP - Added to mark an error for thesis timing
+	exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
 #endif
       }
 
@@ -5273,7 +5139,7 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
 	line[flagLen] = 0;
 	fprintf(stderr, "ERROR: Found unknown flag \"%s\" on line %i of %s.\n", line, lineno, fName);
-	exit(EXIT_FAILURE); // TMP - Added to mark an error for thesis timing
+	exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
       }
     }
 
@@ -5282,7 +5148,8 @@ void readAccelDefalts(searchSpecs *sSpec)
   else
   {
     printf("Unable to read GPU accel settings from %s\n", fName);
-    exit(EXIT_FAILURE); // TMP - Added to mark an error for thesis timing
+    exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
+
   }
 }
 
@@ -6442,11 +6309,11 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
   {
     if ( batch->flags & FLAG_PROF )
     {
-      float	bsums[TIME_CMP_END];
-      for ( int i = 0; i < TIME_CMP_END; i++)
+      float	bsums[COMP_GEN_END];
+      for ( int i = 0; i < COMP_GEN_END; i++)
 	bsums[i] = 0;
 
-      for ( int comp=0; comp < TIME_CMP_END; comp++)
+      for ( int comp=0; comp < COMP_GEN_END; comp++)
       {
 	for (int batch = 0; batch < cuSrch->pInf->noBatches; batch++)
 	{
@@ -6459,19 +6326,22 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
 	}
       }
 
-      cvsLog->csvWrite("Response",    "ms", "%12.6f", bsums[TIME_CMP_RESP]);
-      cvsLog->csvWrite("kerFFT",      "ms", "%12.6f", bsums[TIME_CMP_KERFFT]);
-      cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", bsums[TIME_CMP_H2D]);
-      cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", bsums[TIME_CMP_NRM]);
-      cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", bsums[TIME_CMP_FFT]);
-      cvsLog->csvWrite("Mult",        "ms", "%12.6f", bsums[TIME_CMP_MULT]);
-      cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", bsums[TIME_CMP_IFFT]);
-      cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", bsums[TIME_CMP_D2D]);
-      cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", bsums[TIME_CMP_SS]);
-      cvsLog->csvWrite("Result",      "ms", "%12.6f", bsums[TIME_CMP_STR]);
-      cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", bsums[TIME_CMP_D2H]);
-      cvsLog->csvWrite("Refine",      "ms", "%12.6f", bsums[TIME_CMP_REFINE]);
-      cvsLog->csvWrite("Derivs",      "ms", "%12.6f", bsums[TIME_CMP_DERIVS]);
+
+      cvsLog->csvWrite("copyH2D",     "ms", "%12.6f", bsums[COMP_GEN_H2D]);
+      cvsLog->csvWrite("InpNorm",     "ms", "%12.6f", bsums[COMP_GEN_NRM]);
+      cvsLog->csvWrite("InpFFT",      "ms", "%12.6f", bsums[COMP_GEN_FFT]);
+      cvsLog->csvWrite("Mult",        "ms", "%12.6f", bsums[COMP_GEN_MULT]);
+      cvsLog->csvWrite("InvFFT",      "ms", "%12.6f", bsums[COMP_GEN_IFFT]);
+      cvsLog->csvWrite("plnCpy",      "ms", "%12.6f", bsums[COMP_GEN_D2D]);
+      cvsLog->csvWrite("Sum & Srch",  "ms", "%12.6f", bsums[COMP_GEN_SS]);
+      cvsLog->csvWrite("Result",      "ms", "%12.6f", bsums[COMP_GEN_STR]);
+      cvsLog->csvWrite("copyD2H",     "ms", "%12.6f", bsums[COMP_GEN_D2H]);
+
+      //cvsLog->csvWrite("Refine 1",    "ms", "%12.6f", bsums[COMP_GEN_REFINE_1]);
+      //cvsLog->csvWrite("Refine 2",    "ms", "%12.6f", bsums[COMP_GEN_REFINE_2]);
+      //cvsLog->csvWrite("Derivs",      "ms", "%12.6f", bsums[COMP_GEN_DERIVS]);
+      //cvsLog->csvWrite("Response",    "ms", "%12.6f", bsums[COMP_GEN_RESP]);
+      //cvsLog->csvWrite("kerFFT",      "ms", "%12.6f", bsums[COMP_GEN_KERFFT]);
     }
   }
 
@@ -6846,7 +6716,7 @@ int eliminate_harmonics(candTree* tree, double tooclose = 1.5)
  */
 int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
 {
-  infoMSG(1,2,"Wait for CPU threads to complete\n");
+  infoMSG(2,2,"Wait for CPU threads to complete\n");
 
   int noTrd;
   sem_getvalue(running_threads, &noTrd );
@@ -6855,6 +6725,7 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
   {
     char waitMsg[1024];
     int ite = 0;
+    struct timeval start, end;
 
     PROF // Profiling  .
     {
@@ -7121,9 +6992,10 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
 
 void genPlane(cuSearch* cuSrch, char* msg)
 {
-  infoMSG(2,2,"Candidate generation\n");
+  infoMSG(2,2,"Candidate generation");
 
-  struct timeval start, end;
+  struct timeval start01, end;
+  struct timeval start02, endProf;
   double startr			= 0;
   int maxxx;
   cuFFdotBatch* master		= &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
@@ -7133,7 +7005,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
   TIME // Basic timing  .
   {
     NV_RANGE_PUSH("Pln Gen");
-    gettimeofday(&start, NULL);
+    gettimeofday(&start01, NULL);
   }
 
   FOLD // Set the bounds of the search  .
@@ -7165,6 +7037,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
 #ifndef DEBUG 	// Parallel if we are not in debug mode  .
   if ( cuSrch->sSpec->flags & FLAG_SYNCH )
   {
+    infoMSG(4,4,"Throttling to 1 thread");
     omp_set_num_threads(1);
   }
   else
@@ -7183,6 +7056,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
     int		rest		= batch->noSteps;
     int		firstStep	= 0;							///< Thread specific value for the first step the batch is processing
     int		step;
+    int		ite;									///< The iteration the batch is working on (local to each thread)
 
     // Set the device this thread will be using
     setDevice(batch->gInf->devid) ;
@@ -7198,7 +7072,6 @@ void genPlane(cuSearch* cuSrch, char* msg)
       FOLD // Calculate the step(s) to handle  .
       {
 #pragma omp critical		// Calculate the step(s) this batch is processing  .
-
 	FOLD
 	{
 	  FOLD  // Synchronous behaviour  .
@@ -7215,12 +7088,12 @@ void genPlane(cuSearch* cuSrch, char* msg)
 	  }
 
 	  iteration++;
-
+	  ite = iteration;
 	  firstStep = ss;
 	  ss       += batch->noSteps;
 	  cuSrch->noSteps++;
 
-	  infoMSG(1,1,"\nStep %4i of %4i thread %02i processing %02i steps on GPU %i\n", firstStep+1, maxxx, tid, batch->noSteps, batch->gInf->devid );
+	  infoMSG(1,1,"\nIteration %4i - Start step %4i of %4i thread %02i processing %02i steps on GPU %i\n", ite,firstStep+1, maxxx, tid, batch->noSteps, batch->gInf->devid );
 	}
 
 	if ( firstStep >= maxxx )
@@ -7250,12 +7123,15 @@ void genPlane(cuSearch* cuSrch, char* msg)
 	      rVal		= &(*batch->rAraays)[0][step][harm];
 	      rVal->step	= firstStep + step;
 	      rVal->norm	= 0.0;
+	      rVal->iteration   = ite;
 	    }
 	  }
 	  else
 	  {
 	    rVal->drlo		= 0;
 	    rVal->drhi		= 0;
+	    rVal->step		= -1;
+	    rVal->iteration	= -1;
 	  }
 	}
       }
@@ -7295,6 +7171,8 @@ void genPlane(cuSearch* cuSrch, char* msg)
 	rVals* rVal	= &(*batch->rAraays)[0][step][0];
 	rVal->drlo	= 0;
 	rVal->drhi	= 0;
+	rVal->step	= -1;
+	rVal->iteration = -1;
       }
 
       // Finish searching the planes, this is required because of the out of order asynchronous calls
@@ -7316,6 +7194,11 @@ void genPlane(cuSearch* cuSrch, char* msg)
 
   printf("\r%s. %5.1f%%                                                                                         \n", msg, 100.0);
 
+  TIME // Basic timing  .
+  {
+    gettimeofday(&start02, NULL);
+  }
+
   FOLD // Wait for CPU threads to complete  .
   {
     waitForThreads(&master->cuSrch->threasdInfo->running_threads, "Waiting for CPU thread(s) to finish processing returned from the GPU ", 200 );
@@ -7326,10 +7209,9 @@ void genPlane(cuSearch* cuSrch, char* msg)
     NV_RANGE_POP(); // Pln Gen
 
     gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_GPU_PLN] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    cuSrch->timings[TIME_GPU_PLN] += ((end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec));
+    cuSrch->timings[TIME_GEN_WAIT] += ((end.tv_sec - start02.tv_sec) * 1e6 + (end.tv_usec - start02.tv_usec));
   }
-
-
 }
 
 cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
@@ -7424,10 +7306,6 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
     TIME // Basic timing  .
     {
       gettimeofday(&end01, NULL); // This is not used???
-    }
-
-    TIME // Basic timing  .
-    {
       NV_RANGE_PUSH("GPU Cand");
       gettimeofday(&start02, NULL);
     }
@@ -7518,8 +7396,8 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
       NV_RANGE_POP(); // GPU Cand
       NV_RANGE_POP(); // Cand Gen
       gettimeofday(&end02, NULL);
-      cuSrch->timings[TIME_CND] += ((end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec));
       cuSrch->timings[TIME_GPU_CND_GEN] += ((end02.tv_sec - start01.tv_sec) * 1e6 + (end02.tv_usec - start01.tv_usec));
+      cuSrch->timings[TIME_CND] += ((end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec));
     }
   }
 
@@ -7535,13 +7413,12 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
     NV_RANGE_POP(); // GPU Srch
     gettimeofday(&end, NULL);
 
-    cuSrch->timings[TIME_GPU_SRCHALL] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    cuSrch->timings[TIME_GPU_SRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
 
-    printf(", it Took %.4f ms", cuSrch->timings[TIME_GPU_SRCHALL]/1000.0);
+    printf(", it Took %.4f ms", cuSrch->timings[TIME_GPU_SRCH]/1000.0);
   }
 
   printf(".\n");
-
 
 
   return cuSrch;

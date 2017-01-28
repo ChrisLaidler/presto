@@ -801,11 +801,6 @@ int setStackVals( cuFFdotBatch* batch );
  */
 void multiplyBatchCUFFT(cuFFdotBatch* batch );
 
-/** Multiplication kernel - One plane at a time  .
- * Each thread reads one input value and loops down over the kernels
- */
-void multiplyPlane(cuFFdotBatch* batch);
-
 /** Multiply the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
  * This writes to the complex f-∂f plane

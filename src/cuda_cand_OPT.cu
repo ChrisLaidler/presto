@@ -851,7 +851,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
   if ( newInp ) // A blocking synchronisation to make sure we can write to host memory  .
   {
-    infoMSG(5,5,"pre synchronisation [blocking]\n");
+    infoMSG(4,4,"Blocking synchronisation on %s", "inpCmp" );
 
     CUDA_SAFE_CALL(cudaEventSynchronize(pln->inpCmp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
   }
@@ -1285,8 +1285,6 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 #ifdef CBL
 	float smSz = 0 ;
 
-	//smSz = pln->input->stride ; // TMP test
-	//smSz = ( ceil(hw.val[pln->noHarms-1]*2 + pln->rSize*pln->noHarms) + 10) ;
 	for( int h = 0; h < pln->noHarms; h++)
 	{
 	  smSz += ceil(hw.val[h]*2 + pln->rSize*(h+1) + 4 );
@@ -1426,7 +1424,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
   {
     FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
     {
-      infoMSG(5,5,"pre synchronisation [blocking]\n");
+      infoMSG(4,4,"Blocking synchronisation on %s", "outCmp" );
 
       PROF // Profiling  .
       {
@@ -2180,14 +2178,6 @@ void* optCandDerivs(void* ptr)
   searchSpecs*  sSpec = srch->sSpec;
   fftInfo*      fft   = &sSpec->fftInf;
 
-  PROF // Profiling  .
-  {
-    if ( srch->sSpec->flags & FLAG_PROF )
-    {
-      gettimeofday(&start, NULL);
-    }
-  }
-
   if ( srch->sSpec->flags & FLAG_OPT_NM_REFINE )
   {
     PROF // Profiling  .
@@ -2195,6 +2185,11 @@ void* optCandDerivs(void* ptr)
       if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
       {
 	NV_RANGE_PUSH("NM_REFINE");
+      }
+
+      if ( srch->sSpec->flags & FLAG_PROF )
+      {
+        gettimeofday(&start, NULL);
       }
     }
 
@@ -2220,34 +2215,22 @@ void* optCandDerivs(void* ptr)
       {
 	NV_RANGE_POP(); // NM_REFINE
       }
+
+      if ( srch->sSpec->flags & FLAG_PROF )
+      {
+	gettimeofday(&end, NULL);
+        float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+
+        // Thread (pthread) safe add to timing value
+        pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
+        srch->timings[COMP_OPT_REFINE_2] += v1;
+        pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
+      }
     }
-  }
-
-  int maxHarms  = MAX(cand->numharm, sSpec->optMinRepHarms) ;
-
-  // Set up candidate
-  cand->pows    = gen_dvect(maxHarms);
-  cand->hirs    = gen_dvect(maxHarms);
-  cand->hizs    = gen_dvect(maxHarms);
-  cand->derivs  = (rderivs *)   malloc(sizeof(rderivs)  * maxHarms  );
-
-  // Initialise values
-  for( ii=0; ii < maxHarms; ii++ )
-  {
-    cand->hirs[ii]  = cand->r*(ii+1);
-    cand->hizs[ii]  = cand->z*(ii+1);
   }
 
   FOLD // Update fundamental values to the optimised ones  .
   {
-    PROF // Profiling  .
-    {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
-      {
-	NV_RANGE_PUSH("DERIVS");
-      }
-    }
-
     infoMSG(5,5,"DERIVS\n");
 
     float   	maxSig		= 0;
@@ -2262,10 +2245,37 @@ void* optCandDerivs(void* ptr)
     double 	real;
     double 	imag;
     double 	power;
+    int 	maxHarms  	= MAX(cand->numharm, sSpec->optMinRepHarms) ;
 
-    cand->power	= 0;
+    PROF // Profiling  .
+    {
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      {
+	NV_RANGE_PUSH("DERIVS");
+      }
 
-    for( ii = 1; ii <= maxHarms; ii++ )
+      if ( srch->sSpec->flags & FLAG_PROF )
+      {
+	gettimeofday(&start, NULL);
+      }
+    }
+
+    cand->power   = 0;
+
+    // Set up candidate
+    cand->pows    = gen_dvect(maxHarms);
+    cand->hirs    = gen_dvect(maxHarms);
+    cand->hizs    = gen_dvect(maxHarms);
+    cand->derivs  = (rderivs *)   malloc(sizeof(rderivs)  * maxHarms  );
+
+    // Initialise values
+    for( ii=0; ii < maxHarms; ii++ )
+    {
+      cand->hirs[ii]  = cand->r*(ii+1);
+      cand->hizs[ii]  = cand->z*(ii+1);
+    }
+
+    for( ii = 1; ii <= maxHarms; ii++ )			// Calculate derivatives, powers and sigma for all harmonics  .
     {
       if ( sSpec->flags & FLAG_OPT_LOCAVE )
       {
@@ -2315,6 +2325,7 @@ void* optCandDerivs(void* ptr)
       }
     }
 
+    // Final values
     if ( bestP && (srch->sSpec->flags & FLAG_OPT_BEST) && ( maxSig > 0.001 ) )
     {
       cand->numharm	= bestH;
@@ -2339,18 +2350,17 @@ void* optCandDerivs(void* ptr)
       {
 	NV_RANGE_POP(); // DERIVS
       }
-    }
-  }
 
-  PROF // Profiling  .
-  {
-    if ( srch->sSpec->flags & FLAG_PROF )
-    {
-      pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
-      gettimeofday(&end, NULL);
-      float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
-      res->cuSrch->pInf->batches->compTime[res->cuSrch->pInf->batches->noStacks*TIME_CMP_DERIVS] += v1;
-      pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
+      if ( srch->sSpec->flags & FLAG_PROF )
+      {
+	gettimeofday(&end, NULL);
+        float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+
+        // Thread (pthread) safe add to timing value
+        pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
+        srch->timings[COMP_OPT_DERIVS] += v1;
+        pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
+      }
     }
   }
 
@@ -2408,7 +2418,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // Post Thred
+    NV_RANGE_POP(); // Post Thread
   }
 
   infoMSG(2,2,"Done");
@@ -2617,9 +2627,11 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
       if ( sSpec->flags & FLAG_PROF )
       {
 	gettimeofday(&end, NULL);
-	float v1 =  ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec))*1e-3  ;
+	float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec) ;
+
+	// Thread (omp) safe add to timing value
 #pragma omp atomic
-	pln->cuSrch->pInf->batches->compTime[pln->cuSrch->pInf->batches->noStacks*TIME_CMP_REFINE] += v1;
+	pln->cuSrch->timings[COMP_OPT_REFINE_1] += v1;
       }
     }
   }
@@ -2644,7 +2656,9 @@ void opt_accelcand(accelcand* cand, cuOptCand* pln, int candNo)
 
 int optList(GSList *listptr, cuSearch* cuSrch)
 {
-  PROF // Profiling  .
+  struct timeval start, end;
+
+  TIME //  Timing  .
   {
     NV_RANGE_PUSH("GPU Kernels");
   }
@@ -2736,13 +2750,20 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
   printf("\rGPU optimisation %5.1f%% complete                      \n", 100.0f );
 
-  PROF // Profiling  .
+  TIME //  Timing  .
   {
     NV_RANGE_POP(); // GPU Kernels
+    gettimeofday(&start, NULL);
   }
 
   // Wait for CPU derivative threads to finish
   waitForThreads(&cuSrch->threasdInfo->running_threads, "Waiting for CPU threads to complete.", 200 );
+
+  TIME //  Timing  .
+  {
+    gettimeofday(&end, NULL);
+    cuSrch->timings[TIME_OPT_WAIT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+  }
 
   return 0;
 }

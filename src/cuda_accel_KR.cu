@@ -240,7 +240,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
   {
     if ( batch->flags & FLAG_PROF )
     {
-      // NOTE: Timing kernel creation is tricky, no events or place to store the results has been allocated so do it here, the first batch made from this kernel will take over the component timing array
+      // NOTE: Timing kernel creation is tricky, no events have been allocated so do it here
 
       for (int i = 0; i< batch->noStacks; i++)
       {
@@ -251,14 +251,6 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	// out events (with timing)
 	CUDA_SAFE_CALL(cudaEventCreate(&cStack->normComp),		"Creating input normalisation event");
-      }
-
-      FOLD // Create timing values  .
-      {
-	int sz = batch->noStacks*sizeof(float)*(TIME_CMP_END+1) ;
-
-	batch->compTime       = (float*)malloc(sz);
-	memset(batch->compTime,    0, sz);
       }
     }
   }
@@ -295,7 +287,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	cuFfdotStack* cStack = &batch->stacks[stack];
 
 	// Sum & Search kernel
-	timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*TIME_CMP_RESP + stack],   "Response value calculation");
+	timeEvents( cStack->normInit, cStack->normComp, &batch->cuSrch->timings[COMP_RESP],   "Response value calculation");
       }
     }
   }
@@ -521,7 +513,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	cuFfdotStack* cStack = &batch->stacks[stack];
 
 	// Sum & Search kernel
-	timeEvents( cStack->normInit, cStack->normComp, &batch->compTime[NO_STKS*TIME_CMP_KERFFT + stack],   "Response value calculation");
+	timeEvents( cStack->normInit, cStack->normComp, &batch->cuSrch->timings[COMP_KERFFT],   "FFT kernels");
 
 	// Done timing this stack so destroy the events
 
