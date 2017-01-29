@@ -7039,7 +7039,7 @@ void* contextInitTrd(void* ptr)
     NV_RANGE_POP(); // Context
 
     gettimeofday(&end, NULL);
-    gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    gSpec->nctxTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
   }
 
   pthread_exit(&gSpec->nctxTime);
@@ -7077,7 +7077,7 @@ long long initCudaContext(gpuSpecs* gSpec)
 	NV_RANGE_POP(); // Context
 
 	gettimeofday(&end, NULL);
-	gSpec->nctxTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+	gSpec->nctxTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
       }
     }
   }
@@ -7441,8 +7441,8 @@ void genPlane(cuSearch* cuSrch, char* msg)
     NV_RANGE_POP(); // Pln Gen
 
     gettimeofday(&end, NULL);
-    cuSrch->timings[TIME_GPU_PLN] += ((end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec));
-    cuSrch->timings[TIME_GEN_WAIT] += ((end.tv_sec - start02.tv_sec) * 1e6 + (end.tv_usec - start02.tv_usec));
+    cuSrch->timings[TIME_GPU_PLN] += (end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec);
+    cuSrch->timings[TIME_GEN_WAIT] += (end.tv_sec - start02.tv_sec) * 1e6 + (end.tv_usec - start02.tv_usec);
   }
 }
 
@@ -7491,7 +7491,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
       NV_RANGE_POP();	// GPU Initialise
 
       gettimeofday(&end, NULL);
-      cuSrch->timings[TIME_GPU_INIT] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+      cuSrch->timings[TIME_GPU_INIT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
     }
 
     if ( master->flags & FLAG_SYNCH )
@@ -7628,8 +7628,8 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
       NV_RANGE_POP(); // GPU Cand
       NV_RANGE_POP(); // Cand Gen
       gettimeofday(&end02, NULL);
-      cuSrch->timings[TIME_GPU_CND_GEN] += ((end02.tv_sec - start01.tv_sec) * 1e6 + (end02.tv_usec - start01.tv_usec));
-      cuSrch->timings[TIME_CND] += ((end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec));
+      cuSrch->timings[TIME_GPU_CND_GEN] += (end02.tv_sec - start01.tv_sec) * 1e6 + (end02.tv_usec - start01.tv_usec);
+      cuSrch->timings[TIME_CND] += (end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec);
     }
   }
 
@@ -7645,7 +7645,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
     NV_RANGE_POP(); // GPU Srch
     gettimeofday(&end, NULL);
 
-    cuSrch->timings[TIME_GPU_SRCH] += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    cuSrch->timings[TIME_GPU_SRCH] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 
     printf(", it Took %.4f ms", cuSrch->timings[TIME_GPU_SRCH]/1000.0);
   }

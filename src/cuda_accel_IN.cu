@@ -24,6 +24,7 @@
  *    Added non cirtical behavior for CPU FFT calls
  *    Added some debug messages on stream synchronisation on events, yes even more!
  *    made CPU_Norm_Spread satic
+ *    Fixed bug in timing of CPU input
  *
  */
 
@@ -641,7 +642,7 @@ void prepInputCPU(cuFFdotBatch* batch )
       {
 	gettimeofday(&end0, NULL);
 
-	float v1 =  ((end0.tv_sec - start0.tv_sec) * 1e6 + (end0.tv_usec - start0.tv_usec))*1e-3  ;
+	float v1 =  (end0.tv_sec - start0.tv_sec) * 1e6 + (end0.tv_usec - start0.tv_usec);
 	batch->compTime[batch->noStacks*COMP_GEN_CINP] += v1;
       }
     }
