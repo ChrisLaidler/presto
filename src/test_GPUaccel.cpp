@@ -675,7 +675,7 @@ int main(int argc, char *argv[])
 
   NV_RANGE_POP();
   gettimeofday(&end, NULL);
-  prepTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+  prepTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
@@ -2236,7 +2236,7 @@ int main(int argc, char *argv[])
 
         //cudaDeviceSynchronize();
         gettimeofday(&end, NULL);
-        gpuTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+        gpuTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
         cands = candsGPU;
       }
     }
@@ -2389,7 +2389,7 @@ int main(int argc, char *argv[])
               gettimeofday(&startL, NULL);       // Profiling
               optimize_accelcand(candCPU, &obs, ii+1);
               gettimeofday(&endL, NULL);
-              cTime = ((endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec));
+              cTime = (endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec);
               cSum += cTime;
               NV_RANGE_POP();
               //printf("CPU Opt point      r: %13.5f   z: %10.5f   power: %20.6f             sigma: %9.3f \n", candCPU->r, candCPU->z, candCPU->power, candCPU->sigma);
@@ -2405,7 +2405,7 @@ int main(int argc, char *argv[])
               //opt_candPlns(candGPU, cuSrch, &obs, ii+1, oPlnPln);
               opt_accelcand(candGPU, oPlnPln, ii+1);
               gettimeofday(&endL, NULL);
-              gTime = ((endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec));
+              gTime = (endL.tv_sec - startL.tv_sec) * 1e6 + (endL.tv_usec - startL.tv_usec);
               gSum += gTime;
               NV_RANGE_POP();
               //printf("GPU Pln            r: %13.5f   z: %10.5f   power: %20.6f   %7.3fx  sigma: %9.3f ", candGPU->r, candGPU->z, candGPU->power, cTime/(float)gTime, candGPU->sigma);
@@ -2495,7 +2495,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA
     NV_RANGE_POP();
     gettimeofday(&end, NULL);
-    optTime += ((end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec));
+    optTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 
     //if ( pltOpt > 0 )
     if ( sSpec.flags & FLAG_DPG_PLT_OPT )
