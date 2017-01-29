@@ -720,16 +720,6 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer);
  */
 int createStackKernel(cuFfdotStack* cStack);
 
-/**
- *
- * @param cStack
- * @param d_orrKer
- * @return
- */
-int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t stream);
-
-//int init_harms(cuHarmInfo* hInf, int noHarms, accelobs *obs);
-
 /** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
  *
  * @param width

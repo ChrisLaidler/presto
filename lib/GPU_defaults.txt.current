@@ -18,7 +18,7 @@ DUMMY_PARAMETER	DUMMY_VALUE
 #	VAL_01			# The value is "VAL_01" and here is a comment describing what it dose
 # D	VAL_02			# The D on the far left shows that "VAL_02" is the default option
 #	DUMMY_VALUE		# This is the value I set in the example above
-DUMMY_PARAMETER	DUMMY_VALUE	# This uncomment line setts the actual value of the parameter, this line can be commented out
+DUMMY_PARAMETER	DUMMY_VALUE	# This uncommented line setts the actual value of the parameter, this line can be commented out
 
 #	The second way a parameter is set is simply with the parameter name. These "flags" can be disable by simply commenting them out or they can be explicitly turned off by following them with "0" or "off"
 #	Below is an example of these:
@@ -80,23 +80,42 @@ KER_FFT_PRECISION 	SINGLE
 
 # Normalise input in the CPU or the GPU
 # INP_NORM:
-# 	CPU     		# Do the input Normalisation on the CPU - This is usually the best option, the taks is short enough that the CPU may as well do it (unless Z-Max is very small  ( < ~10 )
-#	GPU     		# Do the input Normalisation on the GPU using an inplace Shared Meory sort 
-#	GPU_SM     		# DEBUG: Do the input Normalisation on the GPU using an inplace Shared Meory sort
-#	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an inplace Shared Meory sort - Minimise SM use
+# 	CPU     		# Do the input Normalisation on the CPU - This is usually the best option, the task is short enough that the CPU may as well do it (unless Z-Max is very small  ( < ~10 )
+#	GPU     		# Do the input Normalisation on the GPU using an in-place Shared Memory sort 
+#	GPU_SM     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort
+#	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort - Minimise SM use
 #	GPU_OS			# DEBUG: Do the input Normalisation on the GPU using a custom novel order statistic algorithm
 # D	AA      		# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
-INP_NORM		AA
+INP_NORM		CPU
+
+
+# ZBOUND_NORM:
+# This marks a boundary, if the search z-max exceeds this value the CPU will be used for input normalisation. I find this should generally be low, the CPU is better at normalisation.
+# Any result of ZBOUND_NORM may be over ridden by ZBOUND_INP_FFT
+# iff z-max is equal or exceeds ZBOUND_NORM, the CPU will be used for input normalisation, This will will override any value of INP_NORM.
+# if z-max is less than ZBOUND_NORM, GPU normalisation will be used, This will will override any value of INP_NORM.
+# if ZBOUND_NORM is commented out or set to -1 INP_NORM will be used.
+ZBOUND_NORM		20
 
 
 # FFT input in the CPU or the GPU
 # INP_FFT:
 #	CPU     		# Do the input FFT's on the CPU
 # D	GPU     		# Do the input FFT's on the GPU - I generally find this a bit faster
-INP_FFT			GPU
+# 	AA			# Automatically chose, for the moment this will use the GPU
+INP_FFT			AA
+
+
+# ZBOUND_INP_FFT:
+# This marks a boundary, if the search z-max exceeds this value the CPU will be used for input FFT ( and thus input normalisation).
+# iff z-max is equal or exceeds ZBOUND_INP_FFT it use the CPU and it will override INP_FFT, INP_NORM and ZBOUND_NORM.
+# if z-max is less than it, CPU FFT's will be used. This will will override any value of INP_FFT and no charge will be made to input normalisation.
+# if ZBOUND_INP_FFT is commented out or set to -1 INP_NORM, ZBOUND_NORM and INP_FFT will be used.
+ZBOUND_INP_FFT		-1
 
 
 # This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
+# Don't fiddle with this
 # cuMedianBuffSz:
 # D	0			# Let the application decide
 #	128
@@ -158,11 +177,17 @@ MUL_CHUNK		0
 
 ############################ FFT ###############################
 
-# CUFFT_PLAN:
+# CUFFT_PLAN_PLN:
 #	SEPARATE		Use separate CUFFT plans for each batch
 # D	SINGLE			Use one plan for all batches on a device - Saves a bit of memory and generally doesn't slow things down much
-#CUFFT_PLAN 		SINGLE
+#CUFFT_PLAN_PLN 		SINGLE
 
+# CUFFT_PLAN_INP:
+# Same as above, but generally always a good idea to be SEPARATE, which is the default
+#
+# D	SEPARATE		Use separate CUFFT plans for each batch
+#	SINGLE			Use one plan for all batches on a device - Saves a bit of memory
+#CUFFT_PLAN_INP 		SINGLE
 
 ########################### Powers #############################
 
@@ -307,7 +332,7 @@ OPT_MIN_LOC_HARMS	1
 OPT_MIN_REP_HARMS	1
 
 
-# Do a final Nelder Mead refinement on the location, jenerally a good idea
+# Do a final Nelder Mead refinement on the location, generally a good idea
 OPT_NELDER_MEAD_REFINE	1
 
 
@@ -351,11 +376,11 @@ optPlnSiz 16 8
 # D	0       		# None
 #	1       		# Stage info	- Initialisation - Candidate generation - Candidate optimisation
 #	2       		# Component	- Naming the components
-#	3       		# Component info- Details on the componets, Input FT - Multiplication - Power calculation - sum & search - etc....
-#	4       		# Detail	- Info on what task is being done - ie, zero memor, kernel calls etc.
+#	3       		# Component info- Details on the components, Input FT - Multiplication - Power calculation - sum & search - etc....
+#	4       		# Detail	- Info on what task is being done - ie, zero memory, kernel calls etc.
 #	5       		# Debug		- Full debug information - CUDA Events etc.
 #	6       		# Super		- Details on the values of actual variables
-#	7			# Exsessive!
+#	7			# Excessive!
 DBG_LEV			0
 
 #FLAG_DPG_UNOPT  		# [ Debug ]	Use saved initial search values
@@ -364,8 +389,8 @@ DBG_LEV			0
 #FLAG_DPG_PLT_POWERS		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
 #FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
 
-#FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
-#FLAG_DBG_PROFILING		# [ Debug ]	Perform advanced profiling and timing the search
+FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
+FLAG_DBG_PROFILING		# [ Debug ]	Perform advanced profiling and timing the search
 
 
 

@@ -1041,7 +1041,7 @@ void getResults(cuFFdotBatch* batch)
 
     FOLD // Copy relevant data back  .
     {
-      infoMSG(3,3,"Async memcpy\n");
+      infoMSG(4,4,"1D async memory copy D2H");
 
       if      ( batch->retType & CU_STR_PLN )
       {

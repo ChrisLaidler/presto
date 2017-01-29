@@ -19,6 +19,12 @@
  *    Fixed bug in syncronouse in-mem runs (added a block on event ifftMemComp)
  *    Added some debug messages on stream synchronisation on events
  *
+ *  [0.0.03] [2017-01-29 08:20]
+ *    Added static functions to call both CPU and GPU input FFT's, these allow identical calls from non critical and non critcical blocks
+ *    Added non cirtical behavior for CPU FFT calls
+ *    Added some debug messages on stream synchronisation on events, yes even more!
+ *    made CPU_Norm_Spread satic
+ *
  */
 
 
@@ -34,7 +40,7 @@ int    cuMedianBuffSz = -1;             ///< The size of the sub sections to use
  * This s done using a temporary host buffer
  *
  */
-void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
+static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 {
   infoMSG(3,3,"CPU normalise batch input.");
 
@@ -360,6 +366,74 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
   }
 }
 
+/** A simple function to call the input FFTW plan  .
+ *
+ * This is a seperate function so one can be called by a omp critical and another not
+ */
+static void callInputFFTW(cuFFdotBatch* batch)
+{
+  // Profiling variables  .
+  struct timeval start, end;
+
+  for (int stack = 0; stack < batch->noStacks; stack++)
+  {
+    cuFfdotStack* cStack = &batch->stacks[stack];
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("CPU FFT");
+
+      if ( batch->flags & FLAG_PROF )
+      {
+	gettimeofday(&start, NULL);
+      }
+    }
+
+    // Do the FFT using the memory buffer
+    fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iBuffer, (fftwf_complex*)cStack->h_iBuffer);
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP(); // CPU FFT
+
+      if ( batch->flags & FLAG_PROF )
+      {
+	gettimeofday(&end, NULL);
+
+	float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	batch->compTime[NO_STKS*COMP_GEN_FFT + stack ] += v1;
+      }
+    }
+  }
+}
+
+/** A simple function to call the input CUFFT plan  .
+ *
+ * This is a seperate function so one can be called by a omp critical and another not
+ */
+static void callInputCUFFT(cuFFdotBatch* batch, cuFfdotStack* cStack)
+{
+  PROF // Profiling  .
+  {
+    if ( batch->flags & FLAG_PROF )
+    {
+      infoMSG(5,5,"Event %s in %s.\n", "inpFFTinit", "fftIStream");
+      cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
+    }
+  }
+
+  CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
+  CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
+
+  FOLD // Synchronisation  .
+  {
+    infoMSG(5,5,"Event %s in %s.\n", "inpFFTinitComp", "fftIStream");
+    cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
+  }
+}
+
 /** Initialise input data for a f-∂f plane(s)  ready for convolution  .
  * This:
  *  Normalises the chunk of input data
@@ -496,39 +570,14 @@ void prepInputCPU(cuFFdotBatch* batch )
 	  {
 	    infoMSG(3,3,"CPU FFT Input");
 
-#pragma omp critical
-	    FOLD
+	    if ( batch->flags & CU_FFT_SEP_INP )
 	    {
-	      for (int stack = 0; stack < batch->noStacks; stack++)
-	      {
-		cuFfdotStack* cStack = &batch->stacks[stack];
-
-		PROF // Profiling  .
-		{
-		  NV_RANGE_PUSH("CPU FFT");
-
-		  if ( batch->flags & FLAG_PROF )
-		  {
-		    gettimeofday(&start, NULL);
-		  }
-		}
-
-		// Do the FFT using the memory buffer
-		fftwf_execute_dft(cStack->inpPlanFFTW, (fftwf_complex*)cStack->h_iBuffer, (fftwf_complex*)cStack->h_iBuffer);
-
-		PROF // Profiling  .
-		{
-		  NV_RANGE_POP(); // CPU FFT
-
-		  if ( batch->flags & FLAG_PROF )
-		  {
-		    gettimeofday(&end, NULL);
-
-		    float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
-		    batch->compTime[NO_STKS*COMP_GEN_FFT + stack ] += v1;
-		  }
-		}
-	      }
+	      callInputFFTW(batch);
+	    }
+	    else
+	    {
+#pragma omp critical
+	      callInputFFTW(batch);
 	    }
 	  }
 	}
@@ -567,6 +616,7 @@ void prepInputCPU(cuFFdotBatch* batch )
       }
 
       // Copy the buffer over the pinned memory
+      infoMSG(4,4,"1D synch memory copy H2H");
       memcpy(batch->h_iData, batch->h_iBuffer, batch->inpDataSize );
 
       PROF // Profiling  .
@@ -658,13 +708,13 @@ void copyInputToDevice(cuFFdotBatch* batch)
 
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->searchComp, 0), 	"Waiting for Search to complete\n");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftComp, 0), 	"Waiting for iFFT complete\n");
-	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftMemComp, 0), "Waiting for Search to complete\n");
+	    CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->inpStream, batch->stacks->ifftMemComp, 0),"Waiting for Search to complete\n");
 
 	    infoMSG(5,5,"Call Delay kernel.\n");
-
 	    streamSleep(batch->inpStream, 3e5*batch->noStacks );	// The length of the delay is tuned to the number of stacks and is device dependent
 	  }
 
+	  infoMSG(5,5,"Event %s in %s.\n", "iDataCpyInit", "inpStream");
 	  cudaEventRecord(batch->iDataCpyInit, batch->inpStream);
 	}
       }
@@ -672,7 +722,7 @@ void copyInputToDevice(cuFFdotBatch* batch)
 
     FOLD // Copy pinned memory to device  .
     {
-      infoMSG(5,5,"cudaMemcpyAsync");
+      infoMSG(4,4,"1D async memory copy H2D");
 
       CUDA_SAFE_CALL(cudaMemcpyAsync(batch->d_iData, batch->h_iData, batch->inpDataSize, cudaMemcpyHostToDevice, batch->inpStream), "Failed to copy input data to device");
       CUDA_SAFE_CALL(cudaGetLastError(), "Copying input data to the device.");
@@ -680,17 +730,20 @@ void copyInputToDevice(cuFFdotBatch* batch)
 
     FOLD // Synchronisation  .
     {
+      infoMSG(5,5,"Event %s in %s.\n", "iDataCpyComp", "inpStream");
       cudaEventRecord(batch->iDataCpyComp,  batch->inpStream);
 
       if ( !(batch->flags & CU_NORM_GPU)  )
       {
 	// Data has been normalised by CPU
+	infoMSG(5,5,"Event %s in %s.\n", "normComp", "inpStream");
 	cudaEventRecord(batch->normComp,      batch->inpStream);
       }
 
       if ( batch->flags & CU_INPT_FFT_CPU )
       {
 	// Data has been FFT'ed by CPU
+	infoMSG(5,5,"Event %s in %s.\n", "inpFFTinitComp (stacks)", "inpStream");
 	for (int ss = 0; ss < batch->noStacks; ss++)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[ss];
@@ -804,6 +857,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 	    {
 	      if ( batch->flags & FLAG_PROF )
 	      {
+		infoMSG(5,5,"Event %s in %s.\n", "normInit", "inptStream");
 		cudaEventRecord(cStack->normInit, cStack->inptStream);
 	      }
 	    }
@@ -816,6 +870,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	  FOLD // Synchronisation  .
 	  {
+	    infoMSG(5,5,"Event %s in %s.\n", "normComp", "inptStream");
 	    cudaEventRecord(cStack->normComp, cStack->inptStream);
 	  }
 
@@ -846,7 +901,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_PUSH("FFT");
+	  NV_RANGE_PUSH("GPU FFT");
 	}
 
 	for (int stackIdx = 0; stackIdx < batch->noStacks; stackIdx++)
@@ -893,63 +948,15 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	  FOLD // Do the FFT on the GPU  .
 	  {
-	    // NOTE: the critical section below is need not be critical if run using CU_FFT_SEP
-
-	    if ( batch->flags & CU_FFT_SEP )
+	    if ( batch->flags & CU_FFT_SEP_INP )
 	    {
-	      FOLD // Kernel  .
-	      {
-		PROF // Profiling  .
-		{
-		  NV_RANGE_PUSH("Stack");
-
-		  if ( batch->flags & FLAG_PROF )
-		  {
-		    cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
-		  }
-		}
-
-		CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
-		CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
-
-		CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
-
-		FOLD // Synchronisation  .
-		{
-		  cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
-		}
-
-		PROF // Profiling  .
-		{
-		  NV_RANGE_POP();	// Stack
-		}
-	      }
+	      callInputCUFFT(batch, cStack);
 	    }
 	    else
 	    {
 #pragma omp critical
-	      FOLD // Kernel  .
-	      {
-		PROF // Profiling  .
-		{
-		  if ( batch->flags & FLAG_PROF )
-		  {
-		    cudaEventRecord(cStack->inpFFTinit, cStack->fftIStream);
-		  }
-		}
-
-		CUFFT_SAFE_CALL(cufftSetStream(cStack->inpPlan, cStack->fftIStream),"Failed associating a CUFFT plan with FFT input stream\n");
-		CUFFT_SAFE_CALL(cufftExecC2C(cStack->inpPlan, (cufftComplex *) cStack->d_iData, (cufftComplex *) cStack->d_iData, CUFFT_FORWARD),"Failed to execute input CUFFT plan.");
-
-		CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the input data.");
-
-		FOLD // Synchronisation  .
-		{
-		  cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
-		}
-	      }
+	      callInputCUFFT(batch, cStack);
 	    }
-
 	  }
 
 	  pStack = cStack;

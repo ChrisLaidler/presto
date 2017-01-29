@@ -139,7 +139,9 @@ extern "C"
 
 //---- FFT ----//
 
-#define		CU_FFT_SEP		BIT(25)		///< Use a separate FFT plan for each batch
+#define		CU_FFT_SEP_INP		BIT(24)		///< Use a separate FFT plan for the input of each batch
+#define		CU_FFT_SEP_PLN		BIT(25)		///< Use a separate FFT plan for the plane of each batch
+#define		CU_FFT_SEP_ALL		( CU_FFT_SEP_INP | CU_FFT_SEP_PLN ) /// All callbacks
 
 #define		FLAG_CUFFT_CB_POW	BIT(26)		///< Use an output callback to create powers, this works in std or in-mem searches - This is a similar iFFT speed but speeds up SS
 #define		FLAG_CUFFT_CB_INMEM	BIT(27)		///< Use the in-mem FFT's to copy values strait back to in-mem plane
@@ -232,6 +234,15 @@ extern "C"
 
 //=========================================== enums ======================================================
 
+
+typedef enum {
+  FFT_INPUT,
+  FFT_PLANE,
+  FFT_BOTH
+} presto_fft_type;
+
+//=========================================== enums ======================================================
+
 #define  TIME_CPU_INIT		0			/// CPU - Initialisation
 #define  TIME_GPU_INIT		1			/// GPU - Initialisation
 #define  TIME_ALL_SRCH		2			/// CPU & GPU - Initialisation and Candidate Generation
@@ -279,8 +290,6 @@ extern "C"
 #define  COMP_GEN_STR		11			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
 #define  COMP_GEN_END		12			/// Nothing - A value to indicate the end of the used variables
 #define  COMP_GEN_MAX		20			/// Nothing - A value to indicate the maximum array length
-
-
 
 
 
@@ -635,6 +644,9 @@ typedef struct searchSpecs
 
     float               zMax;                           ///< The highest z drift of the fundamental
     double		zRes;				///< The resolution in the z dimension
+
+    float		inputNormzBound;		///< The boundry z-max to swap over to CPU Normalisation	Not used if set < 0 - defaulty is not used
+    float		inputFFFTzBound;		///< The boundry z-max to swap over to CPU FFT's		Not used if set < 0 - defaulty is not usedr
 
     int                 pWidth;                         ///< The desired width of the planes
     int                 ssStepSize;                     ///< The size of the steps to take through the in-memory plane

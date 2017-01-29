@@ -1,3 +1,24 @@
+/** @file cuda_accel_MU.cu
+ *  @brief Functions to manage plane multiplication and FFT tasks
+ *
+ *  This contains the various functions that controle plane multiplication and FFT tasks
+ *  These include:
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.01] [2017-01-29 08:20]
+ *    Added static function to call CUFFT plan for plane, this allows identical calls from non critical and non critcical blocks
+ *    Made some other functions static
+ *
+ */
+
 #include "cuda_accel_MU.h"
 
 //========================================== Functions  ====================================================\\
@@ -7,7 +28,7 @@
  *
  * This should only be called by multiplyBatch, to check active iteration and time events
  */
-void multiplyPlane(cuFFdotBatch* batch)
+static void multiplyPlane(cuFFdotBatch* batch)
 {
   dim3 dimGrid, dimBlock;
 
@@ -41,16 +62,18 @@ void multiplyPlane(cuFFdotBatch* batch)
       if ( batch->flags & FLAG_SYNCH )
       {
 	// Wait for all the input FFT's to complete
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp (stacks)");
 	for (int ss = 0; ss< batch->noStacks; ss++)
 	{
 	  cuFfdotStack* cStack2 = &batch->stacks[ss];
-	  cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0);
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0),  "Waiting for event inpFFTinitComp");
 	}
 
 	// Wait for the previous multiplication to complete
 	if ( pStack != NULL )
 	{
-	  cudaStreamWaitEvent(cStack->multStream, pStack->multComp, 0);
+	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "multComp (previous)");
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, pStack->multComp, 0),  "Waiting for event inpFFTinitComp");
 	}
       }
     }
@@ -115,7 +138,7 @@ void multiplyPlane(cuFFdotBatch* batch)
     FOLD // Synchronisation  .
     {
       infoMSG(5,5,"Event %s in %s.\n", "multComp", "multStream");
-      cudaEventRecord(cStack->multComp, cStack->multStream);
+      CUDA_SAFE_CALL(cudaEventRecord(cStack->multComp, cStack->multStream),"Recording event: multComp");
     }
 
     pStack = cStack;
@@ -131,13 +154,14 @@ void multiplyPlane(cuFFdotBatch* batch)
  * @param cStack
  * @param pStack
  */
-void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL)
+static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL)
 {
   infoMSG(3,3,"Multiply stack %i \n", cStack->stackIdx);
 
   FOLD // Synchronisation  .
   {
-    infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp & ifftComp");
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp");
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "ifftComp");
 
     // This iteration
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->inpFFTinitComp,    0),   "Waiting for GPU to be ready to copy data to device.");  // Need input data
@@ -160,15 +184,15 @@ void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pSta
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp");
 
 	cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
-	cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0);
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0), "Stream wait on event inpFFTinitComp.");
       }
 
       // Wait for the previous multiplication to complete
       if ( pStack != NULL )
       {
-	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "previous multComp");
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "multComp (previous)");
 
-	cudaStreamWaitEvent(cStack->multStream, pStack->multComp, 0);
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, pStack->multComp, 0), "Stream wait on event inpFFTinitComp.");
       }
     }
   }
@@ -217,7 +241,7 @@ void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pSta
   FOLD // Synchronisation  .
   {
     infoMSG(5,5,"Event %s in %s.\n", "multComp", "multStream");
-    cudaEventRecord(cStack->multComp, cStack->multStream);
+    CUDA_SAFE_CALL(cudaEventRecord(cStack->multComp, cStack->multStream),"Recording event: multInit");
   }
 }
 
@@ -263,6 +287,8 @@ void multiplyBatch(cuFFdotBatch* batch)
       FOLD // Synchronisation  .
       {
 	// Synchronise input data preparation for all stacks
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp (stacks)");
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "ifftComp (stacks)");
 	for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[synchIdx];
@@ -276,11 +302,13 @@ void multiplyBatch(cuFFdotBatch* batch)
 	if ( !(batch->flags & FLAG_CUFFT_CB_OUT) )
 	{
 	  // Have to wait for search to finish reading data
+	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "searchComp");
 	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 	}
 
 	if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
 	{
+	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "candCpyComp");
 	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
 	}
       }
@@ -332,6 +360,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 	  if ( batch->flags & FLAG_MUL_CB )
 	  {
 	    // Just synchronise, the iFFT will do the multiplication once the multComp event has been recorded
+	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->inpFFTinitComp,0),   "Waiting for GPU to be ready to copy data to device.");
 
 	    infoMSG(5,5,"Event %s in %s.\n", "multComp", "fftPStream");
@@ -371,6 +400,56 @@ void multiplyBatch(cuFFdotBatch* batch)
   }
 }
 
+/** A simple function to call the plane CUFFT plan  .
+ *
+ * This is a seperate function so one can be called by a omp critical and another not
+ */
+static void callPlaneCUFTT(cuFFdotBatch* batch, cuFfdotStack* cStack)
+{
+  PROF // Profiling  .
+  {
+    if ( batch->flags & FLAG_PROF )
+    {
+      infoMSG(5,5,"Event %s in %s.\n", "ifftInit", "fftPStream");
+      CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftInit, cStack->fftPStream),"Recording event: ifftInit");
+    }
+  }
+
+  FOLD // Set the load and store FFT callback if necessary  .
+  {
+    setCB(batch, cStack);
+  }
+
+  FOLD // Call the FFT  .
+  {
+    infoMSG(5,5,"CUFFT kernel");
+
+    void* dst = getCBwriteLocation(batch, cStack);
+
+    CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
+
+    if ( batch->flags & FLAG_DOUBLE )
+      CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+    else
+      CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
+  }
+
+  FOLD // Synchronisation  .
+  {
+    infoMSG(5,5,"Event %s in %s.\n", "ifftComp", "fftPStream");
+    CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftComp, cStack->fftPStream),"Recording event: ifftInit");
+
+    // If using power calculate call back with the inmem plane
+    if ( batch->flags & FLAG_CUFFT_CB_INMEM )
+    {
+#if CUDA_VERSION >= 6050
+      infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "fftPStream");
+      CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream),"Recording event: ifftInit");
+#endif
+    }
+  }
+}
+
 /**  iFFT a specific stack  .
  *
  * @param batch
@@ -396,7 +475,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
   FOLD // Synchronisation  .
   {
-    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "multComp");
+    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "multComp (stack and batch)");
     infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftComp");
 
     // Wait for multiplication to finish
@@ -424,19 +503,18 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
     if ( batch->flags & FLAG_SYNCH )
     {
       // Wait for all the multiplications to complete
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "multComp (neighbours)");
       for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
       {
-	infoMSG(5,5,"Synchronise stream %s on %s (stack %i - synch).\n", "fftPStream", "multComp", synchIdx);
-
 	cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
-	cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0);
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0), "Waiting for event ifftComp.");
       }
 
       // Wait for the previous fft to complete
       if ( pStack != NULL )
       {
-	infoMSG(5,5,"Synchronise stream %s on %s (previous stack synch).\n", "fftPStream", "ifftComp");
-	cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0);
+	infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftComp (previous stack synch)");
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0), "Waiting for event ifftComp.");
       }
     }
 
@@ -446,97 +524,14 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
   {
     infoMSG(4,4,"Call the inverse CUFFT\n");
 
-    if ( cStack->flags & CU_FFT_SEP )
+    if ( cStack->flags & CU_FFT_SEP_PLN )
     {
-//#pragma omp critical
-      {
-	PROF // Profiling  .
-	{
-	  if ( batch->flags & FLAG_PROF )
-	  {
-	    infoMSG(5,5,"Event %s in %s.\n", "ifftInit", "fftPStream");	    
-	    cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
-	  }
-	}
-
-	FOLD // Set the load and store FFT callback if necessary  .
-	{
-	  setCB(batch, cStack);
-	}
-
-	FOLD // Call the FFT  .
-	{
-	  void* dst = getCBwriteLocation(batch, cStack);
-
-	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-
-	  if ( batch->flags & FLAG_DOUBLE )
-	    CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
-	  else
-	    CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
-	}
-
-	FOLD // Synchronisation  .
-	{
-	  infoMSG(5,5,"Event %s in %s.\n", "ifftComp", "fftPStream");
-	  cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
-
-	  // If using power calculate call back with the inmem plane
-	  if ( batch->flags & FLAG_CUFFT_CB_INMEM )
-	  {
-#if CUDA_VERSION >= 6050
-	    infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "fftPStream");
-	    cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream);
-#endif
-	  }
-	}
-      }
+      callPlaneCUFTT(batch, cStack);
     }
     else
     {
 #pragma omp critical
-      {
-	PROF // Profiling  .
-	{
-	  if ( batch->flags & FLAG_PROF )
-	  {
-	    infoMSG(5,5,"Event %s in %s.\n", "ifftInit", "fftPStream");	    
-	    cudaEventRecord(cStack->ifftInit, cStack->fftPStream);
-	  }
-	}
-
-	FOLD // Set the load and store FFT callback if necessary  .
-	{
-	  setCB(batch, cStack);
-	}
-
-	FOLD // Call the FFT  .
-	{
-	  void* dst = getCBwriteLocation(batch, cStack);
-
-	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-
-	  if ( batch->flags & FLAG_DOUBLE )
-	    CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
-	  else
-	    CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
-	}
-
-	FOLD // Synchronisation  .
-	{
-	  infoMSG(5,5,"Event %s in %s.\n", "ifftComp", "fftPStream");
-	  cudaEventRecord(cStack->ifftComp, cStack->fftPStream);
-
-	  // If using power calculate call back with the inmem plane
-	  if ( batch->flags & FLAG_CUFFT_CB_INMEM )
-	  {
-#if CUDA_VERSION >= 6050
-	    infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "fftPStream");
-	    cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream);
-#endif
-	  }
-	}
-      }
+      callPlaneCUFTT(batch, cStack);
     }
   }
 
@@ -560,9 +555,9 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
 	for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
 	{
-	  cuHarmInfo* cHInfo    = &cStack->harmInf[plainNo];		// The current harmonic we are working on
-	  void*       tmpRow      = malloc(batch->inpDataSize);
-	  cuFFdot*    plan      = &cStack->planes[plainNo];		// The current plane
+	  cuHarmInfo* cHInfo	= &cStack->harmInf[plainNo];		// The current harmonic we are working on
+	  void*       tmpRow	= malloc(batch->inpDataSize);
+	  cuFFdot*    plan	= &cStack->planes[plainNo];		// The current plane
 
 	  int harm = cStack->startIdx+plainNo;
 

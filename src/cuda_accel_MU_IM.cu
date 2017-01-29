@@ -154,6 +154,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   if ( batch->flags & FLAG_CUFFT_CB_INMEM )
   {
     // Copying was done by the callback directly
+    infoMSG(5,5,"break - Copy done by callback");
     return;
   }
 
@@ -332,6 +333,8 @@ void copyToInMemPln(cuFFdotBatch* batch)
 	{
 	  if ( batch->flags & FLAG_PROF )
 	  {
+	    infoMSG(5,5,"Event %s in %s.\n", "ifftMemInit", "srchStream");
+
 	    CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: ifftMemInit");
 	  }
 	}
@@ -340,7 +343,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 	{
 	  if ( batch->flags & FLAG_CUFFT_CB_POW )
 	  {
-	    infoMSG(4,4,"2D async memory copy");
+	    infoMSG(4,4,"2D async D2D memory copy");
 
 	    // Copy memory using a 2D async memory copy
 	    if ( batch->flags & FLAG_POW_HALF )
@@ -370,7 +373,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
 	FOLD // Synchronisation  .
 	{
-	  infoMSG(4,4,"event: cStack->ifftMemComp");
+	  infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "srchStream");
 
 	  CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, batch->srchStream),"Recording event: ifftMemComp");
 	}
