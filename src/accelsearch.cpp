@@ -732,8 +732,8 @@ int main(int argc, char *argv[])
 
       double N =   obs.N;
 
-#ifdef CBL // Chris: This is some temporary output to generate data for my thesis,
-      Fout // TMP
+#ifdef CBL // TMP Chris: This is some temporary output to generate data for my thesis.
+      Fout
       {
 	Fout // Test sigma calculations  .
 	{
@@ -1078,7 +1078,7 @@ int main(int argc, char *argv[])
 	      printf("\t\t");
 	      for ( int i = 0; i < COMP_GEN_END; i++)
 	      {
-		printf("%15.063f\t", bsums[i] );
+		printf("%15.06f\t", bsums[i] );
 	      }
 	      printf("\n");
 	    }

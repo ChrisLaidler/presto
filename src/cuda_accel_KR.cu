@@ -1,3 +1,23 @@
+/** @file cuda_accel_KR.cu
+ *  @brief Functions to create the accle convolution kernels
+ *
+ *  This contains the various functions create the accle convolution kernels
+ *  This makes use of responce values calcualted in cuda_responce.cu and CUFFT
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.01] [2017-01-29 08:20]
+ *    Fixed a bug in double precision FFT's of the kernel
+ *
+ */
+
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
@@ -184,7 +204,14 @@ int createStackKernel(cuFfdotStack* cStack)
   return 0;
 }
 
-int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t stream) //   cuFfdotStack* cStack, float* d_orrKer)
+/** Copy a kernel plane stored on the device as doubles to float
+ *
+ * @param doubleKer	A pointer to the double precision kernel (source)
+ * @param floatKer	A pointer to the double precision kernel (destination)
+ * @param stream	The stream to do the copy in
+ * @return		None
+ */
+static int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t stream = NULL)
 {
   dim3 dimBlock, dimGrid;
 
@@ -204,7 +231,8 @@ int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStream_t s
 
 void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 {
-  cuKernel doubleKres[MAX_STACKS];
+  cuKernel orrKernels[MAX_STACKS];
+
   char msg[1024];
 
   infoMSG(4,4,"Initialise the multiplication kernels.\n");
@@ -214,29 +242,33 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   FOLD // Allocate temporary memory for kernel wanting double precision FFT's  .
   {
+    // Clear values
     for (int i = 0; i < MAX_STACKS; i++)
     {
-      doubleKres[i].d_kerData = NULL;
+      orrKernels[i].d_kerData = NULL;
     }
 
     if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
     {
+      infoMSG(5,5,"Allocating temproary double precision memory for FFT to work on.\n");
+
       for (int i = 0; i < batch->noStacks; i++)
       {
-	infoMSG(4,6,"Stack %i\n",i);
-
 	cuFfdotStack* cStack = &batch->stacks[i];
 
+	// Backup orrigional kernel
+	memcpy(&orrKernels[i], cStack->kernels, sizeof(cuKernel)); // Copy the cStack kernel struct over the temp one
+
+	// Size of doube kernel plane
 	size_t kerSz = cStack->kernels->stride * cStack->kernels->harmInf->noZ * sizeof(double2);
 
-	memcpy(&doubleKres[i], cStack->kernels, sizeof(cuKernel));
-
-	CUDA_SAFE_CALL(cudaMalloc((void**)&doubleKres[i].d_kerData, kerSz), "Failed to allocate temporary device memory for kernel stack."); // This is temporary double memory it will be freed at the end of this function
+	// Allocate new memory to the orrigional kernal ( this will get filled and FFT'ed using functions below)
+	CUDA_SAFE_CALL(cudaMalloc((void**)&cStack->kernels->d_kerData, kerSz), "Failed to allocate temporary device memory for kernel stack."); // This is temporary double memory it will be freed at the end of this function
       }
     }
   }
 
-  PROF // Profiling  .
+  PROF // Profiling  create timing events  .
   {
     if ( batch->flags & FLAG_PROF )
     {
@@ -257,7 +289,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   FOLD // Calculate the response values  .
   {
-    infoMSG(4,5,"Calculate the response values\n");
+    infoMSG(5,5,"Calculate the response values\n");
 
     PROF // Profiling  .
     {
@@ -294,7 +326,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   FOLD // FFT the kernels  .
   {
-    infoMSG(4,5,"FFT the  response values\n");
+    infoMSG(5,5,"FFT the  response values\n");
 
     PROF // Profiling  .
     {
@@ -303,15 +335,13 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
     for (int i = 0; i < batch->noStacks; i++)
     {
-      infoMSG(4,6,"Stack %i\n",i);
-
       cuFfdotStack* cStack = &batch->stacks[i];
 
       if ( (batch->flags & FLAG_KER_DOUBFFT) || (batch->flags & FLAG_DOUBLE) )
       {
 	FOLD // Create the plan  .
 	{
-	  infoMSG(4,6,"Create plan\n");
+	  infoMSG(5,5,"Create double precision CUFFT plan stack %i.\n", i);
 
 	  PROF // Profiling  .
 	  {
@@ -348,7 +378,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	FOLD // Call the plan  .
 	{
-	  infoMSG(4,6,"Call the plan\n");
+	  infoMSG(5,5,"Call the plan\n");
 
 	  PROF // Profiling  .
 	  {
@@ -357,7 +387,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  }
 
 	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
-	  CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *)doubleKres[i].d_kerData, (cufftDoubleComplex *) doubleKres[i].d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
+	  CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *)cStack->kernels->d_kerData, (cufftDoubleComplex *) cStack->kernels->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
 	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
 
 	  PROF // Profiling  .
@@ -376,7 +406,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	FOLD // Destroy the plan  .
 	{
-	  infoMSG(4,6,"Destroy the plan\n");
+	  infoMSG(5,5,"Destroy the plan\n");
 
 	  PROF // Profiling  .
 	  {
@@ -397,7 +427,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       {
 	FOLD // Create the plan  .
 	{
-	  infoMSG(4,6,"Create plan\n");
+	  infoMSG(5,5,"Create single precision CUFFT plan stack %i.\n", i);
 
 	  PROF // Profiling  .
 	  {
@@ -415,7 +445,6 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  int odist           = cStack->strideCmplx;
 	  int height          = cStack->kerHeigth;
 
-	  // Normal plans
 	  if (buffer)
 	  {
 	    // use pre-allocated memory
@@ -426,6 +455,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	  }
 	  else
 	  {
+	    // Normal plans
 	    CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, height), "Creating plan for FFT'ing the kernel.");
 	    CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
 	  }
@@ -446,7 +476,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	FOLD // Call the plan  .
 	{
-	  infoMSG(4,6,"Call the plan\n");
+	  infoMSG(5,5,"Call the plan\n");
 
 	  PROF // Profiling  .
 	  {
@@ -476,7 +506,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 	{
 	  if (!buffer)
 	  {
-	    infoMSG(4,6,"Destroy the plan\n");
+	    infoMSG(5,5,"Destroy the plan\n");
 
 	    PROF // Profiling  .
 	    {
@@ -530,22 +560,23 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
   {
     if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
     {
+      infoMSG(5,5,"Copy double FFT'ed data back to the float kernel.\n");
+
       for (int i = 0; i < batch->noStacks; i++)
       {
 	cuFfdotStack* cStack = &batch->stacks[i];
 
-	copyKerDoubleToFloat( &doubleKres[i], cStack->kernels, cStack->initStream );
-      }
-    }
+	// The stack kernel is the double (we allocated it new memory, and the orrigional is in the temp storage
+	copyKerDoubleToFloat( cStack->kernels, &orrKernels[i], cStack->initStream );
 
-    FOLD // Free temporary memory for kernel  .
-    {
-      if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
-      {
-	for (int i = 0; i < batch->noStacks; i++)
-	{
-	  cudaFreeNull( doubleKres[i].d_kerData );			// Free the temporary double data
-	}
+	// Hold value for the double memory
+	void* temDoubleMem = cStack->kernels->d_kerData;
+
+	// Restore orrigional kernel, with nice doule values in its foat memory
+	memcpy(cStack->kernels, &orrKernels[i], sizeof(cuKernel)); // Copy the orrigional kernel struct over the temp one
+
+	// Now free the double memory
+	cudaFreeNull( temDoubleMem );
       }
     }
   }

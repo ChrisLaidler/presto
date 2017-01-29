@@ -26,6 +26,14 @@
  *    New better ordering for asynchrenouse & profiling standard serarch (faster overlap GPU and CPU)
  *    Added many more debug messages in initalisation routines
  *    Fixed bug in iFFT stream creation
+ *    
+ *  [0.0.03] []
+ *    Added a new fag to allow seperate treatmenty of input and plane FFT's (seperate vs single)
+ *    Chaged createFFTPlans to allow creating the FFT plans for input and plane seperately
+ *    Reorderd stream creation in initKernel
+ *    Synchronous runs now default to one batch and seperate FFT's
+ *    Added ZBOUND_NORM flag to specify bound to swap over to CPU input normalisation
+ *    Added ZBOUND_INP_FFT flag to specify bound to swap over to CPU FFT's for input
  */
 
 #include <cufft.h>
@@ -324,7 +332,7 @@ void freeRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
   freeNull(*rLev1);
 }
 
-void createFFTPlans(cuFFdotBatch* kernel)
+void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 {
   char msg[1024];
 
@@ -334,9 +342,9 @@ void createFFTPlans(cuFFdotBatch* kernel)
   }
 
   // Note creating the plans is the most expensive task in the GPU init, I tried doing it in parallel but it was slower
-  for (int i = 0; i < kernel->noStacks; i++)
+  for (int i = 0; i < batch->noStacks; i++)
   {
-    cuFfdotStack* cStack  = &kernel->stacks[i];
+    cuFfdotStack* cStack  = &batch->stacks[i];
 
     PROF // Profiling  .
     {
@@ -344,7 +352,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
       NV_RANGE_PUSH(msg);
     }
 
-    FOLD // Input FFT's  .
+    if ( (type == FFT_INPUT) || (type == FFT_BOTH) ) // Input FFT's  .
     {
       int n[]             = {cStack->width};
 
@@ -358,16 +366,16 @@ void createFFTPlans(cuFFdotBatch* kernel)
 
       FOLD // Create the input FFT plan  .
       {
-	if ( kernel->flags & CU_INPT_FFT_CPU )
+	if ( batch->flags & CU_INPT_FFT_CPU )
 	{
-	  infoMSG(5,5,"Creating Single FFTW plan for input FFT.\n");
+	  infoMSG(5,5,"Creating single precision FFTW plan for input FFT.\n");
 
 	  PROF // Profiling  .
 	  {
 	    NV_RANGE_PUSH("FFTW");
 	  }
 
-	  cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*kernel->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
+	  cStack->inpPlanFFTW = fftwf_plan_many_dft(1, n, cStack->noInStack*batch->noSteps, (fftwf_complex*)cStack->h_iData, n, istride, idist, (fftwf_complex*)cStack->h_iData, n, ostride, odist, -1, FFTW_ESTIMATE);
 
 	  PROF // Profiling  .
 	  {
@@ -383,7 +391,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
 	    NV_RANGE_PUSH("CUFFT Inp");
 	  }
 
-	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*kernel->noSteps), "Creating plan for input data of stack.");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->inpPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->noInStack*batch->noSteps), "Creating plan for input data of stack.");
 
 	  PROF // Profiling  .
 	  {
@@ -393,11 +401,11 @@ void createFFTPlans(cuFFdotBatch* kernel)
       }
     }
 
-    FOLD // inverse FFT's  .
+    if ( (type == FFT_PLANE) || (type == FFT_BOTH) ) // inverse FFT's  .
     {
-      if ( kernel->flags & FLAG_DOUBLE )
+      if ( batch->flags & FLAG_DOUBLE )
       {
-	infoMSG(5,5,"Creating Double CUFFT plan for iFFT\n");
+	infoMSG(5,5,"Creating double presision CUFFT plan for iFFT\n");
 	
 	int n[]             = {cStack->width};
 
@@ -416,7 +424,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
 	    NV_RANGE_PUSH("CUFFT Pln");
 	  }
 
-	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_Z2Z, cStack->height*batch->noSteps), "Creating plan for complex data of stack.");
 
 	  PROF // Profiling  .
 	  {
@@ -426,7 +434,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
       }
       else
       {
-	infoMSG(5,5,"Creating Single CUFFT plan for iFFT\n");
+	infoMSG(5,5,"Creating single presision CUFFT plan for iFFT\n");
 
 	int n[]             = {cStack->width};
 
@@ -445,7 +453,7 @@ void createFFTPlans(cuFFdotBatch* kernel)
 	    NV_RANGE_PUSH("CUFFT Pln");
 	  }
 
-	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*kernel->noSteps), "Creating plan for complex data of stack.");
+	  CUFFT_SAFE_CALL(cufftPlanMany(&cStack->plnPlan,  1, n, inembed, istride, idist, onembed, ostride, odist, CUFFT_C2C, cStack->height*batch->noSteps), "Creating plan for complex data of stack.");
 
 	  PROF // Profiling  .
 	  {
@@ -558,8 +566,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       long  Diff = total - MAX_GPU_MEM;
       if( Diff > 0 )
       {
-	free-= Diff;
-	total-=Diff;
+	free -= Diff;
+	total-= Diff;
       }
 #endif
 
@@ -627,7 +635,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       // Kernel
       kerSize		+= fftLen * plnY * sizeof(cufftComplex);						// Kernel
       if ( (kernel->flags & FLAG_KER_DOUBFFT) && !(kernel->flags & FLAG_DOUBLE) )
-	kerSize        += fftLen * plnY * sizeof(double)*2;							// Kernel
+	kerSize         += fftLen * plnY * sizeof(double)*2;							// Kernel
 
       // Calculate the  "approximate" size of a single 1 step batch
       batchSize		+= fftLen * sizeof(cufftComplex);							// Input
@@ -783,7 +791,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
-  FOLD // Do a sanity check on Flags and CUDA version  .
+  FOLD // Do a global sanity check on Flags and CUDA version  .
   {
     // TODO: Do a check whether there is enough precision in an int to store the index of the largest point
 
@@ -900,7 +908,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	powElsSZ = sizeof(fcomplexcu);
       }
-
     }
   }
 
@@ -936,8 +943,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     FOLD // Allocate memory  .
     {
-      kernel->hInfos        = (cuHarmInfo*) malloc(kernel->noSrchHarms * sizeof(cuHarmInfo));
-      kernel->kernels       = (cuKernel*)   malloc(kernel->noGenHarms * sizeof(cuKernel));
+      kernel->hInfos		= (cuHarmInfo*) malloc(kernel->noSrchHarms * sizeof(cuHarmInfo));
+      kernel->kernels		= (cuKernel*)   malloc(kernel->noGenHarms * sizeof(cuKernel));
 
       // Zero memory for kernels and harmonics
       memset(kernel->hInfos,  0, kernel->noSrchHarms * sizeof(cuHarmInfo));
@@ -1252,18 +1259,18 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
-  FOLD // Batch specific streams  .
+  FOLD // Batch initalisation streams  .
   {
     PROF // Profiling  .
     {
-      NV_RANGE_PUSH("streams");
+      NV_RANGE_PUSH("init streams");
     }
 
-    infoMSG(4,4,"Batch streams\n");
+    infoMSG(4,4,"Batch initalisation streams\n");
 
     char strBuff[1024];
 
-    if ( kernel->flags & FLAG_SYNCH )	// Only one stream
+    if ( kernel->flags & FLAG_SYNCH )	// Only one stream  .
     {
       cuFfdotStack* fStack = &kernel->stacks[0];
 
@@ -1281,7 +1288,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	cStack->initStream	= fStack->initStream;
       }
     }
-    else				// Separate streams
+    else				// Separate streams  .
     {
       for (int i = 0; i < kernel->noStacks; i++)
       {
@@ -1293,38 +1300,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  sprintf(strBuff,"%i.0.0.%i Initialisation", kernel->gInf->devid, i);
 	  NV_NAME_STREAM(cStack->initStream, strBuff);
-	}
-      }
-    }
-
-    if ( !(kernel->flags & CU_FFT_SEP) )
-    {
-      if ( !(kernel->flags & CU_INPT_FFT_CPU) )
-      {
-	for (int i = 0; i < kernel->noStacks; i++)
-	{
-	  cuFfdotStack* cStack = &kernel->stacks[i];
-
-	  CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
-
-	  PROF // Profiling, name stream  .
-	  {
-	    sprintf(strBuff,"%i.0.2.%i FFT Input Dev", kernel->gInf->devid, i);
-	    NV_NAME_STREAM(cStack->fftIStream, strBuff);
-	  }
-	}
-      }
-
-      for (int i = 0; i < kernel->noStacks; i++)
-      {
-	cuFfdotStack* cStack = &kernel->stacks[i];
-
-	CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
-
-	PROF // Profiling, name stream  .
-	{
-	  sprintf(strBuff,"%i.0.4.%i FFT Plane Dev", kernel->gInf->devid, i);
-	  NV_NAME_STREAM(cStack->fftPStream, strBuff);
 	}
       }
     }
@@ -1432,13 +1407,65 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       CUDA_SAFE_CALL(cudaMemcpyPeerAsync(kernel->d_kerData, kernel->gInf->devid, master->d_kerData, master->gInf->devid, master->kerDataSize, master->stacks->initStream ), "Copying multiplication kernels between devices.");
     }
 
-    printf("• Examining GPU memory of device %2i:\n", kernel->gInf->devid);
+
 
     ulong freeRam;          /// The amount if free host memory
     int retSZ     = 0;      /// The size in byte of the returned data
     int candSZ    = 0;      /// The size in byte of the candidates
     int retY      = 0;      /// The number of candidates return per family (one step)
     ulong hostC   = 0;      /// The size in bytes of device memory used for candidates
+
+    FOLD // Check defaults and auto selection on CPU input FFT's  .
+    {
+      if ( cuSrch->sSpec->inputNormzBound >= 0 )
+      {
+	if ( cuSrch->sSpec->zMax >= cuSrch->sSpec->inputNormzBound )
+	{
+	  infoMSG(5,5,"Auto selectying CPU input normalisation.\n");
+	  kernel->flags &= ~CU_NORM_GPU;
+	}
+	else
+	{
+	  infoMSG(5,5,"Auto selectying GPU input normalisation.\n");
+	  kernel->flags |= CU_NORM_GPU_SM;
+	}
+      }
+
+      if ( cuSrch->sSpec->inputFFFTzBound >= 0 )
+      {
+	if ( cuSrch->sSpec->zMax >= cuSrch->sSpec->inputFFFTzBound )
+	{
+	  infoMSG(5,5,"Auto selectying CPU input FFT and normalisation.\n");
+	  kernel->flags |= CU_INPT_FFT_CPU;
+	  kernel->flags &= ~CU_NORM_GPU;
+	}
+	else
+	{
+	  infoMSG(5,5,"Auto selectying GPU input FFT's.\n");
+	  kernel->flags &= ~CU_INPT_FFT_CPU;
+	}
+      }
+
+      FOLD // Output  .
+      {
+	char  inpType[1024];
+	sprintf(inpType, "• Using ");
+	if ( kernel->flags & CU_NORM_GPU )
+	  sprintf(inpType, "%s%s", inpType, "GPU ");
+	else
+	  sprintf(inpType, "%s%s", inpType, "CPU ");
+	sprintf(inpType, "%s%s", inpType, "normalisationa and ");
+	if ( kernel->flags & CU_INPT_FFT_CPU )
+	  sprintf(inpType, "%s%s", inpType, "CPU ");
+	else
+	  sprintf(inpType, "%s%s", inpType, "GPU ");
+	sprintf(inpType, "%s%s", inpType, "FFT's for input.\n");
+
+	printf("%s",inpType);
+      }
+    }
+
+    printf("• Examining GPU memory of device %2i:\n", kernel->gInf->devid);
 
     FOLD // Calculate the search size in bins  .
     {
@@ -1772,8 +1799,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       FOLD // Calculate size of various memory's'  .
       {
-	batchSize             = kernel->inpDataSize + kernel->plnDataSize + kernel->pwrDataSize + kernel->retDataSize;  // This is currently the size of one step
-	fffTotSize            = kernel->inpDataSize + kernel->plnDataSize;                                              // FFT data treated separately because there will be only one set per device
+	batchSize		= kernel->inpDataSize + kernel->plnDataSize + kernel->pwrDataSize + kernel->retDataSize;  // This is currently the size of one step
+	fffTotSize		= kernel->inpDataSize + kernel->plnDataSize;                                              // FFT data treated separately because there will be only one set per device
 
 	infoMSG(5,5,"inpDataSize: %.2f GB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - retDataSize: ~%.2f MB \n", kernel->inpDataSize*1e-6, kernel->plnDataSize*1e-6, kernel->pwrDataSize*1e-6, kernel->retDataSize*1e-6 ); //  free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, singleBatchSz*1e-6 );
 
@@ -1798,23 +1825,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  float possSteps[MAX_BATCHES];
 	  bool trySomething = 0;
 
-	  noBatches       = cuSrch->gSpec->noDevBatches[devID];
-	  noSteps         = cuSrch->gSpec->noDevSteps[devID];
+	  // Reset # steps and batches, steps atleast was chaged previosly
+	  noBatches		= cuSrch->gSpec->noDevBatches[devID];
+	  noSteps		= cuSrch->gSpec->noDevSteps[devID];
 
-	  if ( kernel->flags & FLAG_SYNCH  )		// Synchronous behaviour  .
+	  FOLD // Check synchronisation  .
 	  {
-	    if ( noBatches == 0 )
+	    if ( kernel->flags & FLAG_SYNCH  )		// Synchronous behaviour  .
 	    {
-	      printf("     Synchronous run so auto selecting 1 batch.\n");
-	      noBatches = 1;
-	    }
-
-	    PROF
-	    {
-	      if ( noBatches == 1 )
+	      if ( noBatches == 0 )			// NOTE: This can be over ridded by forcing the number of batches
 	      {
-		printf("     Profiling with single batch so setting to separate FFT mode.\n");
-		kernel->flags |= CU_FFT_SEP;
+		printf("     Synchronous run so auto selecting 1 batch using seperate FFT behaviour.\n");
+		noBatches = 1;
+		kernel->flags |= CU_FFT_SEP_ALL;	// NOTE: There is now way to over ride this (if batches are se, but it I believe it can only be fatser esp with only one batch.
 	      }
 	    }
 	  }
@@ -1823,7 +1846,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  for ( int i = 0; i < MAX_BATCHES; i++)
 	  {
 	    // The number of
-	    if ( kernel->flags & CU_FFT_SEP )
+	    if ( kernel->flags & CU_FFT_SEP_PLN )
 	    {
 	      possSteps[i] = ( free - planeSize ) / (double) ( (fffTotSize + batchSize) * (i+1) ) ;
 	    }
@@ -1832,7 +1855,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      possSteps[i] = ( free - planeSize ) / (double) (  fffTotSize + batchSize  * (i+1) ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
 	    }
 	  }
-
 
 	  if ( noBatches == 0 )
 	  {
@@ -1996,7 +2018,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 
 	char  cufftType[1024];
-	if ( kernel->flags & CU_FFT_SEP )
+	if ( kernel->flags & CU_FFT_SEP_PLN )
 	{
 	  // one CUFFT plan per batch
 	  fffTotSize *= noBatches;
@@ -2119,6 +2141,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    freeRam  = getFreeRamCU();
 	    if ( fullCSize < freeRam*0.9 )
 	    {
+	      infoMSG(5,5,"Allocate host memor for canidate array. (%.2f MB)\n", fullCSize*1e-6 );
+
 	      // Same host candidates for all devices
 	      // This can use a lot of memory for long searches!
 	      cuSrch->h_candidates = malloc( fullCSize );
@@ -2150,6 +2174,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  if ( cuSrch->sSpec->outData == NULL )
 	  {
+	    infoMSG(5,5,"Creating quadtree for canidates.\n" );
+
 	    candTree* qt = new candTree;
 	    cuSrch->h_candidates = qt;
 	  }
@@ -2195,38 +2221,101 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
-  FOLD // Create FFT plans, ( 1 - set per device )  .
+  FOLD // Set up FFT's  .
   {
-    PROF // Profiling  .
-    {
-      NV_RANGE_PUSH("FFT plans");
-    }
-
-    if ( ( kernel->flags & CU_INPT_FFT_CPU ) && master == NULL )
+    FOLD // Batch FFT streams  .
     {
       PROF // Profiling  .
       {
-	NV_RANGE_PUSH("read_wisdom");
+	NV_RANGE_PUSH("FFT streams");
       }
 
-      read_wisdom();
+      infoMSG(4,4,"Batch FFT streams\n");
+
+      char strBuff[1024];
+
+      if ( !(kernel->flags & CU_INPT_FFT_CPU) && !(kernel->flags & CU_FFT_SEP_INP) )
+      {
+	for (int i = 0; i < kernel->noStacks; i++)
+	{
+	  cuFfdotStack* cStack = &kernel->stacks[i];
+
+	  CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for fft's");
+
+	  PROF // Profiling, name stream  .
+	  {
+	    sprintf(strBuff,"%i.0.2.%i FFT Input Dev", kernel->gInf->devid, i);
+	    NV_NAME_STREAM(cStack->fftIStream, strBuff);
+	  }
+	}
+      }
+
+      if ( !(kernel->flags & CU_FFT_SEP_PLN) )
+      {
+	for (int i = 0; i < kernel->noStacks; i++)
+	{
+	  cuFfdotStack* cStack = &kernel->stacks[i];
+
+	  CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream),"Creating CUDA stream for fft's");
+
+	  PROF // Profiling, name stream  .
+	  {
+	    sprintf(strBuff,"%i.0.4.%i FFT Plane Dev", kernel->gInf->devid, i);
+	    NV_NAME_STREAM(cStack->fftPStream, strBuff);
+	  }
+	}
+      }
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // read_wisdom
+	NV_RANGE_POP(); // streams
       }
     }
 
-    if ( !(kernel->flags & CU_FFT_SEP) )
+    FOLD // Create FFT plans, ( 1 - set per device )  .
     {
-      infoMSG(4,4,"Create \"Global\" FFT plans.\n");
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("FFT plans");
+      }
 
-      createFFTPlans(kernel);
-    }
+      if ( ( kernel->flags & CU_INPT_FFT_CPU ) && master == NULL )
+      {
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("read_wisdom");
+	}
 
-    PROF // Profiling  .
-    {
-      NV_RANGE_POP(); // FFT plans
+	read_wisdom();
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // read_wisdom
+	}
+      }
+
+      if ( kernel->flags & CU_FFT_SEP_ALL  )
+      {
+	infoMSG(4,4,"Create \"Global\" FFT plans.\n");
+      }
+
+      if ( !(kernel->flags & CU_FFT_SEP_INP) && !(kernel->flags & CU_FFT_SEP_PLN) )
+      {
+	createFFTPlans(kernel, FFT_BOTH);
+      }
+      else if ( !(kernel->flags & CU_FFT_SEP_INP) )
+      {
+	createFFTPlans(kernel, FFT_INPUT);
+      }
+      else if ( !(kernel->flags & CU_FFT_SEP_PLN) )
+      {
+	createFFTPlans(kernel, FFT_PLANE);
+      }
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // FFT plans
+      }
     }
   }
 
@@ -2315,7 +2404,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     FOLD // CUFFT store callbacks  .
     {
-      if ( !(kernel->flags & CU_FFT_SEP) )
+      if ( !(kernel->flags & CU_FFT_SEP_PLN) )
       {
 #if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
 	copyCUFFT_LD_CB(kernel);
@@ -2561,8 +2650,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     long  Diff = total - MAX_GPU_MEM;
     if( Diff > 0 )
     {
-      free-= Diff;
-      total-=Diff;
+      free -= Diff;
+      total-= Diff;
     }
 #endif
   }
@@ -2588,7 +2677,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Set the batch specific flags  .
   {
-    infoMSG(4,4,"Set flags\n");
+    infoMSG(4,4,"Set batch specific flags\n");
 
     FOLD // Multiplication flags  .
     {
@@ -2781,18 +2870,29 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   FOLD // Create FFT plans  .
   {
-    if ( kernel->flags & CU_FFT_SEP )
+    if ( kernel->flags & CU_FFT_SEP_ALL  )
     {
       infoMSG(4,4,"Create batch FFT plans.\n");
+    }
 
-      createFFTPlans(batch);
+    if ( (kernel->flags & CU_FFT_SEP_INP) && (kernel->flags & CU_FFT_SEP_PLN) )
+    {
+      createFFTPlans(batch, FFT_BOTH);
+    }
+    else if ( kernel->flags & CU_FFT_SEP_INP )
+    {
+      createFFTPlans(batch, FFT_INPUT);
+    }
+    else if ( kernel->flags & CU_FFT_SEP_PLN )
+    {
+      createFFTPlans(batch, FFT_PLANE);
+    }
 
-      FOLD // Set CUFFT callbacks
-      {
+    if ( kernel->flags & CU_FFT_SEP_PLN )  // Set CUFFT callbacks
+    {
 #if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
 	copyCUFFT_LD_CB(batch);
 #endif
-      }
     }
   }
 
@@ -3047,13 +3147,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Input FFT streams  .
       {
-	if ( !(kernel->flags & CU_INPT_FFT_CPU) )	// Using CUFFT for input  .
+	if ( !(kernel->flags & CU_INPT_FFT_CPU)  )	// Using CUFFT for input  .
 	{
 	  for (int i = 0; i < kernel->noStacks; i++)
 	  {
 	    cuFfdotStack* cStack = &batch->stacks[i];
 
-	    if ( kernel->flags & CU_FFT_SEP )       	// Create stream  .
+	    if ( kernel->flags & CU_FFT_SEP_INP )       	// Create stream  .
 	    {
 	      infoMSG(5,5,"Create stream for input FFT, stack %i.\n", i);
 
@@ -3114,7 +3214,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[i];
 
-	  if ( batch->flags & CU_FFT_SEP )	// Create stream
+	  if ( batch->flags & CU_FFT_SEP_PLN )	// Create stream
 	  {
 	    infoMSG(5,5,"Create streams for stack iFFT, stack %i.\n",i);
 	    CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftPStream), "Creating fftPStream for stack");
@@ -4297,7 +4397,8 @@ void readAccelDefalts(searchSpecs *sSpec)
   char fName[1024];
   sprintf(fName, "%s/lib/GPU_defaults.txt", getenv("PRESTO"));
 
-  if ( file = fopen(fName, "r") )  // Read candidates from previous search  .
+  file = fopen(fName, "r");
+  if ( file )  // Read candidates from previous search  .
   {
     printf("Reading GPU search settings from %s\n",fName);
 
@@ -4459,14 +4560,55 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
       }
 
+      else if ( strCom("ZBOUND_NORM", str1 ) )
+      {
+	float no1;
+	int read1 = sscanf(line, "%s %f %s", str1, &no1, str2 );
+	if ( no1 < 0 )
+	{
+	  if ( no1 < -1 )
+	  {
+	    fprintf(stderr,"WARNING: Invalid bound (%.1f) on CPU normalisation, value must be >= 0.  Ignoring value.\n", no1 );
+	  }
+	}
+	else
+	{
+	  sSpec->inputNormzBound = no1;
+	}
+      }
+
       else if ( strCom("INP_FFT", str1 ) )
       {
-	if ( singleFlag ( flags, str1, str2, CU_INPT_FFT_CPU, "CPU", "GPU", lineno, fName ) )
+	if      ( strCom("AA",  str2 ) )
+	{
+	  // Default to GPU FFT's - CPU FFT's may be worth doing if z-max is lager than 50 or 100 depends on the CPU and GPU
+	  (*flags) &= ~CU_INPT_FFT_CPU;
+	}
+	else if ( singleFlag ( flags, str1, str2, CU_INPT_FFT_CPU, "CPU", "GPU", lineno, fName ) )
 	{
 	  // IF we are doing CPU FFT's we need to do CPU normalisation
 	  (*flags) &= ~CU_NORM_GPU;
 	}
       }
+
+      else if ( strCom("ZBOUND_INP_FFT", str1 ) )
+      {
+	float no1;
+	int read1 = sscanf(line, "%s %f %s", str1, &no1, str2 );
+	if ( no1 < 0 )
+	{
+	  if ( no1 < -1 )
+	  {
+	    fprintf(stderr,"WARNING: Invalid bound (%.1f) on input FFT, value must be >= 0.  Ignoring value.\n", no1 );
+	  }
+	}
+	else
+	{
+	  sSpec->inputFFFTzBound = no1;
+	}
+      }
+
+
 
       else if ( strCom("MUL_KER", str1 ) )
       {
@@ -4579,9 +4721,14 @@ void readAccelDefalts(searchSpecs *sSpec)
 	singleFlag ( flags, str1, str2, FLAG_STK_UP, "UP", "DN", lineno, fName );
       }
 
-      else if ( strCom("CUFFT_PLAN", str1 ) )
+      else if ( strCom("CUFFT_PLAN_INP", str1 ) )
       {
-	singleFlag ( flags, str1, str2, CU_FFT_SEP, "SEPARATE", "SINGLE", lineno, fName );
+	singleFlag ( flags, str1, str2, CU_FFT_SEP_INP, "SEPARATE", "SINGLE", lineno, fName );
+      }
+
+      else if ( strCom("CUFFT_PLAN_PLN", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, CU_FFT_SEP_PLN, "SEPARATE", "SINGLE", lineno, fName );
       }
 
       else if ( strCom("STD_POWERS", str1 ) )
@@ -5105,7 +5252,6 @@ void readAccelDefalts(searchSpecs *sSpec)
 	(*flags) |= FLAG_OPT_DYN_HW;
       }
 
-
       else if ( strCom("FLAG_DBG_SYNCH", str1 ) )
       {
 	singleFlag ( flags, str1, str2, FLAG_SYNCH, "", "0", lineno, fName );
@@ -5248,6 +5394,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags		|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     sSpec.flags		|= FLAG_ITLV_ROW    ;
     sSpec.flags         |= FLAG_CENTER      ;   // Centre and align the usable part of the planes
+    sSpec.flags         |= CU_FFT_SEP_INP   ;   // Input is small and seperate FFT plans wont take up too mutch memory
 
 #ifndef DEBUG
     sSpec.flags		|= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
@@ -5261,7 +5408,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags		|= FLAG_POW_HALF;
 #endif
 
-    if ( obs->inmem )
+    if ( obs->inmem )				// Use the command line to select in-mem search, NOTE: this is over ridden by what ever is in the DEFAULTS file (best to comment out this line then!)
     {
       sSpec.flags	|= FLAG_SS_INMEM;
     }
@@ -5287,6 +5434,9 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.zMax		= cmd->zmax;
     sSpec.sigma		= cmd->sigma;
     sSpec.pWidth	= cmd->width;
+
+    sSpec.inputNormzBound = -1;			// Default to not uses, only used if specifyed in the defaults file
+    sSpec.inputFFFTzBound = -1;			// Default to not uses, only used if specifyed in the defaults file
 
     sSpec.optPlnDim[0]	= 40;
     sSpec.optPlnDim[1]	= 20;

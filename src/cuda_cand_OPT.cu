@@ -1015,7 +1015,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   if ( newInp ) // Copy input data to the device  .
   {
-    infoMSG(5,5,"Copy input to device\n");
+    infoMSG(4,4,"1D async memory copy H2D");
 
     CUDA_SAFE_CALL(cudaMemcpyAsync(pln->input->d_inp, pln->input->h_inp, pln->input->stride*pln->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, pln->stream), "Copying optimisation input to the device");
     CUDA_SAFE_CALL(cudaEventRecord(pln->inpCmp, pln->stream),"Recording event: inpCmp");
@@ -1414,7 +1414,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   FOLD // Copy data back to host  .
   {
-    infoMSG(4,4,"Copy data back\n");
+    infoMSG(4,4,"1D async memory copy D2H");
 
     CUDA_SAFE_CALL(cudaMemcpyAsync(pln->h_out, pln->d_out, outSz, cudaMemcpyDeviceToHost, pln->stream), "Copying optimisation results back from the device.");
     CUDA_SAFE_CALL(cudaEventRecord(pln->outCmp, pln->stream),"Recording event: outCmp");
