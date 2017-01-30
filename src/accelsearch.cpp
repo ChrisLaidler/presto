@@ -1,3 +1,28 @@
+/** @file accelsearch.cpp
+ *  @brief The PRESTO frequency domain acceleration search tool
+ *
+ *  This is the main of the accelsearch application
+ *  This version has been modified for GPU searches
+ *
+ *  The GPU modifications are enclosed in preprocessor directives (#CHDA), enabled in the make file
+ *
+ *   @author Scott Ransom & Chris Laidler
+  *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [2.0.00] []
+ *    The GPU branch foreked of presto master on 09/04/2014, Just after the release of PRESTO 2
+ *
+ *    A lot of development ....
+ *
+ *  [2.0.01] [2017-01-30]
+ *    Beginning of change log (I know its a bit late)
+ *    Fixed timing bug allowing timing of file writes in standard  timing
+ *
+ */
+
+
 extern "C"
 {
 #include "accel.h"
@@ -544,7 +569,6 @@ int main(int argc, char *argv[])
       if ( cmd->gpuP )        	// --=== The GPU position refinement == --  .
       {
 #ifdef CUDA
-
 	if ( cmd->cpuP )
 	{
 	  // Get the pre-optimisation candidates
@@ -615,6 +639,13 @@ int main(int argc, char *argv[])
       }
 #endif
 
+#ifdef CUDA
+      TIMING // Basic timing  .
+      {
+	NV_RANGE_PUSH("props");
+      }
+#endif
+
       // Re sort with new sigma values
       cands = sort_accelcands(cands);
 
@@ -665,19 +696,14 @@ int main(int argc, char *argv[])
 
       /* Write the fundamentals to the output text file */
 
-#ifdef CUDA
+#ifdef CUDA		// Basic timing  .
       TIME // Basic timing  .
       {
+	NV_RANGE_POP(); // props
 	NV_RANGE_PUSH("Write");
 	NV_RANGE_PUSH("Fundamentals");
 
-	PROF // Profiling  .
-	{
-	  if ( sSpec.flags & FLAG_PROF )
-	  {
-	    gettimeofday(&start01, NULL);       // Note could start the timer after kernel init
-	  }
-	}
+	gettimeofday(&start01, NULL);       // Note could start the timer after kernel init
       }
 #endif
 
@@ -715,7 +741,7 @@ int main(int argc, char *argv[])
       chkfwrite(props, sizeof(fourierprops), numcands, obs.workfile);
       fclose(obs.workfile);
 
-#ifdef CUDA
+#ifdef CUDA 		// Basic timing  .
       TIME // Basic timing  .
       {
 	NV_RANGE_POP(); //props
