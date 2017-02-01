@@ -56,7 +56,7 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-#define NVVP			// Uncomment to allow CUDA profiling
+//#define NVVP			// Uncomment to allow CUDA profiling
 
 //     Normalisation
 #define 		WITH_NORM_GPU
@@ -1029,7 +1029,6 @@ typedef struct resultData
 
     uint*               noResults;
     long long*          resultTime;
-
 } resultData;
 
 /** This is just a wrapper to be passed to a CPU thread  .
