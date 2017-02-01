@@ -35,6 +35,10 @@
  *    Added ZBOUND_NORM flag to specify bound to swap over to CPU input normalisation
  *    Added ZBOUND_INP_FFT flag to specify bound to swap over to CPU FFT's for input
  *    Added 3 generic debug flags ( FLAG_DPG_TEST_1, FLAG_DPG_TEST_2, FLAG_DPG_TEST_3 )
+ *    
+ *  [0.0.04] [2017-02-01]
+ *    Fixed a bug in the ordering of the process results component in - standard, synchronous mode
+ *
  */
 
 #include <cufft.h>
@@ -2462,14 +2466,14 @@ void setPlanePointers(cuFFdotBatch* batch)
 
   for (int i = 0; i < batch->noStacks; i++)
   {
-    infoMSG(4,6,"stack %i\n", i);
+    infoMSG(6,6,"stack %i\n", i);
 
     // Set stack pointers
     cuFfdotStack* cStack  = &batch->stacks[i];
 
     for (int j = 0; j < cStack->noInStack; j++)
     {
-      infoMSG(4,7,"plane %i\n", i);
+      infoMSG(6,7,"plane %i\n", j);
 
       cuFFdot* cPlane           = &cStack->planes[j];
 
@@ -4026,6 +4030,9 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
       }
       else					// This overlaps CPU and GPU but each runs its stuff synchronise, good enough for timing and a bit faster
       {
+	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
+	processSearchResults(batch);
+	
 	setActiveBatch(batch, 1);
 	sumAndSearch(batch);
 
@@ -4041,9 +4048,6 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
 
 	setActiveBatch(batch, 0);
 	IFFTBatch(batch);
-
-	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
-	processSearchResults(batch);
       }
     }
   }
@@ -4606,8 +4610,6 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  sSpec->inputFFFTzBound = no1;
 	}
       }
-
-
 
       else if ( strCom("MUL_KER", str1 ) )
       {
