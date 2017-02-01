@@ -56,7 +56,7 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-//#define NVVP			// Uncomment to allow CUDA profiling
+#define NVVP			// Uncomment to allow CUDA profiling
 
 //     Normalisation
 #define 		WITH_NORM_GPU
@@ -95,7 +95,9 @@ extern "C"
 
 //====================================== Bit flag values =================================================
 
-#define		FLAG_DOUBLE		BIT(0)		///< Use double precision kernels and complex plane and iFFT's
+//---- General ----//
+
+#define		FLAG_DOUBLE		BIT(0)		///< Use double precision kernels and complex plane and iFFT's - Not implemented yet
 #define		FLAG_ITLV_ROW		BIT(1)		///< Multi-step Row interleaved- This seams to be best in most cases
 #define		FLAG_STK_UP		BIT(2)		///< Process stack in increasing size order
 #define		FLAG_CONV		BIT(3)		///< Multiply and FFT each stack "together"
@@ -196,6 +198,11 @@ extern "C"
 #define		FLAG_DPG_SKP_OPT	BIT(58)		///< Skip optimisation stage
 #define		FLAG_DPG_PLT_OPT	BIT(59)		///< Plot optimisation stages
 #define		FLAG_DPG_PLT_POWERS	BIT(60)		///< Plot powers
+
+#define		FLAG_DBG_TEST_1		BIT(61)		///< Test 1
+#define		FLAG_DBG_TEST_2		BIT(62)		///< Test 2
+#define		FLAG_DBG_TEST_3		BIT(63)		///< Test 3
+#define		FLAG_DBG_TEST_ALL	( FLAG_DBG_TEST_1 | FLAG_DBG_TEST_2 | FLAG_DBG_TEST_3 )
 
 //#define		FLAG_RAND_1		BIT(59)		///< Random Flag 1
 
