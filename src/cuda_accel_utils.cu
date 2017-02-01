@@ -21,19 +21,24 @@
  *
  *  [0.0.02] [2017-01-31 18:50]
  *    Fixed more bugs in accel len calculation
- *    Chaged the way profiling and timing happens, introduced the PROF macro
- *    Canges to GPUDefaylts text values
- *    New better ordering for asynchrenouse & profiling standard serarch (faster overlap GPU and CPU)
- *    Added many more debug messages in initalisation routines
+ *    Caged the way profiling and timing happens, introduced the PROF macro
+ *    Changed GPUDefaylts text values
+ *    New better ordering for asynchronous & profiling standard search (faster overlap GPU and CPU)
+ *    Added many more debug messages in initialisation routines
  *    Fixed bug in iFFT stream creation
  *    
  *  [0.0.03] []
- *    Added a new fag to allow seperate treatmenty of input and plane FFT's (seperate vs single)
- *    Chaged createFFTPlans to allow creating the FFT plans for input and plane seperately
- *    Reorderd stream creation in initKernel
- *    Synchronous runs now default to one batch and seperate FFT's
+ *    Added a new fag to allow separate treatment of input and plane FFT's (separate vs single)
+ *    Caged createFFTPlans to allow creating the FFT plans for input and plane separately
+ *    Reorder stream creation in initKernel
+ *    Synchronous runs now default to one batch and separate FFT's
  *    Added ZBOUND_NORM flag to specify bound to swap over to CPU input normalisation
  *    Added ZBOUND_INP_FFT flag to specify bound to swap over to CPU FFT's for input
+ *    Added 3 generic debug flags ( FLAG_DPG_TEST_1, FLAG_DPG_TEST_2, FLAG_DPG_TEST_3 )
+ *    
+ *  [0.0.04] [2017-02-01]
+ *    Fixed a bug in the ordering of the process results component in - standard, synchronous mode
+ *
  */
 
 #include <cufft.h>
@@ -1259,7 +1264,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
-  FOLD // Batch initalisation streams  .
+  FOLD // Batch initialisation streams  .
   {
     PROF // Profiling  .
     {
@@ -1406,8 +1411,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       printf("• Copying multiplication kernels from device %i.\n", master->gInf->devid);
       CUDA_SAFE_CALL(cudaMemcpyPeerAsync(kernel->d_kerData, kernel->gInf->devid, master->d_kerData, master->gInf->devid, master->kerDataSize, master->stacks->initStream ), "Copying multiplication kernels between devices.");
     }
-
-
 
     ulong freeRam;          /// The amount if free host memory
     int retSZ     = 0;      /// The size in byte of the returned data
@@ -2463,14 +2466,14 @@ void setPlanePointers(cuFFdotBatch* batch)
 
   for (int i = 0; i < batch->noStacks; i++)
   {
-    infoMSG(4,6,"stack %i\n", i);
+    infoMSG(6,6,"stack %i\n", i);
 
     // Set stack pointers
     cuFfdotStack* cStack  = &batch->stacks[i];
 
     for (int j = 0; j < cStack->noInStack; j++)
     {
-      infoMSG(4,7,"plane %i\n", i);
+      infoMSG(6,7,"plane %i\n", j);
 
       cuFFdot* cPlane           = &cStack->planes[j];
 
@@ -4027,6 +4030,9 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
       }
       else					// This overlaps CPU and GPU but each runs its stuff synchronise, good enough for timing and a bit faster
       {
+	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
+	processSearchResults(batch);
+	
 	setActiveBatch(batch, 1);
 	sumAndSearch(batch);
 
@@ -4042,9 +4048,6 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
 
 	setActiveBatch(batch, 0);
 	IFFTBatch(batch);
-
-	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
-	processSearchResults(batch);
       }
     }
   }
@@ -4607,8 +4610,6 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  sSpec->inputFFFTzBound = no1;
 	}
       }
-
-
 
       else if ( strCom("MUL_KER", str1 ) )
       {
@@ -5303,6 +5304,30 @@ void readAccelDefalts(searchSpecs *sSpec)
 	else
 	{
 	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
+      }
+
+      else if ( strCom("FLAG_DBG_TEST", str1 ) )
+      {
+	if      ( strCom(str2, "0") )
+	{
+	  (*flags) &= ~FLAG_DBG_TEST_ALL;
+	}
+	else if ( strCom(str2, "1") )
+	{
+	  (*flags) |= FLAG_DBG_TEST_1;
+	}
+	else if ( strCom(str2, "2") )
+	{
+	  (*flags) |= FLAG_DBG_TEST_2;
+	}
+	else if ( strCom(str2, "3") )
+	{
+	  (*flags) |= FLAG_DBG_TEST_3;
+	}
+	else
+	{
+	  fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
 	}
       }
 
