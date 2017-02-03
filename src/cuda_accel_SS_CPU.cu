@@ -55,8 +55,9 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       {
 	int stgIDX = batch->cuSrch->sIdx[harm];
 
-	pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
-	pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
+	// TODO: Convert this cos host data has been moved to the r-array
+	//pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
+	//pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
 
 	bace += batch->hInfos[harm].noZ * batch->stacks[batch->hInfos[harm].stackNo].stridePower * noSteps;
       }

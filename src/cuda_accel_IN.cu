@@ -25,6 +25,9 @@
  *    Added some debug messages on stream synchronisation on events, yes even more!
  *    made CPU_Norm_Spread satic
  *    Fixed bug in timing of CPU input
+ *    
+ *  [0.0.03] [2017-02-03 ]
+ *    Convertedt to use of clearRval
  *
  */
 
@@ -265,13 +268,7 @@ void setGenRVals(cuFFdotBatch* batch)
 
       if ( rValFund->drlo == rValFund->drhi )
       {
-	rVal->drlo		= 0;
-	rVal->lobin		= 0;
-	rVal->numrs		= 0;
-	rVal->numdata		= 0;
-	rVal->expBin		= 0;
-	rVal->step		= -1; // Invalid step!
-	rVal->iteration		= -1;
+	clearRval(rVal);
       }
       else
       {
@@ -346,13 +343,7 @@ void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len)
 
 	if ( (step != 0) || (len == 0) )
 	{
-	  rVal->drlo		= 0;
-	  rVal->lobin		= 0;
-	  rVal->numrs		= 0;
-	  rVal->numdata		= 0;
-	  rVal->expBin		= 0;
-	  rVal->step		= -1; // Invalid step!
-	  rVal->iteration	= -1;
+	  clearRval(rVal);
 	}
 	else
 	{

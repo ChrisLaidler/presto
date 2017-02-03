@@ -1,7 +1,7 @@
 /** @file cuda_accel_MU.cu
  *  @brief Functions to manage plane multiplication and FFT tasks
  *
- *  This contains the various functions that controle plane multiplication and FFT tasks
+ *  This contains the various functions that control plane multiplication and FFT tasks
  *  These include:
  *
  *  @author Chris Laidler
@@ -14,7 +14,7 @@
  *    Working version un-numbed
  *
  *  [0.0.01] [2017-01-29 08:20]
- *    Added static function to call CUFFT plan for plane, this allows identical calls from non critical and non critcical blocks
+ *    Added static function to call CUFFT plan for plane, this allows identical calls from non critical and non critical blocks
  *    Made some other functions static
  *
  */
@@ -663,7 +663,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
 	      FOLD // Make image  .
 	      {
-		infoMSG(4,4,"Image\n");
+		infoMSG(4,4,"Image %s\n", tName );
 
 		PROF // Profiling  .
 		{

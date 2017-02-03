@@ -830,7 +830,7 @@ void convolveBatch(cuFFdotBatch* batch );
 
 int setConstVals( cuFFdotBatch* stkLst );
 
-void processSearchResults(cuFFdotBatch* batch );
+void processBatchResults(cuFFdotBatch* batch );
 
 void getResults(cuFFdotBatch* batch );
 

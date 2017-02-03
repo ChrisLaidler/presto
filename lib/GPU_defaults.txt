@@ -37,6 +37,9 @@ Z_RESOLUTIOM	2
 
 #FLAG_Z_SPLIT
 
+RESULTS_RING	3
+
+
 ########################### Memory ############################
 
 # Interleaving
@@ -111,7 +114,7 @@ INP_FFT			AA
 # iff z-max is equal or exceeds ZBOUND_INP_FFT it use the CPU and it will override INP_FFT, INP_NORM and ZBOUND_NORM.
 # if z-max is less than it, CPU FFT's will be used. This will will override any value of INP_FFT and no charge will be made to input normalisation.
 # if ZBOUND_INP_FFT is commented out or set to -1 INP_NORM, ZBOUND_NORM and INP_FFT will be used.
-#ZBOUND_INP_FFT		-1
+#ZBOUND_FFT		-1
 
 
 # This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
@@ -388,6 +391,7 @@ DBG_LEV			0
 #FLAG_DPG_PRNT_CAND		# [ Debug ]     Print CSV of candidates at various stages
 #FLAG_DPG_PLT_POWERS		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
 #FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
+#FLAG_DBG_TEST		0
 
 #FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_PROFILING		# [ Debug ]	Perform advanced profiling and timing the search
