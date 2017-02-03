@@ -38,6 +38,7 @@
  *    
  *  [0.0.04] [2017-02-01]
  *    Fixed a bug in the ordering of the process results component in - standard, synchronous mode
+ *    Re-orderd things so sum & search slices uses output stride, this means in-mem now uses the correct auto slices for sum and search
  *
  */
 
@@ -411,7 +412,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
       if ( batch->flags & FLAG_DOUBLE )
       {
 	infoMSG(5,5,"Creating double presision CUFFT plan for iFFT\n");
-	
+
 	int n[]             = {cStack->width};
 
 	int inembed[]       = {cStack->strideCmplx * sizeof(double2)};            /// Storage dimensions of the input data in memory
@@ -1515,52 +1516,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
     }
 
-    FOLD // Chunks and Slices  .
-    {
-      FOLD // Multiplication defaults are set per batch  .
-      {
-	kernel->mulSlices         = cuSrch->sSpec->mulSlices;
-	kernel->mulChunk          = cuSrch->sSpec->mulChunk;
 
-	FOLD // Set stack multiplication slices
-	{
-	  for (int i = 0; i < kernel->noStacks; i++)
-	  {
-	    cuFfdotStack* cStack  = &kernel->stacks[i];
-	    cStack->mulSlices     = cuSrch->sSpec->mulSlices;
-	    cStack->mulChunk      = cuSrch->sSpec->mulChunk;
-	  }
-	}
-      }
-
-      FOLD // Sum  & search  .
-      {
-	kernel->ssChunk           = cuSrch->sSpec->ssChunk;
-	kernel->ssSlices          = cuSrch->sSpec->ssSlices;
-
-	if ( kernel->ssSlices <= 0 )
-	{
-	  if      ( kernel->stacks->width <= 1024 )
-	  {
-	    kernel->ssSlices      = 8 ;
-	  }
-	  else if ( kernel->stacks->width <= 2048 )
-	  {
-	    kernel->ssSlices      = 4 ;
-	  }
-	  else if ( kernel->stacks->width <= 4096 )
-	  {
-	    kernel->ssSlices      = 2 ;
-	  }
-	  else
-	  {
-	    kernel->ssSlices      = 1 ;
-	  }
-
-	}
-	kernel->ssSlices          = MIN(kernel->ssSlices, ceil(kernel->hInfos->noZ/20.0) );
-      }
-    }
 
     FOLD // Calculate candidate type  .
     {
@@ -1709,19 +1665,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	retSZ = sizeof(candPZs);
       }
 
-      FOLD // Sum and search slices  .
-      {
-	if      ( kernel->retType & CU_STR_PLN )
-	{
-	  // Each stage returns a plane the size of the fundamental
-	  retY = kernel->hInfos->noZ;
-	}
-	else
-	{
-	  retY = kernel->ssSlices;
-	}
-      }
-
       FOLD // Return data structure  .
       {
 	if      ( kernel->flags & FLAG_SS_INMEM )
@@ -1768,6 +1711,70 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  fprintf(stderr,"ERROR: CUDA return structure not specified.\n");
 	  exit(EXIT_FAILURE);
+	}
+      }
+
+      FOLD // Chunks and Slices  .
+      {
+	FOLD // Multiplication defaults are set per batch  .
+	{
+	  kernel->mulSlices		 = cuSrch->sSpec->mulSlices;
+	  kernel->mulChunk		= cuSrch->sSpec->mulChunk;
+
+	  FOLD // Set stack multiplication slices  .
+	  {
+	    for (int i = 0; i < kernel->noStacks; i++)
+	    {
+	      cuFfdotStack* cStack	= &kernel->stacks[i];
+	      cStack->mulSlices		= cuSrch->sSpec->mulSlices;
+	      cStack->mulChunk		= cuSrch->sSpec->mulChunk;
+	    }
+	  }
+	}
+
+	FOLD // Sum  & search  .
+	{
+	  kernel->ssChunk		= cuSrch->sSpec->ssChunk;
+	  kernel->ssSlices		= cuSrch->sSpec->ssSlices;
+
+	  if ( kernel->ssSlices <= 0 )
+	  {
+
+	    size_t ssWidth		= kernel->strideOut;
+
+	    if      ( ssWidth <= 1024 )
+	    {
+	      kernel->ssSlices		= 8 ;
+	    }
+	    else if ( ssWidth <= 2048 )
+	    {
+	      kernel->ssSlices		= 4 ;
+	    }
+	    else if ( ssWidth <= 4096 )
+	    {
+	      kernel->ssSlices		= 2 ;
+	    }
+	    else
+	    {
+	      kernel->ssSlices		= 1 ;
+	    }
+	  }
+	  kernel->ssSlices		= MIN(kernel->ssSlices, ceil(kernel->hInfos->noZ/20.0) );
+
+	  infoMSG(5,5,"Sum & Search slices set to %i ", kernel->ssSlices);
+	}
+      }
+
+      FOLD // Sum and search slices  .
+      {
+	if      ( kernel->retType & CU_STR_PLN )
+	{
+	  // Each stage returns a plane the size of the fundamental
+	  retY = kernel->hInfos->noZ;
+	}
+	else
+	{
+	  retY = kernel->ssSlices;
 	}
       }
 
@@ -2894,7 +2901,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     if ( kernel->flags & CU_FFT_SEP_PLN )  // Set CUFFT callbacks
     {
 #if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
-	copyCUFFT_LD_CB(batch);
+      copyCUFFT_LD_CB(batch);
 #endif
     }
   }
@@ -4032,7 +4039,7 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
       {
 	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
 	processSearchResults(batch);
-	
+
 	setActiveBatch(batch, 1);
 	sumAndSearch(batch);
 
@@ -5872,9 +5879,9 @@ void freeAccelGPUMem(cuPlnInfo* aInf)
   }
 
   PROF // Profiling  .
-    {
-      NV_RANGE_POP(); // Free GPU Mem
-    }
+  {
+    NV_RANGE_POP(); // Free GPU Mem
+  }
 }
 
 void freeCuAccel(cuPlnInfo* mInf)
@@ -6986,7 +6993,7 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
 
     PROF // Profiling  .
     {
-      NV_RANGE_PUSH("Wait on CPU threads");
+	NV_RANGE_PUSH("Wait on CPU threads");
     }
 
     while ( noTrd > 0 )
