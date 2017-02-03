@@ -1,3 +1,23 @@
+/** @file cuda_accel_SS.cu
+ *  @brief Functions to manage the harmonic summing and searching of ff plane components of an acceleration search
+ *
+ *  This contains the control of harmonic summing and searching of ff plane components of an acceleration search.
+ *  These include the storage of the initial candidates found.
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.02] [2017-02-03]
+ *    Converted canidate processing to use a circular buffer of resulst in pinned memory
+ *
+ */
+
 #include "cuda_accel_SS.h"
 
 #include <semaphore.h>
@@ -375,6 +395,8 @@ void SSKer(cuFFdotBatch* batch)
   {
     if ( batch->flags & FLAG_PROF )
     {
+      infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchInit", "srchStream");
+
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->srchStream),"Recording event: searchInit");
     }
   }
@@ -409,7 +431,7 @@ void SSKer(cuFFdotBatch* batch)
 
   FOLD // Synchronisation  .
   {
-    infoMSG(3,4,"post synchronisations\n");
+    infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchComp", "srchStream");
 
     CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
   }
@@ -423,7 +445,7 @@ void SSKer(cuFFdotBatch* batch)
 /** Process an individual candidate  .
  *
  */
-int procesCanidate(resultData* res, double rr, double zz, double poww, double sig, int stage, int numharm)
+static inline int procesCanidate(resultData* res, double rr, double zz, double poww, double sig, int stage, int numharm)
 {
   cuSearch*	cuSrch	= res->cuSrch;
 
@@ -431,6 +453,7 @@ int procesCanidate(resultData* res, double rr, double zz, double poww, double si
   {
     if ( !(res->flags & FLAG_SIG_GPU) ) // Do the sigma calculation  .
     {
+      // NOTE: I tested only doing the sigma calculations after doing a check against the power and harmonics in the area of the result, it was slightly faster (~4%) not enough to warrant it
       sig     = candidate_sigma_cu(poww, numharm, cuSrch->numindep[stage]);
     }
 
@@ -558,10 +581,10 @@ void* processSearchResults(void* ptr)
 
   PROF // Profiling  .
   {
-      if ( res->flags & FLAG_PROF )
-      {
-	gettimeofday(&start, NULL);
-      }
+    if ( res->flags & FLAG_PROF )
+    {
+      gettimeofday(&start, NULL);
+    }
   }
 
   double poww, sig;
@@ -583,6 +606,8 @@ void* processSearchResults(void* ptr)
 	zz        = 0;
 
 	idx = stage*res->xStride*res->yStride + y*res->xStride + x ;
+
+	// TODO: Try putting these if statements outside the loop
 
 	if      ( res->retType & CU_CANDMIN     )
 	{
@@ -664,7 +689,7 @@ void* processSearchResults(void* ptr)
 	    zz /= (double)numharm ;
 	    if ( res->noZ == 1 )
 	      zz = 0;
-
+	    
 	    if ( isnan(poww) )
 	    {
 	      fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
@@ -713,6 +738,9 @@ void* processSearchResults(void* ptr)
     }
   }
 
+  // Mark the pinned memory as free
+  *res->outBusy = false;
+
   // Decrease the count number of running threads
   if ( res->flags & FLAG_THREAD )
   {
@@ -721,8 +749,6 @@ void* processSearchResults(void* ptr)
 
   FOLD // Free memory
   {
-    if ( res->flags & FLAG_THREAD )
-      free (res->retData);
     free (res);
   }
 
@@ -732,14 +758,16 @@ void* processSearchResults(void* ptr)
 /** Process the search results for the batch  .
  * This usually spawns a separate CPU thread to do the sigma calculations
  */
-void processSearchResults(cuFFdotBatch* batch)
+void processBatchResults(cuFFdotBatch* batch)
 {
-  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  rVals* rVal = &((*batch->rAraays)[batch->rActive][0][0]);
+
+  if ( rVal->numrs )
   {
     struct timeval start, end;          // Profiling variables
     resultData* thrdDat;
 
-    infoMSG(2,2,"Process results - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+    infoMSG(2,2,"Process results - Iteration %3i.", rVal->iteration);
 
     PROF // Profiling  .
     {
@@ -757,27 +785,10 @@ void processSearchResults(cuFFdotBatch* batch)
 
       thrdDat = new resultData;     // A data structure to hold info for the thread processing the results
       memset(thrdDat, 0, sizeof(resultData) );
-
-      if ( batch->flags & FLAG_THREAD )
-      {
-	PROF // Profiling  .
-	{
-	  NV_RANGE_PUSH("malloc");
-	}
-
-	thrdDat->retData = (void*)malloc(batch->retDataSize);
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_POP(); // malloc
-	}
-      }
     }
 
     FOLD // Initialise data structure  .
     {
-      rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
-
       infoMSG(3,3,"Initialise thread data structure");
 
       thrdDat->cuSrch		= batch->cuSrch;
@@ -801,6 +812,11 @@ void processSearchResults(cuFFdotBatch* batch)
 
       thrdDat->xStride		= batch->strideOut;
       thrdDat->yStride		= batch->ssSlices;
+
+      thrdDat->retData		= rVal->h_outData;
+      thrdDat->outBusy		= &rVal->outBusy;
+
+      infoMSG(7,7,"Reading data from %p", thrdDat->retData );
 
       if ( !(batch->flags & FLAG_SS_INMEM) )
       {
@@ -841,10 +857,6 @@ void processSearchResults(cuFFdotBatch* batch)
       }
     }
 
-    FOLD // Copy data from device  .
-    {
-      infoMSG(3,3,"Copy to thread memory");
-
       FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
       {
 	infoMSG(4,4,"blocking synchronisation on %s", "candCpyComp" );
@@ -862,85 +874,17 @@ void processSearchResults(cuFFdotBatch* batch)
 	}
       }
 
-      PROF // Profiling  .
-      {
-	if ( batch->flags & FLAG_PROF )
-	{
-	  gettimeofday(&start, NULL);
-	}
-      }
-
-      FOLD // Copy data  .
-      {
-	infoMSG(4,4,"memcpy\n");
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_PUSH("memcpy");
-	}
-
-	void *gpuOutput;
-
-	if ( !(batch->flags & FLAG_SYNCH) && (batch->flags & FLAG_SS_INMEM) )
-	{
-	  gpuOutput = batch->h_outData2;
-	}
-	else
-	{
-	  gpuOutput = batch->h_outData1;
-	}
-
-	if ( batch->flags & FLAG_THREAD )
-	{
-	  memcpy(thrdDat->retData, gpuOutput, batch->retDataSize);
-
-	  FOLD // Synchronisation  .
-	  {
-	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "processComp", "srchStream");
-
-	    // This will allow kernels to run while the CPU continues
-	    CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
-	  }
-	}
-	else
-	{
-	  thrdDat->retData = gpuOutput;
-	}
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_POP(); // memcpy
-	}
-      }
-
-      PROF // Profiling  .
-      {
-	if ( batch->flags & FLAG_PROF )
-	{
-	  gettimeofday(&end, NULL);
-	  float time =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
-	  int idx = MIN(1, batch->noStacks-1);
-
-	  pthread_mutex_lock(&batch->cuSrch->threasdInfo->candAdd_mutex);
-	  batch->compTime[NO_STKS*COMP_GEN_STR+idx] += time;
-	  pthread_mutex_unlock(&batch->cuSrch->threasdInfo->candAdd_mutex);
-	}
-      }
-    }
-
     FOLD // ADD candidates to global list potently in a separate thread  .
     {
-      PROF // Profiling  .
-      {
-	if ( batch->flags & FLAG_SYNCH )
-	{
-	  NV_RANGE_PUSH("Thread");
-	}
-      }
 
       if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
       {
 	infoMSG(3,3,"Spawn thread");
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Thread");
+	}
 
 	sem_post(&batch->cuSrch->threasdInfo->running_threads); // Increase the count number of running threads, processSearchResults will decrease it when its finished
 
@@ -962,33 +906,35 @@ void processSearchResults(cuFFdotBatch* batch)
 	    exit(EXIT_FAILURE);
 	  }
 	}
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); // Thread
+	}
       }
       else                              	// Just call the function  .
       {
 	infoMSG(3,3,"Non thread");
 
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Non thread");
+	}
+
 	processSearchResults( (void*) thrdDat );
 
-	if ( !(batch->flags & FLAG_THREAD) )
+	PROF // Profiling  .
 	{
-	  // Not using threading so using original memory location
-
-	  FOLD // Synchronisation  .
-	  {
-	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "processComp", "srchStream");
-
-	    // This will allow kernels to run while the CPU continues
-	    CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
-	  }
+	  NV_RANGE_POP(); // Non thread
 	}
       }
 
-      PROF // Profiling  .
+      FOLD // Synchronisation  .
       {
-	if ( batch->flags & FLAG_SYNCH )
-	{
-	  NV_RANGE_POP(); // Thread
-	}
+	infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "processComp", "srchStream");
+
+	// This will allow kernels to run while the CPU continues
+	CUDA_SAFE_CALL(cudaEventRecord(batch->processComp, batch->srchStream),"Recording event: processComp");
       }
     }
 
@@ -1015,26 +961,48 @@ void getResults(cuFFdotBatch* batch)
     }
   }
 
-  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  rVals* rVal = &(((*batch->rAraays)[batch->rActive])[0][0]);
+
+  if ( rVal->numrs )
   {
-    infoMSG(2,2,"Get batch results - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+    infoMSG(2,2,"Get batch results - Iteration %3i.", rVal->iteration);
 
     FOLD // Synchronisations  .
     {
-      infoMSG(5,5,"Synchronise stream %s on %s.\n", "resStream", "resStream");
-      infoMSG(5,5,"Synchronise stream %s on %s.\n", "resStream", "processComp");
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "resStream", "searchComp");
 
       // This iteration
       CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->searchComp,  0),"Waiting on event searchComp");
 
-      // Previous iteration
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->resStream, batch->processComp, 0),"Waiting on event processComp");
+      FOLD // Spin CPU until pinned memory is free from the previous iteration  .
+      {
+	PROF // Profiling - Time previous components  .
+	{
+	  NV_RANGE_PUSH("Spin");
+	}
+
+	while( rVal->outBusy )
+	{
+	  // TODO: Should probably put a time out here  .
+	  usleep(1);
+	}
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP(); //Get results
+	}
+
+	// NB: This marks the output as busy, the data hasn't been copied but nothing should touch it from this point, there will still be a synchronisation to make sure the data is copied before work is done one it.
+	rVal->outBusy = 1;
+      }
     }
 
     PROF // Profiling  .
     {
       if ( batch->flags & FLAG_PROF )
       {
+	infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "candCpyInit", "srchStream");
+
 	CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyInit,  batch->srchStream),"Recording event: candCpyInit");
       }
     }
@@ -1043,13 +1011,19 @@ void getResults(cuFFdotBatch* batch)
     {
       infoMSG(4,4,"1D async memory copy D2H");
 
+      if ( rVal->h_outData == NULL )
+      {
+	fprintf(stderr,"ERROR: Pointer to output data is NULL in %s.\n", __FUNCTION__ );
+	exit(EXIT_FAILURE);
+      }
+
       if      ( batch->retType & CU_STR_PLN )
       {
-	CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_outData1, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
+	CUDA_SAFE_CALL(cudaMemcpyAsync(rVal->h_outData, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
       else
       {
-	CUDA_SAFE_CALL(cudaMemcpyAsync(batch->h_outData1, batch->d_outData1,  batch->retDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
+	CUDA_SAFE_CALL(cudaMemcpyAsync(rVal->h_outData, batch->d_outData1,  batch->retDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
       }
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Copying results back from device.");
@@ -1057,7 +1031,7 @@ void getResults(cuFFdotBatch* batch)
 
     FOLD // Synchronisations  .
     {
-      infoMSG(3,3,"post synchronise\n");
+      infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "candCpyComp", "resStream");
 
       CUDA_SAFE_CALL(cudaEventRecord(batch->candCpyComp, batch->resStream),"Recording event: readComp");
     }
@@ -1127,7 +1101,7 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
     getResults(batch);
 
-    processSearchResults(batch);
+    processBatchResults(batch);
   }
   else
   {
@@ -1135,7 +1109,7 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
     add_and_search_IMMEM(batch);
 
     setActiveBatch(batch, 1);
-    processSearchResults(batch);
+    processBatchResults(batch);
 
     setActiveBatch(batch, 0);
     getResults(batch);
@@ -1143,7 +1117,7 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
   // Cycle r values
   cycleRlists(batch);
-  setActiveBatch(batch, 1);
+  setActiveBatch(batch, 1); // Set active batch to 1, why?
 
   // Cycle candidate output
   cycleOutput(batch);
@@ -1172,20 +1146,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     for ( int bIdx = 0; bIdx < cuSrch->pInf->noBatches; bIdx++ )
     {
       cuFFdotBatch* batch = &cuSrch->pInf->batches[bIdx];
-
-      for ( int rIdx = 0; rIdx < batch->noRArryas; rIdx++ )
-      {
-	for ( int step = 0; step < batch->noSteps; step++ )
-	{
-	  for ( int harm = 0; harm < batch->noGenHarms; harm++ )
-	  {
-	    rVals* rVal = &(*batch->rAraays)[rIdx][step][harm];
-	    memset(rVal, 0, sizeof(rVals) );
-
-	    rVal->step = -1;
-	  }
-	}
-      }
+      clearRvals(batch);
     }
   }
 

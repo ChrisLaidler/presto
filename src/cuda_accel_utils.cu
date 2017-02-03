@@ -38,8 +38,11 @@
  *    
  *  [0.0.04] [2017-02-01]
  *    Fixed a bug in the ordering of the process results component in - standard, synchronous mode
- *    Re-orderd things so sum & search slices uses output stride, this means in-mem now uses the correct auto slices for sum and search
- *
+ *    Re-ordered things so sum & search slices uses output stride, this means in-mem now uses the correct auto slices for sum and search
+ *    
+ *  [0.0.05] [2017-02-01]
+ *    Converted candidate processing to use a circular buffer of results in pinned memory
+ *    Added a function to zero r-array, it preserves pointer to pinned host memory
  */
 
 #include <cufft.h>
@@ -150,6 +153,18 @@ __global__ void printfData(float* data, int nX, int nY, int stride, int sX = 0, 
 
 void setActiveBatch(cuFFdotBatch* batch, int rIdx)
 {
+  if ( rIdx < 0  )
+  {
+    fprintf(stderr,"ERROR: Invalid index in %s.\n", __FUNCTION__ );
+    exit(EXIT_FAILURE);
+  }
+
+  if ( rIdx >= batch->noRArryas )
+  {
+    fprintf(stderr,"ERROR: Index larger than ring buffer.\n");
+    exit(EXIT_FAILURE);
+  }
+
   batch->rActive = rIdx;
 }
 
@@ -287,6 +302,37 @@ uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accura
   return accelLen;
 }
 
+void clearRval( rVals* rVal)
+{
+  // NB this will not clear the pointer to host pinned memory
+
+  if ( rVal->outBusy)
+  {
+    // This is actually OK,
+    infoMSG(5,5,"Clearing a busy step %i %i ", rVal->iteration, rVal->step);
+  }
+
+  rVal->drlo		= 0;
+  rVal->drhi		= 0;
+  rVal->lobin		= 0;
+  rVal->numrs		= 0;
+  rVal->numdata		= 0;
+  rVal->expBin		= 0;
+  rVal->norm		= 0;
+
+  rVal->step		= -1; // Invalid step!
+  rVal->iteration	= -1;
+}
+
+void clearRvals(cuFFdotBatch* batch)
+{
+  infoMSG(6,6,"Clearing array of r step information."); // TODO fix
+  for ( int i = 0; i < batch->noSteps*batch->noGenHarms*batch->noRArryas; i++ )
+  {
+    clearRval(&batch->rArr1[i]);
+  }
+}
+
 /** Allocate R value array  .
  *
  */
@@ -295,7 +341,6 @@ void createRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
   rVals**   rLev2;
 
   int oSet                = 0;
-
 
   (*rLev1)                = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noGenHarms*batch->noRArryas);
   memset((*rLev1), 0, sizeof(rVals)*batch->noSteps*batch->noGenHarms*batch->noRArryas);
@@ -335,7 +380,16 @@ void freeRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
     freeNull(*rAraays);
   }
 
-  freeNull(*rLev1);
+  if (*rLev1)
+  {
+    // Free host memory
+    for ( int i = 0; i < batch->noSteps*batch->noGenHarms*batch->noRArryas; i++ )
+    {
+      cudaFreeHostNull( (*rLev1)[i].h_outData);
+    }
+
+    freeNull(*rLev1);
+  }
 }
 
 void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
@@ -1516,8 +1570,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
     }
 
-
-
     FOLD // Calculate candidate type  .
     {
       if ( master == NULL )   // There is only one list of candidates per search so only do this once!
@@ -1739,7 +1791,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	  if ( kernel->ssSlices <= 0 )
 	  {
-
 	    size_t ssWidth		= kernel->strideOut;
 
 	    if      ( ssWidth <= 1024 )
@@ -2139,7 +2190,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	PROF // Profiling  .
 	{
-	  NV_RANGE_PUSH("host alloc");
+	  NV_RANGE_PUSH("host str alloc");
 	}
 
 	if 	( kernel->cndType & CU_STR_ARR	)
@@ -2151,12 +2202,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    freeRam  = getFreeRamCU();
 	    if ( fullCSize < freeRam*0.9 )
 	    {
-	      infoMSG(5,5,"Allocate host memor for canidate array. (%.2f MB)\n", fullCSize*1e-6 );
+	      infoMSG(5,5,"Allocate host memory for candidate array. (%.2f MB)\n", fullCSize*1e-6 );
 
 	      // Same host candidates for all devices
 	      // This can use a lot of memory for long searches!
 	      cuSrch->h_candidates = malloc( fullCSize );
+
+	      PROF // Profiling  .
+	      {
+		NV_RANGE_PUSH("memset");
+	      }
+
 	      memset(cuSrch->h_candidates, 0, fullCSize );
+
+	      PROF // Profiling  .
+	      {
+		NV_RANGE_POP(); // memset
+	      }
+
 	      hostC += fullCSize;
 	    }
 	    else
@@ -2184,7 +2247,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  if ( cuSrch->sSpec->outData == NULL )
 	  {
-	    infoMSG(5,5,"Creating quadtree for canidates.\n" );
+	    infoMSG(5,5,"Creating quadtree for candidates.\n" );
 
 	    candTree* qt = new candTree;
 	    cuSrch->h_candidates = qt;
@@ -2910,56 +2973,83 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   {
     infoMSG(4,4,"Allocate memory for the batch\n");
 
-    FOLD // Allocate host input memory  .
+    FOLD // Standard host memory allocation  .
     {
       PROF // Profiling  .
       {
-	NV_RANGE_PUSH("Host");
+	NV_RANGE_PUSH("malloc");
       }
 
-      // Allocate page-locked host memory for input data  .
-      infoMSG(5,5,"Allocate page-locked for input data. (%.2f MB)\n", batch->inpDataSize*1e-6 );
-
-      CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plane input data." );
-
-      // Allocate buffer for CPU to work on input data
-      batch->h_iBuffer = (fcomplexcu*)malloc(batch->inpDataSize);
-
-      if ( !(batch->flags & CU_NORM_GPU) )
+      FOLD // Allocate R value lists  .
       {
-	infoMSG(5,5,"Allocate host memory for normalisation powers. (%.2f MB)\n", batch->hInfos->width * sizeof(float)*1e-6 );
+	infoMSG(5,5,"Allocate R value lists.\n");
 
-	// Allocate CPU memory for normalisation
-	batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
+	batch->noRArryas        = batch->cuSrch->sSpec->ringLength;
+
+	createRvals(batch, &batch->rArr1, &batch->rArraysPlane);
+	batch->rAraays = &batch->rArraysPlane;
+
+	if ( batch->flags & FLAG_SEPRVAL )
+	  createRvals(batch, &batch->rArr2, &batch->rArraysSrch);
+      }
+
+      FOLD // Create the planes structures  .
+      {
+	if ( batch->noGenHarms* sizeof(cuFFdot) > getFreeRamCU() )
+	{
+	  fprintf(stderr, "ERROR: Not enough host memory for search.\n");
+	  return 0;
+	}
+	else
+	{
+	  infoMSG(5,5,"Allocate planes data structures.\n");
+
+	  batch->planes = (cuFFdot*) malloc(batch->noGenHarms* sizeof(cuFFdot));
+	  memset(batch->planes, 0, batch->noGenHarms* sizeof(cuFFdot));
+	}
+      }
+
+      FOLD // Allocate host input memory  .
+      {
+	// Allocate buffer for CPU to work on input data
+	batch->h_iBuffer = (fcomplexcu*)malloc(batch->inpDataSize);
+
+	if ( !(batch->flags & CU_NORM_GPU) )
+	{
+	  infoMSG(5,5,"Allocate memory for normalisation powers. (%.2f MB)\n", batch->hInfos->width * sizeof(float)*1e-6 );
+
+	  // Allocate CPU memory for normalisation
+	  batch->h_normPowers = (float*) malloc(batch->hInfos->width * sizeof(float));
+	}
+      }
+
+      PROF // Create timing arrays  .
+      {
+	if ( batch->flags & FLAG_PROF )
+	{
+	  int sz = batch->noStacks*sizeof(long long)*(COMP_GEN_MAX) ;
+
+	  infoMSG(5,5,"Allocate timing array. (%.2f MB)\n", sz*1e-6 );
+
+	  batch->compTime       = (long long*)malloc(sz);
+	  memset(batch->compTime,    0, sz);
+	}
       }
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // Host
+	NV_RANGE_POP(); // malloc
       }
-    }
-
-    FOLD // Allocate R value lists  .
-    {
-      infoMSG(5,5,"Allocate R value lists.\n");
-
-      batch->noRArryas        = 7; // This is just a convenient value
-
-      createRvals(batch, &batch->rArr1, &batch->rArraysPlane);
-      batch->rAraays = &batch->rArraysPlane;
-
-      if ( batch->flags & FLAG_SEPRVAL )
-	createRvals(batch, &batch->rArr2, &batch->rArraysSrch);
     }
 
     FOLD // Allocate device Memory for Planes, Stacks & Input data (steps)  .
     {
       PROF // Profiling  .
       {
-	NV_RANGE_PUSH("device");
+	NV_RANGE_PUSH("malloc device");
       }
 
-      size_t req = batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize;
+      size_t req = batch->inpDataSize + batch->plnDataSize + batch->pwrDataSize + kernel->retDataSize;
 
       if ( req > free ) // Not enough memory =(
       {
@@ -2992,84 +3082,72 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  free -= batch->pwrDataSize;
 	}
 
-      }
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_POP(); // device
-      }
-    }
-
-    FOLD // Allocate device & page-locked host memory for return data  .
-    {
-      PROF // Profiling  .
-      {
-	NV_RANGE_PUSH("Host");
-      }
-
-      FOLD // Allocate device memory  .
-      {
 	if ( kernel->retDataSize && !(kernel->retType & CU_STR_PLN) )
 	{
-	  if ( batch->retDataSize > free )
-	  {
-	    // Not enough memory =(
-	    printf("Not enough GPU memory for return data.\n");
-	    return (0);
-	  }
-	  else
-	  {
-	    infoMSG(5,5,"Allocate device memory for return values. (%.2f MB)\n", batch->retDataSize*1e-6);
+	  infoMSG(5,5,"Allocate device memory for return values. (%.2f MB)\n", batch->retDataSize*1e-6);
 
-	    CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData1, batch->retDataSize ), "Failed to allocate device memory for return values.");
-	    free -= batch->retDataSize;
+	  CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData1, batch->retDataSize ), "Failed to allocate device memory for return values.");
+	  free -= batch->retDataSize;
 
-	    if ( batch->flags & FLAG_SS_INMEM )
+	  if ( batch->flags & FLAG_SS_INMEM )
+	  {
+	    // NOTE: Most of the time could use complex plane for both sets of return data.
+
+	    if ( batch->retDataSize > batch->plnDataSize )
 	    {
-	      // NOTE: Most of the time could use complex plane for both sets of return data.
+	      infoMSG(5,5,"Complex plane is smaller than return data -> FLAG_SEPSRCH\n");
 
-	      if ( batch->retDataSize > batch->plnDataSize )
-	      {
-		infoMSG(5,5,"Complex plane is smaller than return data -> FLAG_SEPSRCH\n");
+	      batch->flags |= FLAG_SEPSRCH;
+	    }
 
-		batch->flags |= FLAG_SEPSRCH;
-	      }
+	    if ( batch->flags & FLAG_SEPSRCH )
+	    {
+	      infoMSG(5,5,"Allocate device memory for second return values. (%.2f MB)\n", batch->retDataSize*1e-6);
 
-	      if ( batch->flags & FLAG_SEPSRCH )
-	      {
-		infoMSG(5,5,"Allocate device memory for second return values. (%.2f MB)\n", batch->retDataSize*1e-6);
+	      // Create a separate output space
+	      CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData2, batch->retDataSize ), "Failed to allocate device memory for return values.");
+	      free -= batch->retDataSize;
+	    }
+	    else
+	    {
+	      infoMSG(5,5,"Using complex plane for second return values. (%.2f MB of %.2f MB)\n", batch->retDataSize*1e-6, batch->plnDataSize*1e-6 );
 
-		// Create a separate output space
-		CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData2, batch->retDataSize ), "Failed to allocate device memory for return values.");
-		free -= batch->retDataSize;
-	      }
-	      else
-	      {
-		infoMSG(5,5,"Using complex plane for second return values. (%.2f MB of %.2f MB)\n", batch->retDataSize*1e-6, batch->plnDataSize*1e-6 );
-
-		batch->d_outData2 = batch->d_planeMult;
-	      }
+	      batch->d_outData2 = batch->d_planeMult;
 	    }
 	  }
 	}
       }
 
-      FOLD // Allocate page-locked host memory to copy the candidates back to  .
+      PROF // Profiling  .
       {
-	if ( kernel->retDataSize )
+	NV_RANGE_POP(); // malloc device
+      }
+    }
+
+    FOLD // Allocate page-locked host memory for return data  .
+    {
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("Malloc Host");
+      }
+
+      if ( batch->inpDataSize )
+      {
+	infoMSG(5,5,"Allocate page-locked for input data. (%.2f MB)\n", batch->inpDataSize*1e-6 );
+
+	CUDA_SAFE_CALL(cudaMallocHost(&batch->h_iData, batch->inpDataSize ), "Failed to create page-locked host memory plane input data." );
+      }
+
+      if ( kernel->retDataSize ) // Allocate page-locked host memory to copy the candidates back to  .
+      {
+	infoMSG(5,5,"Allocate page-locked for candidates. (%.2f MB) \n", kernel->retDataSize*batch->noRArryas*1e-6);
+
+	for (int i = 0 ; i < batch->noRArryas; i++)
 	{
-	  infoMSG(5,5,"Allocate page-locked for candidates. (%.2f MB) \n", kernel->retDataSize*1e-6);
+	  rVals* rVal = &(((*batch->rAraays)[i])[0][0]);
 
-	  CUDA_SAFE_CALL(cudaMallocHost(&batch->h_outData1, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
-	  memset(batch->h_outData1, 0, kernel->retDataSize );
-
-	  if ( kernel->flags & FLAG_SS_INMEM )
-	  {
-	    infoMSG(5,5,"Allocate page-locked for second candidates. (%.2f MB) \n", kernel->retDataSize*1e-6);
-
-	    CUDA_SAFE_CALL(cudaMallocHost(&batch->h_outData2, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
-	    memset(batch->h_outData2, 0, kernel->retDataSize );
-	  }
+	  CUDA_SAFE_CALL(cudaMallocHost(&rVal->h_outData, kernel->retDataSize), "Failed to create page-locked host memory plane for return data.");
+	  //memset(rVal->h_outData, 0, kernel->retDataSize ); // Not necessary ?
 	}
       }
 
@@ -3079,34 +3157,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       }
     }
 
-    FOLD // Create the planes structures  .
-    {
-      if ( batch->noGenHarms* sizeof(cuFFdot) > getFreeRamCU() )
-      {
-	fprintf(stderr, "ERROR: Not enough host memory for search.\n");
-	return 0;
-      }
-      else
-      {
-	infoMSG(5,5,"Allocate planes data structures.\n");
-
-	batch->planes = (cuFFdot*) malloc(batch->noGenHarms* sizeof(cuFFdot));
-	memset(batch->planes, 0, batch->noGenHarms* sizeof(cuFFdot));
-      }
-    }
-
-    PROF // Create timing arrays  .
-    {
-      if ( batch->flags & FLAG_PROF )
-      {
-	infoMSG(5,5,"Allocate timing array.\n");
-
-	int sz = batch->noStacks*sizeof(long long)*(COMP_GEN_MAX) ;
-
-	batch->compTime       = (long long*)malloc(sz);
-	memset(batch->compTime,    0, sz);
-      }
-    }
   }
 
   FOLD // Setup the pointers for the stacks and planes of this batch  .
@@ -3485,7 +3535,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 
     cudaFreeHostNull(batch->h_iData);
     freeNull(batch->h_iBuffer);
-    cudaFreeHostNull(batch->h_outData1);
+    //cudaFreeHostNull(batch->h_outData1);
   }
 
   FOLD // Free device memory
@@ -3984,19 +4034,21 @@ void cycleOutput(cuFFdotBatch* batch)
 {
   infoMSG(4,4,"Cycle output\n");
 
-  void* d_hold = batch->d_outData1;
-  void* h_hold = batch->h_outData1;
-
-  batch->d_outData1 = batch->d_outData2;
-  batch->h_outData1 = batch->h_outData2;
-
-  batch->d_outData2 = d_hold;
-  batch->h_outData2 = h_hold;
+  void* d_hold		= batch->d_outData1;
+  batch->d_outData1	= batch->d_outData2;
+  batch->d_outData2	= d_hold;
 }
 
 void search_ffdot_batch_CU(cuFFdotBatch* batch)
 {
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering search_ffdot_batch_CU.");
+
+  PROF
+  {
+    setActiveBatch(batch, 0);
+    rVals* rVal = &((*batch->rAraays)[batch->rActive][0][0]);
+    infoMSG(1,1,"\nIteration %4i - Start step %4i,  processing %02i steps on GPU %i\n", rVal->iteration,rVal->step, batch->noSteps, batch->gInf->devid );
+  }
 
   if ( batch->flags & FLAG_SYNCH )
   {
@@ -4033,12 +4085,12 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
 	getResults(batch);
 
 	setActiveBatch(batch, 0);
-	processSearchResults(batch);
+	processBatchResults(batch);
       }
       else					// This overlaps CPU and GPU but each runs its stuff synchronise, good enough for timing and a bit faster
       {
 	setActiveBatch(batch, 2);		// This will block on getResults, so it must be 1 more than that to allow CUDA kernels to run
-	processSearchResults(batch);
+	processBatchResults(batch);
 
 	setActiveBatch(batch, 1);
 	sumAndSearch(batch);
@@ -4083,7 +4135,7 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
 
       // Results
       setActiveBatch(batch, 2);
-      processSearchResults(batch);
+      processBatchResults(batch);
 
       // Copy
       setActiveBatch(batch, 1);
@@ -4509,6 +4561,27 @@ void readAccelDefalts(searchSpecs *sSpec)
 	singleFlag ( flags, str1, str2, FLAG_Z_SPLIT, "", "0", lineno, fName );
       }
 
+      else if ( strCom(line, "RESULTS_RING" ) )			// The size of the per batch results ring buffer
+      {
+	int no1;
+	int read1 = sscanf(line, "%s %i %s", str1, &no1, str2 );
+	if ( read1 >= 2 )
+	{
+	  if ( no1 >= 3 && no1 <= 16 )
+	  {
+	    sSpec->ringLength = no1;
+	  }
+	  else
+	  {
+	    fprintf(stderr,"WARNING: Invalid ring size (%s), it should range between 3 and 16 \n", str1);
+	  }
+	}
+	else
+	{
+	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
+      }
+
       else if ( strCom("INTERLEAVE", str1 ) ||  strCom("IL", str1 ) )   // Interleaving
       {
 	singleFlag ( flags, str1, str2, FLAG_ITLV_ROW, "ROW", "PLN", lineno, fName );
@@ -4601,7 +4674,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
       }
 
-      else if ( strCom("ZBOUND_INP_FFT", str1 ) )
+      else if ( strCom("ZBOUND_FFT", str1 ) )
       {
 	float no1;
 	int read1 = sscanf(line, "%s %f %s", str1, &no1, str2 );
@@ -5462,6 +5535,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
     sSpec.noResPerBin	= 2;
     sSpec.zRes		= 2;
+    sSpec.ringLength	= 7;			// Just a good number
     sSpec.noHarmStages	= obs->numharmstages;
     sSpec.zMax		= cmd->zmax;
     sSpec.sigma		= cmd->sigma;
@@ -7259,7 +7333,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
   infoMSG(2,2,"Candidate generation");
 
   struct timeval start01, end;
-  struct timeval start02, endProf;
+  struct timeval start02;
   double startr			= 0;
   int maxxx;
   cuFFdotBatch* master		= &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
@@ -7325,11 +7399,8 @@ void genPlane(cuSearch* cuSrch, char* msg)
     // Set the device this thread will be using
     setDevice(batch->gInf->devid) ;
 
-    FOLD // Set the r arrays to zero  .
-    {
-      rVals* rVal = (*batch->rAraays)[0][0];
-      memset(rVal, 0, sizeof(rVals)*batch->noSteps);
-    }
+    // Clear the r array
+    clearRvals(batch);
 
     while ( ss < maxxx )  //			---===== Main Loop =====---  .
     {
@@ -7357,7 +7428,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
 	  ss       += batch->noSteps;
 	  cuSrch->noSteps++;
 
-	  infoMSG(1,1,"\nIteration %4i - Start step %4i of %4i thread %02i processing %02i steps on GPU %i\n", ite,firstStep+1, maxxx, tid, batch->noSteps, batch->gInf->devid );
+	  //infoMSG(1,1,"\nIteration %4i - Start step %4i of %4i thread %02i processing %02i steps on GPU %i\n", ite,firstStep+1, maxxx, tid, batch->noSteps, batch->gInf->devid );
 	}
 
 	if ( firstStep >= maxxx )
@@ -7376,26 +7447,23 @@ void genPlane(cuSearch* cuSrch, char* msg)
 	for ( step = 0; step < (int)batch->noSteps ; step++ )
 	{
 	  rVals* rVal = &(*batch->rAraays)[0][step][0];
+	  clearRval(rVal);
 
 	  if ( step < rest )
 	  {
+	    // Set the bounds of the fundemental
 	    rVal->drlo		= startr + (firstStep+step) * ( batch->accelLen / (double)cuSrch->sSpec->noResPerBin );
 	    rVal->drhi		= rVal->drlo + ( batch->accelLen - 1 ) / (double)cuSrch->sSpec->noResPerBin;
 
+	    // Now set step and iteration for all sub-steps
 	    for ( int harm = 0; harm < batch->noGenHarms; harm++)
 	    {
 	      rVal		= &(*batch->rAraays)[0][step][harm];
+
 	      rVal->step	= firstStep + step;
-	      rVal->norm	= 0.0;
 	      rVal->iteration   = ite;
+	      rVal->norm	= 0.0;
 	    }
-	  }
-	  else
-	  {
-	    rVal->drlo		= 0;
-	    rVal->drhi		= 0;
-	    rVal->step		= -1;
-	    rVal->iteration	= -1;
 	  }
 	}
       }
@@ -7429,23 +7497,13 @@ void genPlane(cuSearch* cuSrch, char* msg)
     {
       infoMSG(1,0,"\nFinish off search.\n");
 
-      // Set r values to 0 so as to not process details  .
-      for ( step = 0; step < (int)batch->noSteps ; step++)
-      {
-	rVals* rVal	= &(*batch->rAraays)[0][step][0];
-	rVal->drlo	= 0;
-	rVal->drhi	= 0;
-	rVal->step	= -1;
-	rVal->iteration = -1;
-      }
-
       // Finish searching the planes, this is required because of the out of order asynchronous calls
       for ( rest = 0 ; rest < batch->noRArryas; rest++ )
       {
 	FOLD // Set the r arrays to zero  .
 	{
 	  rVals* rVal = (*batch->rAraays)[0][0];
-	  memset(rVal, 0, sizeof(rVals)*batch->noSteps);
+	  clearRval(rVal); // Clear the fundamental
 	}
 
 	search_ffdot_batch_CU(batch);

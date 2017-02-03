@@ -690,7 +690,7 @@ int main(int argc, char *argv[])
   sSpec.flags        &= ~FLAG_KER_MAX;
   sSpec.flags        &= ~FLAG_CENTER;
   sSpec.flags        |= FLAG_SEPSRCH;
-  sSpec.flags        |= FLAG_SEPRVAL;
+  sSpec.flags        |= FLAG_SEPRVAL;			// TODO: Is this still nessesary?
   sSpec.flags        |= FLAG_SYNCH;			// Synchronous
 
   contextInit        += initCudaContext(&gSpec);
@@ -1511,14 +1511,8 @@ int main(int argc, char *argv[])
 
                       void *gpuOutput;
 
-                      if ( (batch->flags & FLAG_SYNCH) && (batch->flags & FLAG_SS_INMEM) )
-                      {
-                        gpuOutput = batch->h_outData2;
-                      }
-                      else
-                      {
-                        gpuOutput = batch->h_outData1;
-                      }
+                      rVal              = &(((*batch->rAraays)[batch->rActive])[0][0]);
+                      gpuOutput 	= rVal->h_outData; // TODO: this needs to be checked
 
                       FOLD
                       {
@@ -1609,7 +1603,7 @@ int main(int argc, char *argv[])
                                   printf("Candidate r: %9.4f z: %7.2f   CPU pow: %7.3f   GPU pow: %7.3f   Err: %7.5f   Harm: %i\n", rr, zz, p2, p1, err, harmtosum );
                                   badCands++;
 
-                                  FOLD  // Manuallu calculate the power  .
+                                  FOLD  // Manually calculate the power  .
                                   {
                                     double powC = 0;
                                     double powG = 0;

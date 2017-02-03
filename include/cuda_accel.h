@@ -629,15 +629,18 @@ typedef struct searchScale
  */
 typedef struct rVals
 {
-    int             step;				///< The step these r values cover
-    int             iteration;				///< Iteration - in the candidate generation loop
-    double          drlo;				///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
-    double          drhi;				///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
-    long long       lobin;				///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
-    long            numdata;				///< The number of input FFT points to read
-    long            numrs;				///< The number of good values in the plane ( expanded units ) NOTE: This is used to denote an active "section' if this is set to 0 many of the processes wont run on
-    long long       expBin;				///< The index of the expanded bin of the first good value
-    double          norm;				///< The normalisation factor used to normalise the input - Not always set
+    int			step;				///< The step these r values cover
+    int			iteration;			///< Iteration - in the candidate generation loop
+    double		drlo;				///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    double		drhi;				///< The value of the first usable bin of the plane (the start of the step). Note: this could be a fraction of a bin (Fourier interpolation)
+    long long		lobin;				///< The first bin to copy from the the input FFT ( serachR scaled - halfwidth )
+    long		numdata;			///< The number of input FFT points to read
+    long		numrs;				///< The number of good values in the plane ( expanded units ) NOTE: This is used to denote an active "section' if this is set to 0 many of the processes wont run on
+    long long		expBin;				///< The index of the expanded bin of the first good value
+    double		norm;				///< The normalisation factor used to normalise the input - Not always set
+
+    void*		h_outData;			///< A section of pinned host memory to store the search results in
+    bool		outBusy;			///< A flag to show a thread is still using the output memory
 } rVals;
 
 /** User specified search details  .
@@ -652,8 +655,8 @@ typedef struct searchSpecs
     float               zMax;                           ///< The highest z drift of the fundamental
     double		zRes;				///< The resolution in the z dimension
 
-    float		inputNormzBound;		///< The boundry z-max to swap over to CPU Normalisation	Not used if set < 0 - defaulty is not used
-    float		inputFFFTzBound;		///< The boundry z-max to swap over to CPU FFT's		Not used if set < 0 - defaulty is not usedr
+    float		inputNormzBound;		///< The boundary z-max to swap over to CPU Normalisation	Not used if set < 0 - default is not used
+    float		inputFFFTzBound;		///< The boundary z-max to swap over to CPU FFT's		Not used if set < 0 - default is not used
 
     int                 pWidth;                         ///< The desired width of the planes
     int                 ssStepSize;                     ///< The size of the steps to take through the in-memory plane
@@ -672,6 +675,7 @@ typedef struct searchSpecs
     int                 retType;                        ///< The type of output
     int                 cndType;                        ///< The type of output
 
+    int			ringLength;			///< The number of elements in the results ring buffer
 
     ///////////  Optimisation \\\\\\\\\\\\\\\\
 
@@ -774,10 +778,7 @@ typedef struct cuFFdotBatch
     void*           	d_planeMult;		///< Plane of complex data for multiplication
     void*           	d_planePowr;		///< Plane of float data for the search
 
-    void*           	h_outData1;		///< The output
     void*           	d_outData1;		///< The output
-
-    void*           	h_outData2;		///< The output
     void*           	d_outData2;		///< The output
 
     ////////////////// Step information \\\\\\\\\\\\\\\\\\
@@ -787,11 +788,11 @@ typedef struct cuFFdotBatch
     char            	rActive;		///< The index of the r-array we are working on
     rVals****       	rAraays;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
 
-    rVals*         	rArr1;
-    rVals*          	rArr2;
+    rVals*         	rArr1;			///< A pointer to the first value in a full flat list of r arrays used by the batch
+    rVals*          	rArr2;			///< A pointer to the first value in a full flat list of r arrays used by the batch
 
     rVals***        	rArraysPlane;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
-    rVals***        	rArraysSrch;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
+    rVals***        	rArraysSrch;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index - TODO: I think I can depricate this now?
 
 
     ////////////////// Asynchronous CUDA information \\\\\\\\\\\\\\\\\\
@@ -1003,11 +1004,12 @@ typedef struct resultData
 {
     cuSearch*           cuSrch;                 ///< Details of the search
 
-    void*               retData;
+    void*               retData;		///< A pointer to the memory the results are stored in (usuall pinned host memory)
+    bool*		outBusy;		///< A pointer to the flag indicating that the memory has all been read
 
     uint                retType;
     uint                cndType;
-    int64_t             flags;                 ///< CUDA accel search bit flags
+    int64_t             flags;			///< CUDA accel search bit flags
 
     uint                x0;
     uint                x1;
@@ -1168,5 +1170,9 @@ ExternC long long compltCudaContext(gpuSpecs* gSpec);
 ExternC void CycleBackRlists(cuFFdotBatch* batch);
 
 ExternC cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec);
+
+ExternC void clearRvals(cuFFdotBatch* batch);
+
+ExternC void clearRval( rVals* rVal);
 
 #endif // CUDA_ACCEL_INCLUDED
