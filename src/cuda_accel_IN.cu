@@ -917,9 +917,10 @@ void prepInputGPU(cuFFdotBatch* batch)
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "searchComp");
 	      cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
 
-	      // Wait for iFFT mem copy to finish
-	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "ifftMemComp");
-	      cudaStreamWaitEvent(cStack->fftIStream, batch->stacks->ifftMemComp, 0);
+	      // This was taken out to allow 3 way concurnecy
+	      //// Wait for iFFT mem copy to finish
+	      //infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "ifftMemComp");
+	      //cudaStreamWaitEvent(cStack->fftIStream, batch->stacks->ifftMemComp, 0);
 
 	      // Wait for previous FFT to complete
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "inpFFTinitComp (neighbours)");

@@ -191,6 +191,8 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 
   infoMSG(6,6,"%i harms summed - r from %i to %i (%i)\n", noHarms, start, end, noBins);
 
+  infoMSG(7,7,"Saving results in %p", batch->d_outData1);
+
   dimBlock.x    = SSIM_X;
   dimBlock.y    = SSIM_Y;
 

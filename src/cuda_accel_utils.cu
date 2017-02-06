@@ -43,6 +43,9 @@
  *  [0.0.05] [2017-02-01]
  *    Converted candidate processing to use a circular buffer of results in pinned memory
  *    Added a function to zero r-array, it preserves pointer to pinned host memory
+ *    
+ *  [0.0.03] [2017-02-05]
+ *    Reorder in-mem async to slightly faster (3 way)
  */
 
 #include <cufft.h>
@@ -1770,7 +1773,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	FOLD // Multiplication defaults are set per batch  .
 	{
-	  kernel->mulSlices		 = cuSrch->sSpec->mulSlices;
+	  kernel->mulSlices		= cuSrch->sSpec->mulSlices;
 	  kernel->mulChunk		= cuSrch->sSpec->mulChunk;
 
 	  FOLD // Set stack multiplication slices  .
@@ -1784,7 +1787,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  }
 	}
 
-	FOLD // Sum  & search  .
+	FOLD // Sum & search  .
 	{
 	  kernel->ssChunk		= cuSrch->sSpec->ssChunk;
 	  kernel->ssSlices		= cuSrch->sSpec->ssSlices;
@@ -2142,6 +2145,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  fprintf(stderr, "WARNING: Using CPU FFT of the input data necessitate doing the normalisation on CPU.\n");
 	  kernel->flags &= ~CU_NORM_GPU;
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - input FFT / NORM \n");
+	    exit(EXIT_FAILURE);
+	  }
 	}
       }
 
@@ -2904,7 +2913,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	if ( batch->flags & FLAG_SS_INMEM )
 	{
 	  // With the inmem search only only one "step" is done at a time
-	  // Tested with a 750 Ti, 770 and 970, 6 was the best chunk size on the Maxwell card
+	  // Tested with a 750 Ti, GTX 770 and GTX 970, 6 was the best chunk size on the Maxwell card
 	  // The Kepler cards could go to 8
 	  // This was tested by Chris L - 12/07/2016
 	  batch->ssChunk = 6;
@@ -2925,7 +2934,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  {
 	    // More register
 
-	    // Well this looks crazy, but from my testing this gives a pretty good approximation to the optimal cunk size for a range of
+	    // Well this looks crazy, but from my testing this gives a pretty good approximation to the optimal chunk size for a range of
 	    // steps, harmonics and widths.  Importantly this works well for many steps (~8) and 16 harmonics.
 	    // Diagrams and numbers can be produced on request if you don't believe me ;-)
 	    // This was tested on a GTX 970 by Chris L - 12/07/2016
@@ -4054,15 +4063,18 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
   {
     if  ( batch->flags & FLAG_SS_INMEM )
     {
+      setActiveBatch(batch, 1);
+      multiplyBatch(batch);
+
+      setActiveBatch(batch, 1);
+      IFFTBatch(batch);
+
+      setActiveBatch(batch, 1);
+      copyToInMemPln(batch);
+
       // Setup input
       setActiveBatch(batch, 0);
       prepInput(batch);
-
-      multiplyBatch(batch);
-
-      IFFTBatch(batch);
-
-      copyToInMemPln(batch);
     }
     else
     {
@@ -4660,7 +4672,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
       }
 
-      else if ( strCom("INP_FFT", str1 ) )
+      else if ( strCom("INP_FFT", str1 ) ) 
       {
 	if      ( strCom("AA",  str2 ) )
 	{
@@ -4669,6 +4681,12 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
 	else if ( singleFlag ( flags, str1, str2, CU_INPT_FFT_CPU, "CPU", "GPU", lineno, fName ) )
 	{
+	  if ( flags && CU_NORM_GPU )  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - input FFT / NORM \n");
+	    exit(EXIT_FAILURE);
+	  }
+	  
 	  // IF we are doing CPU FFT's we need to do CPU normalisation
 	  (*flags) &= ~CU_NORM_GPU;
 	}
@@ -7451,7 +7469,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
 
 	  if ( step < rest )
 	  {
-	    // Set the bounds of the fundemental
+	    // Set the bounds of the fundamental
 	    rVal->drlo		= startr + (firstStep+step) * ( batch->accelLen / (double)cuSrch->sSpec->noResPerBin );
 	    rVal->drhi		= rVal->drlo + ( batch->accelLen - 1 ) / (double)cuSrch->sSpec->noResPerBin;
 
