@@ -14,8 +14,10 @@
  *    Working version un-numbed
  *
  *  [0.0.02] [2017-02-03]
- *    Converted canidate processing to use a circular buffer of resulst in pinned memory
+ *    Converted candidate processing to use a circular buffer of results in pinned memory
  *
+ *  [0.0.03] [2017-02-05]
+ *    Reorder in-mem async to slightly faster (3 way)
  */
 
 #include "cuda_accel_SS.h"
@@ -857,22 +859,22 @@ void processBatchResults(cuFFdotBatch* batch)
       }
     }
 
-      FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
+    FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
+    {
+      infoMSG(4,4,"blocking synchronisation on %s", "candCpyComp" );
+
+      PROF // Profiling  .
       {
-	infoMSG(4,4,"blocking synchronisation on %s", "candCpyComp" );
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_PUSH("EventSynch");
-	}
-
-	CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_POP(); // EventSynch
-	}
+	NV_RANGE_PUSH("EventSynch");
       }
+
+      CUDA_SAFE_CALL(cudaEventSynchronize(batch->candCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_POP(); // EventSynch
+      }
+    }
 
     FOLD // ADD candidates to global list potently in a separate thread  .
     {
@@ -1017,6 +1019,8 @@ void getResults(cuFFdotBatch* batch)
 	exit(EXIT_FAILURE);
       }
 
+      infoMSG(7,7,"Writing data to %p from %p", rVal->h_outData, batch->d_outData1);
+
       if      ( batch->retType & CU_STR_PLN )
       {
 	CUDA_SAFE_CALL(cudaMemcpyAsync(rVal->h_outData, batch->d_planePowr, batch->pwrDataSize, cudaMemcpyDeviceToHost, batch->resStream), "Failed to copy results back");
@@ -1095,31 +1099,22 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
   setActiveBatch(batch, 0);
   setSearchRVals(batch, drlo, len);
 
-  if ( batch->flags & FLAG_SYNCH )
-  {
-    add_and_search_IMMEM(batch);
+  // Synchronous and asynchronous execution have the same ordering
+  setActiveBatch(batch, 0);
+  add_and_search_IMMEM(batch);
 
-    getResults(batch);
+  setActiveBatch(batch, 1);
+  processBatchResults(batch);
 
-    processBatchResults(batch);
-  }
-  else
-  {
-    setActiveBatch(batch, 0);
-    add_and_search_IMMEM(batch);
-
-    setActiveBatch(batch, 1);
-    processBatchResults(batch);
-
-    setActiveBatch(batch, 0);
-    getResults(batch);
-  }
+  setActiveBatch(batch, 0);
+  getResults(batch);
+  
 
   // Cycle r values
   cycleRlists(batch);
   setActiveBatch(batch, 1); // Set active batch to 1, why?
 
-  // Cycle candidate output
+  // Cycle candidate output - Flip / flop device memory
   cycleOutput(batch);
 }
 
@@ -1230,7 +1225,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     }
 
     // Finish off the search
-    for ( int step= 0 ; step < batch->noRArryas; step++ )
+    for ( int step = 0 ; step < batch->noRArryas; step++ )
     {
       inmemSS(batch, 0, 0);
     }
