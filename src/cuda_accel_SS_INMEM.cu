@@ -355,6 +355,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     {
       if ( batch->flags & FLAG_PROF )
       {
+	infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchInit", "srchStream");
 	CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->srchStream),        "Recording event: searchInit");
       }
     }
@@ -382,8 +383,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
     FOLD // Synchronisation  .
     {
-      infoMSG(5,5,"Synchronise stream %s on %s.\n", "searchComp", "srchStream");
-
+      infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchComp", "srchStream");
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
 
 //#ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is. In debug mode extra synchronisation is necessary
