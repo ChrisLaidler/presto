@@ -26,7 +26,7 @@
  *    New better ordering for asynchronous & profiling standard search (faster overlap GPU and CPU)
  *    Added many more debug messages in initialisation routines
  *    Fixed bug in iFFT stream creation
- *    
+ *
  *  [0.0.03] []
  *    Added a new fag to allow separate treatment of input and plane FFT's (separate vs single)
  *    Caged createFFTPlans to allow creating the FFT plans for input and plane separately
@@ -35,15 +35,15 @@
  *    Added ZBOUND_NORM flag to specify bound to swap over to CPU input normalisation
  *    Added ZBOUND_INP_FFT flag to specify bound to swap over to CPU FFT's for input
  *    Added 3 generic debug flags ( FLAG_DPG_TEST_1, FLAG_DPG_TEST_2, FLAG_DPG_TEST_3 )
- *    
+ *
  *  [0.0.04] [2017-02-01]
  *    Fixed a bug in the ordering of the process results component in - standard, synchronous mode
  *    Re-ordered things so sum & search slices uses output stride, this means in-mem now uses the correct auto slices for sum and search
- *    
+ *
  *  [0.0.05] [2017-02-01]
  *    Converted candidate processing to use a circular buffer of results in pinned memory
  *    Added a function to zero r-array, it preserves pointer to pinned host memory
- *    
+ *
  *  [0.0.03] [2017-02-05]
  *    Reorder in-mem async to slightly faster (3 way)
  */
@@ -1060,7 +1060,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  int oAccelLen;
 
 	  if ( cuSrch->sSpec->pWidth > 100 ) // User specified step size, check how close to optimal it is
-	  {	  
+	  {
 	    double l2	= log2( fftLen ) - 10 ;
 	    fWidth	= pow(2, l2);
 	    oAccelLen	= calcAccellen(fWidth, cuSrch->sSpec->zMax, kernel->noGenHarms, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes, devisSS);
@@ -1691,7 +1691,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       else if (kernel->retType & CU_DOUBLE    )
       {
 	retSZ = sizeof(double);
-      }      
+      }
       else if (kernel->retType & CU_POWERZ_I  )
       {
 	retSZ = sizeof(candPZi);
@@ -4672,7 +4672,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
       }
 
-      else if ( strCom("INP_FFT", str1 ) ) 
+      else if ( strCom("INP_FFT", str1 ) )
       {
 	if      ( strCom("AA",  str2 ) )
 	{
@@ -4681,12 +4681,12 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
 	else if ( singleFlag ( flags, str1, str2, CU_INPT_FFT_CPU, "CPU", "GPU", lineno, fName ) )
 	{
-	  if ( flags && CU_NORM_GPU )  // TMP REM - Added to mark an error for thesis timing
+	  if ( (*flags) & CU_NORM_GPU )  // TMP REM - Added to mark an error for thesis timing
 	  {
 	    printf("Temporary exit - input FFT / NORM \n");
 	    exit(EXIT_FAILURE);
 	  }
-	  
+
 	  // IF we are doing CPU FFT's we need to do CPU normalisation
 	  (*flags) &= ~CU_NORM_GPU;
 	}
