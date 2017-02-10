@@ -46,6 +46,9 @@
  *
  *  [0.0.03] [2017-02-05]
  *    Reorder in-mem async to slightly faster (3 way)
+ *    
+ *  [0.0.03] [2017-02-10]
+ *    Multi batch asynch fixed finising off search
  */
 
 #include <cufft.h>
@@ -312,7 +315,7 @@ void clearRval( rVals* rVal)
   if ( rVal->outBusy)
   {
     // This is actually OK,
-    infoMSG(5,5,"Clearing a busy step %i %i ", rVal->iteration, rVal->step);
+    infoMSG(5,5,"Clearing a busy step %i %i (%p)", rVal->iteration, rVal->step, &rVal->outBusy );
   }
 
   rVal->drlo		= 0;
@@ -343,26 +346,28 @@ void createRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays )
 {
   rVals**   rLev2;
 
-  int oSet                = 0;
+  int oSet		= 0;
 
-  (*rLev1)                = (rVals*)malloc(sizeof(rVals)*batch->noSteps*batch->noGenHarms*batch->noRArryas);
-  memset((*rLev1), 0, sizeof(rVals)*batch->noSteps*batch->noGenHarms*batch->noRArryas);
-  for (int i1 = 0 ; i1 < batch->noSteps*batch->noGenHarms*batch->noRArryas; i1++)
+  int no		= batch->noSteps*batch->noGenHarms*batch->noRArryas;
+  int sz		= sizeof(rVals)*no;
+  (*rLev1)		= (rVals*)malloc(sz);
+  memset((*rLev1), 0, sz);
+  for (int i1 = 0 ; i1 < no; i1++)
   {
-    (*rLev1)[i1].step     = -1; // Invalid step (0 is a valid value!)
+    (*rLev1)[i1].step	= -1; // Invalid step (0 is a valid value!)
   }
 
-  *rAraays                = (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
+  *rAraays		= (rVals***)malloc(batch->noRArryas*sizeof(rVals**));
 
   for (int rIdx = 0; rIdx < batch->noRArryas; rIdx++)
   {
-    rLev2                 = (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
-    (*rAraays)[rIdx]      = rLev2;
+    rLev2		= (rVals**)malloc(sizeof(rVals*)*batch->noSteps);
+    (*rAraays)[rIdx]	= rLev2;
 
     for (int step = 0; step < batch->noSteps; step++)
     {
-      rLev2[step]         = &((*rLev1)[oSet]);
-      oSet               += batch->noGenHarms;
+      rLev2[step]	= &((*rLev1)[oSet]);
+      oSet		+= batch->noGenHarms;
     }
   }
 }
@@ -1532,27 +1537,27 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       if ( master == NULL )
       {
-	int minR              = floor ( cuSrch->sSpec->fftInf.rlo /(double) kernel->noSrchHarms - kernel->hInfos->halfWidth );
-	int maxR              = ceil  ( cuSrch->sSpec->fftInf.rhi  + kernel->hInfos->halfWidth );
+	int minR		= floor ( cuSrch->sSpec->fftInf.rlo /(double) kernel->noSrchHarms - kernel->hInfos->halfWidth );
+	int maxR		= ceil  ( cuSrch->sSpec->fftInf.rhi  + kernel->hInfos->halfWidth );
 
-	searchScale* SrchSz   = new searchScale;
-	cuSrch->SrchSz        = SrchSz;
+	searchScale* SrchSz	= new searchScale;
+	cuSrch->SrchSz		= SrchSz;
 	memset(SrchSz, 0, sizeof(searchScale));
 
-	SrchSz->searchRLow    = cuSrch->sSpec->fftInf.rlo / (double)kernel->noSrchHarms;
-	SrchSz->searchRHigh   = cuSrch->sSpec->fftInf.rhi;
-	SrchSz->rLow          = minR;
-	SrchSz->rHigh         = maxR;
-	SrchSz->noInpR        = maxR - minR  ;  /// The number of input data points
+	SrchSz->searchRLow	= cuSrch->sSpec->fftInf.rlo / (double)kernel->noSrchHarms;
+	SrchSz->searchRHigh	= cuSrch->sSpec->fftInf.rhi;
+	SrchSz->rLow		= minR;
+	SrchSz->rHigh		= maxR;
+	SrchSz->noInpR		= maxR - minR  ;  /// The number of input data points
 
 	// Determine the number of steps
 	if ( kernel->flags & FLAG_SS_INMEM   )
 	{
-	  SrchSz->noSteps     = ( SrchSz->searchRHigh - SrchSz->searchRLow ) * cuSrch->sSpec->noResPerBin / (float)( kernel->accelLen ) ; // The number of planes to make
+	  SrchSz->noSteps	= ( SrchSz->searchRHigh - SrchSz->searchRLow ) * cuSrch->sSpec->noResPerBin / (float)( kernel->accelLen ) ; // The number of planes to make
 	}
 	else
 	{
-	  SrchSz->noSteps       = ( cuSrch->sSpec->fftInf.rhi - cuSrch->sSpec->fftInf.rlo ) * cuSrch->sSpec->noResPerBin / (float)( kernel->accelLen ) ; // The number of planes to make
+	  SrchSz->noSteps	= ( cuSrch->sSpec->fftInf.rhi - cuSrch->sSpec->fftInf.rlo ) * cuSrch->sSpec->noResPerBin / (float)( kernel->accelLen ) ; // The number of planes to make
 	}
 
 	// Determine the number of candidate 'r' values
@@ -2072,12 +2077,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	// Recalculate planeSize (with new step count)
 	if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
 	{
-	  size_t noStepsP       = ceil(cuSrch->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps;
-	  size_t nX             = noStepsP * kernel->accelLen;
-	  size_t nY             = kernel->hInfos->noZ;
+	  size_t noStepsP	= ceil(cuSrch->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
+	  size_t nX1		= noStepsP * kernel->accelLen;										// Max Gen size
+	  size_t nX2		= ceil(cuSrch->SrchSz->noSteps * kernel->accelLen / (float)kernel->strideOut) * kernel->strideOut;	// Max search size
+	  size_t nX		= MAX(nX1,nX1);
+	  size_t nY		= kernel->hInfos->noZ;
 	  planeSize             = nX * nY * plnElsSZ;
 
-	  infoMSG(6,6,"in-mem plane: %.2f GB - %i X %i   noStepsP: %i  noSteps: %i  nss :%i \n", planeSize*1e-9, nX, nY, noStepsP, noSteps,cuSrch->SrchSz->noSteps );
+	  infoMSG(6,6,"in-mem plane: %.2f GB - %i X %i   noStepsP: %i  noSteps: %i  nss :%i \n", planeSize*1e-9, nX, nY, noStepsP, noSteps, cuSrch->SrchSz->noSteps );
 	}
 
 
@@ -2164,7 +2171,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
     }
 
-    FOLD // Batch independent device memory  .
+    FOLD // Batch independent device memory (ie in-memory plabne) .
     {
       if ( kernel->flags & FLAG_SS_INMEM  )
       {
@@ -2173,9 +2180,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  NV_RANGE_PUSH("in-mem alloc");
 	}
 
-	size_t noStepsP =  ceil(cuSrch->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
-	size_t nX       = noStepsP * kernel->accelLen;
-	size_t nY       = kernel->hInfos->noZ;
+	size_t noStepsP	= ceil(cuSrch->SrchSz->noSteps / (float)kernel->noSteps) * kernel->noSteps ;
+	size_t nX1	= noStepsP * kernel->accelLen;
+	size_t nX2	= ceil(cuSrch->SrchSz->noSteps * kernel->accelLen / (float)kernel->strideOut) * kernel->strideOut;
+	size_t nX	= MAX(nX1,nX1);
+	size_t nY	= kernel->hInfos->noZ;
 	size_t stride;
 
 	CUDA_SAFE_CALL(cudaMallocPitch(&cuSrch->d_planeFull,    &stride, plnElsSZ*nX, nY),   "Failed to allocate strided memory for in-memory plane.");
@@ -2997,9 +3006,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	createRvals(batch, &batch->rArr1, &batch->rArraysPlane);
 	batch->rAraays = &batch->rArraysPlane;
-
-	if ( batch->flags & FLAG_SEPRVAL )
-	  createRvals(batch, &batch->rArr2, &batch->rArraysSrch);
       }
 
       FOLD // Create the planes structures  .
@@ -3585,8 +3591,6 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
 
     // Free the rval arrays used during generation and search stages
     freeRvals(batch, &batch->rArr1, &batch->rArraysPlane);
-    if ( batch->flags & FLAG_SEPRVAL )
-      freeRvals(batch, &batch->rArr2, &batch->rArraysSrch);
   }
 
   FOLD // Free textures for the f-∂f planes  .
@@ -7417,8 +7421,22 @@ void genPlane(cuSearch* cuSrch, char* msg)
     // Set the device this thread will be using
     setDevice(batch->gInf->devid) ;
 
-    // Clear the r array
-    clearRvals(batch);
+    FOLD // Clear the r array  .
+    {
+      clearRvals(batch);
+
+#ifndef  DEBUG
+      if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+#endif
+      {
+	// If running in synchronous mode use multiple batches, just synchronously so clear all batches
+	for ( int bId = 0; bId < cuSrch->pInf->noBatches; bId++ )
+	{
+	  batch = &cuSrch->pInf->batches[bId];
+	  clearRvals(batch);
+	}
+      }
+    }
 
     while ( ss < maxxx )  //			---===== Main Loop =====---  .
     {
@@ -7513,7 +7531,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
 
     FOLD  // Finish off CUDA search  .
     {
-      infoMSG(1,0,"\nFinish off search.\n");
+      infoMSG(1,0,"\nFinish off plane.\n");
 
       // Finish searching the planes, this is required because of the out of order asynchronous calls
       for ( rest = 0 ; rest < batch->noRArryas; rest++ )
@@ -7529,6 +7547,35 @@ void genPlane(cuSearch* cuSrch, char* msg)
 
       // Wait for asynchronous execution to complete
       finish_Search(batch);
+
+
+#ifndef  DEBUG
+      if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+#endif
+      {
+	// If running in synchronous mode use multiple batches, just synchronously so clear all batches
+	for ( int bId = 0; bId < cuSrch->pInf->noBatches; bId++ )
+	{
+	  infoMSG(1,0,"\nFinish off plane (synch batch %i).\n", bId);
+
+	  batch = &cuSrch->pInf->batches[bId];
+
+	  // Finish searching the planes, this is required because of the out of order asynchronous calls
+	  for ( rest = 0 ; rest < batch->noRArryas; rest++ )
+	  {
+	    FOLD // Set the r arrays to zero  .
+	    {
+	      rVals* rVal = (*batch->rAraays)[0][0];
+	      clearRval(rVal); // Clear the fundamental
+	    }
+
+	    search_ffdot_batch_CU(batch);
+	  }
+
+	  // Wait for asynchronous execution to complete
+	  finish_Search(batch);
+	}
+      }
     }
   }
 
@@ -7626,7 +7673,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
 	inmemSumAndSearch(cuSrch);
 
 	setInMemPlane(cuSrch, IM_BOT);
-	sprintf(srcTyp, "Generating top half in-mem GPU plane");
+	sprintf(srcTyp, "Generating bottom half in-mem GPU plane");
 	genPlane(cuSrch, srcTyp);
 	inmemSumAndSearch(cuSrch);
       }

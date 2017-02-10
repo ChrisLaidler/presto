@@ -170,7 +170,7 @@ extern "C"
 
 #define		FLAG_RET_STAGES		BIT(37)		///< Return results for all stages of summing, default is only the final result
 #define		FLAG_SEPSRCH		BIT(38)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
-#define		FLAG_SEPRVAL		BIT(39)		///< Create a separate location list - Used by the testing thing
+#define		FLAG_SEPRVAL		BIT(39)		///< Depricated
 
 // ---- Initial candidates ----//
 
@@ -622,7 +622,7 @@ typedef struct searchScale
     unsigned long long noInpR;          ///< The maximum number of r input ( this is essentially  (rHigh - rLow) ) and me be longer than fft length because of halfwidth this requires the FFT to be padded!
     unsigned long long noOutpR;         ///< The maximum number of r bins the fundamental search will produce. This is ( searchRHigh - searchRLow ) / ( candidate resolution ) It may need to be scaled by numharmstages
 
-    long long       noSteps;            ///< The number of steps the FFT is divided into
+    long long       noSteps;            ///< The number of steps the FFT is divided into - This is for plane creation
 } searchScale;
 
 /** Details of the section/step of the input FFT  .
@@ -1006,6 +1006,7 @@ typedef struct resultData
 
     void*               retData;		///< A pointer to the memory the results are stored in (usuall pinned host memory)
     bool*		outBusy;		///< A pointer to the flag indicating that the memory has all been read
+    int			resSize;		///< The size of the resulst data
 
     uint                retType;
     uint                cndType;

@@ -2372,7 +2372,6 @@ void* optCandDerivs(void* ptr)
   return (NULL);
 }
 
-
 /** Optimise derivatives of a candidate Using the CPU  .
  * This usually spawns a separate CPU thread to do the sigma calculations
  */
@@ -2423,7 +2422,6 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
 
   infoMSG(2,2,"Done");
 }
-
 
 /** This is the main function called by external elements  .
  *

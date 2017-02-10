@@ -18,6 +18,9 @@
  *
  *  [0.0.03] [2017-02-05]
  *    Reorder in-mem async to slightly faster (3 way)
+ *    
+ *  [0.0.03] [2017-02-10]
+ *    Multi batch asynch fixed finising off search
  */
 
 #include "cuda_accel_SS.h"
@@ -576,10 +579,14 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
  */
 void* processSearchResults(void* ptr)
 {
+  struct 	timeval start, end;      		// Profiling variables
   resultData*	res	= (resultData*)ptr;
   cuSearch*	cuSrch	= res->cuSrch;
-
-  struct timeval start, end;      		// Profiling variables
+  double	poww, sig;
+  double	rr, zz;
+  int		numharm;
+  int		idx;
+  void*		localResults = res->retData;
 
   PROF // Profiling  .
   {
@@ -589,11 +596,7 @@ void* processSearchResults(void* ptr)
     }
   }
 
-  double poww, sig;
-  double rr, zz;
-  int numharm;
-  int idx;
-
+  // Main loop, looping over returned values
   for ( int stage = 0; stage < cuSrch->noHarmStages; stage++ )
   {
     numharm       = (1<<stage);
@@ -613,7 +616,7 @@ void* processSearchResults(void* ptr)
 
 	if      ( res->retType & CU_CANDMIN     )
 	{
-	  candMin candM         = ((candMin*)res->retData)[idx];
+	  candMin candM         = ((candMin*)localResults)[idx];
 
 	  if ( candM.power > poww )
 	  {
@@ -624,7 +627,7 @@ void* processSearchResults(void* ptr)
 	}
 	else if ( res->retType & CU_POWERZ_S    )
 	{
-	  candPZs candM         = ((candPZs*)res->retData)[idx];
+	  candPZs candM         = ((candPZs*)localResults)[idx];
 
 	  if ( candM.value > poww )
 	  {
@@ -635,7 +638,7 @@ void* processSearchResults(void* ptr)
 	}
 	else if ( res->retType & CU_CANDBASC    )
 	{
-	  accelcandBasic candB  = ((accelcandBasic*)res->retData)[idx];
+	  accelcandBasic candB  = ((accelcandBasic*)localResults)[idx];
 
 	  if ( candB.sigma > poww )
 	  {
@@ -646,7 +649,7 @@ void* processSearchResults(void* ptr)
 	}
 	else if ( res->retType & CU_FLOAT       )
 	{
-	  float val  = ((float*)res->retData)[idx];
+	  float val  = ((float*)localResults)[idx];
 
 	  if ( val > cutoff )
 	  {
@@ -657,7 +660,7 @@ void* processSearchResults(void* ptr)
 	}
 	else if ( res->retType & CU_HALF        )
 	{
-	  float val  = half2float( ((ushort*)res->retData)[idx] );
+	  float val  = half2float( ((ushort*)localResults)[idx] );
 
 	  if ( val > cutoff )
 	  {
@@ -691,7 +694,7 @@ void* processSearchResults(void* ptr)
 	    zz /= (double)numharm ;
 	    if ( res->noZ == 1 )
 	      zz = 0;
-	    
+
 	    if ( isnan(poww) )
 	    {
 	      fprintf(stderr, "CUDA search returned an NAN power at bin %.3f.\n", rr);
@@ -720,6 +723,15 @@ void* processSearchResults(void* ptr)
     }
   }
 
+  // Mark the pinned memory as free
+  *res->outBusy = false;
+
+  // Decrease the count number of running threads
+  if ( res->flags & FLAG_THREAD )
+  {
+    sem_trywait(&(cuSrch->threasdInfo->running_threads));
+  }
+
   PROF // Profiling  .
   {
     if ( res->flags & FLAG_PROF )
@@ -740,18 +752,9 @@ void* processSearchResults(void* ptr)
     }
   }
 
-  // Mark the pinned memory as free
-  *res->outBusy = false;
-
-  // Decrease the count number of running threads
-  if ( res->flags & FLAG_THREAD )
+  FOLD // Free memory  .
   {
-    sem_trywait(&(cuSrch->threasdInfo->running_threads));
-  }
-
-  FOLD // Free memory
-  {
-    free (res);
+    freeNull(res);
   }
 
   return (NULL);
@@ -767,7 +770,7 @@ void processBatchResults(cuFFdotBatch* batch)
   if ( rVal->numrs )
   {
     struct timeval start, end;          // Profiling variables
-    resultData* thrdDat;
+    resultData* thrdDat;		// Structure to pass to the thread
 
     infoMSG(2,2,"Process results - Iteration %3i.", rVal->iteration);
 
@@ -815,6 +818,7 @@ void processBatchResults(cuFFdotBatch* batch)
       thrdDat->xStride		= batch->strideOut;
       thrdDat->yStride		= batch->ssSlices;
 
+      thrdDat->resSize		= batch->retDataSize;
       thrdDat->retData		= rVal->h_outData;
       thrdDat->outBusy		= &rVal->outBusy;
 
@@ -913,6 +917,7 @@ void processBatchResults(cuFFdotBatch* batch)
 	{
 	  NV_RANGE_POP(); // Thread
 	}
+
       }
       else                              	// Just call the function  .
       {
@@ -978,24 +983,31 @@ void getResults(cuFFdotBatch* batch)
 
       FOLD // Spin CPU until pinned memory is free from the previous iteration  .
       {
-	PROF // Profiling - Time previous components  .
+	if ( rVal->outBusy )
 	{
-	  NV_RANGE_PUSH("Spin");
-	}
+	  infoMSG(6,6,"Waiting on pinned memory to be free (%p).\n", &rVal->outBusy);
 
-	while( rVal->outBusy )
-	{
-	  // TODO: Should probably put a time out here  .
-	  usleep(1);
-	}
+	  PROF // Profiling - Time previous components  .
+	  {
+	    NV_RANGE_PUSH("Spin");
+	  }
 
-	PROF // Profiling  .
-	{
-	  NV_RANGE_POP(); //Get results
+	  while( rVal->outBusy )
+	  {
+	    // TODO: Should probably put a time out here  .
+	    usleep(1);
+	  }
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); //Get results
+	  }
 	}
 
 	// NB: This marks the output as busy, the data hasn't been copied but nothing should touch it from this point, there will still be a synchronisation to make sure the data is copied before work is done one it.
+	infoMSG(6,6,"Marking pinned memory as busy (%p).\n", &rVal->outBusy);
 	rVal->outBusy = 1;
+
       }
     }
 
@@ -1108,7 +1120,6 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 
   setActiveBatch(batch, 0);
   getResults(batch);
-  
 
   // Cycle r values
   cycleRlists(batch);
@@ -1198,7 +1209,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
 	if ( msgLevel >= 1 )
 	{
-	  int tot  = (endBin)/batch->strideOut;
+	  int tot  = ceil((endBin)/(float)batch->strideOut);
 
 	  infoMSG(1,1,"\nIteration %4i Step %4i of %4i thread %02i processing %02i steps on GPU %i\n", iteration, step+1, tot, tid, 1, batch->gInf->devid );
 	}
@@ -1224,10 +1235,32 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
     }
 
-    // Finish off the search
-    for ( int step = 0 ; step < batch->noRArryas; step++ )
+    FOLD // Finish off the search  .
     {
-      inmemSS(batch, 0, 0);
+      infoMSG(1,0,"\nFinish off the search.\n" );
+
+      for ( int step = 0 ; step < batch->noRArryas; step++ )
+      {
+	inmemSS(batch, 0, 0);
+      }
+
+#ifndef  DEBUG
+      if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+#endif
+      {
+	// If running in synchronous mode use multiple batches, just synchronously so clear all batches
+	for ( int bId = 0; bId < cuSrch->pInf->noBatches; bId++ )
+	{
+	  infoMSG(1,0,"\nFinish off search (synch batch %i).\n", bId);
+
+	  batch = &cuSrch->pInf->batches[bId];
+
+	  for ( int step = 0 ; step < batch->noRArryas; step++ )
+	  {
+	    inmemSS(batch, 0, 0);
+	  }
+	}
+      }
     }
   }
 

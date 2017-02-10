@@ -690,7 +690,6 @@ int main(int argc, char *argv[])
   sSpec.flags        &= ~FLAG_KER_MAX;
   sSpec.flags        &= ~FLAG_CENTER;
   sSpec.flags        |= FLAG_SEPSRCH;
-  sSpec.flags        |= FLAG_SEPRVAL;			// TODO: Is this still nessesary?
   sSpec.flags        |= FLAG_SYNCH;			// Synchronous
 
   contextInit        += initCudaContext(&gSpec);
