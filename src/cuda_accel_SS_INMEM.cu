@@ -1,34 +1,60 @@
-#include "cuda_accel_SS.h"
+/** @file cuda_accel_SS.cu
+ *  @brief The implimentation fo the in-memory sum and search kernel
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.01] [2017-02-12]
+ *     Added per block counts of canidates found
+ */
+ 
+ #include "cuda_accel_SS.h"
 
 #define SSIM_X           16                    // X Thread Block
 #define SSIM_Y           16                    // Y Thread Block
 #define SSIMBS           (SSIM_X*SSIM_Y)
-#define MAX_BLKS         256
-
 
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
-__global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, int start, int end, candPZs* d_cands)
+__global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, int start, int end, candPZs* d_cands, int* d_counts )
 {
-  const int bidx	= threadIdx.y * SSIM_X  +  threadIdx.x;		/// Block index
-  const int tid		= blockIdx.x  * SSIMBS  +  bidx;		/// Global thread id (ie column) 0 is the first 'good' column
+  const int bidx	= blockIdx.y * gridDim.x  +  blockIdx.x;	///< Block index
+  const int tidx	= threadIdx.y * SSIM_X  +  threadIdx.x;		///< Thread index within in the block
+  const int sid		= blockIdx.x  * SSIMBS  +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
   const int zeroHeight	= HEIGHT_STAGE[0];
 
   int		inds      [noHarms];
   candPZs	candLists [noStages];
-  float		powers    [cunkSize];					/// registers to hold values to increase mem cache hits
+  float		powers    [cunkSize];					///< registers to hold values to increase mem cache hits
 
-  int		idx   = start + tid ;
+  int		idx   = start + sid ;
   int		len   = end - start;
+  uint 		conts = 0;						///< Per thread count of candidates found
+  __shared__ uint  cnt;							///< Block count of candidates
 
+  FOLD  // Zero SM  .
+  {
+    if ( tidx == 0 )
+    {
+      cnt = 0;
+    }
 
-  if ( tid < len )
+    __syncthreads();
+  }
+
+  if ( sid < len )
   {
     FOLD  // Set the local and return candidate powers to zero  .
     {
       for ( int stage = 0; stage < noStages; stage++ )
       {
 	candLists[stage].value = 0 ;
-	d_cands[stage*gridDim.y*oStride + blockIdx.y*oStride + tid].value = 0;
+	d_cands[stage*gridDim.y*oStride + blockIdx.y*oStride + sid].value = 0;
       }
     }
 
@@ -45,7 +71,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
       }
     }
 
-    FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
+    FOLD // Sum & Search - Ignore contaminated ends sid to starts at correct spot  .
     {
       int   lDepth        = ceilf(zeroHeight/(float)gridDim.y);
       int   y0            = lDepth*blockIdx.y;
@@ -148,11 +174,25 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 	if  ( candLists[stage].value > POWERCUT_STAGE[stage] )
 	{
 	  // Write to DRAM
-	  d_cands[stage*gridDim.y*oStride + blockIdx.y*oStride + tid] = candLists[stage];
+	  d_cands[stage*gridDim.y*oStride + blockIdx.y*oStride + sid] = candLists[stage];
+	  conts++;
 	}
       }
     }
+  }
 
+  FOLD // Counts  .
+  {
+    // Increment block specific count
+    atomicAdd(&cnt,conts);
+
+    __syncthreads();
+
+    // Write count back to main memory
+    if ( tidx == 0 )
+    {
+      d_counts[bidx] = cnt;
+    }
   }
 }
 
@@ -199,76 +239,86 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
   dimGrid.y     = batch->ssSlices;
   dimGrid.x     = ceil(noBins / (float) SSIMBS );
 
+  rVal->noBlocks = dimGrid.x * dimGrid.y;
+
+  if( rVal->noBlocks > MAX_SAS_BLKS )
+  {
+    fprintf(stderr, "ERROR: Too many blocks in sum and search kernel, try reducing SS_INMEM_SZ or SS_SLICES %i > %i. (in function %s in %s )\n", rVal->noBlocks, MAX_SAS_BLKS, __FUNCTION__, __FILE__);
+    exit(EXIT_FAILURE);
+  }
+
+  int* d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+
   switch ( batch->ssChunk )
   {
     case 1 :
     {
-      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 2 :
     {
-      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 3 :
     {
-      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 4 :
     {
-      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 5 :
     {
-      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 6 :
     {
-      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 7 :
     {
-      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 8 :
     {
-      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     case 9 :
     {
-      searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+      searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
     //    case 10:
     //    {
-    //      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+    //      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
     //      break;
     //    }
     //    case 12:
     //    {
-    //      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+    //      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
     //      break;
     //    }
     //    case 14:
     //    {
-    //      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+    //      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
     //      break;
     //    }
     //    case 20:
     //    {
-    //      searchINMEM_k<T,noStages,noHarms,20><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+    //      searchINMEM_k<T,noStages,noHarms,20><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
     //      break;
     //    }
     //    case 25:
     //    {
-    //      searchINMEM_k<T,noStages,noHarms,25><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1 );
+    //      searchINMEM_k<T,noStages,noHarms,25><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
     //      break;
     //    }
     default:
@@ -385,16 +435,6 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     {
       infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchComp", "srchStream");
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
-
-//#ifdef DEBUG // This is just a hack, I'm not sure why this is necessary but it appears it is. In debug mode extra synchronisation is necessary
-//      if ( batch->flags & FLAG_SYNCH )
-//      {
-//	infoMSG(4,4,"DEBUG only synchronisation, blocking.\n");
-//
-//	CUDA_SAFE_CALL(cudaEventSynchronize(batch->searchComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-//	CUDA_SAFE_CALL(cudaGetLastError(), "Calling searchINMEM kernel.");
-//      }
-//#endif
     }
   }
 }

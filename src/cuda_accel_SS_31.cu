@@ -1,36 +1,77 @@
-#include "cuda_accel_SS.h"
+/** @file cuda_accel_SS_31.cu
+ *  @brief The implimentation fo the standard sum and search kernel
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.01] [2017-02-12]
+ *     Added per block counts of canidates found
+ */
+ 
+ 
+ #include "cuda_accel_SS.h"
 
 #define SS31_X           16                    // X Thread Block
 #define SS31_Y           8                     // Y Thread Block
 #define SS31BS           (SS31_X*SS31_Y)
 
 
+__device__ inline int getOffset(const int stage, const int step, const int strd1, const int oStride, const int sid)
+{
+  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 1
+  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*ALEN + sid ;		// 2
+}
+
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
- * The first thread (tid 0) loops down the first "good" column of the plane and sums and searches
+ * The first thread (sid 0) loops down the first "good" column of the plane and sums and searches
  * It writes its results to the 0 spot in the results array
+ * The strided padding at the end of the array can be use to count per block counts
  *
- * @param width       The width
- * @param d_cands
- * @param texs
+ * @param width		The width of a single step (this is usually accellen)
+ * @param d_cands	Address of device output memory
+ * @param oStride	The stride (in candPZs) of the output memory (this is a per step stride) there is a funky diagram to show how the output memory is laid out
+ *
  * @param powersArr
  */
 template<typename T, int64_t FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int oStride, vHarmList powersArr)
+__global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int oStride, vHarmList powersArr, int* d_counts)
 {
-  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;           ///< Block index
-  const int tid   = blockIdx.x  * SS31BS  +  bidx;                  ///< Global thread id (ie column) 0 is the first 'good' column
+  const int bidx	= blockIdx.y * gridDim.x  +  blockIdx.x;	///< Block index
+  const int tidx	= threadIdx.y * SS31_X  +  threadIdx.x;		///< Thread index within in the block
+  const int sid		= blockIdx.x  * SS31BS  +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
 
-  if ( tid < width )
+  uint 		conts	= 0;						///< Per thread count of candidates found
+  __shared__ uint  cnt;							///< Block count of candidates
+
+  FOLD  // Zero SM  .
+  {
+    if ( tidx == 0 )
+    {
+      cnt = 0;
+    }
+
+    __syncthreads();
+  }
+
+  if ( sid < width )
   {
     const int zeroHeight  = HEIGHT_STAGE[0];
 
-    int             inds      [noHarms];
-    candPZs         candLists [noStages][noSteps];
-    float           powers    [noSteps][cunkSize];                  ///< registers to hold values to increase mem cache hits
-    T*              array     [noHarms];                            ///< A pointer array
+    // This is why the parameters need to be templated
+    int             inds	[noHarms];
+    candPZs         candLists	[noStages][noSteps];
+    float           powers	[noSteps][cunkSize];			///< registers to hold values to increase mem cache hits
+    T*              array	[noHarms];				///< A pointer array
 
-    FOLD // Set the values of the pointer array
+
+    FOLD // Set the values of the pointer array  .
     {
       for ( int i = 0; i < noHarms; i++)
       {
@@ -41,10 +82,10 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     FOLD // Prep - Initialise the x indices & set candidates to 0  .
     {
       // Calculate the x indices or create a pointer offset by the correct amount
-      for ( int harm = 0; harm < noHarms; harm++ )                	// loop over harmonic  .
+      for ( int harm = 0; harm < noHarms; harm++ )			// loop over harmonic  .
       {
-	//// NOTE: the indexing below assume each plane starts on a multiple of noHarms
-	int   ix        = lround_t( tid*FRAC_STAGE[harm] ) + PSTART_STAGE[harm] ;
+	//// NB NOTE: the indexing below assume each plane starts on a multiple of noHarms
+	int   ix        = lround_t( sid*FRAC_STAGE[harm] ) + PSTART_STAGE[harm] ;
 	inds[harm]      = ix;
       }
 
@@ -57,13 +98,15 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 	  for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
 	  {
 	    candLists[stage][step].value = 0 ;
-	    d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + tid) ].value = 0;
+            d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + sid) ].value = 0;
+	    d_cands[getOffset(stage, step, xStride, oStride, sid) ].value = 0;
+
 	  }
 	}
       }
     }
 
-    FOLD // Sum & Search - Ignore contaminated ends tid to starts at correct spot  .
+    FOLD // Sum & Search - Ignore contaminated ends sid to starts at correct spot  .
     {
       short   lDepth  = ceilf(zeroHeight/(float)gridDim.y);
       short   y0      = lDepth*blockIdx.y;
@@ -198,10 +241,25 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 	  if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
 	  {
 	    // Write to DRAM
-	    d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + tid) ] = candLists[stage][step];
+	    d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + sid) ] = candLists[stage][step];
+	    conts++;
 	  }
 	}
       }
+    }
+  }
+
+  FOLD // Counts  .
+  {
+    // Increment block specific count
+    atomicAdd(&cnt, conts);
+
+    __syncthreads();
+
+    // Write count back to main memory
+    if ( tidx == 0 )
+    {
+      d_counts[bidx] = cnt;
     }
   }
 }
@@ -219,46 +277,48 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
+  int* d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+
   switch (noSteps)
   {
     case 1:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 2:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 3:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 4:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 5:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 6:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 7:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     case 8:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers );
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
     default:
@@ -317,7 +377,6 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
       break;
     }
-
     //    case 10:
     //    {
     //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
@@ -428,14 +487,27 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 {
   dim3 dimBlock, dimGrid;
 
-  dimBlock.x  = SS31_X;
-  dimBlock.y  = SS31_Y;
+  rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
 
-  float bw    = SS31BS;
-  float ww    = batch->accelLen / ( bw );
+  dimBlock.x		= SS31_X;
+  dimBlock.y		= SS31_Y;
 
-  dimGrid.x   = ceil(ww);
-  dimGrid.y   = batch->ssSlices;
+  float bw		= SS31BS;
+  //float ww		= batch->accelLen / ( bw );
+  float ww		= batch->strideOut / ( bw );	// DBG
+
+  dimGrid.x		= ceil(ww);
+  dimGrid.y		= batch->ssSlices;
+
+  rVal->noBlocks	= dimGrid.x * dimGrid.y;
+
+  if( rVal->noBlocks > MAX_SAS_BLKS )
+  {
+    fprintf(stderr, "ERROR: Too many blocks in sum and search kernel, try reducing SS_SLICES %i > %i. (in function %s in %s )\n", rVal->noBlocks, MAX_SAS_BLKS, __FUNCTION__, __FILE__);
+    exit(EXIT_FAILURE);
+  }
+
+  infoMSG(7,7," no ThreadBlocks %i  width %i  stride %i  remainder: %i ", dimBlock.x * dimBlock.y, batch->accelLen, batch->strideOut,  (batch->strideOut-batch->accelLen)*2);
 
   if      ( batch->flags & FLAG_POW_HALF         )
   {

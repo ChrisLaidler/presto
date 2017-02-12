@@ -58,6 +58,8 @@ extern "C"
 #define BS_DIM          1024    // compute 3.x +
 //#define BS_DIM          576   // compute 2.x
 
+#define MAX_SAS_BLKS	1024
+
 typedef enum {
   IM_TOP,
   IM_BOT,

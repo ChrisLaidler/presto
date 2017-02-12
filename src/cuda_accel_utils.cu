@@ -711,7 +711,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       batchSize		+= fftLen * plnY * sizeof(cufftComplex);						// Complex plain
       batchSize		+= fftLen * plnY * sizeof(float);							// Powers plain
 
-      infoMSG(6,6,"inpDataSize: %.2f MB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - retDataSize: ~%.2f MB \n",
+      infoMSG(6,6,"inpDataSize: %.2f MB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - cndDataSize: ~%.2f MB \n",
 	  ( fftLen * sizeof(cufftComplex) )*1e-6,
 	  ( fftLen * plnY * sizeof(cufftComplex) )*1e-6,
 	  ( fftLen * plnY * sizeof(float) )*1e-6,
@@ -1590,9 +1590,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  kernel->cndType = CU_CANDFULL;
 	}
 
-	if      (kernel->cndType & CU_CMPLXF   )
+	if      (kernel->cndType & CU_CANDFULL )		// Default
 	{
-	  candSZ = sizeof(fcomplexcu);
+	  candSZ = sizeof(initCand);
 	}
 	else if (kernel->cndType & CU_INT      )
 	{
@@ -1622,9 +1622,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  candSZ = sizeof(accelcandBasic);
 	}
-	else if (kernel->cndType & CU_CANDFULL )  // This should be the default
+	else if (kernel->cndType & CU_CMPLXF   )
 	{
-	  candSZ = sizeof(initCand);
+	  candSZ = sizeof(fcomplexcu);
 	}
 	else
 	{
@@ -1670,7 +1670,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       if      (kernel->retType & CU_POWERZ_S  )		// Default
       {
-	retSZ = sizeof(candPZs);
+	retSZ = sizeof(candPZs);	// I found that this auto aligns to 8 bytes, which is good for alignment bad(ish) for size
       }
       else if (kernel->retType & CU_CMPLXF    )
       {
@@ -1727,7 +1727,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       FOLD // Return data structure  .
       {
-	if      ( kernel->flags & FLAG_SS_INMEM )
+	if      (  kernel->flags & FLAG_SS_INMEM )
 	{
 	  // NOTE: The in-mem sum and search does not need the search step size to be divisible by number of harmonics
 
@@ -1746,6 +1746,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
 	{
 	  kernel->strideOut = kernel->accelLen;
+
 	}
 	else if (  kernel->retType & CU_STR_PLN  )
 	{
@@ -1772,6 +1773,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  fprintf(stderr,"ERROR: CUDA return structure not specified.\n");
 	  exit(EXIT_FAILURE);
 	}
+
+	FOLD // Make sure the stride is aligned  .
+	{
+	  int iStride = kernel->strideOut;
+	  kernel->strideOut = getStrie(kernel->strideOut, retSZ, gInf->alignment);
+	  infoMSG(6,6,"Return size %i, elements: %i   initial stride: %i   aligned stride1: %i", retSZ, kernel->accelLen, iStride, kernel->strideOut );
+	}
+
       }
 
       FOLD // Chunks and Slices  .
@@ -1838,12 +1847,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
 
       // Calculate return data size for one step
-      kernel->retDataSize   = retY*kernel->strideOut*retSZ;
+      kernel->cndDataSize   = retY*kernel->strideOut*retSZ;
 
       if ( kernel->flags & FLAG_RET_STAGES )
-	kernel->retDataSize *= kernel->noHarmStages;
+	kernel->cndDataSize *= kernel->noHarmStages;
 
-      infoMSG(6,6,"retSZ: %i  alignment: %i  strideOut: %i  retDataSize: %i \n", retSZ, kernel->gInf->alignment, kernel->strideOut, kernel->retDataSize);
+      infoMSG(6,6,"retSZ: %i  alignment: %i  strideOut: %i  cndDataSize: ~%.2f MB\n", retSZ, kernel->gInf->alignment, kernel->strideOut, kernel->cndDataSize*1e-6);
     }
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
@@ -1868,10 +1877,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       FOLD // Calculate size of various memory's'  .
       {
-	batchSize		= kernel->inpDataSize + kernel->plnDataSize + kernel->pwrDataSize + kernel->retDataSize;  // This is currently the size of one step
+	batchSize		= kernel->inpDataSize + kernel->plnDataSize + kernel->pwrDataSize + kernel->cndDataSize;  // This is currently the size of one step
 	fffTotSize		= kernel->inpDataSize + kernel->plnDataSize;                                              // FFT data treated separately because there will be only one set per device
 
-	infoMSG(5,5,"inpDataSize: %.2f GB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - retDataSize: ~%.2f MB \n", kernel->inpDataSize*1e-6, kernel->plnDataSize*1e-6, kernel->pwrDataSize*1e-6, kernel->retDataSize*1e-6 ); //  free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, singleBatchSz*1e-6 );
+	infoMSG(5,5,"inpDataSize: %.2f GB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - cndDataSize: ~%.2f MB \n", kernel->inpDataSize*1e-6, kernel->plnDataSize*1e-6, kernel->pwrDataSize*1e-6, kernel->cndDataSize*1e-6 ); //  free*1e-9, planeSize*1e-9, kerSize*1e-6, batchSize*1e-6, fffTotSize*1e-6, singleBatchSz*1e-6 );
 
 	if ( kernel->flags & FLAG_SS_INMEM  ) // Size of memory for plane full ff plane  .
 	{
@@ -2136,10 +2145,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       kernel->plnDataSize *= kernel->noSteps;
       kernel->pwrDataSize *= kernel->noSteps;
       if ( !(kernel->flags & FLAG_SS_INMEM)  )
-	kernel->retDataSize *= kernel->noSteps;       // In-mem search stage does not use steps
+	kernel->cndDataSize *= kernel->noSteps;					// In-mem search stage does not use steps
+      kernel->retDataSize = kernel->cndDataSize + MAX_SAS_BLKS*sizeof(int);	// Add a bit extra to store return data
+
+      // TODO: Perhaps we should make sure all these sizes are strided?
     }
 
-    float fullCSize     = cuSrch->SrchSz->noOutpR * candSZ;               /// The full size of all candidate data
+    float fullCSize     = cuSrch->SrchSz->noOutpR * candSZ;			// The full size of all candidate data
 
     if ( kernel->flags  & FLAG_STORE_ALL )
       fullCSize *= kernel->noHarmStages; // Store  candidates for all stages
@@ -2171,7 +2183,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
     }
 
-    FOLD // Batch independent device memory (ie in-memory plabne) .
+    FOLD // Batch independent device memory (ie in-memory plane) .
     {
       if ( kernel->flags & FLAG_SS_INMEM  )
       {
@@ -3102,6 +3114,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  infoMSG(5,5,"Allocate device memory for return values. (%.2f MB)\n", batch->retDataSize*1e-6);
 
 	  CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData1, batch->retDataSize ), "Failed to allocate device memory for return values.");
+	  CUDA_SAFE_CALL(cudaMemsetAsync(batch->d_outData1, 0, batch->retDataSize, kernel->stacks->initStream),"Failed to initiate return data to zero");
 	  free -= batch->retDataSize;
 
 	  if ( batch->flags & FLAG_SS_INMEM )
@@ -3121,6 +3134,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	      // Create a separate output space
 	      CUDA_SAFE_CALL(cudaMalloc((void** ) &batch->d_outData2, batch->retDataSize ), "Failed to allocate device memory for return values.");
+	      CUDA_SAFE_CALL(cudaMemsetAsync(batch->d_outData2, 0, batch->retDataSize, kernel->stacks->initStream),"Failed to initiate return data to zero");
 	      free -= batch->retDataSize;
 	    }
 	    else
@@ -3418,106 +3432,106 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     //CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams and events for the batch.");
   }
 
-  FOLD // Create textures for the f-∂f planes  .
-  {
-    if ( (batch->flags & FLAG_TEX_INTERP) && !( (batch->flags & FLAG_CUFFT_CB_POW) && (batch->flags & FLAG_SAS_TEX) ) )
-    {
-      fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation.\n");
-      batch->flags &= ~FLAG_TEX_INTERP;
-    }
-
-    if ( batch->flags & FLAG_SAS_TEX ) // This is depricated, but could be woth revisiting   .
-    {
-      infoMSG(4,4,"Create textures\n");
-
-      cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
-
-      struct cudaTextureDesc texDesc;
-      memset(&texDesc, 0, sizeof(texDesc));
-      texDesc.addressMode[0]    = cudaAddressModeClamp;
-      texDesc.addressMode[1]    = cudaAddressModeClamp;
-      texDesc.readMode          = cudaReadModeElementType;
-      texDesc.normalizedCoords  = 0;
-
-      if ( batch->flags & FLAG_TEX_INTERP )
-      {
-	texDesc.filterMode        = cudaFilterModeLinear;   /// Liner interpolation
-      }
-      else
-      {
-	texDesc.filterMode        = cudaFilterModePoint;
-      }
-
-      for (int i = 0; i< batch->noStacks; i++)
-      {
-	cuFfdotStack* cStack = &batch->stacks[i];
-
-	cudaResourceDesc resDesc;
-	memset(&resDesc, 0, sizeof(resDesc));
-	resDesc.resType           = cudaResourceTypePitch2D;
-	resDesc.res.pitch2D.desc  = channelDesc;
-
-	for (int j = 0; j< cStack->noInStack; j++)
-	{
-	  cuFFdot* cPlane = &cStack->planes[j];
-
-	  if ( batch->flags & FLAG_CUFFT_CB_POW ) // float input
-	  {
-	    if      ( batch->flags & FLAG_ITLV_ROW )
-	    {
-	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ;
-	      resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps;
-	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
-	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
-	    }
-#ifdef WITH_ITLV_PLN
-	    else
-	    {
-	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ * batch->noSteps ;
-	      resDesc.res.pitch2D.width           = cPlane->harmInf->width;
-	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
-	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
-	    }
-#else
-	    else
-	    {
-	      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-	      exit(EXIT_FAILURE);
-	    }
-#endif
-	  }
-	  else // Implies complex numbers
-	  {
-	    if      ( batch->flags & FLAG_ITLV_ROW )
-	    {
-	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ;
-	      resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps * 2;
-	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
-	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
-	    }
-#ifdef WITH_ITLV_PLN
-	    else
-	    {
-	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ * batch->noSteps ;
-	      resDesc.res.pitch2D.width           = cPlane->harmInf->width * 2;
-	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
-	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
-	    }
-#else
-	    else
-	    {
-	      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-	      exit(EXIT_FAILURE);
-	    }
-#endif
-	  }
-
-	  CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlane->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plane data.");
-	}
-      }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
-    }
-  }
+//  FOLD // Create textures for the f-∂f planes  .
+//  {
+//    if ( (batch->flags & FLAG_TEX_INTERP) && !( (batch->flags & FLAG_CUFFT_CB_POW) && (batch->flags & FLAG_SAS_TEX) ) )
+//    {
+//      fprintf(stderr, "ERROR: Cannot use texture memory interpolation without CUFFT callback to write powers. NOT using texture memory interpolation.\n");
+//      batch->flags &= ~FLAG_TEX_INTERP;
+//    }
+//
+//    if ( batch->flags & FLAG_SAS_TEX ) // This is depricated, but could be woth revisiting   .
+//    {
+//      infoMSG(4,4,"Create textures\n");
+//
+//      cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
+//
+//      struct cudaTextureDesc texDesc;
+//      memset(&texDesc, 0, sizeof(texDesc));
+//      texDesc.addressMode[0]    = cudaAddressModeClamp;
+//      texDesc.addressMode[1]    = cudaAddressModeClamp;
+//      texDesc.readMode          = cudaReadModeElementType;
+//      texDesc.normalizedCoords  = 0;
+//
+//      if ( batch->flags & FLAG_TEX_INTERP )
+//      {
+//	texDesc.filterMode        = cudaFilterModeLinear;   /// Liner interpolation
+//      }
+//      else
+//      {
+//	texDesc.filterMode        = cudaFilterModePoint;
+//      }
+//
+//      for (int i = 0; i< batch->noStacks; i++)
+//      {
+//	cuFfdotStack* cStack = &batch->stacks[i];
+//
+//	cudaResourceDesc resDesc;
+//	memset(&resDesc, 0, sizeof(resDesc));
+//	resDesc.resType           = cudaResourceTypePitch2D;
+//	resDesc.res.pitch2D.desc  = channelDesc;
+//
+//	for (int j = 0; j< cStack->noInStack; j++)
+//	{
+//	  cuFFdot* cPlane = &cStack->planes[j];
+//
+//	  if ( batch->flags & FLAG_CUFFT_CB_POW ) // float input
+//	  {
+//	    if      ( batch->flags & FLAG_ITLV_ROW )
+//	    {
+//	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ;
+//	      resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps;
+//	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * sizeof(float);
+//	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
+//	    }
+//#ifdef WITH_ITLV_PLN
+//	    else
+//	    {
+//	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ * batch->noSteps ;
+//	      resDesc.res.pitch2D.width           = cPlane->harmInf->width;
+//	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * sizeof(float);
+//	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
+//	    }
+//#else
+//	    else
+//	    {
+//	      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+//	      exit(EXIT_FAILURE);
+//	    }
+//#endif
+//	  }
+//	  else // Implies complex numbers
+//	  {
+//	    if      ( batch->flags & FLAG_ITLV_ROW )
+//	    {
+//	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ;
+//	      resDesc.res.pitch2D.width           = cPlane->harmInf->width * batch->noSteps * 2;
+//	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * batch->noSteps * 2 * sizeof(float);
+//	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
+//	    }
+//#ifdef WITH_ITLV_PLN
+//	    else
+//	    {
+//	      resDesc.res.pitch2D.height          = cPlane->harmInf->noZ * batch->noSteps ;
+//	      resDesc.res.pitch2D.width           = cPlane->harmInf->width * 2;
+//	      resDesc.res.pitch2D.pitchInBytes    = cStack->harmInf->width * 2 * sizeof(float);
+//	      resDesc.res.pitch2D.devPtr          = cPlane->d_planePowr;
+//	    }
+//#else
+//	    else
+//	    {
+//	      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+//	      exit(EXIT_FAILURE);
+//	    }
+//#endif
+//	  }
+//
+//	  CUDA_SAFE_CALL(cudaCreateTextureObject(&cPlane->datTex, &resDesc, &texDesc, NULL), "Creating texture from the plane data.");
+//	}
+//      }
+//      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
+//    }
+//  }
 
   PROF // Profiling  .
   {
@@ -3593,30 +3607,30 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
     freeRvals(batch, &batch->rArr1, &batch->rArraysPlane);
   }
 
-  FOLD // Free textures for the f-∂f planes  .
-  {
-    if ( batch->flags & FLAG_SAS_TEX )
-    {
-      infoMSG(2,2,"Free textures\n");
-
-      for (int i = 0; i < batch->noStacks; i++)
-      {
-	cuFfdotStack* cStack = &batch->stacks[i];
-
-	for (int j = 0; j< cStack->noInStack; j++)
-	{
-	  cuFFdot* cPlane = &cStack->planes[j];
-
-	  if ( cPlane->datTex )
-	  {
-	    CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlane->datTex), "Creating texture from the plane data.");
-	    cPlane->datTex = (fCplxTex)0;
-	  }
-	}
-      }
-      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
-    }
-  }
+//  FOLD // Free textures for the f-∂f planes  .
+//  {
+//    if ( batch->flags & FLAG_SAS_TEX )
+//    {
+//      infoMSG(2,2,"Free textures\n");
+//
+//      for (int i = 0; i < batch->noStacks; i++)
+//      {
+//	cuFfdotStack* cStack = &batch->stacks[i];
+//
+//	for (int j = 0; j< cStack->noInStack; j++)
+//	{
+//	  cuFFdot* cPlane = &cStack->planes[j];
+//
+//	  if ( cPlane->datTex )
+//	  {
+//	    CUDA_SAFE_CALL(cudaDestroyTextureObject(cPlane->datTex), "Creating texture from the plane data.");
+//	    cPlane->datTex = (fCplxTex)0;
+//	  }
+//	}
+//      }
+//      CUDA_SAFE_CALL(cudaGetLastError(), "Creating textures from the plane data.");
+//    }
+//  }
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Exiting freeBatchGPUmem.");
 }
@@ -4985,21 +4999,26 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
       }
 
-      else if ( strCom("FLAG_SAS_TEX", str1 ) )
-      {
-	(*flags) |= FLAG_SAS_TEX;
-      }
-
-      else if ( strCom("FLAG_TEX_INTERP", str1 ) )
-      {
-	(*flags) |= FLAG_SAS_TEX;
-	(*flags) |= FLAG_TEX_INTERP;
-      }
+//      else if ( strCom("FLAG_SAS_TEX", str1 ) )
+//      {
+//	(*flags) |= FLAG_SAS_TEX;
+//      }
+//
+//      else if ( strCom("FLAG_TEX_INTERP", str1 ) )
+//      {
+//	(*flags) |= FLAG_SAS_TEX;
+//	(*flags) |= FLAG_TEX_INTERP;
+//      }
 
       else if ( strCom("SIGNIFICANCE", str1 ) )
       {
 	fprintf(stderr, "WARNING: The flag %s has been deprecated.\n", str1);
 	//singleFlag ( flags, str1, str2, FLAG_SIG_GPU, "GPU", "CPU", lineno, fName );
+      }
+
+      else if ( strCom("RES_MEM", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_SS_TREAD_MEM, "TMP", "RING", lineno, fName );
       }
 
       else if ( strCom("RESULTS", str1 ) )
@@ -5418,10 +5437,15 @@ void readAccelDefalts(searchSpecs *sSpec)
 	else if ( strCom(str2, "1") )
 	{
 	  (*flags) |= FLAG_DBG_TEST_1;
+
+	  (*flags) |= FLAG_SS_TREAD_MEM;  // DBG
+
 	}
 	else if ( strCom(str2, "2") )
 	{
 	  (*flags) |= FLAG_DBG_TEST_2;
+
+	  (*flags) &= ~FLAG_SS_TREAD_MEM;  // DBG
 	}
 	else if ( strCom(str2, "3") )
 	{
@@ -5522,6 +5546,9 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags		|= FLAG_ITLV_ROW    ;
     sSpec.flags         |= FLAG_CENTER      ;   // Centre and align the usable part of the planes
     sSpec.flags         |= CU_FFT_SEP_INP   ;   // Input is small and seperate FFT plans wont take up too mutch memory
+
+    sSpec.flags         |= FLAG_SS_TREAD_MEM;   // Seperate memory for results
+
 
 #ifndef DEBUG
     sSpec.flags		|= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
@@ -6588,8 +6615,9 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
     cvsLog->csvWrite("CB INMEM",  "flg", "%i", (bool)(batch->flags & FLAG_CUFFT_CB_INMEM));
 
     cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_TEX_MUL));
-    cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_SAS_TEX));
-    cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flags & FLAG_TEX_INTERP));
+    //cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_SAS_TEX));
+    //cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flags & FLAG_TEX_INTERP));
+
     if ( batch->flags & FLAG_SIG_GPU )
       cvsLog->csvWrite("SIG",    "flg", "GPU");
     else

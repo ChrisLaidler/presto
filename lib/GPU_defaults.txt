@@ -251,6 +251,12 @@ SS_KER			AA
 #	SEQ     		# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
 #RESULTS   		THREAD
 
+# Memory for CPU threads processing results
+# RES_MEM
+# D	TMP  			# Allocate temporary memory for each thread processing results
+#	RING     		# Use the ring buffer (this may require upping RESULTS_RING)
+#RES_MEM   		TMP
+
 
 # The number of horizontal "slices" to break the Sum & Search kernel into
 # SS_SLICES:

@@ -156,8 +156,8 @@ extern "C"
 
 //---- Sum and search ----//
 
-#define		FLAG_SAS_TEX		BIT(30)		///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-#define		FLAG_TEX_INTERP		BIT(31)		///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
+//#define		FLAG_SAS_TEX		BIT(30)		///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
+//#define		FLAG_TEX_INTERP		BIT(31)		///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
 #define		FLAG_SIG_GPU		BIT(32)		///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
 
 #define		FLAG_SS_CPU		BIT(33)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
@@ -178,6 +178,7 @@ extern "C"
 #define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
 
 #define		FLAG_THREAD		BIT(42)		///< Use separate CPU threads to search for candidates in returned data
+#define		FLAG_SS_TREAD_MEM	BIT(43)		///< Creae a thread specifc section of tmp memory and copy resulst to it before "processing" them
 
 // ---- Optimisation ----//
 
@@ -295,7 +296,8 @@ typedef enum {
 #define  COMP_GEN_SS		9			///
 #define  COMP_GEN_D2H		10			///
 #define  COMP_GEN_STR		11			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
-#define  COMP_GEN_END		12			/// Nothing - A value to indicate the end of the used variables
+#define  COMP_GEN_BLOCK		12			/// Blocking on synchronisation (can't really be done because run in synchronous mode for profiling)
+#define  COMP_GEN_END		13			/// Nothing - A value to indicate the end of the used variables
 #define  COMP_GEN_MAX		20			/// Nothing - A value to indicate the maximum array length
 
 
@@ -369,7 +371,7 @@ typedef struct fcomplexcu
 ///< Note this may not be the best choice on a GPU as it has a bad size
 typedef struct candPZs
 {
-    float           value;              ///< This cab be Sigma or summed power
+    float           value;              ///< This can be summed power or the sigma there of
     short           z;                  ///< Fourier f-dot of first harmonic
 } candPZs;
 
@@ -377,7 +379,7 @@ typedef struct candPZs
 ///< Note this may not be the best choice on a GPU as it has a bad size
 typedef struct candPZi
 {
-    float           value;              ///< This cab be Sigma or summed power
+    float           value;              ///< This can be summed power or the sigma there of
     int             z;                  ///< Fourier f-dot of first harmonic
 } candPZi;
 
@@ -640,6 +642,7 @@ typedef struct rVals
     double		norm;				///< The normalisation factor used to normalise the input - Not always set
 
     void*		h_outData;			///< A section of pinned host memory to store the search results in
+    int 		noBlocks;			///< The number of thread blocks used to search the data (each one returns a count of candidates found)
     bool		outBusy;			///< A flag to show a thread is still using the output memory
 } rVals;
 
@@ -668,6 +671,9 @@ typedef struct searchSpecs
 
     int                 mulSlices;                      ///< The number of multiplication slices
     int                 ssSlices;                       ///< The number of Sum and search slices
+
+    int			ssSliceMin;			///< The minimum width (in z) of a slice of the sum and search kernels
+    int			mulSliceMin;			///< The minimum width (in z) of a slice of the multiplication kernels
 
     int                 ssChunk;                        ///< The multiplication chunk size
     int                 mulChunk;                       ///< The Sum and search chunk size
@@ -758,11 +764,12 @@ typedef struct cuFFdotBatch
     ////////////////// Memory information \\\\\\\\\\\\\\\\\\
 
     // Data sizes in bytes
-    int             	inpDataSize;		///< The size of the input data memory in bytes
-    int             	retDataSize;		///< The size of data to return in bytes
-    int             	plnDataSize;		///< The size of the complex plane data memory in bytes
-    int             	pwrDataSize;		///< The size of the powers  plane data memory in bytes
-    int             	kerDataSize;		///< The size of the plane data memory in bytes
+    int			inpDataSize;		///< The size of the input data memory in bytes
+    int			cndDataSize;		///< The size of the candidates - This excludes the extra bit for candidate counts
+    int			retDataSize;		///< The size of data to return in bytes - This is cndDataSize + a bit extra for returned values
+    int			plnDataSize;		///< The size of the complex plane data memory in bytes
+    int			pwrDataSize;		///< The size of the powers  plane data memory in bytes
+    int			kerDataSize;		///< The size of the plane data memory in bytes
 
     // Stride information (only the results are specific to the batch)
 
@@ -1004,13 +1011,17 @@ typedef struct resultData
 {
     cuSearch*           cuSrch;                 ///< Details of the search
 
-    void*               retData;		///< A pointer to the memory the results are stored in (usuall pinned host memory)
+    void*               retData;		///< A pointer to the memory the results are stored in (usual pinned host memory)
     bool*		outBusy;		///< A pointer to the flag indicating that the memory has all been read
-    int			resSize;		///< The size of the resulst data
+    int			resSize;		///< The size of the results data
 
     uint                retType;
     uint                cndType;
     int64_t             flags;			///< CUDA accel search bit flags
+
+    cudaEvent_t		preBlock;		///< An event to block the thread on before processing the data
+    cudaEvent_t		postScan;		///< An CUDA event to create after the data has finished being used
+    cudaStream_t	stream;			///< The stream to record the event in
 
     uint                x0;
     uint                x1;
@@ -1031,7 +1042,9 @@ typedef struct resultData
     rVals               rVal;
 
     uint*               noResults;
+
     long long*          resultTime;
+    long long*          blockTime;		///< This can't really get used...
 } resultData;
 
 /** This is just a wrapper to be passed to a CPU thread  .
