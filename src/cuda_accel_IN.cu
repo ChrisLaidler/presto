@@ -1,7 +1,7 @@
 /** @file cuda_accel_IN.cu
  *  @brief Functions to manage normalisation and FFT'ing of input data for CUDA accelsearch
  *
- *  This contains the various functions that controle and undertake input normalisation and FFT
+ *  This contains the various functions that control and undertake input normalisation and FFT
  *  These include:
  *    Input Normalisation
  *    Input FFT
@@ -16,18 +16,18 @@
  *    Working version un-numbed
  *
  *  [0.0.02] [2017-01-28 10:25]
- *    Fixed bug in syncronouse in-mem runs (added a block on event ifftMemComp)
+ *    Fixed bug in synchronous in-mem runs (added a block on event ifftMemComp)
  *    Added some debug messages on stream synchronisation on events
  *
  *  [0.0.03] [2017-01-29 08:20]
  *    Added static functions to call both CPU and GPU input FFT's, these allow identical calls from non critical and non critcical blocks
- *    Added non cirtical behavior for CPU FFT calls
+ *    Added non critical behaviour for CPU FFT calls
  *    Added some debug messages on stream synchronisation on events, yes even more!
- *    made CPU_Norm_Spread satic
+ *    made CPU_Norm_Spread static
  *    Fixed bug in timing of CPU input
  *    
  *  [0.0.03] [2017-02-03 ]
- *    Convertedt to use of clearRval
+ *    Converted to use of clearRval
  *
  */
 
@@ -257,9 +257,9 @@ void setGenRVals(cuFFdotBatch* batch)
   int noResPerBin;
   for (int harm = 0; harm < batch->noGenHarms; harm++)
   {
-    cuHarmInfo* cHInfo		= &batch->hInfos[harm];                             	// The current harmonic we are working on
+    cuHarmInfo* cHInfo		= &batch->hInfos[harm];					// The current harmonic we are working on
     noResPerBin			= cHInfo->noResPerBin;
-    binoffset			= cHInfo->kerStart / noResPerBin;		// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
+    binoffset			= cHInfo->kerStart / noResPerBin;			// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
 
     for (int step = 0; step < batch->noSteps; step++)
     {
@@ -917,7 +917,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "searchComp");
 	      cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
 
-	      // This was taken out to allow 3 way concurnecy
+	      // This was taken out to allow 3 way concurrency
 	      //// Wait for iFFT mem copy to finish
 	      //infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "ifftMemComp");
 	      //cudaStreamWaitEvent(cStack->fftIStream, batch->stacks->ifftMemComp, 0);
