@@ -5437,15 +5437,10 @@ void readAccelDefalts(searchSpecs *sSpec)
 	else if ( strCom(str2, "1") )
 	{
 	  (*flags) |= FLAG_DBG_TEST_1;
-
-	  (*flags) |= FLAG_SS_TREAD_MEM;  // DBG
-
 	}
 	else if ( strCom(str2, "2") )
 	{
 	  (*flags) |= FLAG_DBG_TEST_2;
-
-	  (*flags) &= ~FLAG_SS_TREAD_MEM;  // DBG
 	}
 	else if ( strCom(str2, "3") )
 	{
