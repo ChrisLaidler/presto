@@ -170,7 +170,7 @@ extern "C"
 
 #define		FLAG_RET_STAGES		BIT(37)		///< Return results for all stages of summing, default is only the final result
 #define		FLAG_SEPSRCH		BIT(38)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
-#define		FLAG_SEPRVAL		BIT(39)		///< Depricated
+#define		FLAG_SEPRVAL		BIT(39)		///< Deprecated
 
 // ---- Initial candidates ----//
 
@@ -178,7 +178,11 @@ extern "C"
 #define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
 
 #define		FLAG_THREAD		BIT(42)		///< Use separate CPU threads to search for candidates in returned data
-#define		FLAG_SS_TREAD_MEM	BIT(43)		///< Creae a thread specifc section of tmp memory and copy resulst to it before "processing" them
+
+//		NO_VALUE				///< Just use the ring buffer memory in the thread
+#define		FLAG_SS_MEM_PRE		BIT(43)		///< Create a thread specific section of tmp memory and copy results to it before spawning the thread
+#define		FLAG_SS_MEM_POST	BIT(44)		///< Create a thread specific section of tmp memory and copy results to it in the thread
+#define		FLAG_SS_MEM_ALL		( FLAG_SS_MEM_PRE | FLAG_SS_MEM_POST )
 
 // ---- Optimisation ----//
 

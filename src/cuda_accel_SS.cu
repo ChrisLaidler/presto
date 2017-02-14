@@ -20,11 +20,11 @@
  *    Reorder in-mem async to slightly faster (3 way)
  *    
  *  [0.0.03] [2017-02-10]
- *    Multi batch asynch fixed finising off search
+ *    Multi batch synch fixed finishing off search
  *
  *  [0.0.03] [2017-02-12]
- *    Added the optout on the cont of canidates found
- *    Added the use of FLAG_SS_TREAD_MEM
+ *    Added the opt out on the count of candidates found
+ *    Added the use of FLAG_SS_MEM_POST and FLAG_SS_MEM_PRE
  */
 
 #include "cuda_accel_SS.h"
@@ -585,7 +585,7 @@ void* processSearchResults(void* ptr)
 
   FOLD  //  Thread memory  .
   {
-    if ( res->flags & FLAG_SS_TREAD_MEM )
+    if ( res->flags & FLAG_SS_MEM_POST )
     {
       // Allocate tmp thread specific memory
       localResults = (void*)malloc(res->resSize);
@@ -729,7 +729,7 @@ void* processSearchResults(void* ptr)
 
   FOLD  //  Thread memory  .
   {
-    if ( res->flags & FLAG_SS_TREAD_MEM )
+    if ( ( res->flags & FLAG_SS_MEM_POST ) || ( res->flags & FLAG_SS_MEM_PRE ) )
     {
       freeNull(localResults);
     }
@@ -738,7 +738,7 @@ void* processSearchResults(void* ptr)
       // Mark the pinned memory as free
       *res->outBusy = false;
     }
-}
+  }
 
   // Decrease the count number of running threads
   if ( res->flags & FLAG_THREAD )
@@ -895,7 +895,7 @@ void processBatchResults(cuFFdotBatch* batch)
       }
     }
 
-    FOLD // Counts of candidates
+    FOLD // Counts of candidates  .
     {
       int* blockCounts = (int*)((char*)thrdDat->retData + batch->cndDataSize);
 
@@ -914,8 +914,24 @@ void processBatchResults(cuFFdotBatch* batch)
 
 	infoMSG(6,6,"Found %i candidates", tSum );
 
+	FOLD  //  Thread memory  .
+	{
+	  if ( batch->flags & FLAG_SS_MEM_PRE )
+	  {
+	    // Allocate tmp thread specific memory
+	    thrdDat->retData = (void*)malloc(thrdDat->resSize);
+
+	    // Copy canidates from pinned memory to tmp thread memory
+	    memcpy(thrdDat->retData, rVal->h_outData, thrdDat->resSize);
+
+	    // Mark pinned memory as free
+	    rVal->outBusy = false;
+	  }
+	}
+
 	if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
 	{
+
 	  infoMSG(3,3,"Spawn thread");
 
 	  PROF // Profiling  .
@@ -948,7 +964,6 @@ void processBatchResults(cuFFdotBatch* batch)
 	  {
 	    NV_RANGE_POP(); // Thread
 	  }
-
 	}
 	else                              	// Just call the function  .
 	{

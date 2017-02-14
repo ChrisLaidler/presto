@@ -4916,7 +4916,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom("POWER_PRECISION", str1 ) )
       {
-	if      ( strCom("HALF", str2 ) )
+	if      ( strCom("HALF",   str2 ) )
 	{
 #if CUDA_VERSION >= 7050
 	  (*flags) |=  FLAG_POW_HALF;
@@ -5018,7 +5018,20 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom("RES_MEM", str1 ) )
       {
-	singleFlag ( flags, str1, str2, FLAG_SS_TREAD_MEM, "TMP", "RING", lineno, fName );
+	if      ( strCom("PRE",   str2 ) )
+	{
+	  (*flags) &= ~FLAG_SS_MEM_ALL;
+	  (*flags) |= FLAG_SS_MEM_PRE;
+	}
+	else if ( strCom("POST", str2 ) )
+	{
+	  (*flags) &= ~FLAG_SS_MEM_ALL;
+	  (*flags) |= FLAG_SS_MEM_POST;
+	}
+	else if ( strCom("RING", str2 ) )
+	{
+	  (*flags) &= ~FLAG_SS_MEM_ALL;
+	}
       }
 
       else if ( strCom("RESULTS", str1 ) )
@@ -5539,18 +5552,16 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
   {
     sSpec.flags		|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     sSpec.flags		|= FLAG_ITLV_ROW    ;
-    sSpec.flags         |= FLAG_CENTER      ;   // Centre and align the usable part of the planes
-    sSpec.flags         |= CU_FFT_SEP_INP   ;   // Input is small and seperate FFT plans wont take up too mutch memory
-
-    sSpec.flags         |= FLAG_SS_TREAD_MEM;   // Seperate memory for results
-
+    sSpec.flags         |= FLAG_CENTER      ;	// Centre and align the usable part of the planes
+    sSpec.flags         |= CU_FFT_SEP_INP   ;	// Input is small and seperate FFT plans wont take up too mutch memory
+    sSpec.flags         |= FLAG_SS_MEM_POST ;	// Seperate memory for results // TODO: Check for a default
 
 #ifndef DEBUG
-    sSpec.flags		|= FLAG_THREAD      ; 	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
+    sSpec.flags		|= FLAG_THREAD      ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
 #endif
 
 #if CUDA_VERSION >= 6050
-    sSpec.flags		|= FLAG_CUFFT_CB_POW; 	// CUFFT callback to calculate powers, very efficient so on by default
+    sSpec.flags		|= FLAG_CUFFT_CB_POW;	// CUFFT callback to calculate powers, very efficient so on by default
 #endif
 
 #if CUDA_VERSION >= 7050

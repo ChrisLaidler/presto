@@ -56,7 +56,7 @@ INTERLEAVE		ROW
 # D	STD			# Standard low accuracy method of choosing the half-width
 #	HIGH    		# Choose larger half-width for higher accuracy of value of z close to 0 - This may make the search a tad more sensitive
 #	MAX     		# Choose largest possible response function width - not a good idea
-RESPONSE        	STD
+RESPONSE		STD
 
 
 # Choose largest possible response function width - Not really a good idea
@@ -196,26 +196,26 @@ MUL_CHUNK		0
 
 # How to calculate powers in the standard search
 # STD_POWERS:
-#	CB      		# Use CUFFT callbacks to calculate powers. Almost always a good option!
-#	SS      		# Do the power calculations in the Sum and search step
+#	CB			# Use CUFFT callbacks to calculate powers. Almost always a good option!
+#	SS			# Do the power calculations in the Sum and search step
 # D	AUTO			# Let the application decide
 STD_POWERS 		AUTO
 
 
 # How to calculate powers in in-mem search
 # IN_MEM_POWERS:
-#	CB      		# Use a CUFFT callback with the in-mem iFFT's to calculate powers - write strait to in-mem plane - In my testing this is very slow
-#	MEM_CPY 		# Use a CUFFT callback with the in-mem iFFT's to calculate powers - write to separate powers plane, and the used asynch memory copy to move powers to in-mem plane. Uses more memory but fast
-#	KERNEL  		# Use a separate kernel to calculate powers and write to in-mem plane - slower but uses slightly less memory
+#	CB			# Use a CUFFT callback with the in-mem iFFT's to calculate powers - write strait to in-mem plane - In my testing this is very slow
+#	MEM_CPY			# Use a CUFFT callback with the in-mem iFFT's to calculate powers - write to separate powers plane, and the used asynch memory copy to move powers to in-mem plane. Uses more memory but fast
+#	KERNEL			# Use a separate kernel to calculate powers and write to in-mem plane - slower but uses slightly less memory
 # D	AUTO			# Let the application decide
 IN_MEM_POWERS		AUTO
 
 
 # If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
 # POWER_PRECISION:
-#	HALF    		# Force half precision powers - much faster a good very good option! (requires CUDA 7.5 or greater)
-#	SINGLE  		# Force single precision powers
-#	DOUBLE  		# Not yet implemented - Not sure if this is really necessary
+#	HALF			# Force half precision powers - much faster a good very good option! (requires CUDA 7.5 or greater)
+#	SINGLE			# Force single precision powers
+#	DOUBLE			# Not yet implemented - Not sure if this is really necessary
 # D	AUTO			# Let the application decide
 POWER_PRECISION		AUTO
 
@@ -240,35 +240,36 @@ SS_KER			AA
 #FLAG_TEX_INTERP		# [Deprecated]	Use texture memory & interpolation in the multiplication kernel
 
 # This dictates where to do the sigma calculations for the initial cadets
-# SIGNIFICANCE: 		# [Deprecated]
-#	CPU     		# 		Now the default
-#	GPU     		# [Deprecated]	Do the candidate sigma calculations on the GPU
+# SIGNIFICANCE:			# [Deprecated]
+#	CPU			# 		Now the default
+#	GPU			# [Deprecated]	Do the candidate sigma calculations on the GPU
 
 
 # Use separate CPU threads to process results
 # RESULTS:
-# D	THREAD  		# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
-#	SEQ     		# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
-#RESULTS   		THREAD
+# D	THREAD			# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
+#	SEQ			# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
+#RESULTS 		THREAD
 
 # Memory for CPU threads processing results
 # RES_MEM
-# D	TMP  			# Allocate temporary memory for each thread processing results
-#	RING     		# Use the ring buffer (this may require upping RESULTS_RING)
-#RES_MEM   		TMP
+#	RING			# Use the ring buffer (this may require upping )
+#	PRE			# Allocate temporary memory for each thread processing results
+#	POST			# 
+#RES_MEM 		PRE
 
 
 # The number of horizontal "slices" to break the Sum & Search kernel into
 # SS_SLICES:
-#	int     		# A number generally less than 7 and odd are "better"
-# D	0       		# Let the application decide
+#	int			# A number generally less than 7 and odd are "better"
+# D	0			# Let the application decide
 SS_SLICES		0
 
 
 # The number of values to buffer in the Sum & Search kernel (this increases register use)
 # SS_CHUNK:
-#	int     		# A number <= 8
-# D	0       		# Let the application decide
+#	int			# A number <= 8
+# D	0			# Let the application decide
 SS_CHUNK		0
 
 
@@ -282,6 +283,8 @@ SS_CHUNK		0
 #	32768
 #	65536
 #	131072
+#	262144
+#	524288
 SS_INMEM_SZ 		0
 
 
@@ -321,7 +324,7 @@ OPT_R_RES		16
 # OPT_NORM
 # D	MEDIAN  		# Use 1D median power for normalisation
 #	LOCAVE  		# Use Local 3D power average for normalisation
-OPT_NORM 		MEDIAN
+OPT_NORM		MEDIAN
 
 
 # FLAG_OPT_BEST:		# Report the harmonic with the highest sigma value rather than the number of harmonic found during the initial search, this generally wont hurt
@@ -350,7 +353,7 @@ OPT_NELDER_MEAD_REFINE	1
 
 # Optimisation location finding step down
 # D	10			#
-optPlnScale             10
+optPlnScale		10
 
 # Use dynamic half-width in the optimisation planes, this is on by default
 FLAG_OPT_DYN_HW		1
@@ -362,7 +365,7 @@ FLAG_OPT_DYN_HW		1
 optPlnDim 1 128			# The number of elements in the 1st optimisation plane
 optPlnDim 2 32   		# The number of elements in the 2nd optimisation plane
 optPlnDim 3 16  		# The number of elements in the 3rd optimisation plane
-optPlnDim 4 16   		# The number of elements in the 4th optimisation plane
+optPlnDim 4 16			# The number of elements in the 4th optimisation plane
 optPlnDim 5 0   		# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
 optPlnDim 6 0   		# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
 optPlnDim 7 0   		# The number of elements in the 7th optimisation plane (this is a double precision plane)
