@@ -84,7 +84,7 @@ KER_FFT_PRECISION 	SINGLE
 # Normalise input in the CPU or the GPU
 # INP_NORM:
 # 	CPU     		# Do the input Normalisation on the CPU - This is usually the best option, the task is short enough that the CPU may as well do it (unless Z-Max is very small  ( < ~10 )
-#	GPU     		# Do the input Normalisation on the GPU using an in-place Shared Memory sort 
+#	GPU     		# Do the input Normalisation on the GPU using an in-place Shared Memory sort
 #	GPU_SM     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort
 #	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort - Minimise SM use
 #	GPU_OS			# DEBUG: Do the input Normalisation on the GPU using a custom novel order statistic algorithm
@@ -249,14 +249,13 @@ SS_KER			AA
 # RESULTS:
 # D	THREAD			# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
 #	SEQ			# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
-#RESULTS 		THREAD
+#RESULTS 		SEQ
 
 # Memory for CPU threads processing results
 # RES_MEM
-#	RING			# Use the ring buffer (this may require upping )
-#	PRE			# Allocate temporary memory for each thread processing results
-#	POST			# 
-#RES_MEM 		PRE
+# D	RING			# Use the ring buffer (this may require upping the number of elements in the ring buffer)
+#	PRE			# Allocate temporary memory for each thread processing results - The allocation can slow things down but if there is lots of RFI this can allow the thread to run longer
+#RES_MEM 		RING
 
 
 # The number of horizontal "slices" to break the Sum & Search kernel into
@@ -305,9 +304,9 @@ CAND_STORAGE		ARR
 ######################### Optimisation ###########################
 
 # OPT_METHOUD
-# D	PLANE			# 
-#	SWARM			# 
-#	NM			# 
+# D	PLANE			#
+#	SWARM			#
+#	NM			#
 OPT_METHOUD		PLANE
 
 # OPT_Z_RATIO
@@ -317,7 +316,7 @@ OPT_Z_RATIO		4
 
 # OPT_R_RES [Deprecated]
 #	float     		#
-# D	16			# 
+# D	16			#
 OPT_R_RES		16
 
 # How to normalise the powers of the optimised candidates
