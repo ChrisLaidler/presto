@@ -56,7 +56,7 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-#define NVVP			// Uncomment to allow CUDA profiling
+//#define NVVP			// Uncomment to allow CUDA profiling
 
 //     Normalisation
 #define 		WITH_NORM_GPU
