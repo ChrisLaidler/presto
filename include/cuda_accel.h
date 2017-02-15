@@ -223,7 +223,8 @@ extern "C"
 #define     CU_CANDSMAL         	BIT(9)          ///< A compressed candidate      candSml
 #define     CU_CANDBASC         	BIT(10)         ///< A compressed candidate      accelcandBasic
 #define     CU_CANDFULL         	BIT(11)         ///< Full detailed candidate     cand
-#define     CU_TYPE_ALLL        	(CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
+#define     CU_POWERH_S         	BIT(12)         ///< A value and a z bin         candHs
+#define     CU_TYPE_ALLL        	(CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_POWERH_S | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
 
 #define     CU_STR_ARR          	BIT(20)         ///< Candidates are stored in an array (requires more memory)
 #define     CU_STR_PLN          	BIT(21)
@@ -366,6 +367,14 @@ typedef struct fcomplexcu
     float           r;                  ///< Real Component
     float           i;                  ///< Imaginary Component
 } fcomplexcu;
+
+///< Basic accel search candidate to be used in CUDA kernels
+///< Note this may not be the best choice on a GPU as it has a bad size
+typedef struct candHs
+{
+    half            value;              ///< This can be summed power or the sigma there of
+    short           z;                  ///< Fourier f-dot of first harmonic
+} candHs;
 
 ///< Basic accel search candidate to be used in CUDA kernels
 ///< Note this may not be the best choice on a GPU as it has a bad size

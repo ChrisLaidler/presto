@@ -1674,6 +1674,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	infoMSG(7, 7, "SAS will return candPZs ( a float and short)"); // TODO:
 	retSZ = sizeof(candPZs);	// I found that this auto aligns to 8 bytes, which is good for alignment bad(ish) for size
       }
+      if      (kernel->retType & CU_POWERH_S  )
+      {
+	infoMSG(7, 7, "SAS will return candHs ( a half and short)");
+	retSZ = sizeof(candHs);
+      }
       else if (kernel->retType & CU_CMPLXF    )
       {
 	retSZ = sizeof(fcomplexcu);
