@@ -12,20 +12,24 @@
  *
  *  [0.0.01] [2017-02-12]
  *     Added per block counts of canidates found
+ *
+ *  [0.0.02] [2017-02-15]
+ *     Fixed an inexplicable bug with the autonomic add
  */
- 
- 
+
+
  #include "cuda_accel_SS.h"
 
-#define SS31_X           16                    // X Thread Block
-#define SS31_Y           8                     // Y Thread Block
-#define SS31BS           (SS31_X*SS31_Y)
+#define SS31_X		16			// X Thread Block
+#define SS31_Y		8			// Y Thread Block
+#define SS31BS		(SS31_X*SS31_Y)
 
 
 __device__ inline int getOffset(const int stage, const int step, const int strd1, const int oStride, const int sid)
 {
-  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 1
-  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*ALEN + sid ;		// 2
+  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*ALEN + sid ;		// 1 - This is the orrigional methoud that "packs" the steps into contiguous sections
+  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 2
+
 }
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
@@ -56,8 +60,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     {
       cnt = 0;
     }
-
-    __syncthreads();
   }
 
   if ( sid < width )
@@ -69,7 +71,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     candPZs         candLists	[noStages][noSteps];
     float           powers	[noSteps][cunkSize];			///< registers to hold values to increase mem cache hits
     T*              array	[noHarms];				///< A pointer array
-
 
     FOLD // Set the values of the pointer array  .
     {
@@ -95,12 +96,10 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
 	for ( int stage = 0; stage < noStages; stage++ )
 	{
-	  for ( int step = 0; step < noSteps; step++)               // Loop over steps  .
+	  for ( int step = 0; step < noSteps; step++)			// Loop over steps  .
 	  {
 	    candLists[stage][step].value = 0 ;
-            d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + sid) ].value = 0;
 	    d_cands[getOffset(stage, step, xStride, oStride, sid) ].value = 0;
-
 	  }
 	}
       }
@@ -112,13 +111,13 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
       short   y0      = lDepth*blockIdx.y;
       short   y1      = MIN(y0+lDepth, zeroHeight);
 
-      for( short y = y0; y < y1 ; y += cunkSize )                   // loop over chunks  .
+      for( short y = y0; y < y1 ; y += cunkSize )			// loop over chunks  .
       {
 	FOLD // Initialise powers for each section column to 0  .
 	{
-	  for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )          // Loop over powers  .
+	  for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )		// Loop over powers  .
 	  {
-	    for ( int step = 0; step < noSteps; step++)             // Loop over steps  .
+	    for ( int step = 0; step < noSteps; step++ )		// Loop over steps  .
 	    {
 	      powers[step][yPlus]       = 0 ;
 	    }
@@ -127,14 +126,14 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
 	FOLD // Loop over stages, sum and search  .
 	{
-	  for ( int stage = 0 ; stage < noStages; stage++)          // Loop over stages  .
+	  for ( int stage = 0 ; stage < noStages; stage++)		// Loop over stages  .
 	  {
 	    short start = STAGE[stage][0] ;
 	    short end   = STAGE[stage][1] ;
 
 	    FOLD // Create a section of summed powers one for each step  .
 	    {
-	      for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
+	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (batch) in this stage  .
 	      {
 		//float*  t     = powersArr[harm];
 		int     ix1   = inds[harm] ;
@@ -142,18 +141,18 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 		short   iyP   = -1;
 		float   pow[noSteps];
 
-		for( short yPlus = 0; yPlus < cunkSize; yPlus++ )   // Loop over the chunk  .
+		for( short yPlus = 0; yPlus < cunkSize; yPlus++ )	// Loop over the chunk  .
 		{
-		  short trm     = y + yPlus ;                       ///< True Y index in plane
+		  short trm     = y + yPlus ;				///< True Y index in plane
 		  short iy1     = YINDS[ (zeroHeight+INDS_BUFF)*harm + trm ];
 		  //  OR
 		  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
 		  int iy2;
 
-		  if ( (iyP != iy1) )                               // Only read power if it is not the same as the previous  .
+		  if ( (iyP != iy1) )					// Only read power if it is not the same as the previous  .
 		  {
-		    for ( int step = 0; step < noSteps; step++)     // Loop over steps  .
+		    for ( int step = 0; step < noSteps; step++)		// Loop over steps  .
 		    {
 		      FOLD // Calculate index  .
 		      {
@@ -181,7 +180,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
 		  FOLD // Accumulate powers  .
 		  {
-		    for ( short step = 0; step < noSteps; step++)   // Loop over steps  .
+		    for ( short step = 0; step < noSteps; step++)	// Loop over steps  .
 		    {
 		      powers[step][yPlus] += pow[step];
 		    }
@@ -192,13 +191,13 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
 	    FOLD // Search set of powers  .
 	    {
-	      for ( short step = 0; step < noSteps; step++)         // Loop over steps  .
+	      for ( short step = 0; step < noSteps; step++)		// Loop over steps  .
 	      {
 		float pow;
 		float maxP = POWERCUT_STAGE[stage];
 		short maxI;
 
-		for( short yPlus = 0; yPlus < cunkSize ; yPlus++ )  // Loop over section  .
+		for( short yPlus = 0; yPlus < cunkSize ; yPlus++ )	// Loop over section  .
 		{
 		  pow = powers[step][yPlus];
 
@@ -234,14 +233,14 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     {
       int xStride = noSteps*oStride ;
 
-      for ( int step = 0; step < noSteps; step++)             	    // Loop over steps  .
+      for ( int step = 0; step < noSteps; step++)			// Loop over steps  .
       {
-	for ( int stage = 0 ; stage < noStages; stage++)      	    // Loop over stages  .
+	for ( int stage = 0 ; stage < noStages; stage++)		// Loop over stages  .
 	{
 	  if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
 	  {
 	    // Write to DRAM
-	    d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + (step*ALEN + sid) ] = candLists[stage][step];
+	    d_cands[getOffset(stage, step, xStride, oStride, sid) ] = candLists[stage][step];
 	    conts++;
 	  }
 	}
@@ -249,15 +248,20 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     }
   }
 
-  FOLD // Counts  .
+  FOLD // Counts using SM  .
   {
-    // Increment block specific count
-    atomicAdd(&cnt, conts);
+    // NOTE: Could do an inital warp level recuse here but not really nessesary
 
-    __syncthreads();
+    __syncthreads();			// Make sure cnt has been zeroed
 
-    // Write count back to main memory
-    if ( tidx == 0 )
+    if ( conts)				// Increment block specific counts in SM  .
+    {
+      atomicAdd(&cnt, conts);
+    }
+
+    __syncthreads();			// Make sure autonomic adds are viable
+
+    if ( (tidx == 0) && cnt )		// Write SM count back to main memory  .
     {
       d_counts[bidx] = cnt;
     }

@@ -1,5 +1,5 @@
 /** @file cuda_accel_SS.cu
- *  @brief The implimentation fo the in-memory sum and search kernel
+ *  @brief The implementation of the in-memory sum and search kernel
  *
  *  @author Chris Laidler
  *  @bug No known bugs.
@@ -11,29 +11,32 @@
  *    Working version un-numbed
  *
  *  [0.0.01] [2017-02-12]
- *     Added per block counts of canidates found
+ *     Added per block counts of candidates found
+ *
+ *  [0.0.02] [2017-02-15]
+ *     Fixed an inexplicable bug with the autonomic add
  */
- 
+
  #include "cuda_accel_SS.h"
 
-#define SSIM_X           16                    // X Thread Block
-#define SSIM_Y           16                    // Y Thread Block
-#define SSIMBS           (SSIM_X*SSIM_Y)
+#define SSIM_X		16						///< X Thread Block
+#define SSIM_Y		16						///< Y Thread Block
+#define SSIMBS		(SSIM_X*SSIM_Y)
 
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
 __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, int start, int end, candPZs* d_cands, int* d_counts )
 {
-  const int bidx	= blockIdx.y * gridDim.x  +  blockIdx.x;	///< Block index
-  const int tidx	= threadIdx.y * SSIM_X  +  threadIdx.x;		///< Thread index within in the block
-  const int sid		= blockIdx.x  * SSIMBS  +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
-  const int zeroHeight	= HEIGHT_STAGE[0];
+  const int bidx	= blockIdx.y  * gridDim.x  +  blockIdx.x;	///< Block index
+  const int tidx	= threadIdx.y * SSIM_X     +  threadIdx.x;	///< Thread index within in the block
+  const int sid		= blockIdx.x  * SSIMBS     + tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
+  const int zeroHeight	= HEIGHT_STAGE[0];				///< The height of the fundamental plane
 
-  int		inds      [noHarms];
-  candPZs	candLists [noStages];
+  int		inds      [noHarms];					///< x-indices of for each harmonic
+  candPZs	candLists [noStages];					///< Devoice memory to store results in
   float		powers    [cunkSize];					///< registers to hold values to increase mem cache hits
 
-  int		idx   = start + sid ;
-  int		len   = end - start;
+  int		idx   = start + sid ;					///< The global index of the thread in the plane
+  int		len   = end - start;					///< The total number of columns being handled by this kernel
   uint 		conts = 0;						///< Per thread count of candidates found
   __shared__ uint  cnt;							///< Block count of candidates
 
@@ -43,8 +46,6 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
     {
       cnt = 0;
     }
-
-    __syncthreads();
   }
 
   if ( sid < len )
@@ -181,15 +182,20 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
     }
   }
 
-  FOLD // Counts  .
+  FOLD // Counts using SM  .
   {
-    // Increment block specific count
-    atomicAdd(&cnt,conts);
+    // NOTE: Could do an inital warp level recuse here but not really nessesary
 
-    __syncthreads();
+    __syncthreads();			// Make sure cnt has been zeroed
 
-    // Write count back to main memory
-    if ( tidx == 0 )
+    if ( conts)				// Increment block specific counts in SM  .
+    {
+      atomicAdd(&cnt, conts);
+    }
+
+    __syncthreads();			// Make sure autonomic adds are viable
+
+    if ( (tidx == 0) && cnt )		// Write SM count back to main memory  .
     {
       d_counts[bidx] = cnt;
     }
@@ -228,10 +234,11 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
   int start     = rVal->drlo * batch->cuSrch->sSpec->noResPerBin ;
   int end       = start + rVal->numrs;
   int noBins    = end - start;
+  int* d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
 
   infoMSG(6,6,"%i harms summed - r from %i to %i (%i)\n", noHarms, start, end, noBins);
 
-  infoMSG(7,7,"Saving results in %p", batch->d_outData1);
+  infoMSG(7,7,"Saving results in %p  counts in %p", batch->d_outData1, d_cnts);
 
   dimBlock.x    = SSIM_X;
   dimBlock.y    = SSIM_Y;
@@ -246,8 +253,6 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
     fprintf(stderr, "ERROR: Too many blocks in sum and search kernel, try reducing SS_INMEM_SZ or SS_SLICES %i > %i. (in function %s in %s )\n", rVal->noBlocks, MAX_SAS_BLKS, __FUNCTION__, __FILE__);
     exit(EXIT_FAILURE);
   }
-
-  int* d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
 
   switch ( batch->ssChunk )
   {
