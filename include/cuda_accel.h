@@ -56,7 +56,7 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-//#define NVVP			// Uncomment to allow CUDA profiling
+#define NVVP			// Uncomment to allow CUDA profiling
 
 //     Normalisation
 #define 		WITH_NORM_GPU
@@ -178,11 +178,7 @@ extern "C"
 #define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
 
 #define		FLAG_THREAD		BIT(42)		///< Use separate CPU threads to search for candidates in returned data
-
-//		NO_VALUE				///< Just use the ring buffer memory in the thread
-#define		FLAG_SS_MEM_PRE		BIT(43)		///< Create a thread specific section of tmp memory and copy results to it before spawning the thread
-#define		FLAG_SS_MEM_POST	BIT(44)		///< Create a thread specific section of tmp memory and copy results to it in the thread
-#define		FLAG_SS_MEM_ALL		( FLAG_SS_MEM_PRE | FLAG_SS_MEM_POST )
+#define		FLAG_SS_MEM_PRE		BIT(43)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
 
 // ---- Optimisation ----//
 

@@ -935,10 +935,10 @@ int main(int argc, char *argv[])
 #ifdef CUDA
     if (cuSrch)
     {
+#ifdef CBL
 
       TIME // Timing  .
       {
-#ifdef CBL
 	printf("\n*************************************************************************************************\n                            Timing\n*************************************************************************************************\n");
 
 	printf("\n");
@@ -986,7 +986,6 @@ int main(int argc, char *argv[])
 	slog.csvEndLine();
 
 	printf("\n\n");
-#endif
       }
 
       PROF // Profiling  .
@@ -1021,7 +1020,6 @@ int main(int argc, char *argv[])
 	    slog.csvEndLine();
 	    printf("\n\n");
 	  }
-
 
 	  printf("\n --== Batches ==-- \n");
 
@@ -1061,6 +1059,7 @@ int main(int argc, char *argv[])
 
 	    sprintf(heads[COMP_GEN_STR],		"iCand storage");
 
+	    sprintf(heads[COMP_GEN_BLOCK],		"iCan Block");
 
 	    printf("\t\t");
 	    for ( int i = 0; i < COMP_GEN_END; i++)
@@ -1130,6 +1129,7 @@ int main(int argc, char *argv[])
 	  printf("\n*************************************************************************************************\n\n");
 	}
       }
+#endif
     }
 #endif
   }

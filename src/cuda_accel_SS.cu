@@ -18,13 +18,13 @@
  *
  *  [0.0.03] [2017-02-05]
  *    Reorder in-mem async to slightly faster (3 way)
- *    
+ *
  *  [0.0.03] [2017-02-10]
  *    Multi batch synch fixed finishing off search
  *
  *  [0.0.03] [2017-02-12]
  *    Added the opt out on the count of candidates found
- *    Added the use of FLAG_SS_MEM_POST and FLAG_SS_MEM_PRE
+ *    Added the use of FLAG_SS_MEM
  */
 
 #include "cuda_accel_SS.h"
@@ -516,7 +516,7 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
 	    else
 	    {
 	      if ( candidate->sig == 0 )
-		(*res->noResults)++;
+	        (*res->noResults)++;
 
 	      candidate->sig      = sig;
 	      candidate->power    = poww;
@@ -580,21 +580,6 @@ void* processSearchResults(void* ptr)
     if ( res->flags & FLAG_PROF )
     {
       gettimeofday(&start, NULL); // But can time time processing of the results so start the clock...
-    }
-  }
-
-  FOLD  //  Thread memory  .
-  {
-    if ( res->flags & FLAG_SS_MEM_POST )
-    {
-      // Allocate tmp thread specific memory
-      localResults = (void*)malloc(res->resSize);
-
-      // Copy canidates from pinned memory to tmp thread memory
-      memcpy(localResults, res->retData, res->resSize);
-
-      // Mark pinned memory as free
-      *res->outBusy = false;
     }
   }
 
@@ -729,7 +714,7 @@ void* processSearchResults(void* ptr)
 
   FOLD  //  Thread memory  .
   {
-    if ( ( res->flags & FLAG_SS_MEM_POST ) || ( res->flags & FLAG_SS_MEM_PRE ) )
+    if ( res->flags & FLAG_SS_MEM_PRE )
     {
       freeNull(localResults);
     }
@@ -907,10 +892,10 @@ void processBatchResults(cuFFdotBatch* batch)
 
     FOLD // ADD candidates to global list potently in a separate thread  .
     {
-      if ( tSum)	// Only check results if there canidates....
+      if ( tSum)	// Only check results if there candidates....
       {
-	// I found the overhead of spawining threads became significant when few harmonics (1) are summed
-	// This skips all canidate overhead if no canidates were found
+	// I found the overhead of spawning threads became significant when few harmonics (1) are summed
+	// This skips all candidate overhead if no candidates were found
 
 	infoMSG(6,6,"Found %i candidates", tSum );
 
@@ -918,10 +903,10 @@ void processBatchResults(cuFFdotBatch* batch)
 	{
 	  if ( batch->flags & FLAG_SS_MEM_PRE )
 	  {
-	    // Allocate tmp thread specific memory
+	    // Allocate temporary thread specific memory
 	    thrdDat->retData = (void*)malloc(thrdDat->resSize);
 
-	    // Copy canidates from pinned memory to tmp thread memory
+	    // Copy candidates from pinned memory to temporary thread memory
 	    memcpy(thrdDat->retData, rVal->h_outData, thrdDat->resSize);
 
 	    // Mark pinned memory as free
@@ -931,7 +916,6 @@ void processBatchResults(cuFFdotBatch* batch)
 
 	if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
 	{
-
 	  infoMSG(3,3,"Spawn thread");
 
 	  PROF // Profiling  .
@@ -984,7 +968,7 @@ void processBatchResults(cuFFdotBatch* batch)
       }
       else
       {
-	// No caidates so mark memory as free
+	// No candidates so mark memory as free
 	rVal->outBusy = false;
       }
 

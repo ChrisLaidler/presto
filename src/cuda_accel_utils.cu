@@ -46,7 +46,7 @@
  *
  *  [0.0.03] [2017-02-05]
  *    Reorder in-mem async to slightly faster (3 way)
- *    
+ *
  *  [0.0.03] [2017-02-10]
  *    Multi batch asynch fixed finising off search
  */
@@ -332,7 +332,8 @@ void clearRval( rVals* rVal)
 
 void clearRvals(cuFFdotBatch* batch)
 {
-  infoMSG(6,6,"Clearing array of r step information."); // TODO fix
+  infoMSG(6,6,"Clearing array of r step information.");
+
   for ( int i = 0; i < batch->noSteps*batch->noGenHarms*batch->noRArryas; i++ )
   {
     clearRval(&batch->rArr1[i]);
@@ -1670,6 +1671,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       if      (kernel->retType & CU_POWERZ_S  )		// Default
       {
+	infoMSG(7, 7, "SAS will return candPZs ( a float and short)"); // TODO:
 	retSZ = sizeof(candPZs);	// I found that this auto aligns to 8 bytes, which is good for alignment bad(ish) for size
       }
       else if (kernel->retType & CU_CMPLXF    )
@@ -1746,7 +1748,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
 	{
 	  kernel->strideOut = kernel->accelLen;
-
 	}
 	else if (  kernel->retType & CU_STR_PLN  )
 	{
@@ -5018,20 +5019,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom("RES_MEM", str1 ) )
       {
-	if      ( strCom("PRE",   str2 ) )
-	{
-	  (*flags) &= ~FLAG_SS_MEM_ALL;
-	  (*flags) |= FLAG_SS_MEM_PRE;
-	}
-	else if ( strCom("POST", str2 ) )
-	{
-	  (*flags) &= ~FLAG_SS_MEM_ALL;
-	  (*flags) |= FLAG_SS_MEM_POST;
-	}
-	else if ( strCom("RING", str2 ) )
-	{
-	  (*flags) &= ~FLAG_SS_MEM_ALL;
-	}
+	singleFlag ( flags, str1, str2, FLAG_SS_MEM_PRE, "PRE", "RING", lineno, fName );
       }
 
       else if ( strCom("RESULTS", str1 ) )
@@ -5553,9 +5541,9 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags		|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     sSpec.flags		|= FLAG_ITLV_ROW    ;
     sSpec.flags         |= FLAG_CENTER      ;	// Centre and align the usable part of the planes
-    sSpec.flags         |= CU_FFT_SEP_INP   ;	// Input is small and seperate FFT plans wont take up too mutch memory
-    sSpec.flags         |= FLAG_SS_MEM_POST ;	// Seperate memory for results // TODO: Check for a default
+    sSpec.flags         |= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
+    // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_SS_MEM_PRE
 #ifndef DEBUG
     sSpec.flags		|= FLAG_THREAD      ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
 #endif
@@ -5596,8 +5584,8 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.sigma		= cmd->sigma;
     sSpec.pWidth	= cmd->width;
 
-    sSpec.inputNormzBound = -1;			// Default to not uses, only used if specifyed in the defaults file
-    sSpec.inputFFFTzBound = -1;			// Default to not uses, only used if specifyed in the defaults file
+    sSpec.inputNormzBound = -1;			// Default to not uses, only used if specified in the defaults file
+    sSpec.inputFFFTzBound = -1;			// Default to not uses, only used if specified in the defaults file
 
     sSpec.optPlnDim[0]	= 40;
     sSpec.optPlnDim[1]	= 20;
@@ -7119,7 +7107,6 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
   {
     char waitMsg[1024];
     int ite = 0;
-    struct timeval start, end;
 
     PROF // Profiling  .
     {
