@@ -11,10 +11,10 @@ WITH_CUDA  = yes
 WITHOMP    = yes
 WITHCBL    = yes
 
-# CUDA_ARCH needs to be set to the artitech of the device(s) you wnat to run the search on
-# CUDA_ARCH should be a space seperated list consisting to numbers ie "30 50" 
+# CUDA_ARCH needs to be set to the architecture of the device(s) you want to run the search on
+# CUDA_ARCH should be a space separated list consisting to numbers ie "30 50"
 # Where the numbers are major minor and can be found by running deviceQuery
-# You can use multiple values, just uncomment the specific lines below, or add youre own
+# You can use multiple values, just uncomment the specific lines below, or add you’re own
 CUDA_ARCH  =
 #CUDA_ARCH += 20
 #CUDA_ARCH += 30
@@ -143,7 +143,7 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
-  
+
   ifeq ($(CUDA_ARCH),)
   	$(info )
   	$(info Please specify CUDA_ARCH in the makefile if compiling with CUDA  )
@@ -153,15 +153,15 @@ ifeq ($(WITH_CUDA),yes)
   endif
 endif
 #
-# Very recent Intel CPUs might see a few percent speedup using -mavx
+# Very recent Intel CPUs might see a few percent speed-up using -mavx
 BASEFLAGS 			= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -g -Wall -W -fPIC
 #	 -march=native
 #       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
 
 # Warnings
 CXXWARN			 	= -Wno-unused-result
-# Other Warnings  
-CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function 
+# Other Warnings
+CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
 
 CWARN				  = -Wno-implicit-function-declaration
 
@@ -209,7 +209,7 @@ OPT_FLAGS =
 ifeq ($(DEBUG),1)
   $(info Compiling in debug mode)
 
-  OPT_FLAGS     += -O0 -ggdb  -DDEBUG
+  OPT_FLAGS     += -O0 -ggdb -DDEBUG
 
   NVCCFLAGS     += -g -G -O0 -DDEBUG
   NVCLFLAGS     += -g -G -O0 -DDEBUG
@@ -227,7 +227,7 @@ else
   # Additional CPU optimisations
   OPT_FLAGS		+= -unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32
-  
+
   # vectorisation output
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
 
@@ -296,9 +296,9 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
-  
+
   CUDA_VER    = $(shell $(NVCC) -V | grep release | cut -f 5 -d ' ' | tr -d ,)
-  
+
   $(info • Compileing with CUDA version $(CUDA_VER))
 
   NVCC_SRCS  	= $(wildcard *.cu)
@@ -320,7 +320,7 @@ ifeq ($(WITH_CUDA),yes)
 
   GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/getAccelLen$(POSTFIX) # $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
-	# Check for CUDA 6.5 for CUFFT callbacks 
+	# Check for CUDA 6.5 for CUFFT callbacks
 	ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
   	CUDALIBS  	+= -lcufft_static -lculibos
 	else
@@ -491,7 +491,7 @@ $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearc
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),test_GPUaccel${POSTFIX})
 
 
-$(BINPATH)/getAccelLen$(POSTFIX): $(OBJDIR)accel_utils.o $(OBJDIR)getAccelLen.o $(NVCC_OBS) $(libpresto) 
+$(BINPATH)/getAccelLen$(POSTFIX): $(OBJDIR)accel_utils.o $(OBJDIR)getAccelLen.o $(NVCC_OBS) $(libpresto)
 	@echo ""
 	@echo "Linking getAccelLen"${POSTFIX}
 	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
@@ -649,7 +649,7 @@ $(OBJDIR)%.o: %.c
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
 	$(CPP) $(CXXFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
-	
+
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)
 	$(FC) $(FFLAGS) -o $@ -c $<
@@ -704,7 +704,7 @@ cleanMULT:
 	rm -rf build/*/cuda_accel_MU_31.cu.o
 	rm -rf build/*/cuda_response.cu.o
 
-	
+
 cleanGPU: cudaclean
 	rm -f ../lib/libpresto*
 	rm -f ../lib/libcuaccel*
@@ -721,7 +721,7 @@ cleancubasics:
 	rm -f build/*/cuda_utils.cu.cu.oF
 	rm -f build/*/accelsearch.o
 	rm -f build/*/test_GPUaccel.o
-	
+
 cudaclean:
 	rm -f build/*/*cu.o
 	rm -f build/*/cuda*.o
