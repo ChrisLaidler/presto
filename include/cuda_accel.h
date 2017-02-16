@@ -156,29 +156,25 @@ extern "C"
 
 //---- Sum and search ----//
 
-//#define		FLAG_SAS_TEX		BIT(30)		///< Use texture memory to access the d-∂d planes during sum and search ( does not imply interpolation method) - May give advantage on pre-Fermi generation which we don't really care about
-//#define		FLAG_TEX_INTERP		BIT(31)		///< Use liner interpolation in with texture memory - This requires - FLAG_CUFFT_CB_OUT and FLAG_SAS_TEX
-#define		FLAG_SIG_GPU		BIT(32)		///< Do sigma calculations on the GPU - Generally this can be don on the CPU while the GPU works
-
-#define		FLAG_SS_CPU		BIT(33)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
-#define		FLAG_SS_00		BIT(34)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
-#define		FLAG_SS_10		BIT(35)		///< This is the standard sum and search kernel, there were others but they were deprecated
-#define		FLAG_SS_INMEM		BIT(36)		///< Do an in memory GPU search
+#define		FLAG_SS_CPU		BIT(30)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
+#define		FLAG_SS_00		BIT(31)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
+#define		FLAG_SS_10		BIT(32)		///< This is the standard sum and search kernel, there were others but they were deprecated
+#define		FLAG_SS_INMEM		BIT(33)		///< Do an in memory GPU search
 #define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
 #define		FLAG_SS_KERS		( FLAG_SS_STG | FLAG_SS_INMEM)
 #define		FLAG_SS_ALL		( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define		FLAG_RET_STAGES		BIT(37)		///< Return results for all stages of summing, default is only the final result
-#define		FLAG_SEPSRCH		BIT(38)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
-#define		FLAG_SEPRVAL		BIT(39)		///< Deprecated
+#define		FLAG_RET_STAGES		BIT(35)		///< Return results for all stages of summing, default is only the final result
+#define		FLAG_SEPSRCH		BIT(36)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
+#define		FLAG_SEPRVAL		BIT(37)		///< Deprecated
 
 // ---- Initial candidates ----//
 
 #define		FLAG_STORE_ALL		BIT(40)		///< Store candidates for all stages of summing, default is only the final result
 #define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
 
-#define		FLAG_THREAD		BIT(42)		///< Use separate CPU threads to search for candidates in returned data
-#define		FLAG_SS_MEM_PRE		BIT(43)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
+#define		FLAG_CAND_THREAD	BIT(42)		///< Use separate CPU threads to search for candidates in returned data
+#define		FLAG_CAND_MEM_PRE	BIT(43)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
 
 // ---- Optimisation ----//
 
@@ -190,6 +186,7 @@ extern "C"
 #define		FLAG_OPT_BEST		BIT(48)		///< Use local average normalisation instead of median in the optimisation
 #define		FLAG_OPT_DYN_HW		BIT(49)		///< Use Dynamic half-width in optimisation
 #define		FLAG_OPT_NM_REFINE	BIT(50)		///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_OPT_THREAD		BIT(51)		///< Use separate CPU threads for CPU component of optimisation
 
 // ---- Debug ----//
 

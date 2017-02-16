@@ -219,12 +219,8 @@ IN_MEM_POWERS		AUTO
 # D	AUTO			# Let the application decide
 POWER_PRECISION		AUTO
 
-########################### Return #############################
 
-# FLAG_RET_ARR  		# [Deprecated]
-# FLAG_RET_PLN  		# [Deprecated]
-
-########################### Search #############################
+######################## Sum & Search ##########################
 
 # The type of Sum & Search to perform
 # SS_KER:
@@ -238,24 +234,6 @@ SS_KER			AA
 
 #FLAG_SAS_TEX   		# [Deprecated]	Use texture memory in the sum and search kernel
 #FLAG_TEX_INTERP		# [Deprecated]	Use texture memory & interpolation in the multiplication kernel
-
-# This dictates where to do the sigma calculations for the initial cadets
-# SIGNIFICANCE:			# [Deprecated]
-#	CPU			# 		Now the default
-#	GPU			# [Deprecated]	Do the candidate sigma calculations on the GPU
-
-
-# Use separate CPU threads to process results
-# RESULTS:
-# D	THREAD			# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
-#	SEQ			# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
-#RESULTS 		SEQ
-
-# Memory for CPU threads processing results
-# RES_MEM
-# D	RING			# Use the ring buffer (this may require upping the number of elements in the ring buffer)
-#	PRE			# Allocate temporary memory for each thread processing results - The allocation can slow things down but if there is lots of RFI this can allow the thread to run longer
-#RES_MEM 		RING
 
 
 # The number of horizontal "slices" to break the Sum & Search kernel into
@@ -287,7 +265,22 @@ SS_CHUNK		0
 SS_INMEM_SZ 		0
 
 
-##################### Initial Candidates #######################
+
+################### Process initial candidates #################
+
+# Use separate CPU threads to process results
+# CAND_PROCESS:
+# D	THREAD			# Do per step initial candidate sigma calculations in a separate CPU thread - this is generally a good idea
+#	SEQ			# Force CPU sequential for sigma calculations - some times the CPU just inst fast enough, so not really a good idea =/   sorry CPU
+#CAND_PROCESS		SEQ
+
+
+# Memory for CPU threads processing results
+# CAND_MEM:
+# D	RING			# Use the ring buffer (this may require upping the number of elements in the ring buffer)
+#	PRE			# Allocate temporary memory for each thread processing results - The allocation can slow things down but if there is lots of RFI this can allow the thread to run longer
+#CAND_MEM		PRE
+
 
 #FLAG_STORE_ALL 		# [Not yet implemented]	Don't fiddle with this this is for future use
 #FLAG_STORE_EXP 		# [Not yet implemented]	Don't fiddle with this this is for future use
@@ -347,6 +340,13 @@ OPT_MIN_REP_HARMS	1
 OPT_NELDER_MEAD_REFINE	1
 
 
+# Use separate CPU threads to process results
+# OPT_PROCESS:
+# D	THREAD			# Do CPU component of optimisation in a separate CPU thread - This is generally a good idea
+#	SEQ			# Do CPU component of optimisation in a the same CPU thread - Not a good idea
+#OPT_PROCESS		SEQ
+
+
 
 #### The rest are optimisation plane parameters ####
 
@@ -356,7 +356,6 @@ optPlnScale		10
 
 # Use dynamic half-width in the optimisation planes, this is on by default
 FLAG_OPT_DYN_HW		1
-
 
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value

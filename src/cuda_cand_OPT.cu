@@ -1,3 +1,21 @@
+/** @file cuda_cand_OPT.cu
+ *  @brief Utility functions and kernels for GPU optimisation
+ *
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.02] [2017-02-16]
+ *    Separated candidate and optimisation CPU threading
+ *
+ */
+
 #include <curand.h>
 #include <math.h>		// log
 #include <curand_kernel.h>
@@ -1978,11 +1996,6 @@ int prepInput(initCand* cand, cuOptCand* pln, double sz)
 template<typename T>
 int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int plt = 0, int nn = 0, int lv = 0 )
 {
-  PROF // Profiling  .
-  {
-    NV_RANGE_PUSH("Simplex");
-  }
-
   infoMSG(3,3,"Simplex refine position - lvl %i  size %f by %f \n", lv+1, rSize, zSize);
 
   // These are the Nelder–Mead parameter values
@@ -2121,11 +2134,6 @@ int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, doub
 
   infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) after %3i iterations.", cand->power, cand->r, cand->z, ite);
 
-  PROF // Profiling  .
-  {
-    NV_RANGE_POP(); // Simplex
-  }
-
   return 1;
 }
 
@@ -2182,7 +2190,7 @@ void* optCandDerivs(void* ptr)
   {
     PROF // Profiling  .
     {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
       {
 	NV_RANGE_PUSH("NM_REFINE");
       }
@@ -2211,7 +2219,7 @@ void* optCandDerivs(void* ptr)
 
     PROF // Profiling  .
     {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
       {
 	NV_RANGE_POP(); // NM_REFINE
       }
@@ -2249,7 +2257,7 @@ void* optCandDerivs(void* ptr)
 
     PROF // Profiling  .
     {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
       {
 	NV_RANGE_PUSH("DERIVS");
       }
@@ -2346,7 +2354,7 @@ void* optCandDerivs(void* ptr)
 
     PROF // Profiling  .
     {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD)) )
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
       {
 	NV_RANGE_POP(); // DERIVS
       }
@@ -2399,12 +2407,12 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
   // Increase the count number of running threads
   sem_post(&srch->threasdInfo->running_threads);
 
-  if ( !(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_THREAD) )  // Create thread  .
+  if ( !(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD) )  // Create thread  .
   {
     pthread_t thread;
     int  iret1 = pthread_create( &thread, NULL, optCandDerivs, (void*) thrdDat);
 
-    if (iret1)
+    if (iret1)	// Check return status
     {
       fprintf(stderr,"Error - pthread_create() return code: %d\n", iret1);
       exit(EXIT_FAILURE);

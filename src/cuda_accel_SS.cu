@@ -25,6 +25,9 @@
  *  [0.0.03] [2017-02-12]
  *    Added the opt out on the count of candidates found
  *    Added the use of FLAG_SS_MEM
+ *
+ *  [0.0.03] [2017-02-16]
+ *    Separated candidate and optimisation CPU threading
  */
 
 #include "cuda_accel_SS.h"
@@ -443,15 +446,12 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
 
   if ( floor(rr) < cuSrch->SrchSz->searchRHigh )
   {
-    if ( !(res->flags & FLAG_SIG_GPU) ) // Do the sigma calculation  .
-    {
-      // NOTE: I tested only doing the sigma calculations after doing a check against the power and harmonics in the area of the result, it was slightly faster (~4%) not enough to warrant it
-      sig     = candidate_sigma_cu(poww, numharm, cuSrch->numindep[stage]);
-    }
+    // NOTE: I tested only doing the sigma calculations after doing a check against the power and harmonics in the area of the result, it was slightly faster (~4%) not enough to warrant it
+    sig     = candidate_sigma_cu(poww, numharm, cuSrch->numindep[stage]);
 
     if      ( res->cndType & CU_STR_LST     )
     {
-      if ( res->flags & FLAG_THREAD )
+      if ( res->flags & FLAG_CAND_THREAD )
       {
 	// Thread safe
 	pthread_mutex_lock(&cuSrch->threasdInfo->candAdd_mutex);
@@ -497,7 +497,7 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
 	  // this sigma is greater than the current sigma for this r value
 	  if ( candidate->sig < sig )
 	  {
-	    if ( res->flags & FLAG_THREAD )
+	    if ( res->flags & FLAG_CAND_THREAD )
 	    {
 	      pthread_mutex_lock(&cuSrch->threasdInfo->candAdd_mutex);
 	      if ( candidate->sig < sig ) // Check again
@@ -660,7 +660,7 @@ void* processSearchResults(void* ptr)
 	  else
 	  {
 	    fprintf(stderr,"ERROR: function %s requires accelcandBasic\n",__FUNCTION__);
-	    if ( res->flags & FLAG_THREAD )
+	    if ( res->flags & FLAG_CAND_THREAD )
 	    {
 	      sem_trywait(&(cuSrch->threasdInfo->running_threads));
 	    }
@@ -714,7 +714,7 @@ void* processSearchResults(void* ptr)
 
   FOLD  //  Thread memory  .
   {
-    if ( res->flags & FLAG_SS_MEM_PRE )
+    if ( res->flags & FLAG_CAND_MEM_PRE )
     {
       freeNull(localResults);
     }
@@ -726,7 +726,7 @@ void* processSearchResults(void* ptr)
   }
 
   // Decrease the count number of running threads
-  if ( res->flags & FLAG_THREAD )
+  if ( res->flags & FLAG_CAND_THREAD )
   {
     sem_trywait(&(cuSrch->threasdInfo->running_threads));
   }
@@ -738,7 +738,7 @@ void* processSearchResults(void* ptr)
       gettimeofday(&end, NULL);
       float time =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 
-      if ( res->flags & FLAG_THREAD )
+      if ( res->flags & FLAG_CAND_THREAD )
       {
 	pthread_mutex_lock(&cuSrch->threasdInfo->candAdd_mutex);
 	res->resultTime[0] += time;
@@ -901,7 +901,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
 	FOLD  //  Thread memory  .
 	{
-	  if ( batch->flags & FLAG_SS_MEM_PRE )
+	  if ( batch->flags & FLAG_CAND_MEM_PRE )
 	  {
 	    // Allocate temporary thread specific memory
 	    thrdDat->retData = (void*)malloc(thrdDat->resSize);
@@ -914,7 +914,7 @@ void processBatchResults(cuFFdotBatch* batch)
 	  }
 	}
 
-	if ( batch->flags & FLAG_THREAD ) 	// Create thread  .
+	if ( batch->flags & FLAG_CAND_THREAD ) 	// Create thread  .
 	{
 	  infoMSG(3,3,"Spawn thread");
 

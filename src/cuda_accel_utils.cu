@@ -48,7 +48,11 @@
  *    Reorder in-mem async to slightly faster (3 way)
  *
  *  [0.0.03] [2017-02-10]
- *    Multi batch asynch fixed finising off search
+ *    Multi batch async fixed finishing off search
+ *
+ *  [0.0.03] [2017-02-16]
+ *    Separated candidate and optimisation CPU threading
+ *
  */
 
 #include <cufft.h>
@@ -1660,12 +1664,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  fprintf(stderr,"WARNING: Returning plane requires complex float return type.\n");
 	  kernel->retType &= ~CU_TYPE_ALLL;
 	  kernel->retType |= CU_CMPLXF;
-	}
-
-	if ( kernel->flags & FLAG_SIG_GPU )
-	{
-	  fprintf(stderr,"WARNING: Cannot do GPU sigma calculations when returning plane data.\n");
-	  kernel->flags &= ~FLAG_SIG_GPU;
 	}
       }
 
@@ -4968,9 +4966,6 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  (*flags) &= ~FLAG_SS_ALL;
 	  (*flags) |= FLAG_SS_CPU;
 
-	  // CPU Significance
-	  (*flags) &= ~FLAG_SIG_GPU;
-
 	  sSpec->retType &= ~CU_SRT_ALL   ;
 	  sSpec->retType |= CU_STR_PLN    ;
 
@@ -5003,33 +4998,6 @@ void readAccelDefalts(searchSpecs *sSpec)
 	{
 	  fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
 	}
-      }
-
-//      else if ( strCom("FLAG_SAS_TEX", str1 ) )
-//      {
-//	(*flags) |= FLAG_SAS_TEX;
-//      }
-//
-//      else if ( strCom("FLAG_TEX_INTERP", str1 ) )
-//      {
-//	(*flags) |= FLAG_SAS_TEX;
-//	(*flags) |= FLAG_TEX_INTERP;
-//      }
-
-      else if ( strCom("SIGNIFICANCE", str1 ) )
-      {
-	fprintf(stderr, "WARNING: The flag %s has been deprecated.\n", str1);
-	//singleFlag ( flags, str1, str2, FLAG_SIG_GPU, "GPU", "CPU", lineno, fName );
-      }
-
-      else if ( strCom("RES_MEM", str1 ) )
-      {
-	singleFlag ( flags, str1, str2, FLAG_SS_MEM_PRE, "PRE", "RING", lineno, fName );
-      }
-
-      else if ( strCom("RESULTS", str1 ) )
-      {
-	singleFlag ( flags, str1, str2, FLAG_THREAD, "THREAD", "SEQ", lineno, fName );
       }
 
       else if ( strCom("SS_SLICES", str1 ) )
@@ -5096,6 +5064,16 @@ void readAccelDefalts(searchSpecs *sSpec)
 	    fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
 	  }
 	}
+      }
+
+      else if ( strCom("CAND_PROCESS", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_CAND_THREAD, "THREAD", "SEQ", lineno, fName );
+      }
+
+      else if ( strCom("CAND_MEM", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_CAND_MEM_PRE, "PRE", "RING", lineno, fName );
       }
 
       else if ( strCom("CAND_STORAGE", str1 ) )
@@ -5313,6 +5291,11 @@ void readAccelDefalts(searchSpecs *sSpec)
       else if ( strCom("OPT_NELDER_MEAD_REFINE", str1 ) )
       {
 	singleFlag ( flags, str1, str2, FLAG_OPT_NM_REFINE, "", "0", lineno, fName );
+      }
+
+      else if ( strCom("OPT_PROCESS", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_OPT_THREAD, "THREAD", "SEQ", lineno, fName );
       }
 
       else if ( strCom("optPlnSiz", str1 ) )
@@ -5548,9 +5531,10 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags         |= FLAG_CENTER      ;	// Centre and align the usable part of the planes
     sSpec.flags         |= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
-    // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_SS_MEM_PRE
+    // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_CAND_MEM_PRE
 #ifndef DEBUG
-    sSpec.flags		|= FLAG_THREAD      ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
+    sSpec.flags		|= FLAG_CAND_THREAD ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
+    sSpec.flags		|= FLAG_OPT_THREAD  ;	// Do CPU component of optimisation in a separate thread - A very good idea
 #endif
 
 #if CUDA_VERSION >= 6050
@@ -6616,11 +6600,6 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
     cvsLog->csvWrite("MUL_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_TEX_MUL));
     //cvsLog->csvWrite("SAS_TEX",   "flg", "%i", (bool)(batch->flags & FLAG_SAS_TEX));
     //cvsLog->csvWrite("INTERP",    "flg", "%i", (bool)(batch->flags & FLAG_TEX_INTERP));
-
-    if ( batch->flags & FLAG_SIG_GPU )
-      cvsLog->csvWrite("SIG",    "flg", "GPU");
-    else
-      cvsLog->csvWrite("SIG",    "flg", "CPU");
 
     FOLD // Return details  .
     {
