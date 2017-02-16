@@ -232,6 +232,13 @@ POWER_PRECISION		AUTO
 SS_KER			AA
 
 
+# Count initial candidates in Sum & Search kernel
+# SS_COUNT:
+#	0			# Do not count candidates
+# D	1			# Count candidates in the kernel allows opting out of some CPU work
+SS_COUNT		1
+
+
 #FLAG_SAS_TEX   		# [Deprecated]	Use texture memory in the sum and search kernel
 #FLAG_TEX_INTERP		# [Deprecated]	Use texture memory & interpolation in the multiplication kernel
 

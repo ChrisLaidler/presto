@@ -765,7 +765,7 @@ void* processSearchResults(void* ptr)
 void processBatchResults(cuFFdotBatch* batch)
 {
   rVals* rVal	= &((*batch->rAraays)[batch->rActive][0][0]);
-  int tSum	= 0;
+  int tSum	= 1;			// Check everything by default
 
   if ( rVal->numrs )
   {
@@ -882,12 +882,18 @@ void processBatchResults(cuFFdotBatch* batch)
 
     FOLD // Counts of candidates  .
     {
-      int* blockCounts = (int*)((char*)thrdDat->retData + batch->cndDataSize);
-
-      for ( int i = 0; i < rVal->noBlocks; i++)
+#ifdef WITH_SAS_COUNT
+      if ( batch->flags & FLAG_SS_COUNT)
       {
-	tSum += blockCounts[i];
+	int* blockCounts = (int*)((char*)thrdDat->retData + batch->cndDataSize);
+	tSum = 0;
+	
+	for ( int i = 0; i < rVal->noBlocks; i++)
+	{
+	  tSum += blockCounts[i];
+	}
       }
+#endif
     }
 
     FOLD // ADD candidates to global list potently in a separate thread  .

@@ -1,5 +1,5 @@
 /** @file cuda_accel_SS_31.cu
- *  @brief The implimentation fo the standard sum and search kernel
+ *  @brief The implementation of the standard sum and search kernel
  *
  *  @author Chris Laidler
  *  @bug No known bugs.
@@ -11,10 +11,11 @@
  *    Working version un-numbed
  *
  *  [0.0.01] [2017-02-12]
- *     Added per block counts of canidates found
+ *     Added per block counts of candidates found
  *
  *  [0.0.02] [2017-02-15]
  *     Fixed an inexplicable bug with the autonomic add
+ *     Added capability to optionally do count
  */
 
 
@@ -55,10 +56,12 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
   FOLD  // Zero SM  .
   {
-    if ( tidx == 0 )
+#ifdef WITH_SAS_COUNT
+    if ( (tidx == 0) && d_counts )
     {
       cnt = 0;
     }
+#endif
   }
 
   if ( sid < width )
@@ -249,21 +252,26 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
   FOLD // Counts using SM  .
   {
-    // NOTE: Could do an initial warp level recurse here but not really necessary
-
-    __syncthreads();			// Make sure cnt has been zeroed
-
-    if ( conts)				// Increment block specific counts in SM  .
+#ifdef WITH_SAS_COUNT
+    if ( d_counts )
     {
-      atomicAdd(&cnt, conts);
-    }
+      // NOTE: Could do an initial warp level recurse here but not really necessary
 
-    __syncthreads();			// Make sure autonomic adds are viable
+      __syncthreads();			// Make sure cnt has been zeroed
 
-    if ( tidx == 0 )			// Write SM count back to main memory  .
-    {
-      d_counts[bidx] = cnt;
+      if ( conts)			// Increment block specific counts in SM  .
+      {
+	atomicAdd(&cnt, conts);
+      }
+
+      __syncthreads();			// Make sure autonomic adds are viable
+
+      if ( tidx == 0 )			// Write SM count back to main memory  .
+      {
+	d_counts[bidx] = cnt;
+      }
     }
+#endif
   }
 }
 
@@ -271,8 +279,8 @@ template< typename T, int64_t FLAGS, int noStages, const int noHarms, const int 
 __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   const int noSteps = batch->noSteps ;
-
   vHarmList   powers;
+  int* d_cnts	= NULL;
 
   for (int i = 0; i < noHarms; i++)
   {
@@ -280,7 +288,10 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
-  int* d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+  if ( batch->flags & FLAG_SS_COUNT)
+  {
+    d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+  }
 
   switch (noSteps)
   {

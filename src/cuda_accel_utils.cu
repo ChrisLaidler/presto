@@ -909,6 +909,19 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	cuSrch->sSpec->flags &= ~FLAG_Z_SPLIT;
       }
 
+      if ( !(cuSrch->sSpec->flags & FLAG_CAND_THREAD) && (cuSrch->sSpec->flags & FLAG_CAND_MEM_PRE) )
+      {
+	infoMSG(5,5,"Disable separate candidate memory (sequential candidates).\n");
+
+	cuSrch->sSpec->flags &= ~FLAG_CAND_MEM_PRE;
+
+	FOLD  // TMP REM - Added to mark an error for thesis timing
+	{
+	  printf("Temporary exit - Sequential candidate and mem \n");
+	  exit(EXIT_FAILURE);
+	}
+      }
+
       char typeS[1024];
       sprintf(typeS, "Doing");
 
@@ -4998,6 +5011,14 @@ void readAccelDefalts(searchSpecs *sSpec)
 	{
 	  fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
 	}
+      }
+
+      else if ( strCom("SS_COUNT", str1 ) )
+      {
+	singleFlag ( flags, str1, str2, FLAG_SS_COUNT, "", "0", lineno, fName );
+#ifndef WITH_SAS_COUNT
+	fprintf(stderr,"WARNING: Not compiled with Sum & search counting enabled. Config on line %i in %s has no effect.\n.", lineno, fName );
+#endif
       }
 
       else if ( strCom("SS_SLICES", str1 ) )

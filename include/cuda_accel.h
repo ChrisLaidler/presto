@@ -62,6 +62,9 @@ extern "C"
 #define 		WITH_NORM_GPU
 #define 		WITH_NORM_GPU_OS
 
+//     Candidate
+#define 		WITH_SAS_COUNT
+
 //     Optimisation
 //#define		WITH_OPT_BLK1
 //#define		WITH_OPT_BLK2
@@ -167,6 +170,7 @@ extern "C"
 #define		FLAG_RET_STAGES		BIT(35)		///< Return results for all stages of summing, default is only the final result
 #define		FLAG_SEPSRCH		BIT(36)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
 #define		FLAG_SEPRVAL		BIT(37)		///< Deprecated
+#define		FLAG_SS_COUNT		BIT(38)		///< Count inital canidates in kernel and write to memory
 
 // ---- Initial candidates ----//
 

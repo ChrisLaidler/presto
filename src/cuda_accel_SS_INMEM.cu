@@ -15,6 +15,8 @@
  *
  *  [0.0.02] [2017-02-15]
  *     Fixed an inexplicable bug with the autonomic add
+ *     Added capability to optionally do count
+ *
  */
 
  #include "cuda_accel_SS.h"
@@ -42,10 +44,12 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
   FOLD  // Zero SM  .
   {
-    if ( tidx == 0 )
+#ifdef WITH_SAS_COUNT
+    if ( (tidx == 0) && d_counts )
     {
       cnt = 0;
     }
+#endif
   }
 
   if ( sid < len )
@@ -184,21 +188,26 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
   FOLD // Counts using SM  .
   {
-    // NOTE: Could do an initial warp level recurse here but not really necessary
-
-    __syncthreads();			// Make sure cnt has been zeroed
-
-    if ( conts)				// Increment block specific counts in SM  .
+#ifdef WITH_SAS_COUNT
+    if ( d_counts )
     {
-      atomicAdd(&cnt, conts);
-    }
+      // NOTE: Could do an initial warp level recurse here but not really necessary
 
-    __syncthreads();			// Make sure autonomic adds are viable
+      __syncthreads();			// Make sure cnt has been zeroed
 
-    if ( tidx == 0 )			// Write SM count back to main memory  .
-    {
-      d_counts[bidx] = cnt;
+      if ( conts)			// Increment block specific counts in SM  .
+      {
+	atomicAdd(&cnt, conts);
+      }
+
+      __syncthreads();			// Make sure autonomic adds are viable
+
+      if ( tidx == 0 )			// Write SM count back to main memory  .
+      {
+	d_counts[bidx] = cnt;
+      }
     }
+#endif
   }
 }
 
@@ -234,7 +243,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
   int start     = rVal->drlo * batch->cuSrch->sSpec->noResPerBin ;
   int end       = start + rVal->numrs;
   int noBins    = end - start;
-  int* d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+  int* d_cnts	= NULL;
 
   infoMSG(6,6,"%i harms summed - r from %i to %i (%i)\n", noHarms, start, end, noBins);
 
@@ -252,6 +261,11 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
   {
     fprintf(stderr, "ERROR: Too many blocks in sum and search kernel, try reducing SS_INMEM_SZ or SS_SLICES %i > %i. (in function %s in %s )\n", rVal->noBlocks, MAX_SAS_BLKS, __FUNCTION__, __FILE__);
     exit(EXIT_FAILURE);
+  }
+
+  if ( batch->flags & FLAG_SS_COUNT)
+  {
+    d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
   }
 
   switch ( batch->ssChunk )
