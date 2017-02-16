@@ -835,7 +835,7 @@ void processBatchResults(cuFFdotBatch* batch)
 	for ( int step = 0; step < batch->noSteps; step++) 	// Loop over steps  .
 	{
 	  rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][0];
-	  thrdDat->x1		+= rVal->numrs;                 // These should all be Acelllen but there may be the case of the last step!
+	  thrdDat->x1		+= rVal->numrs;                 // These should all be acelllen but there may be the case of the last step!
 	}
       }
       else

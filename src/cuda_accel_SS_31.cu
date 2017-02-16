@@ -27,9 +27,8 @@
 
 __device__ inline int getOffset(const int stage, const int step, const int strd1, const int oStride, const int sid)
 {
-  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*ALEN + sid ;		// 1 - This is the orrigional methoud that "packs" the steps into contiguous sections
-  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 2
-
+  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*ALEN + sid ;		// 1 - This is the original method that "packs" the steps into contiguous sections
+  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 2
 }
 
 /** Sum and Search - loop down - column max - multi-step - step outer .
@@ -47,9 +46,9 @@ __device__ inline int getOffset(const int stage, const int step, const int strd1
 template<typename T, int64_t FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
 __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int oStride, vHarmList powersArr, int* d_counts)
 {
-  const int bidx	= blockIdx.y * gridDim.x  +  blockIdx.x;	///< Block index
-  const int tidx	= threadIdx.y * SS31_X  +  threadIdx.x;		///< Thread index within in the block
-  const int sid		= blockIdx.x  * SS31BS  +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
+  const int bidx	= blockIdx.y  * gridDim.x  +  blockIdx.x;	///< Block index
+  const int tidx	= threadIdx.y * SS31_X     +  threadIdx.x;	///< Thread index within in the block
+  const int sid		= blockIdx.x  * SS31BS     +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
 
   uint 		conts	= 0;						///< Per thread count of candidates found
   __shared__ uint  cnt;							///< Block count of candidates
@@ -250,7 +249,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
   FOLD // Counts using SM  .
   {
-    // NOTE: Could do an inital warp level recuse here but not really nessesary
+    // NOTE: Could do an initial warp level recurse here but not really necessary
 
     __syncthreads();			// Make sure cnt has been zeroed
 
@@ -261,7 +260,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
     __syncthreads();			// Make sure autonomic adds are viable
 
-    if ( (tidx == 0) && cnt )		// Write SM count back to main memory  .
+    if ( tidx == 0 )			// Write SM count back to main memory  .
     {
       d_counts[bidx] = cnt;
     }

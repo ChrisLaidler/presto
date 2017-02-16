@@ -26,13 +26,13 @@
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
 __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, int start, int end, candPZs* d_cands, int* d_counts )
 {
-  const int bidx	= blockIdx.y  * gridDim.x  +  blockIdx.x;	///< Block index
-  const int tidx	= threadIdx.y * SSIM_X     +  threadIdx.x;	///< Thread index within in the block
+  const int bidx	= blockIdx.y  * gridDim.x  + blockIdx.x;	///< Block index
+  const int tidx	= threadIdx.y * SSIM_X     + threadIdx.x;	///< Thread index within in the block
   const int sid		= blockIdx.x  * SSIMBS     + tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
   const int zeroHeight	= HEIGHT_STAGE[0];				///< The height of the fundamental plane
 
   int		inds      [noHarms];					///< x-indices of for each harmonic
-  candPZs	candLists [noStages];					///< Devoice memory to store results in
+  candPZs	candLists [noStages];					///< Device memory to store results in
   float		powers    [cunkSize];					///< registers to hold values to increase mem cache hits
 
   int		idx   = start + sid ;					///< The global index of the thread in the plane
@@ -184,7 +184,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
   FOLD // Counts using SM  .
   {
-    // NOTE: Could do an inital warp level recuse here but not really nessesary
+    // NOTE: Could do an initial warp level recurse here but not really necessary
 
     __syncthreads();			// Make sure cnt has been zeroed
 
@@ -195,7 +195,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
     __syncthreads();			// Make sure autonomic adds are viable
 
-    if ( (tidx == 0) && cnt )		// Write SM count back to main memory  .
+    if ( tidx == 0 )			// Write SM count back to main memory  .
     {
       d_counts[bidx] = cnt;
     }
