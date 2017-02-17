@@ -221,8 +221,6 @@ int main(int argc, char *argv[])
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_PREP] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
   }
-
-
 #endif
 
 #ifdef CBL  // The CPU and GPU main loop  .

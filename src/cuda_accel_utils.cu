@@ -5552,11 +5552,15 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags         |= FLAG_CENTER      ;	// Centre and align the usable part of the planes
     sSpec.flags         |= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
+    sSpec.flags         |= FLAG_SS_COUNT    ;	// Enable counting results in sum & search kernels
+
     // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_CAND_MEM_PRE
 #ifndef DEBUG
     sSpec.flags		|= FLAG_CAND_THREAD ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
     sSpec.flags		|= FLAG_OPT_THREAD  ;	// Do CPU component of optimisation in a separate thread - A very good idea
 #endif
+
+
 
 #if CUDA_VERSION >= 6050
     sSpec.flags		|= FLAG_CUFFT_CB_POW;	// CUFFT callback to calculate powers, very efficient so on by default

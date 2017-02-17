@@ -56,7 +56,7 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-//#define NVVP			// Uncomment to allow CUDA profiling
+#define NVVP			// Uncomment to allow CUDA profiling
 
 //     Normalisation
 #define 		WITH_NORM_GPU
@@ -170,7 +170,7 @@ extern "C"
 #define		FLAG_RET_STAGES		BIT(35)		///< Return results for all stages of summing, default is only the final result
 #define		FLAG_SEPSRCH		BIT(36)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
 #define		FLAG_SEPRVAL		BIT(37)		///< Deprecated
-#define		FLAG_SS_COUNT		BIT(38)		///< Count inital canidates in kernel and write to memory
+#define		FLAG_SS_COUNT		BIT(38)		///< Count initial candidates in kernel and write to memory
 
 // ---- Initial candidates ----//
 
