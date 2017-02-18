@@ -3057,6 +3057,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	// Allocate buffer for CPU to work on input data
 	batch->h_iBuffer = (fcomplexcu*)malloc(batch->inpDataSize);
+	memset(batch->h_iBuffer, 0, batch->inpDataSize);
 
 	if ( !(batch->flags & CU_NORM_GPU) )
 	{
@@ -7211,7 +7212,11 @@ long long initCudaContext(gpuSpecs* gSpec)
   {
     infoMSG(4, 4, "Creating context pthread for CUDA context initialisation.\n");
 
-    int iret1 = pthread_create( &gSpec->cntxThread, NULL, contextInitTrd, (void*) gSpec);
+    int iret1 = 1;
+
+#ifndef DEBUG
+    iret1 = pthread_create( &gSpec->cntxThread, NULL, contextInitTrd, (void*) gSpec);
+#endif
 
     if ( iret1 )
     {

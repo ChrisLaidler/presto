@@ -29,6 +29,9 @@
  *  [0.0.03] [2017-02-03 ]
  *    Converted to use of clearRval
  *
+ *  [0.0.03] [2017-02-18 ]
+ *    Different memory management for GPU normalisation
+ *
  */
 
 
@@ -247,6 +250,10 @@ void setGenRVals(cuFFdotBatch* batch)
     NV_RANGE_PUSH("Set R-Vals");
   }
 
+  int	numrsArr[MAX_HARM_NO];
+  for ( int i = 0; i< MAX_HARM_NO; i++ )
+    numrsArr[i] = 0;
+
   int       hibin;
   int       binoffset;  // The extra bins to add onto the start of the data
   double    drlo, drhi;
@@ -305,6 +312,22 @@ void setGenRVals(cuFFdotBatch* batch)
 	rVal->iteration		= rValFund->iteration;
 
 	int noEls		= numrs + 2*cHInfo->kerStart;
+
+	FOLD		// DBG this can be taken out if it never fails
+	{
+	  if ( numrsArr[harm] == 0 )
+	  {
+	    numrsArr[harm] = numdata;
+	  }
+	  else
+	  {
+	    if ( numrsArr[harm] != numdata )
+	    {
+	      fprintf(stderr, "ERROR: numdata bad.");
+	      exit(EXIT_FAILURE);
+	    }
+	  }
+	}
 
 	if  ( noEls > cHInfo->width )
 	{
@@ -464,42 +487,29 @@ void prepInputCPU(cuFFdotBatch* batch )
     {
       // NOTE: I use a temporary host buffer, so that the normalisation and FFT can be done before synchronisation
 
-      FOLD // Zero host memory buffer  .
-      {
-	infoMSG(4,4,"Zero tmp buffer");
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_PUSH("Zero buffer");
-
-	  if ( batch->flags & FLAG_PROF )
-	  {
-	    gettimeofday(&start, NULL);
-	  }
-	}
-
-	memset(batch->h_iBuffer, 0, batch->inpDataSize);
-
-	PROF // Profiling  .
-	{
-	  NV_RANGE_POP(); // Zero buffer
-
-	  if ( batch->flags & FLAG_PROF )
-	  {
-	    gettimeofday(&end, NULL);
-	    float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
-	    int idx = MIN(0, batch->noStacks-1);
-	    batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
-	  }
-	}
-      }
-
       if ( batch->flags & CU_NORM_GPU  )	// Write input data segments to contiguous page locked memory  .
       {
 	infoMSG(4,4,"GPU normalisation - Copy input data to buffer.");
 
 	int harm  = 0;
 	int sz    = 0;
+
+	FOLD // Synchronisation [ blocking ]  .
+	{
+	  infoMSG(4,4,"blocking synchronisation on %s", "iDataCpyComp" );
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("EventSynch iDataCpyComp");
+	  }
+
+	  CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // EventSynch
+	  }
+	}
 
 	PROF // Profiling  .
 	{
@@ -511,7 +521,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 	  }
 	}
 
-	for ( int stack = 0; stack< batch->noStacks; stack++)  // Loop over stack
+	for ( int stack = 0; stack< batch->noStacks; stack++)  // Loop over stack  .
 	{
 	  cuFfdotStack* cStack = &batch->stacks[stack];
 
@@ -525,10 +535,15 @@ void prepInputCPU(cuFFdotBatch* batch )
 	      {
 		int start = 0;
 		if ( rVal->lobin < 0 )
-		  start = -rVal->lobin;
+		{
+		  start = -rVal->lobin;		// Offset
+
+		  // Zero the beginning
+		  memset(&batch->h_iData[sz], 0, start * sizeof(fcomplexcu));
+		}
 
 		// Do the actual copy
-		memcpy(&batch->h_iBuffer[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
+		memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
 	      }
 	      sz += cStack->strideCmplx;
 	    }
@@ -551,6 +566,36 @@ void prepInputCPU(cuFFdotBatch* batch )
       }
       else					// Copy chunks of FFT data and normalise and spread using the CPU  .
       {
+	FOLD // Zero host memory buffer  .
+	{
+	  infoMSG(4,4,"Zero tmp buffer");
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("Zero buffer");
+
+	    if ( batch->flags & FLAG_PROF )
+	    {
+	      gettimeofday(&start, NULL);
+	    }
+	  }
+
+	  memset(batch->h_iBuffer, 0, batch->inpDataSize);
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // Zero buffer
+
+	    if ( batch->flags & FLAG_PROF )
+	    {
+	      gettimeofday(&end, NULL);
+	      float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	      int idx = MIN(0, batch->noStacks-1);
+	      batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
+	    }
+	  }
+	}
+
 	FOLD // CPU Normalise  .
 	{
 	  CPU_Norm_Spread(batch, fft);
@@ -573,54 +618,54 @@ void prepInputCPU(cuFFdotBatch* batch )
 	    }
 	  }
 	}
-      }
-    }
 
-    FOLD // Copy CPU prepped data to the pagelocked input data  .
-    {
-      infoMSG(3,3,"Copy buffer over to pinned memory");
-
-      FOLD // Synchronisation [ blocking ]  .
-      {
-	infoMSG(4,4,"blocking synchronisation on %s", "iDataCpyComp" );
-
-	PROF // Profiling  .
+	FOLD // Copy CPU prepped data to the pagelocked input data  .
 	{
-	  NV_RANGE_PUSH("EventSynch iDataCpyComp");
-	}
+	  infoMSG(3,3,"Copy buffer over to pinned memory");
 
-	CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+	  FOLD // Synchronisation [ blocking ]  .
+	  {
+	    infoMSG(4,4,"blocking synchronisation on %s", "iDataCpyComp" );
 
-	PROF // Profiling  .
-	{
-	  NV_RANGE_POP(); // EventSynch
-	}
-      }
+	    PROF // Profiling  .
+	    {
+	      NV_RANGE_PUSH("EventSynch iDataCpyComp");
+	    }
 
-      PROF // Profiling  .
-      {
-	NV_RANGE_PUSH("memcpy 1");
+	    CUDA_SAFE_CALL(cudaEventSynchronize(batch->iDataCpyComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
 
-	if ( batch->flags & FLAG_PROF )
-	{
-	  gettimeofday(&start, NULL);
-	}
-      }
+	    PROF // Profiling  .
+	    {
+	      NV_RANGE_POP(); // EventSynch
+	    }
+	  }
 
-      // Copy the buffer over the pinned memory
-      infoMSG(4,4,"1D synch memory copy H2H");
-      memcpy(batch->h_iData, batch->h_iBuffer, batch->inpDataSize );
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_PUSH("memcpy 1");
 
-      PROF // Profiling  .
-      {
-	NV_RANGE_POP(); // memcpy 1
+	    if ( batch->flags & FLAG_PROF )
+	    {
+	      gettimeofday(&start, NULL);
+	    }
+	  }
 
-	if ( batch->flags & FLAG_PROF )
-	{
-	  gettimeofday(&end, NULL);
-	  float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
-	  int idx = MIN(2, batch->noStacks-1);
-	  batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
+	  // Copy the buffer over the pinned memory
+	  infoMSG(4,4,"1D synch memory copy H2H");
+	  memcpy(batch->h_iData, batch->h_iBuffer, batch->inpDataSize );
+
+	  PROF // Profiling  .
+	  {
+	    NV_RANGE_POP(); // memcpy 1
+
+	    if ( batch->flags & FLAG_PROF )
+	    {
+	      gettimeofday(&end, NULL);
+	      float time = (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+	      int idx = MIN(2, batch->noStacks-1);
+	      batch->compTime[NO_STKS*COMP_GEN_MEM+idx] += time;
+	    }
+	  }
 	}
       }
     }
