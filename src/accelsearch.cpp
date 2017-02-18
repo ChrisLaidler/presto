@@ -1057,8 +1057,6 @@ int main(int argc, char *argv[])
 
 	    sprintf(heads[COMP_GEN_STR],		"iCand storage");
 
-	    sprintf(heads[COMP_GEN_BLOCK],		"iCan Block");
-
 	    printf("\t\t");
 	    for ( int i = 0; i < COMP_GEN_END; i++)
 	      printf("%15s\t", heads[i] );

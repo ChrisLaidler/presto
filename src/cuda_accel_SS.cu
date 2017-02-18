@@ -801,7 +801,7 @@ void processBatchResults(cuFFdotBatch* batch)
       thrdDat->retType  	= batch->retType;
       thrdDat->flags    	= batch->flags;
       thrdDat->resultTime 	= &batch->compTime[NO_STKS*COMP_GEN_STR];
-      thrdDat->blockTime 	= &batch->compTime[NO_STKS*COMP_GEN_BLOCK];
+      thrdDat->blockTime 	= NULL;
       thrdDat->noResults  	= &batch->noResults;
       thrdDat->preBlock		= batch->candCpyComp;
 

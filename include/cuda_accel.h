@@ -56,7 +56,7 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-#define NVVP			// Uncomment to allow CUDA profiling
+//#define NVVP			// Uncomment to allow CUDA profiling
 
 //     Normalisation
 #define 		WITH_NORM_GPU
@@ -298,8 +298,7 @@ typedef enum {
 #define  COMP_GEN_SS		9			///
 #define  COMP_GEN_D2H		10			///
 #define  COMP_GEN_STR		11			/// Initial candidate storage and sigma calculations - Stack0: Sigma calcs and data saves, Stack1: memcpy, Stack2: Allocate mem and init data struct
-#define  COMP_GEN_BLOCK		12			/// Blocking on synchronisation (can't really be done because run in synchronous mode for profiling)
-#define  COMP_GEN_END		13			/// Nothing - A value to indicate the end of the used variables
+#define  COMP_GEN_END		12			/// Nothing - A value to indicate the end of the used variables
 #define  COMP_GEN_MAX		20			/// Nothing - A value to indicate the maximum array length
 
 
