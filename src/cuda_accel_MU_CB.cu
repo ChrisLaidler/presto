@@ -294,8 +294,14 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
 
   // Do the multiplication
   cufftComplex out;
-  out.x = ( inp.x * ker.x + inp.y * ker.y ) / (float)width;
-  out.y = ( inp.y * ker.x - inp.x * ker.y ) / (float)width;
+
+#if CORRECT_MULT
+  out.x = (inp.x * ker.x - inp.y * ker.y) / (float)width;
+  out.y = (inp.y * ker.x + inp.x * ker.y) / (float)width;
+#else
+  out.x = (inp.x * ker.x + inp.y * ker.y) / (float)width;
+  out.y = (inp.y * ker.x - inp.x * ker.y) / (float)width;
+#endif
 
   return out;
 }

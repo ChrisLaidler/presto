@@ -301,7 +301,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     }
     default:
     {
-      fprintf(stderr, "ERROR: mult11 has not been templated for %i steps\n", batch->noSteps);
+      fprintf(stderr, "ERROR: mult02 has not been templated for %i steps\n", batch->noSteps);
       exit(EXIT_FAILURE);
     }
   }

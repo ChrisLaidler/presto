@@ -27,8 +27,13 @@ __global__ void mult11(fcomplexcu *ffdot, uint width, uint stride, uint height, 
 
       ker = kernels[idx];
 
+#if CORRECT_MULT
+      ffdot[idx].r = (inpReal * ker.r - inpImag * ker.i);
+      ffdot[idx].i = (inpImag * ker.r + inpReal * ker.i);
+#else
       ffdot[idx].r = (inpReal * ker.r + inpImag * ker.i);
       ffdot[idx].i = (inpImag * ker.r - inpReal * ker.i);
-    } 
+#endif
+    }
   }
 }
