@@ -133,11 +133,11 @@ extern "C"
 #define		FLAG_MUL_21		BIT(17)		///< Multiply kernel - read all input - loop over kernel - loop over planes
 #define		FLAG_MUL_22		BIT(18)		///< Multiply kernel - Loop ( Plane - Y )
 #define		FLAG_MUL_23		BIT(19)		///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
-#define		FLAG_MUL_30		BIT(20)		///< Multiply kernel - Do an entire batch in one kernel
+#define		FLAG_MUL_31		BIT(20)		///< Multiply kernel - Do an entire batch in one kernel
 #define		FLAG_MUL_CB		BIT(21)		///< Multiply kernel - Using a CUFFT callback
 #define		FLAG_MUL_PLN		( FLAG_MUL_11 )
 #define		FLAG_MUL_STK		( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_MUL_CB )
-#define		FLAG_MUL_BATCH		( FLAG_MUL_30 )
+#define		FLAG_MUL_BATCH		( FLAG_MUL_31 )
 #define		FLAG_MUL_ALL		( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
 #define		FLAG_TEX_MUL		BIT(22)		///< [ Deprecated ]Use texture memory for multiplication- May give some advantage on pre-Fermi generation which we don't really care about

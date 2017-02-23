@@ -4772,10 +4772,10 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_23;
 	}
-	else if ( strCom("30", str2 ) )
+	else if ( strCom("31", str2 ) )
 	{
 	  (*flags) &= ~FLAG_MUL_ALL;
-	  (*flags) |=  FLAG_MUL_30;
+	  (*flags) |=  FLAG_MUL_31;
 	}
 	else if ( strCom("CB", str2 ) )
 	{
@@ -4794,6 +4794,12 @@ void readAccelDefalts(searchSpecs *sSpec)
 	else
 	{
 	  fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
 	}
       }
 
@@ -6595,8 +6601,8 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
       cvsLog->csvWrite("MUL",    "flg", "22");
     else if ( batch->flags & FLAG_MUL_23 )
       cvsLog->csvWrite("MUL",    "flg", "23");
-    else if ( batch->flags & FLAG_MUL_30 )
-      cvsLog->csvWrite("MUL",    "flg", "30");
+    else if ( batch->flags & FLAG_MUL_31 )
+      cvsLog->csvWrite("MUL",    "flg", "31");
     else if ( batch->flags & FLAG_MUL_CB )
       cvsLog->csvWrite("MUL",    "flg", "CB");
     else

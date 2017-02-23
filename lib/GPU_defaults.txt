@@ -136,11 +136,11 @@ cuMedianBuffSz		0
 # Which type of multiplication to do.
 # MUL_KER:
 #	00      		# DEBUG NB: This is just a dummy kernel and will give incorrect values! (it is close to optimal calculations)
-#	10
+#	11
 #	21
 #	22
 #	23
-#	30
+#	31
 #	CB      		# This does the multiplication using CUFFT callbacks, in my testing this is very slow, like 7 times slower (FFT only)!
 # D	AA      		# Automatically chose, This may well select different kernel per stack
 MUL_KER			AA
