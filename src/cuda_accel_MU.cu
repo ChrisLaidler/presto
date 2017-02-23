@@ -359,12 +359,17 @@ void multiplyBatch(cuFFdotBatch* batch)
 	{
 	  if ( batch->flags & FLAG_MUL_CB )
 	  {
+#ifdef WITH_MUL_PRE_CALLBACK
 	    // Just synchronise, the iFFT will do the multiplication once the multComp event has been recorded
 	    infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp");
 	    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->inpFFTinitComp,0),   "Waiting for GPU to be ready to copy data to device.");
 
 	    infoMSG(5,5,"Event %s in %s.\n", "multComp", "fftPStream");
 	    CUDA_SAFE_CALL(cudaEventRecord(cStack->multComp, cStack->fftPStream),         "Recording event: multComp");
+#else
+	    fprintf(stderr, "ERROR: Not compiled with multiplication through CUFFT callbacks enabled. \n");
+	    exit(EXIT_FAILURE);
+#endif
 	  }
 	  else
 	  {

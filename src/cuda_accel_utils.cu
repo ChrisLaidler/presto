@@ -3960,6 +3960,7 @@ int setConstVals_Fam_Order( cuFFdotBatch* batch )
 
 int setStackVals( cuFFdotBatch* batch )
 {
+#ifdef WITH_MUL_PRE_CALLBACK
   stackInfo* dcoeffs;
 
   if ( batch->noStacks > MAX_STACKS )
@@ -4000,13 +4001,16 @@ int setStackVals( cuFFdotBatch* batch )
     }
 
     cudaGetSymbolAddress((void **)&dcoeffs, STK_STRD );
-    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, l_STK_STRD, sizeof(l_STK_STRD), cudaMemcpyHostToDevice, batch->stacks->initStream),              "Copying stack info to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, l_STK_STRD, sizeof(l_STK_STRD), cudaMemcpyHostToDevice, batch->stacks->initStream),		"Copying stack info to device");
 
     cudaGetSymbolAddress((void **)&dcoeffs, STK_INP );
-    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, l_STK_INP, sizeof(l_STK_INP), cudaMemcpyHostToDevice, batch->stacks->initStream),      "Copying stack info to device");
+    CUDA_SAFE_CALL(cudaMemcpyAsync(dcoeffs, l_STK_INP, sizeof(l_STK_INP), cudaMemcpyHostToDevice, batch->stacks->initStream),		"Copying stack info to device");
   }
 
   return 1;
+#else
+  return 0;
+#endif
 }
 
 /** Copy host stack info to the device constant memory
@@ -4754,8 +4758,21 @@ void readAccelDefalts(searchSpecs *sSpec)
 	}
 	else if ( strCom("11", str2 ) )
 	{
+#ifdef WITH_ITLV_PLN
+	  (*flags) &=  ~FLAG_ITLV_ROW;		// Disable row interleaving (plane interleaving)
+
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_11;
+
+#else
+	  fprintf(stderr, "WARNING: Cannot do single plane multiplications, plane interleaving disabled at compile time.  (FLAG: \"%s\" line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif
 	}
 	else if ( strCom("21", str2 ) )
 	{
@@ -4780,8 +4797,20 @@ void readAccelDefalts(searchSpecs *sSpec)
 	else if ( strCom("CB", str2 ) )
 	{
 #if CUDA_VERSION >= 6050
+
+#ifdef	WITH_MUL_PRE_CALLBACK
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_CB;
+#else
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication through CUFFT callbacks enabled.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif
 #else
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);

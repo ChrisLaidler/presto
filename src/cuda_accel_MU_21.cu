@@ -7,13 +7,13 @@
 template<int64_t FLAGS, int noSteps, int noPlns>
 __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, const int firstPlane )
 {
-  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
+  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;		/// Block ID - flat index
+  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;		/// Global thread ID - flat index ie column index of stack
 
   if ( tid < width )  // Valid thread  .
   {
-    const int   kerHeight = HEIGHT_HARM[firstPlane];              // The size of the kernel
-    fcomplexcu  inpDat[noPlns][noSteps];                          // Set of input data for this thread/column
+    const int   kerHeight = HEIGHT_HARM[firstPlane];			// The size of the kernel
+    fcomplexcu  inpDat[noPlns][noSteps];				// Set of input data for this thread/column
 
     int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
     int     y0      = lDepth*blockIdx.y;
@@ -30,7 +30,7 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
     {
       for ( int step = 0; step < noSteps; step++ )
       {
-        for ( int pln = 0; pln < noPlns; pln++ )                  // Loop through the planes  .
+        for ( int pln = 0; pln < noPlns; pln++ )			// Loop through the planes  .
         {
           fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
           ipd.r                 /= (float) width;
@@ -40,17 +40,17 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
       }
     }
 
-    for ( int kerY = y0; kerY < y1; kerY++ )                      // Loop through the kernel  .
+    for ( int kerY = y0; kerY < y1; kerY++ )				// Loop through the kernel  .
     {
-      fcomplexcu ker;                                             // kernel data
-      int pHeight = 0;                                            // Height of previous data in the stack
+      fcomplexcu ker;							// kernel data
+      int pHeight = 0;							// Height of previous data in the stack
 
       FOLD // Read the kernel value  .
       {
         ker   = kernels[kerY*stride];
       }
 
-      for (int pln = 0; pln < noPlns; pln++)                      // Loop through the planes  .
+      for (int pln = 0; pln < noPlns; pln++)				// Loop through the planes  .
       {
         const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
         const int kerYOffset    = KERNEL_OFF_HARM[firstPlane + pln];
@@ -77,7 +77,7 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
 #endif
           }
 
-          for ( int step = 0; step < noSteps; ++step )            // Loop over steps .
+          for ( int step = 0; step < noSteps; ++step )			// Loop over steps .
           {
             int idx;
 
@@ -114,7 +114,7 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;                  // Set striding value for next plane
+        pHeight += plnHeight * noSteps * stride;			// Set striding value for next plane
       }
     }
   }

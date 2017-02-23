@@ -58,14 +58,20 @@ extern "C"
 //	Visual profiler
 //#define NVVP			// Uncomment to allow CUDA profiling
 
-//     Normalisation
+//	Normalisation
 #define 		WITH_NORM_GPU
 #define 		WITH_NORM_GPU_OS
 
-//     Candidate
-#define 		WITH_SAS_COUNT
+//	Multiplication
+#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 
-//     Optimisation
+//	Powers
+#define 		WITH_POW_POST_CALLBACK		///< Powers to be calculated in CUFFT callbacks - Always a good option
+
+//	Candidate
+#define  		WITH_SAS_COUNT
+
+//	Optimisation
 //#define		WITH_OPT_BLK1
 //#define		WITH_OPT_BLK2
 #define 		WITH_OPT_BLK3
