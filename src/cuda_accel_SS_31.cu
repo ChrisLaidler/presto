@@ -16,6 +16,9 @@
  *  [0.0.02] [2017-02-15]
  *     Fixed an inexplicable bug with the autonomic add
  *     Added capability to optionally do count
+ *     
+ *  [0.0.03] [2017-02-24]
+ *     Added preprocessor directives for steps and chunks
  */
 
 
@@ -278,7 +281,6 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 template< typename T, int64_t FLAGS, int noStages, const int noHarms, const int cunkSize>
 __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
-  const int noSteps = batch->noSteps ;
   vHarmList   powers;
   int* d_cnts	= NULL;
 
@@ -293,51 +295,116 @@ __host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
   }
 
-  switch (noSteps)
+  switch (batch->noSteps)
   {
+
+#if MIN_STEPS <= 1  and MAX_STEPS >= 1
     case 1:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 2  and MAX_STEPS >= 2
     case 2:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 3  and MAX_STEPS >= 3
     case 3:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 4  and MAX_STEPS >= 4
     case 4:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 5  and MAX_STEPS >= 5
     case 5:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 6  and MAX_STEPS >= 6
     case 6:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 7  and MAX_STEPS >= 7
     case 7:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 8  and MAX_STEPS >= 8
     case 8:
     {
       add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+    case 9:
+    {
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,9><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+    case 10:
+    {
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,10><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+    case 11:
+    {
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,11><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+    case 12:
+    {
+      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,12><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      break;
+    }
+#endif
+
     default:
-      fprintf(stderr, "ERROR: add_and_searchCU31 has not been templated for %i steps\n", noSteps);
+    {
+      if      ( batch->noSteps < MIN_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else if ( batch->noSteps > MAX_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else
+	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+
       exit(EXIT_FAILURE);
+    }
   }
 }
 
@@ -346,91 +413,130 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 {
   switch ( batch->ssChunk )
   {
+#if MIN_SAS_CHUNK <= 1  and MAX_SAS_CHUNK >= 1
     case 1 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 2  and MAX_SAS_CHUNK >= 2
     case 2 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 3  and MAX_SAS_CHUNK >= 3
     case 3 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 4  and MAX_SAS_CHUNK >= 4
     case 4 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 5  and MAX_SAS_CHUNK >= 5
     case 5 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 6  and MAX_SAS_CHUNK >= 6
     case 6 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 7  and MAX_SAS_CHUNK >= 7
     case 7 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 8  and MAX_SAS_CHUNK >= 8
     case 8 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 9  and MAX_SAS_CHUNK >= 9
     case 9 :
     {
       add_and_searchCU31_q< T, FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
       break;
     }
-    //    case 10:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 12:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 14:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 16:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,16>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 18:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,18>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 20:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,20>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    //    case 24:
-    //    {
-    //      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,24>(dimGrid, dimBlock, stream, batch);
-    //      break;
-    //    }
-    default:
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
-      exit(EXIT_FAILURE);
-  }
+#endif
 
+#if MIN_SAS_CHUNK <= 10 and MAX_SAS_CHUNK >= 10
+    case 10 :
+    {
+      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 11 and MAX_SAS_CHUNK >= 11
+    case 11 :
+    {
+      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,11>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 12 and MAX_SAS_CHUNK >= 12
+    case 12 :
+    {
+      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 13 and MAX_SAS_CHUNK >= 13
+    case 13 :
+    {
+      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,13>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 14 and MAX_SAS_CHUNK >= 14
+    case 14 :
+    {
+      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+      break;
+    }
+#endif
+
+    default:
+    {
+      if ( batch->ssChunk < MIN_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
+      else if ( batch->ssChunk > MAX_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
+      else
+	fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
+
+      exit(EXIT_FAILURE);
+    }
+  }
 }
 
 template<typename T, int64_t FLAGS >

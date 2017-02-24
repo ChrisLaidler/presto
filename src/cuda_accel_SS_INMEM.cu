@@ -17,6 +17,8 @@
  *     Fixed an inexplicable bug with the autonomic add
  *     Added capability to optionally do count
  *
+ *  [0.0.03] [2017-02-24]
+ *     Added preprocessor directives for steps and chunks
  */
 
  #include "cuda_accel_SS.h"
@@ -270,79 +272,127 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 
   switch ( batch->ssChunk )
   {
+#if MIN_SAS_CHUNK <= 1  and MAX_SAS_CHUNK >= 1
     case 1 :
     {
       searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 2  and MAX_SAS_CHUNK >= 2
     case 2 :
     {
       searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 3  and MAX_SAS_CHUNK >= 3
     case 3 :
     {
       searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 4  and MAX_SAS_CHUNK >= 4
     case 4 :
     {
       searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 5  and MAX_SAS_CHUNK >= 5
     case 5 :
     {
       searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 6  and MAX_SAS_CHUNK >= 6
     case 6 :
     {
       searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 7  and MAX_SAS_CHUNK >= 7
     case 7 :
     {
       searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 8  and MAX_SAS_CHUNK >= 8
     case 8 :
     {
       searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
+#endif
+
+#if MIN_SAS_CHUNK <= 9  and MAX_SAS_CHUNK >= 9
     case 9 :
     {
       searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
       break;
     }
-    //    case 10:
-    //    {
-    //      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
-    //      break;
-    //    }
-    //    case 12:
-    //    {
-    //      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
-    //      break;
-    //    }
-    //    case 14:
-    //    {
-    //      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
-    //      break;
-    //    }
-    //    case 20:
-    //    {
-    //      searchINMEM_k<T,noStages,noHarms,20><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
-    //      break;
-    //    }
-    //    case 25:
-    //    {
-    //      searchINMEM_k<T,noStages,noHarms,25><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
-    //      break;
-    //    }
+#endif
+
+#if MIN_SAS_CHUNK <= 10  and MAX_SAS_CHUNK >= 10
+    case 10 :
+    {
+      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 11  and MAX_SAS_CHUNK >= 11
+    case 11 :
+    {
+      searchINMEM_k<T,noStages,noHarms,11><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 12  and MAX_SAS_CHUNK >= 12
+    case 12 :
+    {
+      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 13  and MAX_SAS_CHUNK >= 13
+    case 13 :
+    {
+      searchINMEM_k<T,noStages,noHarms,13><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      break;
+    }
+#endif
+
+#if MIN_SAS_CHUNK <= 14  and MAX_SAS_CHUNK >= 14
+    case 14 :
+    {
+      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      break;
+    }
+#endif
+
     default:
     {
-      fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
+      if ( batch->ssChunk < MIN_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
+      else if ( batch->ssChunk > MAX_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
+      else
+	fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
+
       exit(EXIT_FAILURE);
     }
   }
@@ -381,8 +431,10 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
       break;
     }
     default:
+    {
       fprintf(stderr, "ERROR: %s has not been templated for %i stages\n", __FUNCTION__, noStages);
       exit(EXIT_FAILURE);
+    }
   }
 }
 

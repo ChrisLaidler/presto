@@ -63,10 +63,14 @@ extern "C"
 #define 		WITH_NORM_GPU_OS
 
 //	Multiplication
-#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
+//#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 
 //	Powers
 #define 		WITH_POW_POST_CALLBACK		///< Powers to be calculated in CUFFT callbacks - Always a good option
+
+//	Sum & Search
+#define			MIN_SAS_CHUNK	1		// Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
+#define			MAX_SAS_CHUNK	12
 
 //	Candidate
 #define  		WITH_SAS_COUNT
@@ -83,6 +87,9 @@ extern "C"
 //	General
 //#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
 
+//	Sum & Search
+#define			MIN_STEPS	1		///< The minimum number of steps in a single batch
+#define			MAX_STEPS	12		///< The maximum number of steps in a single batch
 
 
 
@@ -96,7 +103,6 @@ extern "C"
 #define		MAX_NO_STAGES		5		///< The maximum number of harmonics handled by a accel search
 #define		MAX_YINDS		8500		///< The maximum number of y indices to store in constant memory - 8500 Works upto ~500
 #define		INDS_BUFF		20		///< The buffer at the ends of each pane in the yInds array
-#define		MAX_STEPS		8		///< The maximum number of steps in a single batch
 #define		MAX_BATCHES		5		///< The maximum number of batches on a single GPU
 #define		MAX_GPUS		32		///< The maximum number GPU's
 #define		CORRECT_MULT		1		///< Generate the kernel values the correct way and do the

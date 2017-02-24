@@ -1,4 +1,21 @@
-#include "cuda_accel_MU.h"
+/** @file cuda_accel_MU_23.cu
+ *  @brief The implementation of the stack multiplication kernel v3
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.01] [2017-02-24]
+ *     Added preprocessor directives for steps and chunks
+ *
+ */
+ 
+ #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - All multiplications for a stack - Uses registers to store sections of the kernel - Loop ( chunk (read ker) - plan - Y - step ) .
  * Each thread loops down a column of the plane
@@ -286,49 +303,111 @@ __host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 {
   switch (batch->noSteps)
   {
-    case 1	:
+#if MIN_STEPS <= 1  and MAX_STEPS >= 1
+    case 1:
     {
       mult23_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 2	:
+#endif
+
+#if MIN_STEPS <= 2  and MAX_STEPS >= 2
+    case 2:
     {
       mult23_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 3	:
+#endif
+
+#if MIN_STEPS <= 3  and MAX_STEPS >= 3
+    case 3:
     {
       mult23_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 4	:
+#endif
+
+#if MIN_STEPS <= 4  and MAX_STEPS >= 4
+    case 4:
     {
       mult23_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 5	:
+#endif
+
+#if MIN_STEPS <= 5  and MAX_STEPS >= 5
+    case 5:
     {
       mult23_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 6	:
+#endif
+
+#if MIN_STEPS <= 6  and MAX_STEPS >= 6
+    case 6:
     {
       mult23_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 7	:
+#endif
+
+#if MIN_STEPS <= 7  and MAX_STEPS >= 7
+    case 7:
     {
       mult23_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    case 8	:
+#endif
+
+#if MIN_STEPS <= 8  and MAX_STEPS >= 8
+    case 8:
     {
       mult23_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, cStack);
       break;
     }
-    default	:
+#endif
+
+#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+    case 9:
     {
-      fprintf(stderr, "ERROR: mult23 has not been templated for %i steps.\n", batch->noSteps);
+      mult23_p<FLAGS,9>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+    case 10:
+    {
+      mult23_p<FLAGS,10>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+    case 11:
+    {
+      mult23_p<FLAGS,11>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+    case 12:
+    {
+      mult23_p<FLAGS,12>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      break;
+    }
+#endif
+
+    default:
+    {
+      if      ( batch->noSteps < MIN_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else if ( batch->noSteps > MAX_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else
+	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+
       exit(EXIT_FAILURE);
     }
   }

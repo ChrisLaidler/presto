@@ -1,4 +1,21 @@
-#include "cuda_accel_MU.h"
+/** @file cuda_accel_MU_22.cu
+ *  @brief The implementation of the stack multiplication kernel v2
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  Change Log
+ *
+ *  [0.0.01] []
+ *    Beginning of change log
+ *    Working version un-numbed
+ *
+ *  [0.0.01] [2017-02-24]
+ *     Added preprocessor directives for steps and chunks
+ *
+ */
+ 
+ #include "cuda_accel_MU.h"
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
  * Each thread loops down a column of the plane
@@ -119,49 +136,111 @@ __host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 
   switch (batch->noSteps)
   {
+#if MIN_STEPS <= 1  and MAX_STEPS >= 1
     case 1:
     {
       mult22_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 2  and MAX_STEPS >= 2
     case 2:
     {
       mult22_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 3  and MAX_STEPS >= 3
     case 3:
     {
       mult22_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 4  and MAX_STEPS >= 4
     case 4:
     {
       mult22_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 5  and MAX_STEPS >= 5
     case 5:
     {
       mult22_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 6  and MAX_STEPS >= 6
     case 6:
     {
       mult22_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 7  and MAX_STEPS >= 7
     case 7:
     {
       mult22_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 8  and MAX_STEPS >= 8
     case 8:
     {
       mult22_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
+#endif
+
+#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+    case 9:
+    {
+      mult22_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+    case 10:
+    {
+      mult22_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+    case 11:
+    {
+      mult22_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      break;
+    }
+#endif
+
+#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+    case 12:
+    {
+      mult22_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      break;
+    }
+#endif
+
     default:
     {
-      fprintf(stderr, "ERROR: mult22 has not been templated for %i steps\n", batch->noSteps);
+      if      ( batch->noSteps < MIN_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else if ( batch->noSteps > MAX_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else
+	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+
       exit(EXIT_FAILURE);
     }
   }

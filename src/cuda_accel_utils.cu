@@ -53,6 +53,8 @@
  *  [0.0.03] [2017-02-16]
  *    Separated candidate and optimisation CPU threading
  *
+ *  [0.0.03] [2017-02-24]
+ *     Added preprocessor directives for steps and chunks
  */
 
 #include <cufft.h>
@@ -690,9 +692,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	plnStride = 32768; // TODO: I need to check for a good default
       }
 
+      // Do a check on number of steps
       if ( noSteps <= 0 )
       {
 	noSteps = MAX_STEPS;
+      }
+      else
+      {
+	MAXX(noSteps, MIN_STEPS);
+	MINN(noSteps, MAX_STEPS);
       }
 
       // Calculate "approximate" plane size
@@ -1352,7 +1360,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       NV_RANGE_PUSH("init streams");
     }
 
-    infoMSG(4,4,"Batch initalisation streams\n");
+    infoMSG(4,4,"Batch initialisation streams\n");
 
     char strBuff[1024];
 
@@ -1505,12 +1513,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	if ( cuSrch->sSpec->zMax >= cuSrch->sSpec->inputNormzBound )
 	{
-	  infoMSG(5,5,"Auto selectying CPU input normalisation.\n");
+	  infoMSG(5,5,"Auto selecting CPU input normalisation.\n");
 	  kernel->flags &= ~CU_NORM_GPU;
 	}
 	else
 	{
-	  infoMSG(5,5,"Auto selectying GPU input normalisation.\n");
+	  infoMSG(5,5,"Auto selecting GPU input normalisation.\n");
 	  kernel->flags |= CU_NORM_GPU_SM;
 	}
       }
@@ -1519,13 +1527,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	if ( cuSrch->sSpec->zMax >= cuSrch->sSpec->inputFFFTzBound )
 	{
-	  infoMSG(5,5,"Auto selectying CPU input FFT and normalisation.\n");
+	  infoMSG(5,5,"Auto selecting CPU input FFT and normalisation.\n");
 	  kernel->flags |= CU_INPT_FFT_CPU;
 	  kernel->flags &= ~CU_NORM_GPU;
 	}
 	else
 	{
-	  infoMSG(5,5,"Auto selectying GPU input FFT's.\n");
+	  infoMSG(5,5,"Auto selecting GPU input FFT's.\n");
 	  kernel->flags &= ~CU_INPT_FFT_CPU;
 	}
       }
@@ -1920,7 +1928,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  float possSteps[MAX_BATCHES];
 	  bool trySomething = 0;
 
-	  // Reset # steps and batches, steps atleast was chaged previosly
+	  // Reset # steps and batches, steps at least was changed previously
 	  noBatches		= cuSrch->gSpec->noDevBatches[devID];
 	  noSteps		= cuSrch->gSpec->noDevSteps[devID];
 
@@ -1965,7 +1973,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      // Determine the maximum number batches for the given steps
 	      for ( int i = 0; i < MAX_BATCHES; i++)
 	      {
-		if ( possSteps[i] > noSteps )
+		if ( possSteps[i] >= MAX(noSteps,MIN_STEPS) )
 		  maxBatches = i+1;
 		else
 		  break;
@@ -1976,14 +1984,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		printf("     Requested %i steps per batch, could do up to %i batches, using 3.\n", noSteps, maxBatches);
 		// Lets just do 3 batches, more than that doesn't really help often
 		noBatches         = 3;
-		kernel->noSteps   = noSteps;
+		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
 	      }
 	      else if ( maxBatches > 2 )
 	      {
 		printf("     Requested %i steps per batch, can do 2 batches.\n", noSteps);
 		// Lets do 2 batches
 		noBatches         = 2;
-		kernel->noSteps   = noSteps;
+		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
 	      }
 	      else if ( maxBatches > 1 )
 	      {
@@ -1992,7 +2000,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		if ( noSteps >= 4 )
 		  printf("       WARNING: Requested %i steps per batch, can only do 1 batch, perhaps consider using fewer steps.\n", noSteps );
 		noBatches         = 1;
-		kernel->noSteps   = noSteps;
+		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
 	      }
 	      else
 	      {
@@ -2009,11 +2017,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	    if ( noSteps == 0 )
 	    {
-	      if ( possSteps[noBatches-1] >= 1 )
+	      if ( possSteps[noBatches-1] >= MAX(1,MIN_STEPS) )
 	      {
 		// do as many steps as possible!
 		kernel->noSteps   = floor(possSteps[noBatches-1]);
+
+		if ( kernel->noSteps < MIN_STEPS )
+		{
+		  fprintf(stderr, "ERROR: Maximum number of steps (%i) possible is less than the compiled minimum (%i).\n", kernel->noSteps, MIN_STEPS);
+		  exit(EXIT_FAILURE);
+		}
+
 		MINN(kernel->noSteps, MAX_STEPS );
+		MAXX(kernel->noSteps, MIN_STEPS );
+
 		printf("     With %i batches, can do %i steps.\n", noBatches, kernel->noSteps);
 		if ( noBatches >= 3 && kernel->noSteps < 3 )
 		{
@@ -2028,12 +2045,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    }
 	    else
 	    {
-	      if ( possSteps[noBatches-1] >= noSteps )
+	      if ( possSteps[noBatches-1] >= MAX(noSteps, MIN_STEPS) )
 	      {
 		printf("     Requested %i steps per batch on this device.\n", noSteps);
 
 		// We can do what we asked for!
-		kernel->noSteps   = noSteps;
+		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
 	      }
 	      else
 	      {
@@ -2046,22 +2063,22 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  if ( trySomething )
 	  {
 	    printf("     Determining a combination of batches and steps.\n");
-	    if      ( possSteps[2] >= 4 )
+	    if      ( possSteps[2] >= MAX(4, MIN_STEPS) )
 	    {
 	      noBatches         = 3;
 	      kernel->noSteps   = floor(possSteps[noBatches-1]);
 	      printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
 	    }
-	    else if ( possSteps[1] >= 2 )
+	    else if ( possSteps[1] >= MAX(2, MIN_STEPS) )
 	    {
 	      // Lets do 2 batches and scale steps
 	      noBatches         = 2;
 	      kernel->noSteps   = floor(possSteps[noBatches-1]);
 	      printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
 	    }
-	    else if ( possSteps[0] >  1 )
+	    else if ( possSteps[0] > MAX(1, MIN_STEPS) )
 	    {
-	      // Lets do 2 batches and scale steps
+	      // Lets do 1 batches and scale steps
 	      noBatches         = 1;
 	      kernel->noSteps   = floor(possSteps[noBatches-1]);
 	      printf("       Can only have %0.1f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
@@ -2071,7 +2088,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      // Well we can't really do anything!
 	      noBatches = 0;
 	      kernel->noSteps = 0;
-	      printf("       ERROR: Can only have %0.1f steps with %i batch.\n", possSteps[0], noBatches );
+	      printf("       ERROR: Can only have %0.1f steps with %i batch, compiled with min of %i.\n", possSteps[0], 1, MIN_STEPS );
 	    }
 	    MINN(kernel->noSteps, MAX_STEPS );
 	  }
@@ -2081,10 +2098,24 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    kernel->noSteps = MAX_STEPS;
 	    printf("      Trying to use more steps that the maximum number (%i) this code is compiled with.\n", kernel->noSteps );
 	  }
+	  if ( kernel->noSteps < MIN_STEPS )
+	  {
+	    kernel->noSteps = MIN_STEPS;
+	    printf("      Trying to use less steps that the maximum number (%i) this code is compiled with.\n", kernel->noSteps );
+	  }
 
 	  if ( noBatches <= 0 || kernel->noSteps <= 0 )
 	  {
 	    fprintf(stderr, "ERROR: Insufficient memory to make make any planes. One step would require %.2fGiB of device memory.\n", ( fffTotSize + batchSize )/1073741824.0 );
+
+	    freeKernel(kernel);
+	    return (0);
+	  }
+
+	  // Final sanity check
+	  if ( possSteps[noBatches-1] < kernel->noSteps )
+	  {
+	    fprintf(stderr, "ERROR: Unable to process %i steps with %i batches.\n", kernel->noSteps, noBatches );
 
 	    freeKernel(kernel);
 	    return (0);
@@ -2981,7 +3012,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	}
 
 	// Clamp to valid bounds
-	batch->ssChunk = MAX(MIN(floor(batch->ssChunk), 9),1);
+	batch->ssChunk = MAX(MIN(floor(batch->ssChunk), MAX_SAS_CHUNK), MIN_SAS_CHUNK);
 
 	infoMSG(5,5,"ssChunk %2i \n",batch->ssChunk);
       }
@@ -5091,7 +5122,25 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  int read1 = sscanf(str2, "%i", &no  );
 	  if ( read1 == 1 )
 	  {
-	    sSpec->ssChunk = no;
+	    if ( no <= 0 )		// Auto
+	    {
+	      sSpec->ssChunk = 0;
+	    }
+	    else if ( (no >= MIN_SAS_CHUNK) and (no <= MAX_SAS_CHUNK) )
+	    {
+	      sSpec->ssChunk = no;
+	    }
+	    else
+	    {
+	      fprintf(stderr, "WARNING: Sum & search chunk size not in compiled bounds (%i - %i). Line %i of %s.\n", MIN_SAS_CHUNK, MAX_SAS_CHUNK, lineno, fName);
+	      sSpec->ssChunk = 0;
+
+	      FOLD  // TMP REM - Added to mark an error for thesis timing
+	      {
+		printf("Temporary exit - mult Kernel \n");
+		exit(EXIT_FAILURE);
+	      }
+	    }
 	  }
 	  else
 	  {
