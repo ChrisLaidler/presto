@@ -18,7 +18,7 @@ Int -nbatch nbatch      {A list of the number of batches of f-∂f planes to pro
   -c 0 32       \
   -d 0
 Int -nsteps nsteps      {A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the aplication to determine a good value.} \
-  -r 0 8        \
+  -r 0 12        \
   -c 0 32       \
   -d 0 
 Int -numopt numopt      {A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value.} \
