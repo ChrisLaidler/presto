@@ -858,7 +858,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       if ( !(cuSrch->sSpec->flags & FLAG_SS_ALL) )
       {
 	// Default to S&S 1.
-	cuSrch->sSpec->flags |= FLAG_SS_10;
+	cuSrch->sSpec->flags |= FLAG_SS_31;
 	cuSrch->sSpec->flags |= FLAG_RET_STAGES;
       }
 
@@ -905,7 +905,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	cuSrch->sSpec->flags &= ~FLAG_CUFFT_CB_POW;
       }
 
-      if ( (cuSrch->sSpec->flags & FLAG_SS_10) || (cuSrch->sSpec->flags & FLAG_SS_INMEM) )
+      if ( (cuSrch->sSpec->flags & FLAG_SS_31) || (cuSrch->sSpec->flags & FLAG_SS_INMEM) )
       {
 	cuSrch->sSpec->flags |= FLAG_RET_STAGES;
       }
@@ -1693,7 +1693,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	infoMSG(7, 7, "SAS will return candPZs ( a float and short)"); // TODO:
 	retSZ = sizeof(candPZs);	// I found that this auto aligns to 8 bytes, which is good for alignment bad(ish) for size
       }
-      if      (kernel->retType & CU_POWERH_S  )
+      else if (kernel->retType & CU_POWERH_S  )
       {
 	infoMSG(7, 7, "SAS will return candHs ( a half and short)");
 	retSZ = sizeof(candHs);
@@ -2028,10 +2028,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		  exit(EXIT_FAILURE);
 		}
 
+		printf("     With %i batches, can do %i steps.\n", noBatches, kernel->noSteps);
+
 		MINN(kernel->noSteps, MAX_STEPS );
 		MAXX(kernel->noSteps, MIN_STEPS );
 
-		printf("     With %i batches, can do %i steps.\n", noBatches, kernel->noSteps);
 		if ( noBatches >= 3 && kernel->noSteps < 3 )
 		{
 		  printf("       WARNING: %i steps is quite low, perhaps consider using fewer batches.\n", kernel->noSteps);
@@ -2050,7 +2051,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		printf("     Requested %i steps per batch on this device.\n", noSteps);
 
 		// We can do what we asked for!
-		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
+		kernel->noSteps   = MAX(noSteps, MIN_STEPS);
+
+		if ( noSteps < MIN_STEPS )
+		  printf("     Requested steps below the compile minimum of %i, using %i.\n", MIN_STEPS, kernel->noSteps);
 	      }
 	      else
 	      {
@@ -2974,7 +2978,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       if ( !(batch->flags & FLAG_SS_ALL ) )   // Default to multiplication  .
       {
-	batch->flags |= FLAG_SS_10;
+	batch->flags |= FLAG_SS_31;
       }
 
       if ( batch->ssChunk <= 0 )
@@ -5060,10 +5064,10 @@ void readAccelDefalts(searchSpecs *sSpec)
 	    sSpec->retType |= CU_CMPLXF       ;
 	  }
 	}
-	else if ( strCom("10",  str2 ) )
+	else if ( strCom("10",  str2 ) || strCom("31",  str2 ) )
 	{
 	  (*flags) &= ~FLAG_SS_ALL;
-	  (*flags) |= FLAG_SS_10;
+	  (*flags) |= FLAG_SS_31;
 	  (*flags) |= FLAG_RET_STAGES;
 	}
 	else if ( strCom("INMEM", str2 ) || strCom("IM", str2 ) )
@@ -5715,7 +5719,7 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
 
   sSpec.zMax = cu_calc_required_z<double>(1, fabs(sSpec.zMax), sSpec.zRes);
 
-  if ( sSpec.flags & (FLAG_SS_10 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
+  if ( sSpec.flags & (FLAG_SS_31 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
   {
     // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
     sSpec.fftInf.rlo  = floor(obs->rlo/(float)cmd->numharm)*cmd->numharm;
@@ -6688,7 +6692,7 @@ void writeLogEntry(const char* fname, accelobs* obs, cuSearch* cuSrch, long long
 
     if      ( batch->flags & FLAG_SS_00  )
       cvsLog->csvWrite("SS",    "flg", "00");
-    else if ( batch->flags & FLAG_SS_10  )
+    else if ( batch->flags & FLAG_SS_31  )
       cvsLog->csvWrite("SS",    "flg", "10");
     //    else if ( batch->flag & FLAG_SS_20  )
     //      cvsLog->csvWrite("SS",    "flg", "20");

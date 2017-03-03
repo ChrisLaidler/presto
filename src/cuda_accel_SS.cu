@@ -136,16 +136,16 @@ __host__ void add_and_searchCU3(cudaStream_t stream, cuFFdotBatch* batch )
   {
     add_and_searchCU00(stream, batch );
   }
-  else if ( FLAGS & FLAG_SS_10 )
+  else if ( FLAGS & FLAG_SS_31 )
   {
     add_and_searchCU31(stream, batch );
   }
+  //  else if ( FLAGS & FLAG_SS_32 )
+  //  {
+  //    add_and_searchCU32(stream, batch );
+  //  }
   //		Deprecated
   //
-  //    else if ( FLAGS & FLAG_SS_20 )
-  //    {
-  //      add_and_searchCU32(stream, batch );
-  //    }
   //    else if ( FLAGS & FLAG_SS_30 )
   //    {
   //      add_and_searchCU33(stream, batch );

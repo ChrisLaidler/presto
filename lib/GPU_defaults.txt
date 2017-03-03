@@ -252,7 +252,7 @@ SS_SLICES		0
 
 # The number of values to buffer in the Sum & Search kernel (this increases register use)
 # SS_CHUNK:
-#	int			# A number <= 8
+#	int			# A number <= 12
 # D	0			# Let the application decide
 SS_CHUNK		0
 

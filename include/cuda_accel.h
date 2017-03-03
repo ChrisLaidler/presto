@@ -173,10 +173,10 @@ extern "C"
 
 #define		FLAG_SS_CPU		BIT(30)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
 #define		FLAG_SS_00		BIT(31)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
-#define		FLAG_SS_10		BIT(32)		///< This is the standard sum and search kernel, there were others but they were deprecated
-#define		FLAG_SS_INMEM		BIT(33)		///< Do an in memory GPU search
-#define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_10 /* | FLAG_SS_20 | FLAG_SS_30 */ )
-#define		FLAG_SS_KERS		( FLAG_SS_STG | FLAG_SS_INMEM)
+#define		FLAG_SS_31		BIT(32)		///< This is the standard sum and search kernel, there were others but they were deprecated
+#define		FLAG_SS_INMEM		BIT(34)		///< Do an in memory GPU search
+#define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_31 | FLAG_SS_32 /* | FLAG_SS_30 */ )
+#define		FLAG_SS_KERS		( FLAG_SS_STG | FLAG_SS_INMEM )
 #define		FLAG_SS_ALL		( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
 #define		FLAG_RET_STAGES		BIT(35)		///< Return results for all stages of summing, default is only the final result
