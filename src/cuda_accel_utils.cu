@@ -55,6 +55,9 @@
  *
  *  [0.0.03] [2017-02-24]
  *     Added preprocessor directives for steps and chunks
+ *
+ *  [0.0.03] [2017-03-04]
+ *     Work on automatic step, batch and chunk selection
  */
 
 #include <cufft.h>
@@ -266,7 +269,7 @@ uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accura
   if ( width > 100 )				// The user specified the exact width they want to use for accellen  .
   {
     accelLen  = oAccelLen1;
-    infoMSG(6,6,"User specified step size %i - using %i \n", width, oAccelLen1);
+    infoMSG(6,6,"User specified step size %.0f - using: %i \n", width, oAccelLen1);
   }
   else						// Determine accellen by, examining the accellen at the second stack  .
   {
@@ -595,7 +598,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
   gpuInf* gInf		= &cuSrch->gSpec->devInfo[devID];
   int noBatches		= cuSrch->gSpec->noDevBatches[devID];
-  int noSteps		= cuSrch->gSpec->noDevSteps[devID];
+  int noSteps		= cuSrch->gSpec->noDevSteps[devID];	///< The number of steps blocked together in the candidate generation stage
 
   presto_interp_acc  accuracy = LOWACC;
 
@@ -654,6 +657,86 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
+  FOLD // Allocate and zero some structures  .
+  {
+    infoMSG(4,4,"Allocate and zero structures\n");
+
+    FOLD // Initialise main pointer to this kernel  .
+    {
+      memset(kernel, 0, sizeof(cuFFdotBatch));
+
+      if ( master != NULL )  // Copy all pointers and sizes from master. All non global pointers must be overwritten.
+      {
+	memcpy(kernel,  master,  sizeof(cuFFdotBatch));
+	kernel->srchMaster  = 0;
+      }
+      else
+      {
+	kernel->flags         = cuSrch->sSpec->flags;
+	kernel->srchMaster    = 1;
+      }
+    }
+
+    FOLD // Set the device specific parameters  .
+    {
+      kernel->cuSrch		= cuSrch;
+      kernel->gInf		= gInf;
+      kernel->isKernel		= 1;                // This is the device master
+    }
+  }
+
+  FOLD // Set some defaults  .
+  {
+    if ( master == NULL ) // For the moment lets try this on only the first card!
+    {
+      infoMSG(4,4,"Check some settings.\n");
+
+      FOLD // IM step size  .
+      {
+	if ( cuSrch->sSpec->ssStepSize <= 100 )
+	{
+	  if ( cuSrch->sSpec->ssStepSize > 0 )
+	    fprintf(stderr, "WARNING: In-mem plane search stride too small, try auto ( 0 ) or something larger than 100 say 16384 or 32768.\n");
+
+	  kernel->strideOut = 32768; // TODO: I need to check for a good default
+
+	  infoMSG(5,5,"In-mem search step size automatically set to %i.\n", kernel->strideOut);
+	}
+	else
+	{
+	  kernel->strideOut = cuSrch->sSpec->ssStepSize;
+	}
+      }
+
+      FOLD // Do a check on number of steps  .
+      {
+	if ( noSteps <= 0 )
+	{
+	  // Generally more is better, but this can add register pressure so there is some upper limit
+
+	  if ( gInf->capability > 3.2 )	// Maxwell  .
+	  {
+	    noSteps = 8;
+	  }
+	  else				// Kepler  .
+	  {
+	    noSteps = 6;
+	  }
+
+	  infoMSG(5,5,"Generation number of steps automatically set to %i, compute version: %.1f\n", noSteps, gInf->capability);
+	}
+	else
+	{
+	  // Well do nothing, use value specified in text file!
+	}
+
+	// Clip to max and min compiled with
+	MAXX(noSteps, MIN_STEPS);
+	MINN(noSteps, MAX_STEPS);
+      }
+    }
+  }
+
   FOLD // See if this device could do a GPU in-mem search  .
   {
     if ( master == NULL ) // For the moment lets try this on only the first card!
@@ -665,17 +748,16 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       fffTotSize  = 0;
       planeSize   = 0;
 
-      int    plnStride  = cuSrch->sSpec->ssStepSize;
-      int    plnY       = ceil(cuSrch->sSpec->zMax / cuSrch->sSpec->zRes ) + 1 ; // This assumes we are splitting the inmem plane into a top and bottom section (FLAG_Z_SPLIT)
+      int    plnY       = ceil(cuSrch->sSpec->zMax / cuSrch->sSpec->zRes ) + 1 ;	// This assumes we are splitting the inmem plane into a top and bottom section (FLAG_Z_SPLIT)
 
-      if ( cuSrch->sSpec->flags & FLAG_POW_HALF )
+      if ( kernel->flags & FLAG_POW_HALF )
       {
 #if CUDA_VERSION >= 7050
 	plnElsSZ = sizeof(half);
 #else
 	plnElsSZ = sizeof(float);
 	fprintf(stderr, "WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
-	cuSrch->sSpec->flags &= ~FLAG_POW_HALF;
+	kernel->flags &= ~FLAG_POW_HALF;
 #endif
       }
       else
@@ -683,25 +765,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	plnElsSZ = sizeof(float);
       }
 
-      if ( cuSrch->sSpec->flags & FLAG_KER_HIGH )
+      if ( kernel->flags & FLAG_KER_HIGH )
 	accuracy = HIGHACC;
-
-      // Calculate stride
-      if ( plnStride <= 0 )
-      {
-	plnStride = 32768; // TODO: I need to check for a good default
-      }
-
-      // Do a check on number of steps
-      if ( noSteps <= 0 )
-      {
-	noSteps = MAX_STEPS;
-      }
-      else
-      {
-	MAXX(noSteps, MIN_STEPS);
-	MINN(noSteps, MAX_STEPS);
-      }
 
       // Calculate "approximate" plane size
       size_t accelLen   = calcAccellen(cuSrch->sSpec->pWidth, cuSrch->sSpec->zMax, 1, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes, false);
@@ -720,7 +785,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       // Calculate the  "approximate" size of a single 1 step batch
       batchSize		+= fftLen * sizeof(cufftComplex);							// Input
-      batchSize		+= plnStride * cuSrch->noHarmStages * cuSrch->sSpec->ssSlices * sizeof(candPZs);	// Output
+      batchSize		+= kernel->strideOut * cuSrch->noHarmStages * cuSrch->sSpec->ssSlices * sizeof(candPZs);// Output
       batchSize		+= fftLen * plnY * sizeof(cufftComplex);						// Complex plain
       batchSize		+= fftLen * plnY * sizeof(float);							// Powers plain
 
@@ -728,7 +793,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  ( fftLen * sizeof(cufftComplex) )*1e-6,
 	  ( fftLen * plnY * sizeof(cufftComplex) )*1e-6,
 	  ( fftLen * plnY * sizeof(float) )*1e-6,
-	  ( plnStride * cuSrch->noHarmStages * cuSrch->sSpec->ssSlices * sizeof(candPZs) )*1e-6 );
+	  ( kernel->strideOut * cuSrch->noHarmStages * cuSrch->sSpec->ssSlices * sizeof(candPZs) )*1e-6 );
 
 
       fffTotSize        = fftLen * plnY * sizeof(cufftComplex);
@@ -754,13 +819,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  infoMSG(5,5,"Prefer in-mem\n");
 	}
 
-	if ( !(cuSrch->sSpec->flags & FLAG_SS_ALL) || (cuSrch->sSpec->flags & FLAG_SS_INMEM) )
+	if ( !(kernel->flags & FLAG_SS_ALL) || (kernel->flags & FLAG_SS_INMEM) )
 	{
 	  printf("Device %i can do a in-mem GPU search.\n", gInf->devid);
 	  printf("  There is %.2f GB free memory.\n  A split f-∂f plane requires ~%.2f GB and the workspace ~%.2f MB.\n", free*1e-9, planeSize*1e-9, familySz*1e-6 );
 	}
 
-	if ( (cuSrch->sSpec->flags & FLAG_SS_INMEM) || ( prefIm && !(cuSrch->sSpec->flags & FLAG_SS_ALL)) )
+	if ( (kernel->flags & FLAG_SS_INMEM) || ( prefIm && !(kernel->flags & FLAG_SS_ALL)) )
 	{
 	  doIm = true;
 	}
@@ -784,7 +849,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	if ( (planeSize + familySz) < free * 0.5 )
 	{
-	  if ( cuSrch->sSpec->flags & FLAG_Z_SPLIT )
+	  if ( kernel->flags & FLAG_Z_SPLIT )
 	    fprintf(stderr,"  WARNING: Opting to split the in-mem plane when you don't need to.\n");
 	  else
 	    printf("    No need to split the in-mem plane.\n");
@@ -792,20 +857,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	else
 	{
 	  printf("    Have to split the in-mem plane.\n");
-	  cuSrch->sSpec->flags |= FLAG_Z_SPLIT;
+	  kernel->flags |= FLAG_Z_SPLIT;
 	}
 
-	cuSrch->sSpec->flags |= FLAG_SS_INMEM ;	// TODO: Don't edit sSpec directly?
+	kernel->flags |= FLAG_SS_INMEM ;
+
 #if CUDA_VERSION >= 6050
-	if ( !(cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW) )
+	if ( !(kernel->flags & FLAG_CUFFT_CB_POW) )
 	  fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
 #else
 	fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal. Try upgrading to CUDA 6.5 or later.\n");
-	cuSrch->sSpec->flags &= ~FLAG_CUFFT_ALL;
+	kernel->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
 #if CUDA_VERSION >= 7050
-	if ( !(cuSrch->sSpec->flags & FLAG_POW_HALF) )
+	if ( !(kernel->flags & FLAG_POW_HALF) )
 	  fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
 #else
 	fprintf(stderr,"  Warning: You could be using half precision. Try upgrading to CUDA 7.5 or later.\n");
@@ -825,7 +891,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	// No In-mem
 	infoMSG(5,5,"Not doing in-mem\n");
 
-	if ( cuSrch->sSpec->flags & FLAG_SS_INMEM  )
+	if ( kernel->flags & FLAG_SS_INMEM  )
 	{
 	  // Warning
 	  fprintf(stderr,"ERROR: Requested an in-memory GPU search, this is not possible.\n\tThere is %.2f GB of free memory.\n\tIn-mem (split plane) GPU search would require ~%.2f GB\n\n", free*1e-9, (planeSize + familySz)*1e-9 );
@@ -844,22 +910,22 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  // "Should" do a IM search
 
-	  if ( (cuSrch->sSpec->flags & FLAG_SS_ALL) )
+	  if ( (kernel->flags & FLAG_SS_ALL) )
 	  {
 	    fprintf(stderr,"WARNING: Opting to NOT do a in-mem search when you could!\n");
 	  }
 	}
 
-	cuSrch->sSpec->flags &= ~FLAG_SS_INMEM ;
-	cuSrch->sSpec->flags &= ~FLAG_Z_SPLIT;
+	kernel->flags &= ~FLAG_SS_INMEM ;
+	kernel->flags &= ~FLAG_Z_SPLIT;
       }
 
       // Sanity check
-      if ( !(cuSrch->sSpec->flags & FLAG_SS_ALL) )
+      if ( !(kernel->flags & FLAG_SS_ALL) )
       {
-	// Default to S&S 1.
-	cuSrch->sSpec->flags |= FLAG_SS_31;
-	cuSrch->sSpec->flags |= FLAG_RET_STAGES;
+	// Default to S&S 3.1
+	kernel->flags |= FLAG_SS_31;
+	kernel->flags |= FLAG_RET_STAGES;
       }
 
       // Reset sizes as they will need to be set to the actual values
@@ -870,6 +936,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       printf("\n");
     }
+
+    FOLD // Set kernel values from  cuSrch values  .
+    {
+      kernel->noHarmStages  = cuSrch->noHarmStages;
+      kernel->noGenHarms    = cuSrch->noGenHarms;
+      kernel->noSrchHarms   = cuSrch->noSrchHarms;
+    }
   }
 
   FOLD // Do a global sanity check on Flags and CUDA version  .
@@ -878,50 +951,50 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     if ( master == NULL ) // For the moment lets try this on only the first card!
     {
-      infoMSG(4,4,"FLAGS\n");
+      infoMSG(4,4,"Sanity check on some settings.\n");
 
       // CUFFT callbacks
 #if CUDA_VERSION < 6050
-      cuSrch->sSpec->flags &= ~FLAG_CUFFT_ALL;
+      kernel->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
-      if ( (cuSrch->sSpec->flags & FLAG_POW_HALF) && !(cuSrch->sSpec->flags & FLAG_SS_INMEM) && !(cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW) )
+      if ( (kernel->flags & FLAG_POW_HALF) && !(kernel->flags & FLAG_SS_INMEM) && !(kernel->flags & FLAG_CUFFT_CB_POW) )
       {
 #if CUDA_VERSION >= 7050
 	fprintf(stderr, "WARNING: Can't use half precision with out of memory search and no CUFFT callbacks. Reverting to single precision!\n");
 #endif
-	cuSrch->sSpec->flags &= ~FLAG_POW_HALF;
+	kernel->flags &= ~FLAG_POW_HALF;
       }
 
-      if ( !(cuSrch->sSpec->flags & FLAG_SS_INMEM) && (cuSrch->sSpec->flags & FLAG_CUFFT_CB_INMEM) )
+      if ( !(kernel->flags & FLAG_SS_INMEM) && (kernel->flags & FLAG_CUFFT_CB_INMEM) )
       {
 	fprintf(stderr, "WARNING: Can't use inmem callback with out of memory search. Disabling in-mem callback.\n");
-	cuSrch->sSpec->flags &= ~FLAG_CUFFT_CB_INMEM;
+	kernel->flags &= ~FLAG_CUFFT_CB_INMEM;
       }
 
-      if ( (cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW) && (cuSrch->sSpec->flags & FLAG_CUFFT_CB_INMEM) )
+      if ( (kernel->flags & FLAG_CUFFT_CB_POW) && (kernel->flags & FLAG_CUFFT_CB_INMEM) )
       {
 	fprintf(stderr, "WARNING: in-mem CUFFT callback will supersede power callback, I have found power callbacks to be the best.\n");
-	cuSrch->sSpec->flags &= ~FLAG_CUFFT_CB_POW;
+	kernel->flags &= ~FLAG_CUFFT_CB_POW;
       }
 
-      if ( (cuSrch->sSpec->flags & FLAG_SS_31) || (cuSrch->sSpec->flags & FLAG_SS_INMEM) )
+      if ( (kernel->flags & FLAG_SS_31) || (kernel->flags & FLAG_SS_INMEM) )
       {
-	cuSrch->sSpec->flags |= FLAG_RET_STAGES;
+	kernel->flags |= FLAG_RET_STAGES;
       }
 
-      if ( !(cuSrch->sSpec->flags & FLAG_SS_INMEM) && (cuSrch->sSpec->flags & FLAG_Z_SPLIT) )
+      if ( !(kernel->flags & FLAG_SS_INMEM) && (kernel->flags & FLAG_Z_SPLIT) )
       {
 	infoMSG(5,5,"Disabling in-mem plane split\n");
 
-	cuSrch->sSpec->flags &= ~FLAG_Z_SPLIT;
+	kernel->flags &= ~FLAG_Z_SPLIT;
       }
 
-      if ( !(cuSrch->sSpec->flags & FLAG_CAND_THREAD) && (cuSrch->sSpec->flags & FLAG_CAND_MEM_PRE) )
+      if ( !(kernel->flags & FLAG_CAND_THREAD) && (kernel->flags & FLAG_CAND_MEM_PRE) )
       {
 	infoMSG(5,5,"Disable separate candidate memory (sequential candidates).\n");
 
-	cuSrch->sSpec->flags &= ~FLAG_CAND_MEM_PRE;
+	kernel->flags &= ~FLAG_CAND_MEM_PRE;
 
 	FOLD  // TMP REM - Added to mark an error for thesis timing
 	{
@@ -930,45 +1003,48 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	}
       }
 
-      char typeS[1024];
-      sprintf(typeS, "Doing");
-
-      if ( cuSrch->sSpec->flags & FLAG_SS_INMEM )
+      FOLD // Print some user output  .
       {
-	sprintf(typeS, "%s a in-memory search", typeS);
-	if ( cuSrch->sSpec->flags & FLAG_Z_SPLIT )
+	char typeS[1024];
+	sprintf(typeS, "Doing");
+	
+	if ( kernel->flags & FLAG_SS_INMEM )
 	{
-	  sprintf(typeS, "%s with a split plane", typeS);
+	  sprintf(typeS, "%s a in-memory search", typeS);
+	  if ( kernel->flags & FLAG_Z_SPLIT )
+	  {
+	    sprintf(typeS, "%s with a split plane", typeS);
+	  }
+	  else
+	  {
+	    sprintf(typeS, "%s with the full plane", typeS);
+	  }
 	}
 	else
-	{
-	  sprintf(typeS, "%s with the full plane", typeS);
-	}
+	  sprintf(typeS, "%s an out of memory search", typeS);
+
+	sprintf(typeS, "%s, using", typeS);
+	if ( kernel->flags & FLAG_POW_HALF )
+	  sprintf(typeS, "%s half", typeS);
+	else
+	  sprintf(typeS, "%s single", typeS);
+
+	sprintf(typeS, "%s precision powers", typeS);
+	if ( kernel->flags & FLAG_CUFFT_CB_POW )
+	  sprintf(typeS, "%s and CUFFT callbacks to calculate powers.", typeS);
+	else if ( kernel->flags & FLAG_CUFFT_CB_INMEM )
+	  sprintf(typeS, "%s and CUFFT callbacks to calculate powers and store in the full plane.", typeS);
+	else
+	  sprintf(typeS, "%s and no CUFFT callbacks.", typeS);
+
+	printf("%s\n\n", typeS);
       }
-      else
-	sprintf(typeS, "%s an out of memory search", typeS);
-
-      sprintf(typeS, "%s, using", typeS);
-      if ( cuSrch->sSpec->flags & FLAG_POW_HALF )
-	sprintf(typeS, "%s half", typeS);
-      else
-	sprintf(typeS, "%s single", typeS);
-
-      sprintf(typeS, "%s precision powers", typeS);
-      if ( cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW )
-	sprintf(typeS, "%s and CUFFT callbacks to calculate powers.", typeS);
-      else if ( cuSrch->sSpec->flags & FLAG_CUFFT_CB_INMEM )
-	sprintf(typeS, "%s and CUFFT callbacks to calculate powers and store in the full plane.", typeS);
-      else
-	sprintf(typeS, "%s and no CUFFT callbacks.", typeS);
-
-      printf("%s\n\n", typeS);
     }
 
     FOLD // Determine the size of the elements of the planes  .
     {
       // Set power plane size
-      if ( cuSrch->sSpec->flags & FLAG_DOUBLE )
+      if ( kernel->flags & FLAG_DOUBLE )
       {
 	cmpElsSZ = sizeof(double2);
       }
@@ -978,14 +1054,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
 
       // Half precision plane
-      if ( cuSrch->sSpec->flags & FLAG_POW_HALF )
+      if ( kernel->flags & FLAG_POW_HALF )
       {
 #if CUDA_VERSION >= 7050
 	plnElsSZ = sizeof(half);
 #else
 	plnElsSZ = sizeof(float);
 	fprintf(stderr, "WARNING: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
-	cuSrch->sSpec->flags &= ~FLAG_POW_HALF;
+	kernel->flags &= ~FLAG_POW_HALF;
 #endif
       }
       else
@@ -994,7 +1070,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
 
       // Set power plane size
-      if ( cuSrch->sSpec->flags & FLAG_CUFFT_CB_POW )
+      if ( kernel->flags & FLAG_CUFFT_CB_POW )
       {
 	powElsSZ = plnElsSZ;
       }
@@ -1005,49 +1081,18 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     }
   }
 
-  FOLD // Allocate and zero some structures  .
+  FOLD // Determine step size and how many stacks and how many planes in each stack  .
   {
-    infoMSG(4,4,"Allocate and zero structures\n");
-
-    FOLD // Initialise main pointer to this kernel  .
-    {
-      memset(kernel, 0, sizeof(cuFFdotBatch));
-
-      if ( master != NULL )  // Copy all pointers and sizes from master. All non global pointers must be overwritten.
-      {
-	memcpy(kernel,  master,  sizeof(cuFFdotBatch));
-	kernel->srchMaster  = 0;
-      }
-      else
-      {
-	kernel->flags         = cuSrch->sSpec->flags;
-	kernel->srchMaster    = 1;
-	kernel->noHarmStages  = cuSrch->noHarmStages;
-	kernel->noGenHarms    = cuSrch->noGenHarms;
-	kernel->noSrchHarms   = cuSrch->noSrchHarms;
-      }
-    }
-
-    FOLD // Set the device specific parameters  .
-    {
-      kernel->cuSrch		= cuSrch;
-      kernel->gInf		= gInf;
-      kernel->isKernel		= 1;                // This is the device master
-    }
-
     FOLD // Allocate memory  .
     {
       kernel->hInfos		= (cuHarmInfo*) malloc(kernel->noSrchHarms * sizeof(cuHarmInfo));
-      kernel->kernels		= (cuKernel*)   malloc(kernel->noGenHarms * sizeof(cuKernel));
+      kernel->kernels		= (cuKernel*)   malloc(kernel->noGenHarms  * sizeof(cuKernel));
 
       // Zero memory for kernels and harmonics
       memset(kernel->hInfos,  0, kernel->noSrchHarms * sizeof(cuHarmInfo));
       memset(kernel->kernels, 0, kernel->noGenHarms  * sizeof(cuKernel));
     }
-  }
-
-  FOLD // Determine step size and how many stacks and how many planes in each stack  .
-  {
+    
     if ( master == NULL ) 	// Calculate details for the batch  .
     {
       FOLD // Determine step size  .
@@ -1059,8 +1104,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	FOLD // Get step size  .
 	{
-	  if ( !(cuSrch->sSpec->flags & FLAG_SS_INMEM)  )
+	  if ( !(kernel->flags & FLAG_SS_INMEM) || (kernel->flags & CU_NORM_GPU ) )
+	  {
+	    // Standard Sum & search kernel (SS31) requires divisible
+	    // GPU normalisation requires all steps to have the same width, which requires divisibility
 	    devisSS = true;
+	  }
 
 	  kernel->accelLen = calcAccellen(cuSrch->sSpec->pWidth, cuSrch->sSpec->zMax, kernel->noGenHarms, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes, devisSS);
 	}
@@ -1069,7 +1118,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  printf(" • Using ");
 
-	  if ( cuSrch->sSpec->flags & FLAG_KER_HIGH )
+	  if ( kernel->flags & FLAG_KER_HIGH )
 	  {
 	    printf("high ");
 	  }
@@ -1079,7 +1128,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  }
 	  printf("accuracy response functions.\n");
 
-	  if ( cuSrch->sSpec->flags & FLAG_KER_MAX )
+	  if ( kernel->flags & FLAG_KER_MAX )
 	    printf(" • Using maximum response function length for entire kernel.\n");
 	}
 
@@ -1090,7 +1139,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  double fWidth;
 	  int oAccelLen;
 
-	  if ( cuSrch->sSpec->pWidth > 100 ) // User specified step size, check how close to optimal it is
+	  if ( cuSrch->sSpec->pWidth > 100 ) // User specified step size, check how close to optimal it is  .
 	  {
 	    double l2	= log2( fftLen ) - 10 ;
 	    fWidth	= pow(2, l2);
@@ -1103,7 +1152,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  if ( ratio < 1 )
 	  {
 	    printf(" a suboptimal step-size of %i. (%.2f%% of optimal) \n",  kernel->accelLen, ratio*100 );
-	    printf("   > For a zmax of %.1f using %iK FFTs the optimal step-size is %i.\n", cuSrch->sSpec->zMax, (int)fWidth, oAccelLen);
+	    printf("   > For a zmax of %.1f using %.0f K FFTs the optimal step-size is %i.\n", cuSrch->sSpec->zMax, fWidth, oAccelLen);
 
 	    if ( cuSrch->sSpec->pWidth > 100 )
 	    {
@@ -1237,7 +1286,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      kernel->hInfos[hIdx].stageIndex	= sIdx;
 	      cuSrch->sIdx[sIdx]		= hIdx;
 
-	      infoMSG(6,6,"Fraction: %5.3f ( %i/%i ), Harmonic idx %2i, Stage idx %2i \n", hFrac, harm, harmtosum, hIdx, sIdx );
+	      infoMSG(6,6,"Fraction: %5.3f ( %2i/%2i ), Harmonic idx %2i, Stage idx %2i \n", hFrac, harm, harmtosum, hIdx, sIdx );
 	    }
 	  }
 	}
@@ -1756,56 +1805,51 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	if      (  kernel->flags & FLAG_SS_INMEM )
 	{
 	  // NOTE: The in-mem sum and search does not need the search step size to be divisible by number of harmonics
-
-	  if ( cuSrch->sSpec->ssStepSize <= 100 )
-	  {
-	    if ( cuSrch->sSpec->ssStepSize > 0 )
-	      fprintf(stderr, "WARNING: In-mem plane search stride too small try 0 or something larger that 100 say 16384 or 32768.\n");
-
-	    kernel->strideOut = 32768; // TODO: I need to check for a good default
-	  }
-	  else
-	  {
-	    kernel->strideOut = cuSrch->sSpec->ssStepSize;
-	  }
-	}
-	else if ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
-	{
-	  kernel->strideOut = kernel->accelLen;
-	}
-	else if (  kernel->retType & CU_STR_PLN  )
-	{
-	  if      ( kernel->retType & CU_FLOAT  )
-	  {
-	    kernel->strideOut = kernel->stacks->stridePower ;
-	  }
-	  else if ( kernel->retType & CU_HALF   )
-	  {
-	    kernel->strideOut = kernel->stacks->stridePower ;
-	  }
-	  else if ( kernel->retType & CU_CMPLXF )
-	  {
-	    kernel->strideOut = kernel->stacks->strideCmplx ;
-	  }
-	  else
-	  {
-	    fprintf(stderr,"ERROR: CUDA return type not compatible with returning plane.\n");
-	    exit(EXIT_FAILURE);
-	  }
+	  // StrideOut has already been set to cuSrch->sSpec->ssStepSize
 	}
 	else
 	{
-	  fprintf(stderr,"ERROR: CUDA return structure not specified.\n");
-	  exit(EXIT_FAILURE);
-	}
+	  if      ( (kernel->retType & CU_STR_ARR) || (kernel->retType & CU_STR_LST) || (kernel->retType & CU_STR_QUAD) )
+	  {
+	    // Standard search so generation and search are the same step size
+	    kernel->strideOut = kernel->accelLen;
+	  }
+	  else if (  kernel->retType & CU_STR_PLN  )
+	  {
+	    // This isn't really used anymore
 
-	FOLD // Make sure the stride is aligned  .
-	{
-	  int iStride = kernel->strideOut;
-	  kernel->strideOut = getStrie(kernel->strideOut, retSZ, gInf->alignment);
-	  infoMSG(6,6,"Return size %i, elements: %i   initial stride: %i   aligned stride1: %i", retSZ, kernel->accelLen, iStride, kernel->strideOut );
-	}
+	    if      ( kernel->retType & CU_FLOAT  )
+	    {
+	      kernel->strideOut = kernel->stacks->stridePower ;
+	    }
+	    else if ( kernel->retType & CU_HALF   )
+	    {
+	      kernel->strideOut = kernel->stacks->stridePower ;
+	    }
+	    else if ( kernel->retType & CU_CMPLXF )
+	    {
+	      kernel->strideOut = kernel->stacks->strideCmplx ;
+	    }
+	    else
+	    {
+	      fprintf(stderr,"ERROR: CUDA return type not compatible with returning plane.\n");
+	      exit(EXIT_FAILURE);
+	    }
+	  }
+	  else
+	  {
+	    fprintf(stderr,"ERROR: CUDA return structure not specified.\n");
+	    exit(EXIT_FAILURE);
+	  }
 
+	  FOLD // Make sure the stride is aligned  .
+	  {
+	    int iStride = kernel->strideOut;
+	    kernel->strideOut = getStrie(kernel->strideOut, retSZ, gInf->alignment);
+
+	    infoMSG(6,6,"Return size %i, elements: %i   initial stride: %i   aligned stride1: %i", retSZ, kernel->accelLen, iStride, kernel->strideOut );
+	  }
+	}
       }
 
       FOLD // Chunks and Slices  .
@@ -1882,6 +1926,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     FOLD // Calculate batch size and number of steps and batches on this device  .
     {
+      infoMSG(4,4,"No Steps and batches.\n");
+      
       PROF // Profiling  .
       {
 	NV_RANGE_PUSH("Calc steps");
@@ -1927,20 +1973,22 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  float possSteps[MAX_BATCHES];
 	  bool trySomething = 0;
+	  int	targetSteps = 0;
 
 	  // Reset # steps and batches, steps at least was changed previously
 	  noBatches		= cuSrch->gSpec->noDevBatches[devID];
 	  noSteps		= cuSrch->gSpec->noDevSteps[devID];
 
+
 	  FOLD // Check synchronisation  .
 	  {
 	    if ( kernel->flags & FLAG_SYNCH  )		// Synchronous behaviour  .
 	    {
-	      if ( noBatches == 0 )			// NOTE: This can be over ridded by forcing the number of batches
+	      if ( noBatches == 0 )			// NOTE: This can be overridden by forcing the number of batches
 	      {
-		printf("     Synchronous run so auto selecting 1 batch using seperate FFT behaviour.\n");
+		printf("     Synchronous run so auto selecting 1 batch using separate FFT behaviour.\n");
 		noBatches = 1;
-		kernel->flags |= CU_FFT_SEP_ALL;	// NOTE: There is now way to over ride this (if batches are se, but it I believe it can only be fatser esp with only one batch.
+		kernel->flags |= CU_FFT_SEP_ALL;	// NOTE: There is now way to over ride this (if batches are set, but it I believe it can only be faster esp with only one batch.
 	      }
 	    }
 	  }
@@ -1957,6 +2005,20 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    {
 	      possSteps[i] = ( free - planeSize ) / (double) (  fffTotSize + batchSize  * (i+1) ) ;  // (fffTotSize * possSteps) for the CUFFT memory for FFT'ing the plane(s) and (totSize * noThreads * possSteps) for each thread(s) plan(s)
 	    }
+
+	    infoMSG(6,6,"For %2i batches can have: %5.2f steps.\n", i+1, possSteps[i]);
+	  }
+
+	  FOLD  // Set target steps  .
+	  {
+	    if ( gInf->capability > 3.2 )	// Maxwell  .
+	    {
+	      targetSteps = 8;
+	    }
+	    else				// Kepler  .
+	    {
+	      targetSteps = 6;
+	    }
 	  }
 
 	  if ( noBatches == 0 )
@@ -1965,6 +2027,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    {
 	      // We have free range to do what we want!
 	      trySomething = 1;
+
+	      infoMSG(5,5,"Automatic steps and batches.\n");
 	    }
 	    else
 	    {
@@ -2004,7 +2068,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      }
 	      else
 	      {
-		printf("       ERROR: Can't have 1 batch with the requested %i steps.\n", noSteps);
+		printf("       ERROR: Can't even have 1 batch with the requested %i steps.\n", noSteps);
 		// Well we can't do one one batch with the desired steps
 		// Auto scale!
 		trySomething = 1;
@@ -2019,8 +2083,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    {
 	      if ( possSteps[noBatches-1] >= MAX(1,MIN_STEPS) )
 	      {
-		// do as many steps as possible!
-		kernel->noSteps   = floor(possSteps[noBatches-1]);
+		FOLD
+		{
+		  // As many steps as possible!
+		  kernel->noSteps   = floor(possSteps[noBatches-1]);
+
+		  // Clip to target steps
+		  MINN(kernel->noSteps, targetSteps);
+		}
 
 		if ( kernel->noSteps < MIN_STEPS )
 		{
@@ -2028,10 +2098,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		  exit(EXIT_FAILURE);
 		}
 
-		printf("     With %i batches, can do %i steps.\n", noBatches, kernel->noSteps);
-
 		MINN(kernel->noSteps, MAX_STEPS );
 		MAXX(kernel->noSteps, MIN_STEPS );
+
+		printf("     With %i batches, can do %.1f steps, using %i steps.\n", noBatches, possSteps[noBatches-1], kernel->noSteps);
 
 		if ( noBatches >= 3 && kernel->noSteps < 3 )
 		{
@@ -2067,36 +2137,69 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  if ( trySomething )
 	  {
 	    printf("     Determining a combination of batches and steps.\n");
-	    if      ( possSteps[2] >= MAX(4, MIN_STEPS) )
+
+	    // I have found for larger number of harmonics summed the number of steps has the biggest effect so optimise no steps first
+
+	    // First see if can get optimal number of steps with any batches
+	    for (int noB = 3; noB >= 1; noB--)
 	    {
-	      noBatches         = 3;
-	      kernel->noSteps   = floor(possSteps[noBatches-1]);
-	      printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+	      if      ( possSteps[noB-1] >= MAX(targetSteps, MIN_STEPS) )
+	      {
+		noBatches	= noB;
+		kernel->noSteps	= floor(possSteps[noBatches-1]);
+		printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+		break;
+	      }
 	    }
-	    else if ( possSteps[1] >= MAX(2, MIN_STEPS) )
+
+	    // If couldn't get optimal number of steps see what else we can do
+	    if ( !kernel->noSteps )
 	    {
-	      // Lets do 2 batches and scale steps
-	      noBatches         = 2;
-	      kernel->noSteps   = floor(possSteps[noBatches-1]);
-	      printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+	      if      ( possSteps[2] >= MAX(4, MIN_STEPS) )
+	      {
+		noBatches	= 3;
+		kernel->noSteps	= floor(possSteps[noBatches-1]);
+		printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+	      }
+	      else if ( possSteps[1] >= MAX(2, MIN_STEPS) )
+	      {
+		// Lets do 2 batches and scale steps
+		noBatches	= 2;
+		kernel->noSteps	= floor(possSteps[noBatches-1]);
+		printf("       Can have %0.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+	      }
+	      else if ( possSteps[0] >  MAX(1, MIN_STEPS) )
+	      {
+		// Lets do 1 batches and scale steps
+		noBatches	= 1;
+		kernel->noSteps	= floor(possSteps[noBatches-1]);
+		printf("       Can only have %0.1f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
+	      }
+	      else
+	      {
+		// Well we can't really do anything!
+		noBatches	= 0;
+		kernel->noSteps	= 0;
+
+		if ( possSteps[0] > 0 && possSteps[0] < MIN_STEPS )
+		{
+		  fprintf(stderr, "ERROR: Can have %0.1f steps with %i batch, BUT compiled with min of %i steps.\n", possSteps[0], 1, MIN_STEPS );
+		}
+		else
+		{
+		  printf("       ERROR: Can only have %0.1f steps with %i batch.\n", possSteps[0], 1 );
+		}
+	      }
 	    }
-	    else if ( possSteps[0] > MAX(1, MIN_STEPS) )
+
+	    if ( kernel->noSteps > targetSteps )
 	    {
-	      // Lets do 1 batches and scale steps
-	      noBatches         = 1;
-	      kernel->noSteps   = floor(possSteps[noBatches-1]);
-	      printf("       Can only have %0.1f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
+	      printf("       Scaling steps down to target of %i.\n", targetSteps );
+	      kernel->noSteps = targetSteps;
 	    }
-	    else
-	    {
-	      // Well we can't really do anything!
-	      noBatches = 0;
-	      kernel->noSteps = 0;
-	      printf("       ERROR: Can only have %0.1f steps with %i batch, compiled with min of %i.\n", possSteps[0], 1, MIN_STEPS );
-	    }
-	    MINN(kernel->noSteps, MAX_STEPS );
 	  }
 
+	  // Clip to compiled bounds
 	  if ( kernel->noSteps > MAX_STEPS )
 	  {
 	    kernel->noSteps = MAX_STEPS;
@@ -2844,7 +2947,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  if ( !(cStack->flags & FLAG_MUL_ALL) )	// Default to multiplication  .
 	  {
-	    infoMSG(5,5,"No multiplication kernel specifyed, auto select (Good).");
+	    infoMSG(5,5,"No multiplication kernel specified, auto select (Good).");
 	    int64_t mFlag = 0;
 
 	    // In my testing I found multiplying each plane separately works fastest so it is the "default"
@@ -2985,11 +3088,53 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( batch->flags & FLAG_SS_INMEM )
 	{
-	  // With the inmem search only only one "step" is done at a time
-	  // Tested with a 750 Ti, GTX 770 and GTX 970, 6 was the best chunk size on the Maxwell card
-	  // The Kepler cards could go to 8
-	  // This was tested by Chris L - 12/07/2016
-	  batch->ssChunk = 6;
+	  // With the inmem search only only one big "step" in the search phase
+	  // Tested with a GTX 770 and GTX 970
+
+	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
+	  {
+	    if      ( batch->noHarmStages == 1 )
+	    {
+	      batch->ssChunk = 8;
+	    }
+	    else if ( batch->noHarmStages == 2 )
+	    {
+	      batch->ssChunk = 7;
+	    }
+	    else if ( batch->noHarmStages == 3 )
+	    {
+	      batch->ssChunk = 5;
+	    }
+	    else if ( batch->noHarmStages == 4 )
+	    {
+	      batch->ssChunk = 4;
+	    }
+	    else if ( batch->noHarmStages == 5 )
+	    {
+	      batch->ssChunk = 4;
+	    }
+	    else
+	    {
+	      fprintf(stderr, "ERROR: Invalid number of harmonics.\n");
+	      return 0;
+	    }
+	  }
+	  else					// Maxwell  .
+	  {
+	    if      ( batch->noHarmStages <= 4 )
+	    {
+	      batch->ssChunk = 8;
+	    }
+	    else if ( batch->noHarmStages == 5 )
+	    {
+	      batch->ssChunk = 6;
+	    }
+	    else
+	    {
+	      fprintf(stderr, "ERROR: Invalid number of harmonics.\n");
+	      return 0;
+	    }
+	  }
 	}
 	else
 	{
@@ -3001,7 +3146,15 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    // I did some testing and found a roughly liner relationship between
 	    // Optimal chink size and number of steps with the standard search kernel on Kepler cards.
 	    // This was tested on a GTX 770 by Chris L - 12/07/2016
-	    batch->ssChunk = round(9.5 - 0.75*batch->noSteps );
+	    //batch->ssChunk = round(9.5 - 0.75*batch->noSteps );
+
+	    int lookup[5][12] = {	{12, 8,  4,  5, 4, 3, 2, 2, 1, 1, 1, 1},
+					{11, 12, 8,  5, 3, 2, 1, 1, 4, 3, 3, 4},
+					{12, 12, 10, 8, 7, 6, 5, 4, 4, 3, 3, 3},
+					{12, 12, 10, 8, 7, 6, 4, 4, 3, 3, 2, 2},
+					{12, 11, 9,  8, 6, 6, 4, 3, 3, 2, 2, 2} };
+
+	    batch->ssChunk = lookup[batch->noHarmStages-1][batch->noSteps-1];
 	  }
 	  else					// Maxwell  .
 	  {
@@ -3011,7 +3164,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    // steps, harmonics and widths.  Importantly this works well for many steps (~8) and 16 harmonics.
 	    // Diagrams and numbers can be produced on request if you don't believe me ;-)
 	    // This was tested on a GTX 970 by Chris L - 12/07/2016
-	    batch->ssChunk = round(-0.256 * batch->noSteps*batch->noSteps + 2.4 * batch->noSteps + 2.8 );
+	    //batch->ssChunk = round(-0.256 * batch->noSteps*batch->noSteps + 2.4 * batch->noSteps + 2.8 );
+
+	    int lookup[5][12] = {	{12, 8,  6, 7, 5, 6, 4, 3, 2, 2, 1, 1},
+					{12, 10, 8, 7, 5, 4, 1, 1, 6, 6, 5, 5},
+					{10, 12, 6, 9, 6, 6, 5, 4, 6, 3, 5, 5},
+					{12, 9,  9, 9, 6, 6, 4, 3, 3, 6, 2, 4},
+					{10, 12, 9, 8, 7, 5, 4, 3, 2, 2, 5, 5} };
+	    batch->ssChunk = lookup[batch->noHarmStages-1][batch->noSteps-1];
 	  }
 	}
 
@@ -3785,7 +3945,7 @@ cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0
     int maxWidth = 0;
     float zMax;
 
-    FOLD // Determin the largest zMax  .
+    FOLD // Determine the largest zMax  .
     {
       zMax	= MAX(sSpec->zMax+50, sSpec->zMax*2);
       zMax	= MAX(zMax, 60 * sSrch->noSrchHarms );
@@ -6277,7 +6437,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch)
 	    float noP = log10( srch->powerCut[ii] );
 	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
 
-	    adjust = -dp*(1<<ii);			// Subtract one significant "value" for each harmonic
+	    adjust = -dp*(1<<ii);				// Subtract one significant "value" for each harmonic
 	    srch->powerCut[ii] += adjust;
 	  }
 	}
@@ -7416,16 +7576,18 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
   bool ker = false;
   double zStart, zEnd;
 
-  if ( !(cuSrch->sSpec->flags & FLAG_Z_SPLIT) )
+  // for the moment there should only be one kernel!
+  // Note we could split the inmem plane across two devices!
+  cuFFdotBatch* kernel	= &cuSrch->pInf->kernels[0];
+  cuFFdotBatch* batch	= &cuSrch->pInf->batches[0];
+
+  if ( !(batch->flags & FLAG_Z_SPLIT) )
   {
-    fprintf(stderr,"ERROR: Trying to set inmem plane wehrn not using plane split?\n");
+    fprintf(stderr,"ERROR: Trying to set inmem plane when not using plane split?\n");
     exit(EXIT_FAILURE);
   }
 
-  // for the moment there shpuld only be one kernel!
-  // Note we could split the inmem plane adross two devices!
-  cuFFdotBatch* kernel	= &cuSrch->pInf->kernels[0];
-  cuFFdotBatch* batch	= &cuSrch->pInf->batches[0];
+
 
   // Calculate the start and end z values
   for (int i = kernel->noSrchHarms; i > 0; i--)
@@ -7459,7 +7621,7 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
     setKernelPointers(kernel);
   }
 
-  FOLD // Generate kernel values if neede  .
+  FOLD // Generate kernel values if needed  .
   {
     if ( ker )
     {
@@ -7520,6 +7682,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
 #ifndef DEBUG 	// Parallel if we are not in debug mode  .
   if ( cuSrch->sSpec->flags & FLAG_SYNCH )
   {
+    // NOTE: this uses the search flags not the batch specific flags, but FLAG_SYNCH should be set before initialising the kernels
     infoMSG(4,4,"Throttling to 1 thread");
     omp_set_num_threads(1);
   }
