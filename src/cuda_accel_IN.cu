@@ -20,7 +20,7 @@
  *    Added some debug messages on stream synchronisation on events
  *
  *  [0.0.03] [2017-01-29 08:20]
- *    Added static functions to call both CPU and GPU input FFT's, these allow identical calls from non critical and non critcical blocks
+ *    Added static functions to call both CPU and GPU input FFT's, these allow identical calls from non critical and non critical blocks
  *    Added non critical behaviour for CPU FFT calls
  *    Added some debug messages on stream synchronisation on events, yes even more!
  *    made CPU_Norm_Spread static
@@ -315,16 +315,19 @@ void setGenRVals(cuFFdotBatch* batch)
 
 	FOLD		// DBG this can be taken out if it never fails
 	{
-	  if ( numrsArr[harm] == 0 )
+	  if ( batch->flags & CU_NORM_GPU )
 	  {
-	    numrsArr[harm] = numdata;
-	  }
-	  else
-	  {
-	    if ( numrsArr[harm] != numdata )
+	    if ( numrsArr[harm] == 0 )
 	    {
-	      fprintf(stderr, "ERROR: numdata bad.");
-	      exit(EXIT_FAILURE);
+	      numrsArr[harm] = numdata;
+	    }
+	    else
+	    {
+	      if ( numrsArr[harm] != numdata )
+	      {
+		fprintf(stderr, "ERROR: numdata bad.");
+		exit(EXIT_FAILURE);
+	      }
 	    }
 	  }
 	}
@@ -533,17 +536,17 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	      if ( rVal->numdata )
 	      {
-		int start = 0;
+		int startIdx = 0;
 		if ( rVal->lobin < 0 )
 		{
-		  start = -rVal->lobin;		// Offset
+		  startIdx = -rVal->lobin;		// Offset
 
 		  // Zero the beginning
-		  memset(&batch->h_iData[sz], 0, start * sizeof(fcomplexcu));
+		  memset(&batch->h_iData[sz], 0, startIdx * sizeof(fcomplexcu));
 		}
 
 		// Do the actual copy
-		memcpy(&batch->h_iData[sz+start], &fft[rVal->lobin+start], (rVal->numdata-start) * sizeof(fcomplexcu));
+		memcpy(&batch->h_iData[sz+startIdx], &fft[rVal->lobin+startIdx], (rVal->numdata-startIdx) * sizeof(fcomplexcu));
 	      }
 	      sz += cStack->strideCmplx;
 	    }
@@ -878,7 +881,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "searchComp");
 	      cudaStreamWaitEvent(cStack->inptStream, batch->searchComp, 0);
 
-	      // Wait for iFFT mem copy to finish
+	      // Wait for iFFT to finish - In-mem search - I found that GPU compute interferes with D2D copy so wait for it to finish
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "ifftMemComp");
 	      cudaStreamWaitEvent(cStack->inptStream, batch->stacks->ifftMemComp, 0);
 
@@ -962,10 +965,9 @@ void prepInputGPU(cuFFdotBatch* batch)
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "searchComp");
 	      cudaStreamWaitEvent(cStack->fftIStream, batch->searchComp, 0);
 
-	      // This was taken out to allow 3 way concurrency
-	      //// Wait for iFFT mem copy to finish
-	      //infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "ifftMemComp");
-	      //cudaStreamWaitEvent(cStack->fftIStream, batch->stacks->ifftMemComp, 0);
+	      // Wait for iFFT to finish - In-mem search - I found that GPU compute interferes with D2D copy so wait for it to finish
+	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "ifftMemComp");
+	      cudaStreamWaitEvent(cStack->inptStream, batch->stacks->ifftMemComp, 0);
 
 	      // Wait for previous FFT to complete
 	      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftIStream", "inpFFTinitComp (neighbours)");
