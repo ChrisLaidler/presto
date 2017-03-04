@@ -829,8 +829,6 @@ int main(int argc, char *argv[])
 	    int hn;
 	    for ( hn = 1; hn <= cand->numharm; hn++ )
 	    {
-	      // if ( cuSrch->sSpec->flags & FLAG_DPG_PRNT_CAND )
-
 	      long long idx   = baseR * hn ;
 	      float     freq  =  idx / T ;
 	      double 	hr = cand->init_r * hn;

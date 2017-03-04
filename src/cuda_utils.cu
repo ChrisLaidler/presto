@@ -291,9 +291,6 @@ void initGPUs(gpuSpecs* gSpec)
 
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
 
-  // TODO: Profile this
-  CUDA_SAFE_CALL(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1),"Failed to set cache config"); // cudaFuncCachePreferNone OR cudaFuncCachePreferShared OR cudaFuncCachePreferL1 OR cudaFuncCachePreferEqual
-
   for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
   {
     int device    = gSpec->devId[dIdx];
@@ -328,6 +325,9 @@ void initGPUs(gpuSpecs* gSpec)
       gInf->name                      = (char*)malloc(256*sizeof(char));
 
       sprintf(gInf->name, "%s", deviceProp.name );
+
+      // TODO: Profile this
+      CUDA_SAFE_CALL(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1),"Failed to set cache config"); // cudaFuncCachePreferNone OR cudaFuncCachePreferShared OR cudaFuncCachePreferL1 OR cudaFuncCachePreferEqual
 
       PROF // Profiling  .
       {

@@ -302,7 +302,7 @@ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
     }
     default    :
     {
-      fprintf(stderr, "ERROR: %s has not been templated for sorting with %i elements.\n", __FUNCTION__, numData );
+      fprintf(stderr, "ERROR: %s has not been templated for sorting with %i elements. Try CPU input normalisation.\n", __FUNCTION__, numData );
       exit(EXIT_FAILURE);
       break;
     }
@@ -336,7 +336,7 @@ __host__ void normAndSpread(cudaStream_t stream, cuFFdotBatch* batch, uint stack
   }
 
   rVals* rVal 	= &(*batch->rAraays)[batch->rActive][0][cStack->startIdx];
-  int numData	= rVal->numdata;
+  int numData	= rVal->numdata;		// NB: This assumes all steps have the same numdata
 
   // Call the templated kernel chain
   normAndSpread_w(dimGrid, dimBlock, 0, stream, cStack, numData );

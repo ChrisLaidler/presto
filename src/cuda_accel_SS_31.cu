@@ -72,10 +72,10 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     const int zeroHeight  = HEIGHT_STAGE[0];
 
     // This is why the parameters need to be templated
-    int             inds	[noHarms];
-    candPZs         candLists	[noStages][noSteps];
-    float           powers	[noSteps][cunkSize];			///< registers to hold values to increase mem cache hits
-    T*              array	[noHarms];				///< A pointer array
+    int 	inds		[noHarms];
+    candPZs	candLists	[noStages][noSteps];
+    float	powers		[noSteps][cunkSize];			///< registers to hold values to increase mem cache hits
+    T*		array		[noHarms];				///< A pointer array
 
     FOLD // Set the values of the pointer array  .
     {
@@ -92,7 +92,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
       {
 	//// NB NOTE: the indexing below assume each plane starts on a multiple of noHarms
 	int   ix        = lround_t( sid*FRAC_STAGE[harm] ) + PSTART_STAGE[harm] ;
-	inds[harm]      = ix;
+	inds[harm] 	= ix;
       }
 
       FOLD  // Set the local and return candidate powers to zero  .
@@ -112,9 +112,9 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 
     FOLD // Sum & Search - Ignore contaminated ends sid to starts at correct spot  .
     {
-      short   lDepth  = ceilf(zeroHeight/(float)gridDim.y);
-      short   y0      = lDepth*blockIdx.y;
-      short   y1      = MIN(y0+lDepth, zeroHeight);
+      short	lDepth	= ceilf(zeroHeight/(float)gridDim.y);
+      short	y0	= lDepth*blockIdx.y;
+      short	y1	= MIN(y0+lDepth, zeroHeight);
 
       for( short y = y0; y < y1 ; y += cunkSize )			// loop over chunks  .
       {
@@ -140,18 +140,18 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 	    {
 	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (batch) in this stage  .
 	      {
-		//float*  t     = powersArr[harm];
-		int     ix1   = inds[harm] ;
-		int     ix2   = ix1;
-		short   iyP   = -1;
-		float   pow[noSteps];
+		//float*  t	= powersArr[harm];
+		int	ix1	= inds[harm] ;
+		int	ix2	= ix1;
+		short	iyP	= -1;
+		float	pow[noSteps];
 
 		for( short yPlus = 0; yPlus < cunkSize; yPlus++ )	// Loop over the chunk  .
 		{
-		  short trm     = y + yPlus ;				///< True Y index in plane
-		  short iy1     = YINDS[ (zeroHeight+INDS_BUFF)*harm + trm ];
+		  short trm	= y + yPlus ;				///< True Y index in plane
+		  short iy1	= YINDS[ (zeroHeight+INDS_BUFF)*harm + trm ];
 		  //  OR
-		  //int iy1     = roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
+		  //int iy1	= roundf( (HEIGHT_STAGE[harm]-1.0)*trm/(float)(zeroHeight-1.0) ) ;
 
 		  int iy2;
 
@@ -161,9 +161,11 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 		    {
 		      FOLD // Calculate index  .
 		      {
+#ifdef WITH_ITLV_PLN
 			if        ( FLAGS & FLAG_ITLV_ROW )
+#endif
 			{
-			  ix2     = ix1 + step    * STRIDE_STAGE[harm] ;
+			  ix2     = ix1 + step    * STRIDE_STAGE[harm];
 			  iy2     = iy1 * noSteps * STRIDE_STAGE[harm];
 			}
 #ifdef WITH_ITLV_PLN
@@ -238,9 +240,9 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
     {
       int xStride = noSteps*oStride ;
 
-      for ( int step = 0; step < noSteps; step++)			// Loop over steps  .
+      for ( int stage = 0 ; stage < noStages; stage++)		// Loop over stages  .
       {
-	for ( int stage = 0 ; stage < noStages; stage++)		// Loop over stages  .
+	for ( int step = 0; step < noSteps; step++)			// Loop over steps  .
 	{
 	  if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
 	  {
@@ -279,7 +281,7 @@ __global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int
 }
 
 template< typename T, int64_t FLAGS, int noStages, const int noHarms, const int cunkSize>
-__host__ void add_and_searchCU31_q(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
 {
   vHarmList   powers;
   int* d_cnts	= NULL;
@@ -416,7 +418,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 1  and MAX_SAS_CHUNK >= 1
     case 1 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,1>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -424,7 +426,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 2  and MAX_SAS_CHUNK >= 2
     case 2 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,2>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -432,7 +434,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 3  and MAX_SAS_CHUNK >= 3
     case 3 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,3>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -440,7 +442,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 4  and MAX_SAS_CHUNK >= 4
     case 4 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,4>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -448,7 +450,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 5  and MAX_SAS_CHUNK >= 5
     case 5 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,5>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -456,7 +458,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 6  and MAX_SAS_CHUNK >= 6
     case 6 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,6>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -464,7 +466,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 7  and MAX_SAS_CHUNK >= 7
     case 7 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,7>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -472,7 +474,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 8  and MAX_SAS_CHUNK >= 8
     case 8 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,8>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -480,7 +482,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 9  and MAX_SAS_CHUNK >= 9
     case 9 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,9>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -488,7 +490,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 10 and MAX_SAS_CHUNK >= 10
     case 10 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,10>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -496,7 +498,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 11 and MAX_SAS_CHUNK >= 11
     case 11 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,11>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,11>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -504,7 +506,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 12 and MAX_SAS_CHUNK >= 12
     case 12 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,12>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -512,7 +514,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 13 and MAX_SAS_CHUNK >= 13
     case 13 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,13>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,13>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -520,7 +522,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 14 and MAX_SAS_CHUNK >= 14
     case 14 :
     {
-      add_and_searchCU31_q< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
+      add_and_searchCU31_s< T, FLAGS,noStages,noHarms,14>(dimGrid, dimBlock, stream, batch);
       break;
     }
 #endif
@@ -629,7 +631,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 
   infoMSG(7,7," no ThreadBlocks %i  width %i  stride %i  remainder: %i ", dimBlock.x * dimBlock.y, batch->accelLen, batch->strideOut,  (batch->strideOut-batch->accelLen)*2);
 
-  if      ( batch->flags & FLAG_POW_HALF         )
+  if      ( batch->flags & FLAG_POW_HALF	)	// CUFFT callbacks using half powers  .
   {
 #if CUDA_VERSION >= 7050
     add_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, batch );
@@ -638,11 +640,11 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     exit(EXIT_FAILURE);
 #endif
   }
-  else if ( batch->flags & FLAG_CUFFT_CB_POW )
+  else if ( batch->flags & FLAG_CUFFT_CB_POW	)	// CUFFT callbacks use float powers  .
   {
     add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
   }
-  else
+  else							// NO CUFFT callbacks so use complex values  .
   {
     add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
   }

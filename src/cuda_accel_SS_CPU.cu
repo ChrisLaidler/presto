@@ -53,9 +53,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
       int bace = 0;
       for ( int harm = 0; harm < noHarms; harm++ )                  // loop over harmonic  .
       {
-	int stgIDX = batch->cuSrch->sIdx[harm];
-
 	// TODO: Convert this cos host data has been moved to the r-array
+	//int stgIDX = batch->cuSrch->sIdx[harm];
 	//pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
 	//pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
 
