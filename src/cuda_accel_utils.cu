@@ -1979,7 +1979,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  noBatches		= cuSrch->gSpec->noDevBatches[devID];
 	  noSteps		= cuSrch->gSpec->noDevSteps[devID];
 
-
 	  FOLD // Check synchronisation  .
 	  {
 	    if ( kernel->flags & FLAG_SYNCH  )		// Synchronous behaviour  .
@@ -2097,9 +2096,6 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		  fprintf(stderr, "ERROR: Maximum number of steps (%i) possible is less than the compiled minimum (%i).\n", kernel->noSteps, MIN_STEPS);
 		  exit(EXIT_FAILURE);
 		}
-
-		MINN(kernel->noSteps, MAX_STEPS );
-		MAXX(kernel->noSteps, MIN_STEPS );
 
 		printf("     With %i batches, can do %.1f steps, using %i steps.\n", noBatches, possSteps[noBatches-1], kernel->noSteps);
 
@@ -3093,47 +3089,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
 	  {
-	    if      ( batch->noHarmStages == 1 )
-	    {
-	      batch->ssChunk = 8;
-	    }
-	    else if ( batch->noHarmStages == 2 )
-	    {
-	      batch->ssChunk = 7;
-	    }
-	    else if ( batch->noHarmStages == 3 )
-	    {
-	      batch->ssChunk = 5;
-	    }
-	    else if ( batch->noHarmStages == 4 )
-	    {
-	      batch->ssChunk = 4;
-	    }
-	    else if ( batch->noHarmStages == 5 )
-	    {
-	      batch->ssChunk = 4;
-	    }
-	    else
-	    {
-	      fprintf(stderr, "ERROR: Invalid number of harmonics.\n");
-	      return 0;
-	    }
+	    int lookup[5] = { 8, 7, 5, 8, 4};
+	    batch->ssChunk = lookup[batch->noHarmStages-1];
+
+#ifdef WITH_SAS_COUNT
+	    // I found in this case just maximise chunk size
+	    batch->ssChunk = MIN(12, MAX_SAS_CHUNK);
+#endif
 	  }
 	  else					// Maxwell  .
 	  {
-	    if      ( batch->noHarmStages <= 4 )
-	    {
-	      batch->ssChunk = 8;
-	    }
-	    else if ( batch->noHarmStages == 5 )
-	    {
-	      batch->ssChunk = 6;
-	    }
-	    else
-	    {
-	      fprintf(stderr, "ERROR: Invalid number of harmonics.\n");
-	      return 0;
-	    }
+	    int lookup[5] = { 7, 10, 8, 8, 6 };
+	    batch->ssChunk = lookup[batch->noHarmStages-1];
 	  }
 	}
 	else
@@ -3143,29 +3110,16 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
 	  {
 	    // Kepler cards have fewer registers so this limit chunk size
-	    // I did some testing and found a roughly liner relationship between
-	    // Optimal chink size and number of steps with the standard search kernel on Kepler cards.
-	    // This was tested on a GTX 770 by Chris L - 12/07/2016
-	    //batch->ssChunk = round(9.5 - 0.75*batch->noSteps );
-
 	    int lookup[5][12] = {	{12, 8,  4,  5, 4, 3, 2, 2, 1, 1, 1, 1},
 					{11, 12, 8,  5, 3, 2, 1, 1, 4, 3, 3, 4},
 					{12, 12, 10, 8, 7, 6, 5, 4, 4, 3, 3, 3},
 					{12, 12, 10, 8, 7, 6, 4, 4, 3, 3, 2, 2},
 					{12, 11, 9,  8, 6, 6, 4, 3, 3, 2, 2, 2} };
-
 	    batch->ssChunk = lookup[batch->noHarmStages-1][batch->noSteps-1];
 	  }
 	  else					// Maxwell  .
 	  {
 	    // More register
-
-	    // Well this looks crazy, but from my testing this gives a pretty good approximation to the optimal chunk size for a range of
-	    // steps, harmonics and widths.  Importantly this works well for many steps (~8) and 16 harmonics.
-	    // Diagrams and numbers can be produced on request if you don't believe me ;-)
-	    // This was tested on a GTX 970 by Chris L - 12/07/2016
-	    //batch->ssChunk = round(-0.256 * batch->noSteps*batch->noSteps + 2.4 * batch->noSteps + 2.8 );
-
 	    int lookup[5][12] = {	{12, 8,  6, 7, 5, 6, 4, 3, 2, 2, 1, 1},
 					{12, 10, 8, 7, 5, 4, 1, 1, 6, 6, 5, 5},
 					{10, 12, 6, 9, 6, 6, 5, 4, 6, 3, 5, 5},
