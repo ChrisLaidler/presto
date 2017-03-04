@@ -187,6 +187,10 @@ static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStac
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0), "Stream wait on event inpFFTinitComp.");
       }
 
+      // Wait for iFFT to finish - In-mem search - I found that GPU compute interferes with D2D copy so wait for it to finish
+      infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "ifftMemComp");
+      cudaStreamWaitEvent(cStack->inptStream, batch->stacks->ifftMemComp, 0);
+
       // Wait for the previous multiplication to complete
       if ( pStack != NULL )
       {
