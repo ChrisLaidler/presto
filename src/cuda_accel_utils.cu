@@ -4868,7 +4868,7 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
 	(*flags) &= ~CU_NORM_GPU;	// Clear values
 
-	if      ( strCom("CPU",  str2 ) || strCom("AA",  str2 ) )
+	if      ( strCom("CPU",  str2 ) || strCom(str2, "A" ) )
 	{
 	  // CPU is no value clear is sufficient
 	}
@@ -4909,7 +4909,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
       else if ( strCom("INP_FFT", str1 ) )
       {
-	if      ( strCom("AA",  str2 ) )
+	if      ( strCom(str2, "A") )
 	{
 	  // Default to GPU FFT's - CPU FFT's may be worth doing if z-max is lager than 50 or 100 depends on the CPU and GPU
 	  (*flags) &= ~CU_INPT_FFT_CPU;
