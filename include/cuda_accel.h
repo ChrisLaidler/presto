@@ -175,7 +175,7 @@ extern "C"
 #define		FLAG_SS_00		BIT(31)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
 #define		FLAG_SS_31		BIT(32)		///< This is the standard sum and search kernel, there were others but they were deprecated
 #define		FLAG_SS_INMEM		BIT(34)		///< Do an in memory GPU search
-#define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_31 | FLAG_SS_32 /* | FLAG_SS_30 */ )
+#define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_31 /* | FLAG_SS_32 /* | FLAG_SS_30 */ )
 #define		FLAG_SS_KERS		( FLAG_SS_STG | FLAG_SS_INMEM )
 #define		FLAG_SS_ALL		( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
@@ -687,7 +687,7 @@ typedef struct searchSpecs
     float               sigma;                          ///< The cut off sigma
     fftInfo             fftInf;                         ///< The details of the input fft - location size and area to search
 
-    int64_t             flags;                          ///< The search bit flags
+    int64_t             flags;                          ///< The search bit flags specified by the user, the actual bit flag used in the search will be diffrent
     int                 normType;                       ///< The type of normalisation to do
 
     int                 mulSlices;                      ///< The number of multiplication slices
