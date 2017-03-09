@@ -58,6 +58,9 @@
  *
  *  [0.0.03] [2017-03-04]
  *     Work on automatic step, batch and chunk selection
+ *
+ *  [0.0.03] [2017-03-09]
+ *     Added slicing exit for testing
  */
 
 #include <cufft.h>
@@ -227,12 +230,13 @@ float half2float(const ushort h)
  * @return
  * If width is not a power of two it will be rounded up to the nearest power of two
  */
-uint optAccellen(float width, int zmax, presto_interp_acc accuracy, int noResPerBin)
+uint optAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin)
 {
   double halfwidth	= cu_z_resp_halfwidth<double>(zmax, accuracy); /// The halfwidth of the maximum zmax, to calculate step size
   double pow2		= pow(2 , round(log2(width)) );
-  uint oAccelLen	= floor(pow2 - 2 - 2 * halfwidth * noResPerBin );
+  uint oAccelLen	= floor(pow2 - 2 - 2 * halfwidth * noResPerBin );	// NOTE: I think the extra ( - 2 ) in here is not needed?
 
+  infoMSG(6,6,"For a width %.0f and z-max %.1f with spacing %i, Halfwidth is %.0f and step size is %u. \n", pow2, zmax, noResPerBin, halfwidth, oAccelLen );
   return oAccelLen;
 }
 
@@ -1132,7 +1136,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	    printf(" • Using maximum response function length for entire kernel.\n");
 	}
 
-	if ( kernel->accelLen > 100 ) // Print output
+	if ( kernel->accelLen > 100 ) // Print output  .
 	{
 	  double ratio	= 1;
 	  double fftLen	= cu_calc_fftlen<double>(1, cuSrch->sSpec->zMax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
@@ -1510,7 +1514,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  cuFfdotStack* cStack = &kernel->stacks[i];
 
 	  float contamination = (cStack->harmInf->halfWidth*2*cuSrch->sSpec->noResPerBin)/(float)cStack->harmInf->width*100 ;
-	  float padding       = (1-(kernel->accelLen*cStack->harmInf->harmFrac + cStack->harmInf->halfWidth*2*cuSrch->sSpec->noResPerBin ) / cStack->harmInf->width)*100.0 ;
+	  float padding       = (1-(kernel->accelLen*cStack->harmInf->harmFrac + cStack->harmInf->halfWidth*2*cuSrch->sSpec->noResPerBin ) / (float)cStack->harmInf->width)*100.0 ;
 
 	  printf("  ■ Stack %i has %02i f-∂f plane(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i+1, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
 
@@ -1899,6 +1903,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  kernel->ssSlices		= MIN(kernel->ssSlices, ceil(kernel->hInfos->noZ/20.0) );
 
 	  infoMSG(5,5,"Sum & Search slices set to %i ", kernel->ssSlices);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    if ( cuSrch->sSpec->ssSlices && kernel->ssSlices != cuSrch->sSpec->ssSlices )
+	    {
+	      printf("Temporary exit - ssSlices \n");
+	      exit(EXIT_FAILURE);
+	    }
+	  }
 	}
       }
 
@@ -3050,6 +3063,16 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  if ( i == 0 && batch->mulSlices == 0 )
 	  {
 	    batch->mulSlices = cStack->mulSlices;
+	  }
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+
+	    if ( kernel->cuSrch->sSpec->mulSlices && batch->mulSlices != kernel->cuSrch->sSpec->mulSlices )
+	    {
+	      printf("Temporary exit - mulSlices \n");
+	      exit(EXIT_FAILURE);
+	    }
 	  }
 	}
 
