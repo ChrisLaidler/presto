@@ -48,7 +48,7 @@ __device__ inline int getOffset(const int stage, const int step, const int strd1
  * @param powersArr
  */
 template<typename T, int64_t FLAGS, const int noStages, const int noHarms, const int cunkSize, const int noSteps>
-__global__ void add_and_searchCU31(const uint width, candPZs* d_cands, const int oStride, vHarmList powersArr, int* d_counts)
+__global__ void add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, vHarmList powersArr, int* d_counts)
 {
   const int bidx	= blockIdx.y  * gridDim.x  +  blockIdx.x;	///< Block index
   const int tidx	= threadIdx.y * SS31_X     +  threadIdx.x;	///< Thread index within in the block
@@ -303,7 +303,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 1  and MAX_STEPS >= 1
     case 1:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -311,7 +311,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 2  and MAX_STEPS >= 2
     case 2:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -319,7 +319,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 3  and MAX_STEPS >= 3
     case 3:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -327,7 +327,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 4  and MAX_STEPS >= 4
     case 4:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -335,7 +335,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 5  and MAX_STEPS >= 5
     case 5:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -343,7 +343,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 6  and MAX_STEPS >= 6
     case 6:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -351,7 +351,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 7  and MAX_STEPS >= 7
     case 7:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -359,7 +359,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 8  and MAX_STEPS >= 8
     case 8:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -367,7 +367,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 9  and MAX_STEPS >= 9
     case 9:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,9><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,9><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -375,7 +375,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 10 and MAX_STEPS >= 10
     case 10:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,10><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,10><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -383,7 +383,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 11 and MAX_STEPS >= 11
     case 11:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,11><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,11><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif
@@ -391,7 +391,7 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_STEPS <= 12 and MAX_STEPS >= 12
     case 12:
     {
-      add_and_searchCU31< T, FLAGS,noStages,noHarms,cunkSize,12><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      add_and_searchCU31_k< T, FLAGS,noStages,noHarms,cunkSize,12><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
       break;
     }
 #endif

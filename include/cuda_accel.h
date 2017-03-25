@@ -64,12 +64,14 @@ extern "C"
 
 //	Multiplication
 //#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
+#define			MIN_MUL_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time, generally multiplication chunks are higher so this value can be high
+#define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better 
 
 //	Powers
 #define 		WITH_POW_POST_CALLBACK		///< Powers to be calculated in CUFFT callbacks - Always a good option
 
 //	Sum & Search
-#define			MIN_SAS_CHUNK	1		// Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
+#define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
 //	Candidate

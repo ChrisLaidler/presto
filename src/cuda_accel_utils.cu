@@ -61,6 +61,11 @@
  *
  *  [0.0.03] [2017-03-09]
  *     Added slicing exit for testing
+ *     
+ *  [0.0.03] [2017-03-25]
+ *  Improved multiplication chunk handling
+ *  Added temporary output of chunks and step size
+ *  Clamp SAS chunks to SAS slice width
  */
 
 #include <cufft.h>
@@ -3067,7 +3072,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  FOLD  // TMP REM - Added to mark an error for thesis timing
 	  {
-
 	    if ( kernel->cuSrch->sSpec->mulSlices && batch->mulSlices != kernel->cuSrch->sSpec->mulSlices )
 	    {
 	      printf("Temporary exit - mulSlices \n");
@@ -3080,18 +3084,109 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  if ( cStack->mulChunk <= 0 )
 	  {
-	    cStack->mulChunk = 4;
+	    cStack->mulChunk = 12;	// TODO: Profile this parameter
 	  }
 
-	  // Clamp to size of kernel (ie height of the largest plane)
-	  cStack->mulChunk = MIN( cStack->mulChunk, ceil(cStack->kerHeigth/2.0) );
+	  // Clamp chunk length to slice length
+	  MINN(cStack->mulChunk, ceilf(cStack->kerHeigth/(float)cStack->mulSlices) );
+
+	  // Clamp to compilation bounds
+	  MINN(cStack->mulChunk, MAX_MUL_CHUNK);
+	  MAXX(cStack->mulChunk, MIN_MUL_CHUNK);
+
 
 	  if ( i == 0 )
 	    batch->mulChunk = cStack->mulChunk;
 
 	  infoMSG(5,5,"stack %i  mulChunk %2i \n",i, cStack->mulChunk);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    if ( kernel->cuSrch->sSpec->mulChunk && cStack->mulChunk != kernel->cuSrch->sSpec->mulChunk )
+	    {
+	      printf("Temporary exit - mulChunk \n");
+	      exit(EXIT_FAILURE);
+	    }
+	  }
 	}
       }
+
+#ifdef CBL
+      if ( no==0 )
+      {
+	printf("\n Details\n");
+
+	FOLD // mulKer  .
+	{
+	  printf("mulKer ");
+	  for ( int i = 0; i < MAX_STACKS; i++ )	// Multiplication is generally stack specific so loop through stacks  .
+	  {
+	    if ( i < batch->noStacks )
+	    {
+	      cuFfdotStack* cStack  = &batch->stacks[i];
+
+	      if ( cStack->flags & FLAG_MUL_00 )
+		printf("00 ");
+	      else if ( cStack->flags & FLAG_MUL_11 )
+		printf("11 ");
+	      else if ( cStack->flags & FLAG_MUL_21 )
+		printf("21 ");
+	      else if ( cStack->flags & FLAG_MUL_22 )
+		printf("22 ");
+	      else if ( cStack->flags & FLAG_MUL_23 )
+		printf("23 ");
+	      else if ( cStack->flags & FLAG_MUL_31 )
+		printf("31 ");
+	      else if ( cStack->flags & FLAG_MUL_CB )
+		printf("CB ");
+	      else
+		printf("? ");
+	    }
+	    else
+	    {
+	      printf("- ");
+	    }
+	  }
+	  printf("\n");
+	}
+
+	FOLD // mulSlices  .
+	{
+	  printf("mulSlices ");
+	  for ( int i = 0; i < MAX_STACKS; i++ )	// Multiplication is generally stack specific so loop through stacks  .
+	  {
+	    if ( i < batch->noStacks )
+	    {
+	      cuFfdotStack* cStack  = &batch->stacks[i];
+	      printf("%i ", cStack->mulSlices);
+	    }
+	    else
+	    {
+	      printf("- ");
+	    }
+	  }
+	  printf("\n");
+	}
+
+	FOLD // mulChunk  .
+	{
+	  printf("mulChunk ");
+	  for ( int i = 0; i < MAX_STACKS; i++ )	// Multiplication is generally stack specific so loop through stacks  .
+	  {
+	    if ( i < batch->noStacks )
+	    {
+	      cuFfdotStack* cStack  = &batch->stacks[i];
+	      printf("%i ", cStack->mulChunk);
+	    }
+	    else
+	    {
+	      printf("- ");
+	    }
+	  }
+	  printf("\n");
+	}
+      }
+#endif
 
     }
 
@@ -3152,10 +3247,33 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  }
 	}
 
-	// Clamp to valid bounds
-	batch->ssChunk = MAX(MIN(floor(batch->ssChunk), MAX_SAS_CHUNK), MIN_SAS_CHUNK);
+	batch->ssChunk = floor(batch->ssChunk);
+
+	// Clamp S&S chunks to slice height
+	batch->ssChunk = MINN(batch->ssChunk, ceil(kernel->hInfos->noZ/(float)batch->ssSlices) );
+
+	// Clamp S&S chunks to valid bounds
+	MINN(batch->ssChunk, MAX_SAS_CHUNK);
+	MAXX(batch->ssChunk, MIN_SAS_CHUNK);
 
 	infoMSG(5,5,"ssChunk %2i \n",batch->ssChunk);
+
+	FOLD  // TMP REM - Added to mark an error for thesis timing
+	{
+	  if ( kernel->cuSrch->sSpec->ssChunk && batch->ssChunk != kernel->cuSrch->sSpec->ssChunk )
+	  {
+	    printf("Temporary exit - ssChunk \n");
+	    exit(EXIT_FAILURE);
+	  }
+	}
+
+#ifdef CBL
+	if ( no == 0 )
+	{
+	  printf("ssSlices %i \n", batch->ssSlices );
+	  printf("ssChunk  %i \n", batch->ssChunk  );
+	}
+#endif
       }
     }
   }
@@ -5278,7 +5396,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 
 	      FOLD  // TMP REM - Added to mark an error for thesis timing
 	      {
-		printf("Temporary exit - mult Kernel \n");
+		printf("Temporary exit - ssChunk \n");
 		exit(EXIT_FAILURE);
 	      }
 	    }

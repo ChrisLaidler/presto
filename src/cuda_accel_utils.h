@@ -451,7 +451,7 @@ __host__ __device__ static inline int cu_z_resp_halfwidth_low(T z)
 
   // Prevent the equation from blowing up in large z cases
 
-  if (z > (T)100 && m > (T)0.6 * z)
+  if ( ( z > (T)100 ) && ( m > (T)0.6 * z) )
     m = (T)0.6 * z;
 
   return m;
@@ -469,7 +469,7 @@ __host__ __device__ static inline int cu_z_resp_halfwidth_high(T z)
 
   /* Prevent the equation from blowing up in large z cases */
 
-  if (z > (T)100 && m > (T)1.2 * z)
+  if ( ( z > (T)100 ) && ( m > (T)1.2 * z ) )
     m = (T)1.2 * z;
 
   return m;
