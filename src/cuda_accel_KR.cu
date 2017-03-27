@@ -1,8 +1,8 @@
 /** @file cuda_accel_KR.cu
- *  @brief Functions to create the accle convolution kernels
+ *  @brief Functions to create the accel convolution kernels
  *
- *  This contains the various functions create the accle convolution kernels
- *  This makes use of responce values calcualted in cuda_responce.cu and CUFFT
+ *  This contains the various functions create the accel convolution kernels
+ *  This makes use of response values calculated in cuda_responce.cu and CUFFT
  *
  *  @author Chris Laidler
  *  @bug No known bugs.
@@ -218,7 +218,7 @@ static int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStr
   dimBlock.x     = KR_DIM_X;  // in my experience 16 is almost always best (half warp)
   dimBlock.y     = KR_DIM_Y;  // in my experience 16 is almost always best (half warp)
 
-  size_t width   = doubleKer->stride * 2 ; // Stride is in complex valuses
+  size_t width   = doubleKer->stride * 2 ; // Stride is in complex values
 
   // Set up grid
   dimGrid.x = ceil(  width / ( float ) ( dimBlock.x * dimBlock.y ) );
@@ -250,19 +250,19 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
     if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
     {
-      infoMSG(5,5,"Allocating temproary double precision memory for FFT to work on.\n");
+      infoMSG(5,5,"Allocating temporary double precision memory for FFT to work on.\n");
 
       for (int i = 0; i < batch->noStacks; i++)
       {
 	cuFfdotStack* cStack = &batch->stacks[i];
 
-	// Backup orrigional kernel
+	// Backup original kernel
 	memcpy(&orrKernels[i], cStack->kernels, sizeof(cuKernel)); // Copy the cStack kernel struct over the temp one
 
-	// Size of doube kernel plane
+	// Size of double kernel plane
 	size_t kerSz = cStack->kernels->stride * cStack->kernels->harmInf->noZ * sizeof(double2);
 
-	// Allocate new memory to the orrigional kernal ( this will get filled and FFT'ed using functions below)
+	// Allocate new memory to the original kernel ( this will get filled and FFT'ed using functions below)
 	CUDA_SAFE_CALL(cudaMalloc((void**)&cStack->kernels->d_kerData, kerSz), "Failed to allocate temporary device memory for kernel stack."); // This is temporary double memory it will be freed at the end of this function
       }
     }
@@ -566,14 +566,14 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       {
 	cuFfdotStack* cStack = &batch->stacks[i];
 
-	// The stack kernel is the double (we allocated it new memory, and the orrigional is in the temp storage
+	// The stack kernel is the double (we allocated it new memory, and the original is in the temp storage
 	copyKerDoubleToFloat( cStack->kernels, &orrKernels[i], cStack->initStream );
 
 	// Hold value for the double memory
 	void* temDoubleMem = cStack->kernels->d_kerData;
 
-	// Restore orrigional kernel, with nice doule values in its foat memory
-	memcpy(cStack->kernels, &orrKernels[i], sizeof(cuKernel)); // Copy the orrigional kernel struct over the temp one
+	// Restore original kernel, with nice double values in its float memory
+	memcpy(cStack->kernels, &orrKernels[i], sizeof(cuKernel)); // Copy the original kernel struct over the temp one
 
 	// Now free the double memory
 	cudaFreeNull( temDoubleMem );
