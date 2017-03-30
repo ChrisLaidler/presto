@@ -782,7 +782,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
 
   pln->halfWidth    = cu_z_resp_halfwidth_high<double>(MAX(fabs(maxZ*pln->noHarms), fabs(minZ*pln->noHarms)) + 4);
   double rSpread    = ceil((maxR+OPT_INP_BUF)*pln->noHarms  + pln->halfWidth) - floor((minR-OPT_INP_BUF)*pln->noHarms - pln->halfWidth);
-  int    inpStride  = getStrie(rSpread, sizeof(cufftComplex), pln->gInf->alignment);
+  int    inpStride  = getStride(rSpread, sizeof(cufftComplex), pln->gInf->alignment);
 
   int     datStart;         // The start index of the input data
   int     datEnd;           // The end   index of the input data
