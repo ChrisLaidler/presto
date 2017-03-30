@@ -258,9 +258,9 @@ void setGenRVals(cuFFdotBatch* batch)
   int       binoffset;  // The extra bins to add onto the start of the data
   double    drlo, drhi;
 
-  int lobin;      /// The first bin to copy from the the input fft ( serachR scaled - halfwidth )
-  int numdata;    /// The number of input fft points to read
-  int numrs;      /// The number of good bins in the plane ( expanded units )
+  int lobin;				/// The first bin to copy from the the input fft ( serachR scaled - halfwidth )
+  int numdata;				/// The number of input fft points to read
+  int numrs;				/// The number of good bins in the plane ( expanded units )
   int noResPerBin;
   for (int harm = 0; harm < batch->noGenHarms; harm++)
   {
@@ -273,7 +273,7 @@ void setGenRVals(cuFFdotBatch* batch)
       rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][harm];
       rVals* rValFund		= &(*batch->rAraays)[batch->rActive][step][0];
 
-      if ( rValFund->drlo == rValFund->drhi )
+      if ( rValFund->drhi - rValFund->drlo <= 0 )
       {
 	clearRval(rVal);
       }
@@ -293,7 +293,7 @@ void setGenRVals(cuFFdotBatch* batch)
 	else
 	{
 	  // CPU normalisation can normalise differing length data so use the correct lengths
-	  numdata		= hibin - lobin + 1;
+	  numdata		= hibin - lobin + 1;	// NOTE: This + 1 isn't really necessary is it? its just taken from CPU presto
 	}
 
 	//numrs			= (int) ((ceil(drhi) - floor(drlo)) * noResPerBin + DBLCORRECT) + 1;
@@ -309,7 +309,7 @@ void setGenRVals(cuFFdotBatch* batch)
 	rVal->numrs		= numrs;
 	rVal->numdata		= numdata;
 	rVal->expBin		= (lobin+binoffset)*noResPerBin;
-	rVal->iteration		= rValFund->iteration;
+	rVal->iteration		= rValFund->iteration;					//// Is it really necessary to do this here?
 
 	int noEls		= numrs + 2*cHInfo->kerStart;
 

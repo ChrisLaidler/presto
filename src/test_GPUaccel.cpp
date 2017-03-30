@@ -1091,22 +1091,17 @@ int main(int argc, char *argv[])
         bool CSV            = false;		//
         bool contPlotAll    = false;		//
         bool contPlotCnd    = false;		//
+        cuFFdotBatch* batch = &cuSrch->pInf->batches[0];
 
         int   harmtosum, harm;
         startr = obs.rlo, lastr = 0, nextr = 0;
 
         FOLD // Search bounds  .
         {
-          startr    = 0, lastr = 0, nextr = 0;
-          maxxx     = cuSrch->SrchSz->noSteps;
-          if ( master->flags & FLAG_SS_INMEM  )
-          {
-            startr  = cuSrch->SrchSz->searchRLow ; // ie ( rlo / no harms)
-          }
-          else
-          {
-            startr  = sSpec.fftInf.rlo;
-          }
+          startr	= 0,
+          lastr		= 0;
+          nextr		= 0;
+          maxxx		= cuSrch->SrchSz->noSearchR / (double)batch->accelLen ;
 
           if ( maxxx < 0 )
             maxxx = 0;
@@ -1129,7 +1124,7 @@ int main(int argc, char *argv[])
         FOLD                                                  // -- Main Loop --  .
         {
           int           tid         = 0;
-          cuFFdotBatch* batch       = &cuSrch->pInf->batches[tid];
+
           double*       startrs     = (double*)malloc(sizeof(double)*batch->noSteps);
           double*       lastrs      = (double*)malloc(sizeof(double)*batch->noSteps);
           size_t        rest        = batch->noSteps;
@@ -1234,7 +1229,6 @@ int main(int argc, char *argv[])
 
                 firstStep = ss;
                 ss       += batch->noSteps;
-                cuSrch->noSteps++;
 
                 infoMSG(1,1,"Step %4i of %4i thread %02i processing %02i steps\n", firstStep+1, maxxx, tid, batch->noSteps);
               }
@@ -2174,8 +2168,12 @@ int main(int argc, char *argv[])
           char name [1024];
           pFile = fopen ("CU_CAND_ARR.csv","w");
           fprintf (pFile, "idx;rr;zz;sig;harm\n");
+	  ulong max = cuSrch->candStride;
 
-          for (cdx = 0; cdx < cuSrch->SrchSz->noOutpR; cdx++)  // Loop  .
+	  if ( master->flags  & FLAG_STORE_ALL )
+	    max *= master->noHarmStages; // Store  candidates for all stages
+
+          for (cdx = 0; cdx < max; cdx++)  // Loop  .
           {
             poww        = candidate[cdx].power;
 

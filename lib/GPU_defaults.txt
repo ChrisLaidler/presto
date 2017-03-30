@@ -300,6 +300,17 @@ SS_INMEM_SZ 		0
 #	QUAD    		# Use a quad tree	(Better all round - But not yet properly implemented)
 CAND_STORAGE		ARR
 
+# The resolution of the canidate array
+# This is only used if the CAND_STORAGE is set to ARR
+# This can generally be a smaller number say 0.5 or 0.25 a smaller number will use less host memory to store initial candidates
+# If two initial candidates with similar values are found the one with the higher sigma will over writ the other
+#
+# ARR_RES: (A float value)
+#	0.25:			# This will generate a canidate array with 1 bin per 4 input FT bins
+# D	0.5:			# This will generate a canidate array with 1 bin per 2 input FT bins
+#	1:			# This will generate a canidate array with 1 bin per 1 input FT bin - You shouldn't really have to go lager than this
+#	2:			# This will generate a canidate array with 2 bin per 1 input FT bin ( this is generally the resolution the search is done at see: R_RESOLUTION )
+ARR_RES			0.5
 
 ######################### Optimisation ###########################
 

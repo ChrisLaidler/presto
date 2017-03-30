@@ -28,6 +28,10 @@
  *
  *  [0.0.03] [2017-02-16]
  *    Separated candidate and optimisation CPU threading
+ *
+ *  [2017-03-30]
+ *  	Reworked the way the main in-mem search loop iterates (bounds)
+ *  	Added separate candidate array resolution
  */
 
 #include "cuda_accel_SS.h"
@@ -472,22 +476,15 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
     else if ( res->cndType & CU_STR_ARR     )
     {
       double  	rDiff = rr - cuSrch->SrchSz->searchRLow ;
-      long long	grIdx;   /// The index of the candidate in the global list
+      long long	grIdx;   /// The index of the candidate in the global array
 
-      if ( res->flags & FLAG_STORE_EXP )
-      {
-	grIdx = floor(rDiff*res->noResPerBin);
-      }
-      else
-      {
-	grIdx = floor(rDiff);
-      }
+      grIdx = round(rDiff*res->candRRes);
 
-      if ( grIdx >= 0 && grIdx < cuSrch->SrchSz->noOutpR )      // Valid index  .
+      if ( grIdx >= 0 && grIdx < cuSrch->candStride )		// Valid index  .
       {
-	if ( res->flags & FLAG_STORE_ALL )                      // Store all stages  .
+	if ( res->flags & FLAG_STORE_ALL )			// Store all stages  .
 	{
-	  grIdx += stage * (cuSrch->SrchSz->noOutpR);           // Stride by size
+	  grIdx += stage * (cuSrch->candStride);		// Stride by size
 	}
 
 	if ( res->cndType & CU_CANDFULL )
@@ -531,6 +528,10 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
 	  fprintf(stderr,"ERROR: function %s requires storing full candidates.\n",__FUNCTION__);
 	  exit(EXIT_FAILURE);
 	}
+      }
+      else
+      {
+	// NOTE: The standard search sets the first family of ff planes to start at the scaled start R, thus the harmonics of this (harmonics go down) may have r values below the start r
       }
     }
     else if ( res->cndType & CU_STR_QUAD    )
@@ -806,7 +807,8 @@ void processBatchResults(cuFFdotBatch* batch)
       thrdDat->preBlock		= batch->candCpyComp;
 
       thrdDat->rLow       	= rVal->drlo;
-      thrdDat->noResPerBin	= batch->hInfos->noResPerBin;
+      thrdDat->noResPerBin	= batch->cuSrch->sSpec->noResPerBin;
+      thrdDat->candRRes		= batch->cuSrch->sSpec->candRRes;
 
       thrdDat->noZ		= batch->hInfos->noZ;
       thrdDat->zStart		= batch->hInfos->zStart;
@@ -1150,6 +1152,13 @@ void sumAndMax(cuFFdotBatch* batch)
 
 void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 {
+  PROF
+  {
+    setActiveBatch(batch, 0);
+    rVals* rVal = &((*batch->rAraays)[batch->rActive][0][0]);
+    infoMSG(1,1,"\nIteration %4i - Start step %4i   processing %02i steps on GPU %i - Start bin: %9.2f \n", rVal->iteration, rVal->step, 1, batch->gInf->devid, rVal->drlo );
+  }
+
   setActiveBatch(batch, 0);
   setSearchRVals(batch, drlo, len);
 
@@ -1177,11 +1186,19 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   struct timeval start01, start02, end;
   cuFFdotBatch* master	= &cuSrch->pInf->kernels[0];   // The first kernel created holds global variables
-  long long startBin	= cuSrch->SrchSz->searchRLow * cuSrch->sSpec->noResPerBin;
-  long long endBin	= startBin + cuSrch->SrchSz->noSteps * master->accelLen;
-  float totaBins	= endBin - startBin ;
+
+  double startr		= 0;				/// The first bin to start searching at
+  double cuentR		= 0;				/// The start bin of the input FFT to process next
+  double noR		= 0;				/// The number of input FFT bins the search covers
+  double noSteps	= 0;				/// The number of steps to generate the initial candidates
   int iteration		= 0;
-  long long currentBin	= startBin;
+  int step		= 0;
+
+  // Search bounds
+  startr		= cuSrch->SrchSz->searchRLow;
+  noR			= cuSrch->SrchSz->noSearchR;
+  noSteps		= noR * cuSrch->sSpec->noResPerBin / (double)master->accelLen ;
+  cuentR 		= startr;
 
   TIME // Timing  .
   {
@@ -1218,10 +1235,12 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
     setDevice(batch->gInf->devid) ;
 
-    uint firstBin = 0;
-    uint len      = 0;
+    int		firstStep	= 0;							///< Thread specific value for the first step the batch is processing
+    double	firstR		= 0;							///< Thread specific value for the first input FT bin index being searched
+    int		ite		= 0;							///< The iteration the batch is working on (local to each thread)
+    double	len      	= 0;							///< The length in expanded bins of the section being searched over - This can be depricated
 
-    while ( currentBin < endBin )
+    while ( cuentR < cuSrch->sSpec->fftInf.rhi )  //			---===== Main Loop =====---  .
     {
 #pragma omp critical
       FOLD // Calculate the step  .
@@ -1240,33 +1259,34 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 	}
 
 	iteration++;
-
-	int step    	= (currentBin-startBin)/batch->strideOut;
-	firstBin    	= currentBin;
-	len         	= MIN(batch->strideOut, endBin - firstBin) ;
-	currentBin 	+= len;
+	ite 		= iteration;
+	firstStep	= iteration;
+	step		+= 1;
+	firstR		= cuentR;
+	cuentR		+= batch->strideOut / (double)cuSrch->sSpec->noResPerBin ;
+      }
+      
+      FOLD // Set other thread specific values  .
+      {
+	len         	= MIN(batch->strideOut, (cuSrch->sSpec->fftInf.rhi - firstR)*cuSrch->sSpec->noResPerBin) ;
 	rVals* rVal 	= &(*batch->rAraays)[0][0][0];
-	rVal->step  	= step;
-	rVal->iteration	= iteration;
-
-	if ( msgLevel >= 1 )
-	{
-	  int tot  = ceil((endBin)/(float)batch->strideOut);
-
-	  infoMSG(1,1,"\nIteration %4i Step %4i of %4i thread %02i processing %02i steps on GPU %i\n", iteration, step+1, tot, tid, 1, batch->gInf->devid );
-	}
+	rVal->drlo	= firstR;
+	rVal->drhi	= firstR + len / cuSrch->sSpec->noResPerBin ;
+	rVal->step  	= firstStep;
+	rVal->iteration	= ite;
       }
 
-      inmemSS(batch, firstBin / (double)cuSrch->sSpec->noResPerBin, len);
+      inmemSS(batch, firstR, len);
 
 #pragma omp critical
       FOLD // Output  .
       {
 	if ( msgLevel == 0  )
 	{
+	  double per = (cuentR - startr)/noR *100.0;
 	  int noTrd;
 	  sem_getvalue(&master->cuSrch->threasdInfo->running_threads, &noTrd );
-	  printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", (totaBins-endBin+currentBin)/totaBins*100.0, noTrd );
+	  printf("\rSearching  in-mem GPU plane. %5.1f%% ( %3i Active CPU threads processing found candidates)  ", per, noTrd );
 	  fflush(stdout);
 	}
 	else

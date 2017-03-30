@@ -189,7 +189,6 @@ extern "C"
 // ---- Initial candidates ----//
 
 #define		FLAG_STORE_ALL		BIT(40)		///< Store candidates for all stages of summing, default is only the final result
-#define		FLAG_STORE_EXP		BIT(41)		///< Store expanded candidates
 
 #define		FLAG_CAND_THREAD	BIT(42)		///< Use separate CPU threads to search for candidates in returned data
 #define		FLAG_CAND_MEM_PRE	BIT(43)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
@@ -378,9 +377,16 @@ typedef cudaTextureObject_t fCplxTex;
 ///< A complex number data type
 typedef struct fcomplexcu
 {
-    float           r;                  ///< Real Component
-    float           i;                  ///< Imaginary Component
+    float		r;		///< Real Component
+    float		i;		///< Imaginary Component
 } fcomplexcu;
+
+///< A complex number data type
+typedef struct dcomplexcu
+{
+    double		r;		///< Real Component
+    double		i;		///< Imaginary Component
+} dcomplexcu;
 
 ///< Basic accel search candidate to be used in CUDA kernels
 ///< Note this may not be the best choice on a GPU as it has a bad size
@@ -458,13 +464,13 @@ typedef struct stackInfo
  */
 typedef struct fftInfo
 {
-    double	rlo;		///< The Low bin   (of interest)
-    double	rhi;		///< The high bin  (of interest)
+    double	rlo;			///< The Low bin   (of interest)
+    double	rhi;			///< The high bin  (of interest)
 
-    long long	firstBin;	///< The FFT bin index of the first memory location
-    long long	noBins;		///< The number of bins in the memory location
+    long long	firstBin;		///< The FFT bin index of the first memory location
+    long long	noBins;			///< The number of bins in the memory location
 
-    fcomplex*	fft;		///< The array of complex numbers (nor long)
+    fcomplex*	fft;			///< The array of complex numbers (nor long)
 } fftInfo;
 
 typedef struct candOpt
@@ -486,13 +492,13 @@ typedef struct gpuInf
 
 typedef struct cuHarmInput
 {
-    fcomplexcu*	h_inp;				///< A pointer to host memory size bytes big
-    fcomplexcu*	d_inp;				///< A pointer to device memory size bytes big
+    fcomplexcu*	h_inp;			///< A pointer to host memory size bytes big
+    fcomplexcu*	d_inp;			///< A pointer to device memory size bytes big
 
-    int		noHarms;			///< The current number of harmonics in the data set
+    int		noHarms;		///< The current number of harmonics in the data set
 
-    int		stride;				///< The current stride of the input elements
-    int         size;				///< The size in bytes of the full input data
+    int		stride;			///< The current stride of the input elements
+    int         size;			///< The size in bytes of the full input data
     int		loR[16];
     double	norm[16];
 } cuHarmInput;
@@ -509,12 +515,10 @@ typedef struct cuHarmInfo
     double		zStart;		///< The z value of the first "row" in memory
     double		zEnd;		///< The z value of the last "row" in memory
     int			halfWidth;	///< The kernel half width         - in input fft units ie needs to be multiply by noResPerBin to get plane units
-    int			kerStart;	///< The starting point for data in the various planes, this is essentially the largest halfwidth in the stack
-
+    int			kerStart;	///< The starting point for data in the various planes, this is essentially the largest halfwidth in the stack plus some potently padding to centre and align values
 
     size_t		width;		///< The number of columns, including the contaminated ends (this should always be a power of 2)
     int			noResPerBin;	///< The number of points sampled at
-
 
     double		harmFrac;	///< The harmonic fraction
     int			stackNo;	///< Which Stack is this plane in. (0 indexed at starting at the widest stack)
@@ -645,9 +649,7 @@ typedef struct searchScale
     long long       rHigh;              ///< The highest possible R this search could find, Including halfwidth
 
     unsigned long long noInpR;          ///< The maximum number of r input ( this is essentially  (rHigh - rLow) ) and me be longer than fft length because of halfwidth this requires the FFT to be padded!
-    unsigned long long noOutpR;         ///< The maximum number of r bins the fundamental search will produce. This is ( searchRHigh - searchRLow ) / ( candidate resolution ) It may need to be scaled by numharmstages
-
-    long long       noSteps;            ///< The number of steps the FFT is divided into - This is for plane creation
+    unsigned long long noSearchR;	///< The maximum number of FFT bins ( of the input FT ) covered by the search
 } searchScale;
 
 /** Details of the section/step of the input FFT  .
@@ -676,7 +678,8 @@ typedef struct searchSpecs
 {
     int                 noHarmStages;                   ///< The number of stages of harmonic summing
 
-    int			noResPerBin;			///< The number of response values per bin
+    int			noResPerBin;			///< The number of response values per bin of the input fft - this allows "over sampling" the standard value is 2 interbinning.
+    float		candRRes;			///< The resolution of the candidate array ( measured in input FT bins')
 
     float               zMax;                           ///< The highest z drift of the fundamental
     double		zRes;				///< The resolution in the z dimension
@@ -689,7 +692,7 @@ typedef struct searchSpecs
     float               sigma;                          ///< The cut off sigma
     fftInfo             fftInf;                         ///< The details of the input fft - location size and area to search
 
-    int64_t             flags;                          ///< The search bit flags specified by the user, the actual bit flag used in the search will be diffrent
+    int64_t             flags;                          ///< The search bit flags specified by the user, the actual bit flag used in the search will be different
     int                 normType;                       ///< The type of normalisation to do
 
     int                 mulSlices;                      ///< The number of multiplication slices
@@ -986,33 +989,33 @@ typedef struct cuGpuInfo
  */
 struct cuSearch
 {
-    searchSpecs*        sSpec;              ///< Specifications of the search
-    gpuSpecs*           gSpec;              ///< Specifications of the GPU's to use
-    searchScale*        SrchSz;             ///< Details on o the size (in bins) of the search
-    resThrds*           threasdInfo;        ///< Information on threads to handle returned candidates.
-    cuPlnInfo*          pInf;               ///< The allocated Device and host memory and data structures to create planes including the kernels
-    cuOptInfo*          oInf;               ///< Details of optimisations
+    searchSpecs*        sSpec;			///< Specifications of the search
+    gpuSpecs*           gSpec;			///< Specifications of the GPU's to use
+    searchScale*        SrchSz;			///< Details on o the size (in bins) of the search
+    resThrds*           threasdInfo;		///< Information on threads to handle returned candidates.
+    cuPlnInfo*          pInf;			///< The allocated Device and host memory and data structures to create planes including the kernels
+    cuOptInfo*          oInf;			///< Details of optimisations
 
     // Some extra search details
-    int                 noHarmStages;       ///< The number of stages of harmonic summing
-    int                 noGenHarms;         ///< The number of harmonics in the family
-    int                 noSrchHarms;        ///<
-    int                 noSteps;            ///< The number of steps to cover the entire input data
+    int                 noHarmStages;		///< The number of stages of harmonic summing
+    int                 noGenHarms;		///< The number of harmonics in the family
+    int                 noSrchHarms;		///< The number of harmonics to search over
 
-    long long           timings[COMP_MAX];  ///< Array for timing values (values stored in μs) - These are used for both timing and profiling, they are only filled if TIMING and or PROFILING are defined in cuda_accel.h
+    long long           timings[COMP_MAX];	///< Array for timing values (values stored in μs) - These are used for both timing and profiling, they are only filled if TIMING and or PROFILING are defined in cuda_accel.h
 
     // Search power cutoff values
-    int*                sIdx;               ///< The index of the planes in the Presto harmonic summing order
-    float*              powerCut;           ///< The power cutoff
-    long long*          numindep;           ///< The number of independent trials
-    int*                yInds;              ///< The Y indices
+    int*                sIdx;			///< The index of the planes in the Presto harmonic summing order
+    float*              powerCut;		///< The power cutoff
+    long long*          numindep;		///< The number of independent trials
+    int*                yInds;			///< The Y indices
 
     // Search specific memory
-    void*               h_candidates;       ///< Host memory for candidates
-    void*               d_planeFull;        ///< Device memory for the in-mem f-∂f plane
-    GSList*		cands;              ///< The candidates from the GPU search
+    void*               h_candidates;		///< Host memory for candidates
+    void*               d_planeFull;		///< Device memory for the in-mem f-∂f plane
+    GSList*		cands;			///< The candidates from the GPU search
 
-    unsigned int	inmemStride;        ///< The stride (in units) of the in-memory plane data in device memory
+    unsigned int	inmemStride;		///< The stride (in units) of the in-memory plane data in device memory
+    unsigned int	candStride;		///< The stride (in units) of the host candidate array
 };
 
 /** Information of the P-threads used in the search  .
@@ -1038,8 +1041,8 @@ typedef struct resultData
     bool*		outBusy;		///< A pointer to the flag indicating that the memory has all been read
     int			resSize;		///< The size of the results data
 
-    uint                retType;
-    uint                cndType;
+    uint                retType;		///< The way the candidates should be stored
+    uint                cndType;		///<
     int64_t             flags;			///< CUDA accel search bit flags
 
     cudaEvent_t		preBlock;		///< An event to block the thread on before processing the data
@@ -1055,16 +1058,17 @@ typedef struct resultData
     uint                xStride;
     uint                yStride;
 
-    double		zStart;
-    double		zEnd;
-    uint		noZ;
+    double		zStart;			///< Max Z-value
+    double		zEnd;			///< Min Z-value
+    uint		noZ;			///< The number of z-values searched
 
-    double              rLow;
-    int 		noResPerBin;
+    double              rLow;			///< The input FT bin "index" of the first valid result
+    int 		noResPerBin;		///< The number of response values per bin of the input fft - this allows "over sampling" the standard value is 2 interbinning.
+    float		candRRes;		///< The resolution of the candidate array ( measured in input FT bins')
 
     rVals               rVal;
 
-    uint*               noResults;
+    uint*               noResults;		///< A value to keep tack of the number of candidates found
 
     long long*          resultTime;
     long long*          blockTime;		///< This can't really get used...

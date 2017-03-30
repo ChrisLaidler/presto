@@ -82,3 +82,4 @@ src/fftw_wisdom.txt
 src/build*
 lib/GPU_defaults.txt.20*
 docs/doxygen/
+/core
