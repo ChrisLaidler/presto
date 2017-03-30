@@ -468,6 +468,7 @@ typedef struct fftInfo
     double	rhi;			///< The high bin  (of interest)
 
     long long	firstBin;		///< The FFT bin index of the first memory location
+    long long	lastBin;		///< The FFT bin index of the last memory location
     long long	noBins;			///< The number of bins in the memory location
 
     fcomplex*	fft;			///< The array of complex numbers (nor long)

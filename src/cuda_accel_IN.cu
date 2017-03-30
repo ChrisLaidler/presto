@@ -86,8 +86,8 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 	  {
 	    if ( batch->cuSrch->sSpec->normType == 0 )	// Block median normalisation  .
 	    {
-	      int start = rVal->lobin < 0 ? -rVal->lobin : 0 ;
-	      int end   = rVal->lobin + rVal->numdata >= batch->cuSrch->SrchSz->searchRHigh ? rVal->lobin + rVal->numdata - batch->cuSrch->SrchSz->searchRHigh : rVal->numdata ;
+	      int startBin = rVal->lobin < 0 ? -rVal->lobin : 0 ;
+	      int endBin   = rVal->lobin + rVal->numdata >= batch->cuSrch->sSpec->fftInf.lastBin ? rVal->lobin + rVal->numdata - batch->cuSrch->sSpec->fftInf.lastBin : rVal->numdata ;
 
 	      if ( rVal->norm == 0.0 )
 	      {
@@ -100,7 +100,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		  for (int ii = 0; ii < rVal->numdata; ii++)
 		  {
-		    if ( rVal->lobin+ii < 0 || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh ) // Zero Pad
+		    if ( rVal->lobin+ii < batch->cuSrch->sSpec->fftInf.firstBin || rVal->lobin+ii  >= batch->cuSrch->sSpec->fftInf.lastBin ) // Zero Pad
 		    {
 		      batch->h_normPowers[ii] = 0;
 		    }
@@ -129,7 +129,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 		  }
 		  else
 		  {
-		    rVal->norm = 1.0 / sqrt(median(&batch->h_normPowers[start], (end-start)) / log(2.0));    /// NOTE: This is a slightly better method (in my opinion)
+		    rVal->norm = 1.0 / sqrt(median(&batch->h_normPowers[startBin], (endBin-startBin)) / log(2.0));    /// NOTE: This is a slightly better method (in my opinion)
 		  }
 
 		  PROF // Profiling  .
@@ -148,7 +148,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*noRespPerBin) < cStack->strideCmplx ); ii++)
 		{
-		  if ( rVal->lobin+ii < 0  || rVal->lobin+ii  >= batch->cuSrch->SrchSz->searchRHigh )  // Zero Pad
+		  if ( rVal->lobin+ii < batch->cuSrch->sSpec->fftInf.firstBin || rVal->lobin+ii  >= batch->cuSrch->sSpec->fftInf.lastBin ) // Zero Pad
 		  {
 		    cStack->h_iBuffer[sz + ii * noRespPerBin].r = 0;
 		    cStack->h_iBuffer[sz + ii * noRespPerBin].i = 0;

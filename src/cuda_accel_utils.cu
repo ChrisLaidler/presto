@@ -6046,15 +6046,19 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.retType	|= CU_POWERZ_S;  	// Return type
     sSpec.retType	|= CU_STR_ARR;  	// Candidate storage structure
 
-    sSpec.fftInf.fft	= obs->fft;
-    sSpec.fftInf.noBins	= obs->numbins;
+    sSpec.fftInf.fft	= obs->fft;		// Pointer to first memory location of the FT values
+    sSpec.fftInf.firstBin= 0;			// By default the start of the FT in memory
+    sSpec.fftInf.lastBin= obs->numbins-1;	// The number of bins read into memory
+    sSpec.fftInf.noBins	= sSpec.fftInf.lastBin - sSpec.fftInf.firstBin + 1; //  obs->numbins;
+
+
     sSpec.fftInf.rlo	= obs->rlo;
     sSpec.fftInf.rhi	= obs->rhi;
 
     sSpec.normType	= obs->norm_type;
 
     sSpec.noResPerBin	= 2;			// Inter binning
-    sSpec.candRRes	= 0.5;			// 1 Canidate per 2 bins
+    sSpec.candRRes	= 0.5;			// 1 Candidate per 2 bins
     sSpec.zRes		= 2;
     sSpec.ringLength	= 7;			// Just a good number
     sSpec.noHarmStages	= obs->numharmstages;
@@ -7862,7 +7866,6 @@ void genPlane(cuSearch* cuSrch, char* msg)
   cuFFdotBatch* master	= &cuSrch->pInf->kernels[0];	/// The first kernel created holds global variables
   int iteration 	= 0;				/// Actual loop iteration
   int   step		= 0;				/// The next step to be processed (each iteration can handle multiple steps)
-
 
   TIME // Basic timing  .
   {
