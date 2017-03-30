@@ -1362,8 +1362,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	FOLD // Compute size of
 	{
 	  // Compute stride  .
-	  cStack->strideCmplx =   getStrie(cStack->width, cmpElsSZ, gInf->alignment);
-	  cStack->stridePower =   getStrie(cStack->width, powElsSZ, gInf->alignment);
+	  cStack->strideCmplx =   getStride(cStack->width, cmpElsSZ, gInf->alignment);
+	  cStack->stridePower =   getStride(cStack->width, powElsSZ, gInf->alignment);
 
 	  kernel->inpDataSize +=  cStack->strideCmplx * cStack->noInStack * sizeof(cufftComplex);
 	  kernel->kerDataSize +=  cStack->strideCmplx * cStack->kerHeigth * cmpElsSZ;
@@ -1819,7 +1819,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  FOLD // Make sure the stride is aligned  .
 	  {
 	    int iStride = kernel->strideOut;
-	    kernel->strideOut = getStrie(kernel->strideOut, retSZ, gInf->alignment);
+	    kernel->strideOut = getStride(kernel->strideOut, retSZ, gInf->alignment);
 
 	    infoMSG(6,6,"Return size %i, elements: %i   initial stride: %i   aligned stride1: %i", retSZ, kernel->accelLen, iStride, kernel->strideOut );
 	  }
@@ -6253,7 +6253,7 @@ void initOptimisers(cuSearch* sSrch )
 	resp->noZ	= resp->zMax * 2 / resp->dZ + 1 ;
 	resp->halfWidth = halfWidth;
 	resp->noR	= sSrch->oInf->optResolution*halfWidth*2 ;
-	resp->oStride 	= getStrie( resp->noR, sizeof(float2), sSrch->gSpec->devInfo[dev].alignment);
+	resp->oStride 	= getStride( resp->noR, sizeof(float2), sSrch->gSpec->devInfo[dev].alignment);
 	resp->size	= resp->oStride * resp->noZ * sizeof(float2);
       }
 

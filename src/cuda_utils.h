@@ -88,7 +88,7 @@ ExternC int getMemAlignment();
 
 /** Get the stride (in number of elements) given a number of elements and the "block" size  .
  */
-ExternC int getStrie(int noEls, int elSz, int blockSz);
+ExternC int getStride(int noEls, int elSz, int blockSz);
 
 ExternC void streamSleep(cudaStream_t stream, long long int clock_count );
 

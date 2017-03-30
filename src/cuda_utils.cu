@@ -432,14 +432,17 @@ int getMemAlignment()
   return stride;
 }
 
-int getStrie(int noEls, int elSz, int blockSz)
+int getStride(int noEls, int elSz, int blockSz)
 {
   int     noBlocks = ceil(noEls*elSz/(float)blockSz);
   float   elStride = noBlocks * blockSz / (float)elSz;
 
   float rem = elStride - (int)elStride;
   if ( rem != 0 )
-    fprintf(stderr, "ERROR: Memory not aligned to the size of stride.\n");
+  {
+    fprintf(stderr, "ERROR: Memory not aligned to the size of stride. Pleas contact Chris Laidler.\n");
+    exit(EXIT_FAILURE);
+  }
 
   return elStride;
 }
