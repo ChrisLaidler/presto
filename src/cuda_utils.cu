@@ -145,6 +145,48 @@ __host__ void streamSleep(cudaStream_t stream, long long int clock_count )
   CUDA_SAFE_CALL(cudaGetLastError(), "Calling the clock_block kernel.");
 }
 
+/** Convert CUDA half values to floats
+ *
+ * @param h	The half precision floating point value to be converts
+ * @return	The single precision floating point value
+ */
+float half2float(const ushort h)
+{
+  unsigned int sign     = ((h >> 15) & 1);
+  unsigned int exponent = ((h >> 10) & 0x1f);
+  unsigned int mantissa = ((h & 0x3ff) << 13);
+
+  if (exponent == 0x1f)     // NaN or Inf
+  {
+    mantissa = (mantissa ? (sign = 0, 0x7fffff) : 0);
+    exponent = 0xff;
+  }
+  else if (!exponent)       // Denorm or Zero
+  {
+    if (mantissa)
+    {
+      unsigned int msb;
+      exponent = 0x71;
+      do
+      {
+	msb = (mantissa & 0x400000);
+	mantissa <<= 1;  /* normalize */
+	--exponent;
+      }
+      while (!msb);
+
+      mantissa &= 0x7fffff;  /* 1.mantissa is implicit */
+    }
+  }
+  else
+  {
+    exponent += 0x70;
+  }
+
+  uint res = ((sign << 31) | (exponent << 23) | mantissa);
+  return  *((float*)(&res));
+}
+
 void debugMessage ( const char* format, ... )
 {
 #ifdef DEBUG
@@ -244,42 +286,6 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
   // If we get here we didn't find the value in the array
   return -1;
 }
-
-//void* initGPU(void* ptr)
-//{
-//  int currentDevvice;
-//  char txt[1024];
-//
-//  //int device = *((int*)(&ptr));
-//  gpuInf device = *((int*)(&ptr));
-//
-//  printf("Device no is %i \n", device);
-//
-//  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-//
-//  // Check if the the current device is 'device'
-//  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-//  if ( currentDevvice != device)
-//  {
-//    fprintf(stderr, "ERROR: Device not set.\n");
-//  }
-//  else // call something to initialise the device
-//  {
-//    sprintf(txt,"Init device %02i", device );
-//    NV_RANGE_PUSH(txt);
-//
-//    //size_t free, total;
-//    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-//
-//    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-//
-//    cudaFree(0);
-//
-//    NV_RANGE_POP();
-//  }
-//
-//  return NULL;
-//}
 
 void initGPUs(gpuSpecs* gSpec)
 {
@@ -539,7 +545,6 @@ void infoMSG ( int lev, int indent, const char* format, ... )
     fflush(stderr);
   }
 }
-
 
 void queryEvents( cudaEvent_t   evmt, const char* msg )
 {

@@ -191,47 +191,12 @@ void setActiveBatch(cuFFdotBatch* batch, int rIdx)
   batch->rActive = rIdx;
 }
 
-float half2float(const ushort h)
-{
-  unsigned int sign     = ((h >> 15) & 1);
-  unsigned int exponent = ((h >> 10) & 0x1f);
-  unsigned int mantissa = ((h & 0x3ff) << 13);
-
-  if (exponent == 0x1f)     // NaN or Inf
-  {
-    mantissa = (mantissa ? (sign = 0, 0x7fffff) : 0);
-    exponent = 0xff;
-  }
-  else if (!exponent)       // Denorm or Zero
-  {
-    if (mantissa)
-    {
-      unsigned int msb;
-      exponent = 0x71;
-      do
-      {
-	msb = (mantissa & 0x400000);
-	mantissa <<= 1;  /* normalize */
-	--exponent;
-      }
-      while (!msb);
-
-      mantissa &= 0x7fffff;  /* 1.mantissa is implicit */
-    }
-  }
-  else
-  {
-    exponent += 0x70;
-  }
-
-  uint res = ((sign << 31) | (exponent << 23) | mantissa);
-  return  *((float*)(&res));
-}
-
 /** Calculate an optimal accellen given a width  .
  *
- * @param width the width of the plane usually a power of two
- * @param zmax
+ * @param width		The width of the plane (usually a power of two) if width < 100 the closes power of 2 to width*1000 will be used ie 8 -> 8024
+ * @param zmax		The highest z value being searched for
+ * @param accuracy	The accuracy of the kernel
+ * @param noResPerBin	The resolution 2 -> interbinning
  * @return
  * If width is not a power of two it will be rounded up to the nearest power of two
  */
