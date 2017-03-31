@@ -2077,7 +2077,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      {
 		if ( ( free ) > kerSize + planeSize + ( (fffTotSize + batchSize) * (noBatchsTest+1) * noStepsTest ) )
 		{
-		  possSteps[noBatchsTest] = noStepsTest;
+		  // Culate fractional value
+		  possSteps[noBatchsTest] = ( free - kerSize - planeSize ) / (double)( (fffTotSize + batchSize) * (noBatchsTest+1) );;
 		  break;
 		}
 	      }
@@ -2085,13 +2086,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      {
 		if ( ( free ) > kerSize + planeSize + (fffTotSize * noStepsTest) + ( batchSize  * (noBatchsTest+1) * noStepsTest ) )
 		{
-		  possSteps[noBatchsTest] = noStepsTest;
+		  // Culate fractional value
+		  possSteps[noBatchsTest] = ( free - kerSize - planeSize ) / (double)( fffTotSize + (batchSize * (noBatchsTest+1)) );
 		  break;
 		}
 	      }
 	    }
 
-	    infoMSG(6,6,"For %2i batches can have at least %.0f steps.  In-mem plane size %.4f GB.\n", noBatchsTest+1, possSteps[noBatchsTest], planeSize*1e-9);
+	    infoMSG(6,6,"For %2i batches can have %.1f steps.  In-mem plane size %.4f GB.\n", noBatchsTest+1, possSteps[noBatchsTest], planeSize*1e-9);
 
 	    infoMSG(7,7,"ker: %.3f MB - FFT: %.3f MB - batch: %.3f MB - inpDataSize: %.2f MB - plnDataSize: ~%.2f MB - pwrDataSize: ~%.2f MB - cndDataSize: ~%.2f MB \n",
 		kerSize*1e-6,
@@ -2192,7 +2194,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		  exit(EXIT_FAILURE);
 		}
 
-		printf("     With %i batches, can do %.0f steps, using %i steps.\n", noBatches, possSteps[noBatches-1], kernel->noSteps);
+		printf("     With %i batches, can do %.1f steps, using %i steps.\n", noBatches, possSteps[noBatches-1], kernel->noSteps);
 
 		if ( noBatches >= 3 && kernel->noSteps < 3 )
 		{
@@ -2238,7 +2240,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      {
 		noBatches	= noB;
 		kernel->noSteps	= floor(possSteps[noBatches-1]);
-		printf("       Can have %.0f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+		printf("       Can have %.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
 		break;
 	      }
 	    }
@@ -2250,21 +2252,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      {
 		noBatches	= 3;
 		kernel->noSteps	= floor(possSteps[noBatches-1]);
-		printf("       Can have %.0f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+		printf("       Can have %.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
 	      }
 	      else if ( possSteps[1] >= MAX(2, MIN_STEPS) )
 	      {
 		// Lets do 2 batches and scale steps
 		noBatches	= 2;
 		kernel->noSteps	= floor(possSteps[noBatches-1]);
-		printf("       Can have %.0f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
+		printf("       Can have %.1f steps with %i batches.\n", possSteps[noBatches-1], noBatches );
 	      }
-	      else if ( possSteps[0] >  MAX(1, MIN_STEPS) )
+	      else if ( possSteps[0] >= MAX(1, MIN_STEPS) )
 	      {
 		// Lets do 1 batches and scale steps
 		noBatches	= 1;
 		kernel->noSteps	= floor(possSteps[noBatches-1]);
-		printf("       Can only have %.0f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
+		printf("       Can only have %.1f steps with %i batch.\n", possSteps[noBatches-1], noBatches );
 	      }
 	      else
 	      {
@@ -2274,11 +2276,11 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 		if ( possSteps[0] > 0 && possSteps[0] < MIN_STEPS )
 		{
-		  fprintf(stderr, "ERROR: Can have %.0f steps with %i batch, BUT compiled with min of %i steps.\n", possSteps[0], 1, MIN_STEPS );
+		  fprintf(stderr, "ERROR: Can have %.1f steps with %i batch, BUT compiled with min of %i steps.\n", possSteps[0], 1, MIN_STEPS );
 		}
 		else
 		{
-		  printf("       ERROR: Can only have %.0f steps with %i batch.\n", possSteps[0], 1 );
+		  printf("       ERROR: Can only have %.1f steps with %i batch.\n", possSteps[0], 1 );
 		}
 	      }
 	    }
