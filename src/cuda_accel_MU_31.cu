@@ -220,10 +220,10 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     }
 #endif
 
-#if MIN_STEPS <= 13 and MAX_STEPS >= 13
-    case 13:
+#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+    case 12:
     {
-      mult31_k<FLAGS,13><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
