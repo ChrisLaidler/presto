@@ -3371,15 +3371,15 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    exit(EXIT_FAILURE);
 	  }
 	}
+      }
 
 #ifdef CBL
-	if ( no == 0 )
-	{
-	  printf("ssSlices %i \n", batch->ssSlices );
-	  printf("ssChunk  %i \n", batch->ssChunk  );
-	}
-#endif
+      if ( no == 0 )
+      {
+	printf("ssSlices %i \n", batch->ssSlices );
+	printf("ssChunk  %i \n", batch->ssChunk  );
       }
+#endif
     }
   }
 
@@ -8158,7 +8158,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
     }
 
     int noGenSteps = ceil( (cuSrch->sSpec->fftInf.rhi - cuSrch->sSpec->fftInf.rlo/(double)cuSrch->noGenHarms) * cuSrch->sSpec->noResPerBin / (double)master->accelLen );
-    printf("\nRunning GPU search of %lli steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", noGenSteps, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
+    printf("\nRunning GPU search of %i steps with %i simultaneous families of f-∂f planes spread across %i device(s).\n\n", noGenSteps, cuSrch->pInf->noSteps, cuSrch->pInf->noDevices );
 
     if      ( master->flags & FLAG_SS_INMEM     )	// In-mem search  .
     {
