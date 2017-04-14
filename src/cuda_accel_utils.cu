@@ -3199,7 +3199,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  MINN(cStack->mulChunk, MAX_MUL_CHUNK);
 	  MAXX(cStack->mulChunk, MIN_MUL_CHUNK);
 
-
 	  if ( i == 0 )
 	    batch->mulChunk = cStack->mulChunk;
 
@@ -3207,7 +3206,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  FOLD  // TMP REM - Added to mark an error for thesis timing
 	  {
-	    if ( kernel->cuSrch->sSpec->mulChunk && cStack->mulChunk != kernel->cuSrch->sSpec->mulChunk )
+	    if ( ( cStack->flags & FLAG_MUL_23 ) && kernel->cuSrch->sSpec->mulChunk && ( cStack->mulChunk != kernel->cuSrch->sSpec->mulChunk ) )
 	    {
 	      printf("Temporary exit - mulChunk \n");
 	      exit(EXIT_FAILURE);
