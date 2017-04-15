@@ -3082,7 +3082,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    {
 	      infoMSG(5,5,"Compute caperbility %.1f <= 3.0. (device has a smaller number registers)\n", batch->gInf->capability);
 
-	      // We require fewer registers per thread, so use Multiplication kernel 2.1
+	      // Require fewer registers per thread, so use Multiplication kernel 2.1
 	      if ( noInp <= 20 )
 	      {
 		infoMSG(5,5,"# input for stack %i is %i, this is <= 20 so use mult 2.1 \n", i, noInp);
@@ -3190,10 +3190,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  if ( cStack->mulChunk <= 0 )
 	  {
 	    cStack->mulChunk = 12;	// TODO: Profile this parameter
-	  }
 
-	  // Clamp chunk length to slice length
-	  MINN(cStack->mulChunk, ceilf(cStack->kerHeigth/(float)cStack->mulSlices) );
+	    // Clamp chunk length to slice length
+	    MINN(cStack->mulChunk, ceilf(cStack->kerHeigth/(float)cStack->mulSlices) );
+	  }
 
 	  // Clamp to compilation bounds
 	  MINN(cStack->mulChunk, MAX_MUL_CHUNK);
