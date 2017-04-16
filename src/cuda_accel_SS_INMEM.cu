@@ -27,6 +27,8 @@
 #define SSIM_Y		16						///< Y Thread Block
 #define SSIMBS		(SSIM_X*SSIM_Y)
 
+#ifdef WITH_SAS_IM
+
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
 __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, int start, int end, candPZs* d_cands, int* d_counts )
 {
@@ -438,8 +440,12 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
   }
 }
 
+#endif	// WITH_SAS_IM
+
+
 __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 {
+#ifdef WITH_SAS_IM
   PROF // Profiling - Time previous components  .
   {
     if ( (batch->flags & FLAG_PROF) )
@@ -508,4 +514,8 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
       CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
     }
   }
+
+#else	// WITH_SAS_IM
+  EXIT_DIRECTIVE("WITH_SAS_IM");
+#endif	// WITH_SAS_IM
 }

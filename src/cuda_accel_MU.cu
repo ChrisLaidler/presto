@@ -40,8 +40,6 @@ static void multiplyPlane(cuFFdotBatch* batch)
   for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
   {
     cuFfdotStack* cStack = &batch->stacks[stack];
-    void*       d_planeData;    // The complex f-∂f plane data
-    fcomplexcu* d_iData;        // The complex input array
 
     FOLD // Synchronisation  .
     {
@@ -89,50 +87,7 @@ static void multiplyPlane(cuFFdotBatch* batch)
 
     FOLD // call kernel(s)  .
     {
-      for (int plane = 0; plane < cStack->noInStack; plane++)         // Loop through planes in stack
-      {
-	cuHarmInfo* cHInfo    = &cStack->harmInf[plane];              // The current harmonic we are working on
-	cuFFdot*    cPlane    = &cStack->planes[plane];               // The current f-∂f plane
-
-	dimGrid.x = ceil(cHInfo->width / (float) ( CNV_DIMX * CNV_DIMY ));
-	dimGrid.y = 1;
-
-	for (int step = 0; step < batch->noSteps; step++)             // Loop through Steps
-	{
-	  d_iData         = cPlane->d_iData + cStack->strideCmplx * step;
-
-	  if      ( batch->flags & FLAG_ITLV_ROW )
-	  {
-	    fprintf(stderr,"ERROR: Cannot do single plane multiplications with row-interleaved multi step stacks.\n");
-	    exit(EXIT_FAILURE);
-	  }
-#ifdef WITH_ITLV_PLN
-	  else
-	  {
-	    // Shift by plane height
-	    if ( batch->flags & FLAG_DOUBLE )
-	      d_planeData   = (double2*)cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
-	    else
-	      d_planeData   = (float2*) cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
-	  }
-#else
-	  else
-	  {
-	    fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-	    exit(EXIT_FAILURE);
-	  }
-#endif
-
-	  // Texture memory in multiplication is now deprecated
-	  //if ( batch->flag & FLAG_TEX_MUL )
-	  //  mult12<<<dimGrid, dimBlock, 0, cStack->multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
-	  //else
-	  mult11<<<dimGrid, dimBlock, 0, cStack->multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->noZ, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
-
-	  // Run message
-	  CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");
-	}
-      }
+      mult11(cStack->multStream, batch, cStack);
     }
 
     FOLD // Synchronisation  .

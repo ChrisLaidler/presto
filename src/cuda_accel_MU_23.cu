@@ -23,6 +23,8 @@
  
  #include "cuda_accel_MU.h"
 
+#ifdef WITH_MUL_23
+
 /** Multiplication kernel - All multiplications for a stack - Uses registers to store sections of the kernel - Loop ( chunk (read ker) - plan - Y - step ) .
  * Each thread loops down a column of the plane
  * Reads the input and multiples it with the kernel and writes result to plane
@@ -658,8 +660,11 @@ __host__  void mult23_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
+#endif	// WITH_MUL_23
+
 __host__  void mult23(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
+#ifdef WITH_MUL_23
   dim3 dimGrid, dimBlock;
 
   dimBlock.x = CNV_DIMX;
@@ -679,5 +684,9 @@ __host__  void mult23(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
       fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
       exit(EXIT_FAILURE);
     }
+#endif
+
+#else
+  EXIT_DIRECTIVE("WITH_MUL_23");
 #endif
 }

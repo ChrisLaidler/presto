@@ -17,6 +17,8 @@
  
 #include "cuda_accel_MU.h"
 
+#ifdef WITH_MUL_31
+
 /** Multiplication kernel - Multiply an entire batch with convolution kernel  .
  * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
@@ -242,8 +244,12 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
+#endif	// WITH_MUL_31
+
 __host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch)
 {
+#ifdef WITH_MUL_31
+
   dim3 dimGrid, dimBlock;
 
   dimBlock.x = CNV_DIMX;
@@ -263,5 +269,9 @@ __host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch)
       fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
       exit(EXIT_FAILURE);
     }
+#endif
+
+#else
+  EXIT_DIRECTIVE("WITH_MUL_31");
 #endif
 }

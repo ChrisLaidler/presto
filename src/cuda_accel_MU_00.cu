@@ -17,6 +17,8 @@
  
  #include "cuda_accel_MU.h"
 
+#ifdef WITH_MUL_00
+
 /** Kernel for testing best possible performance - Just write to ffdot plane - 1 thread per complex value  .
  *
  * @param kernels
@@ -48,6 +50,9 @@ __global__ void mult00_k(const __restrict__ fcomplexcu* kernels, const __restric
   }
 }
 
+#endif	// WITH_MUL_00
+
+#ifdef WITH_MUL_01	// - Read input, read kernel, write to ffdot plane - 1 thread per column  .
 
 /** Kernel for testing best possible performance - Read input, read kernel, write to ffdot plane - 1 thread per column  .
  *
@@ -126,43 +131,10 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
     }
   }
 }
+#endif	// WITH_MUL_01
 
-/** Kernel for testing best possible performance - Just write to ffdot plane - Each thread loops down over column  .
- *
- * @param kernels
- * @param inpData
- * @param ffdot
- * @param width
- * @param height
- * @param stride
- * @param noSteps
- * @param kerHeight
- */
-__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
-{
-  dim3 dimGrid, dimBlock;
 
-  dimBlock.x = CNV_DIMX;
-  dimBlock.y = CNV_DIMY;
-
-  if (0)
-  {
-    dimGrid.x = ceil(cStack->width                    / (float) ( CNV_DIMX ));
-    dimGrid.y = ceil(cStack->height*batch->noSteps    / (float) ( CNV_DIMX ));
-
-    mult00_k<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
-  }
-  else
-  {
-    dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
-    dimGrid.y = cStack->mulSlices;
-
-    mult01_k<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
-  }
-
-}
-
-//-----------------------------------------//
+#ifdef WITH_MUL_02	// Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Pln - Y - step )  .
  * Each thread loops down a column of the plane
@@ -408,4 +380,53 @@ __host__  void mult02_f(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotSta
     exit(EXIT_FAILURE);
   }
 #endif
+}
+
+#endif	// WITH_MUL_02
+
+/** Kernel for testing best possible performance - Just write to ffdot plane - Each thread loops down over column  .
+ *
+ * @param kernels
+ * @param inpData
+ * @param ffdot
+ * @param width
+ * @param height
+ * @param stride
+ * @param noSteps
+ * @param kerHeight
+ */
+__host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+{
+  dim3 dimGrid, dimBlock;
+
+  dimBlock.x = CNV_DIMX;
+  dimBlock.y = CNV_DIMY;
+
+  if ( 0 )
+  {
+    // Dummy
+  }
+#ifdef WITH_MUL_00
+  else if ( 1 )
+    dimGrid.x = ceil(cStack->width                    / (float) ( CNV_DIMX ));
+    dimGrid.y = ceil(cStack->height*batch->noSteps    / (float) ( CNV_DIMX ));
+
+    mult00_k<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+  }
+#endif
+#ifdef WITH_MUL_01
+  else if ( 1 )
+  {
+    dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
+    dimGrid.y = cStack->mulSlices;
+
+    mult01_k<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+  }
+#endif
+  else
+  {
+    fprintf(stderr, "ERROR: Code has not been compiled with Multiplication \"optimal\" kernel." );
+    exit(EXIT_FAILURE);
+  }
+
 }

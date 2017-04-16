@@ -168,15 +168,10 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack);
  */
 __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
 
-/** Multiplication kernel - One thread per r location (input FFT)  .
+/** Multiplication kernel - All planes of a stack indevidually - One thread per r location (input FFT)  .
  * Each thread reads one input value and loops down over the kernels
  */
-__global__ void mult11(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels);
-
-/** Multiplication kernel - One thread per r location loop down z - Texture memory  .
- * Each thread reads one input value and loops down over the kernels
- */
-__global__ void mult12(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, fCplxTex kerTex);
+__host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack);
 
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Use Constant memory  .
  * Each thread loops down a column of the plane

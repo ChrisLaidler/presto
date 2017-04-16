@@ -17,6 +17,8 @@
  
 #include "cuda_accel_MU.h"
 
+#ifdef WITH_MUL_21
+
 /** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Y - Pln - step )  .
  * Each thread loops down a column of the plane
  * Reads the input and multiplies it with the kernel and writes result to plane
@@ -312,8 +314,12 @@ __host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   }
 }
 
+#endif
+
 __host__  void mult21(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
+#ifdef WITH_MUL_21
+
   dim3 dimGrid, dimBlock;
 
   dimBlock.x = CNV_DIMX;
@@ -333,5 +339,9 @@ __host__  void mult21(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
       fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
       exit(EXIT_FAILURE);
     }
+#endif
+
+#else
+  EXIT_DIRECTIVE("WITH_MUL_21");
 #endif
 }

@@ -17,6 +17,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 {
   infoMSG(2,2,"Sum & Search CPU\n");
 
+#ifdef WITH_SAS_CPU
+
   // Profiling  variables
   struct timeval start, end;
 
@@ -273,4 +275,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   }
 
   free(cnd);
+#else	// WITH_SAS_CPU
+  EXIT_DIRECTIVE("WITH_SAS_CPU");
+#endif	// WITH_SAS_CPU
 }

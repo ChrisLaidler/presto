@@ -3076,18 +3076,25 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    {
 	      // Lots of registers per thread so 2.1 is good
 	      infoMSG(5,5,"Compute caperbility %.1f > 3.0. Easy, use multiplication kernel 2.1\n", batch->gInf->capability);
+#ifdef WITH_MUL_21
 	      mFlag |= FLAG_MUL_21;
+#else	// WITH_MUL_21
+	      fprintf(stderr, "ERROR: Not compiled with Mult 21 kernel pleas manually specify multiplication kernel.");
+	      exit(EXIT_FAILURE);
+#endif	// WITH_MUL_21
 	    }
 	    else
 	    {
 	      infoMSG(5,5,"Compute caperbility %.1f <= 3.0. (device has a smaller number registers)\n", batch->gInf->capability);
+
+#if defined(WITH_MUL_22) && defined(WITH_MUL_22)
 
 	      // Require fewer registers per thread, so use Multiplication kernel 2.1
 	      if ( noInp <= 20 )
 	      {
 		infoMSG(5,5,"# input for stack %i is %i, this is <= 20 so use mult 2.1 \n", i, noInp);
 
-		// TODO: Check small, looks like some times 22 may be faster.
+		// TODO: Check small, looks like some times MUL_22 may be faster.
 		mFlag |= FLAG_MUL_21;
 	      }
 	      else
@@ -3099,7 +3106,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 		  infoMSG(5,5,"steps (%i) < 4\n", kernel->noSteps );
 
 		  // very few steps so 2.2 not always the best option
-		  if ( kernel->hInfos->zmax > 100 )
+		  if ( kernel->hInfos->zmax > 100 )  // TODO: this should use stack height rather than total zmax
 		  {
 		    infoMSG(5,5,"zmax > 100 use mult 2.3.\n");
 
@@ -3123,6 +3130,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 		  mFlag |= FLAG_MUL_22;
 		}
 	      }
+#elif defined(WITH_MUL_22)
+	      fprintf(stderr, "WARNNG: Not compiled with Mult 23 so using Mult 22 kernel.");
+	      infoMSG(5,5,"# only compiled with mult 2.2 \n", i, noInp);
+	      mFlag |= FLAG_MUL_22;
+#elif defined(WITH_MUL_23)
+	      fprintf(stderr, "WARNNG: Not compiled with Mult 22 so using Mult 23 kernel.");
+	      infoMSG(5,5,"# only compiled with mult 2.3 \n", i, noInp);
+	      mFlag |= FLAG_MUL_23;
+#else
+	      fprintf(stderr, "ERROR: Not compiled with Mult 22 or 23 kernels pleas manually specify multiplication kernel.");
+	      exit(EXIT_FAILURE);
+#endif
 	    }
 
 	    // Set the stack and batch flag
@@ -5147,46 +5166,112 @@ void readAccelDefalts(searchSpecs *sSpec)
       {
 	if      ( strCom("00", str2 ) )
 	{
+#if defined(WITH_MUL_00) || defined(WITH_MUL_01) || defined(WITH_MUL_02)
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_00;
-	}
-	else if ( strCom("11", str2 ) )
-	{
-#ifdef WITH_ITLV_PLN
-	  (*flags) &=  ~FLAG_ITLV_ROW;		// Disable row interleaving (plane interleaving)
-
-	  (*flags) &= ~FLAG_MUL_ALL;
-	  (*flags) |=  FLAG_MUL_11;
-
 #else
-	  fprintf(stderr, "WARNING: Cannot do single plane multiplications, plane interleaving disabled at compile time.  (FLAG: \"%s\" line %i in %s)\n", line, lineno, fName);
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.3 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
 	  FOLD  // TMP REM - Added to mark an error for thesis timing
 	  {
 	    printf("Temporary exit - mult Kernel \n");
 	    exit(EXIT_FAILURE);
 	  }
-#endif
+#endif	// WITH_MUL_00 WITH_MUL_01 WITH_MUL_02
+	}
+	else if ( strCom("11", str2 ) )
+	{
+#ifdef WITH_MUL_11
+#ifdef WITH_ITLV_PLN
+	  (*flags) &=  ~FLAG_ITLV_ROW;		// Disable row interleaving (plane interleaving)
+
+	  (*flags) &= ~FLAG_MUL_ALL;
+	  (*flags) |=  FLAG_MUL_11;
+
+#else	// WITH_ITLV_PLN
+	  fprintf(stderr, "WARNING: Cannot do single plane multiplications, plane interleaving disabled at compile time. ( You need to uncomment #define WITH_ITLV_PLN )   (FLAG: \"%s\" line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_ITLV_PLN
+#else	// WITH_MUL_11
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 1.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_MUL_11
 	}
 	else if ( strCom("21", str2 ) )
 	{
+#ifdef WITH_MUL_21
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_21;
+#else	// WITH_MUL_21
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_MUL_21
 	}
 	else if ( strCom("22", str2 ) )
 	{
+#ifdef WITH_MUL_22
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_22;
+#else	// WITH_MUL_22
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.2 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_MUL_22
 	}
 	else if ( strCom("23", str2 ) )
 	{
+#ifdef WITH_MUL_23
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_23;
+#else	// WITH_MUL_23
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.3 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_MUL_23
 	}
 	else if ( strCom("31", str2 ) )
 	{
+#ifdef WITH_MUL_31
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_31;
+#else	// WITH_MUL_31
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.3 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - mult Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_MUL_31
 	}
 	else if ( strCom("CB", str2 ) )
 	{

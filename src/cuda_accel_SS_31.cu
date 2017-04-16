@@ -35,6 +35,8 @@ __device__ inline int getOffset(const int stage, const int step, const int strd1
   //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 2
 }
 
+#ifdef WITH_SAS_31
+
 /** Sum and Search - loop down - column max - multi-step - step outer .
  *
  * The first thread (sid 0) loops down the first "good" column of the plane and sums and searches
@@ -605,8 +607,12 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   }
 }
 
+#endif	// WITH_SAS_31
+
 __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 {
+#ifdef WITH_SAS_31
+
   dim3 dimBlock, dimGrid;
 
   rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
@@ -615,8 +621,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   dimBlock.y		= SS31_Y;
 
   float bw		= SS31BS;
-  //float ww		= batch->accelLen / ( bw );
-  float ww		= batch->strideOut / ( bw );	// DBG
+  float ww		= batch->strideOut / ( bw );
 
   dimGrid.x		= ceil(ww);
   dimGrid.y		= batch->ssSlices;
@@ -648,4 +653,8 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   {
     add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
   }
+
+#else	// WITH_SAS_31
+  EXIT_DIRECTIVE("WITH_SAS_31");
+#endif	// WITH_SAS_31
 }

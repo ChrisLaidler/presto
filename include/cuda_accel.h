@@ -42,10 +42,31 @@ extern "C"
 
 /***************************************** Section Enables *****************************************
  *
- *  This block has preprocessor directives to enable and disable a number of feature at compile time
- *  A number of them are options enabling a number of different method to perform the various compounds
- *  usually on the GPU. A number are for debugging purposes and profiling purposes, such as the "optimal"
- *  kernels.
+ *  This block has preprocessor directives to enable and disable a number of feature at compile time.
+ *  A number of them are options enabling a number of different method to perform the various components
+ *  (usually on the GPU.) A number are for debugging purposes and profiling purposes, such as the "optimal"
+ *  kernels, and should generally not be included. Others work better on certain CUDA architectures.
+ *
+ *  Other options such as MIN_STEPS control the bounds of a number of the parameters.
+ *
+ *  Including many version of kernels and increasing parameter bounds, will give a wider range of configurability
+ *  but will increase compile time and code size, this will affect the time it takes to initialise the CUDA context (NB).
+ *  Generally try to minimise the parameters to those that perform optimally on YOURE specific hardware.
+ *
+ *  I "ship" this with many of the parameters limited the the standard best, you can tweak them if you need.
+ *  At the moment there is no auto tune but one may be on the way.
+ *
+ *  NB: If you change these parameters you should probably MANUALLY do a clean recompile ie ( make cudaclean; make )
+ *
+ *  If you have any questions pleas feel free to e-mail me: Chris Laidler ( chris.laidler+presto@gmail.com )
+ *
+ *  Kernels are given names and numbers ie MULT_21.
+ *  The name defines the component MULT -> multiplication, the number defines a version, The first digit means:
+ *  	0: Optimal ie correct number of operations with junk data and no synchronisation dependencies
+ *  	1: Kernel operates on single plane
+ *  	2: Kernel operates on a stack
+ *  	3: Kernel operates on a family
+ *  The second digit gives the version so 21 is the first version that operates on a stack of data.
  *
  */
 
@@ -68,7 +89,7 @@ extern "C"
 
 
 ////////	General
-//#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
+#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
 
 #define			MIN_STEPS	1		///< The minimum number of steps in a single batch
 #define			MAX_STEPS	12		///< The maximum number of steps in a single batch
@@ -78,25 +99,47 @@ extern "C"
 #define 		WITH_NORM_GPU
 #define 		WITH_NORM_GPU_OS
 
+
 ////////	Multiplication
-//#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 #define			MIN_MUL_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time, generally multiplication chunks are higher so this value can be high
 #define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better 
 
+//#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - Just write to ffdot plane - 1 thread per complex value  .
+#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - Read input, read kernel, write to ffdot plane - 1 thread per column  .
+//#define 		WITH_MUL_02			///< Compile with test Multiplication kernel - Version 2 - Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
+
+#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
+
+#define			WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
+
+#define 		WITH_MUL_21			///< Stack multiplication kernel 1 - (fastest) 	- This is the preferred method if compute version is > 3.0 - read all input - loop over kernel - loop over planes
+#define 		WITH_MUL_22			///< Stack multiplication kernel 2 - (faster)	- Loop ( column, plain - Y )
+#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
+
+#define			WITH_MUL_31			///< Batch multiplication kernel 1 - (slow) - Do an entire batch in one kernel
+
+
 ////////	Powers
 #define 		WITH_POW_POST_CALLBACK		///< Powers to be calculated in CUFFT callbacks - Always a good option
+
 
 ////////	Sum & Search
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
 #define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - this is just for debugging and should generally not be defined
-//#define		WITH_SAS_01			///< Compile with test SAS kernel - Version 1 - this is just for debugging and should generally not be defined
+//#define 		WITH_SAS_01			///< Compile with test SAS kernel - Version 1 - this is just for debugging and should generally not be defined
 //#define		WITH_SAS_02			///< Compile with test SAS kernel - Version 2 - this is just for debugging and should generally not be defined
 
+#define			WITH_SAS_31			///< Compile with main SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
 
-////////	Candidate		\\\\\\\\
+#define			WITH_SAS_IM			///< Compile with main in-memory SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
+
+#define			WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
+
+////////	Candidate
 #define  		WITH_SAS_COUNT
+
 
 ////////	Optimisation
 //#define		WITH_OPT_BLK1
