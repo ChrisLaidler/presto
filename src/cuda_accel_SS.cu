@@ -1190,14 +1190,14 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   double startr		= 0;				/// The first bin to start searching at
   double cuentR		= 0;				/// The start bin of the input FFT to process next
   double noR		= 0;				/// The number of input FFT bins the search covers
-  double noSteps	= 0;				/// The number of steps to generate the initial candidates
+  //double noSteps	= 0;				/// The number of steps to generate the initial candidates		// TODO: check if this can be removed
   int iteration		= 0;
   int step		= 0;
 
   // Search bounds
   startr		= cuSrch->SrchSz->searchRLow;
   noR			= cuSrch->SrchSz->noSearchR;
-  noSteps		= noR * cuSrch->sSpec->noResPerBin / (double)master->accelLen ;
+  //noSteps		= noR * cuSrch->sSpec->noResPerBin / (double)master->accelLen ;
   cuentR 		= startr;
 
   TIME // Timing  .

@@ -36,10 +36,10 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, int oSt
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
-        for ( int step = 0; step < noSteps; step++)               // Loop over steps
-        {
-          d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
-        }
+	for ( int step = 0; step < noSteps; step++)               // Loop over steps
+	{
+	  d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
+	}
       }
     }
 
@@ -49,31 +49,31 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, int oSt
 
       if ( tid < maxW )
       {
-        //float*  t       = powersArr[harm];
-        float tSum      = 0;
-        uint  nHeight   = HEIGHT_HARM[harm] * noSteps;
-        int   stride    = STRIDE_HARM[harm];
-        int   lDepth    = ceilf(nHeight/(float)gridDim.y);
-        int   y0        = lDepth*blockIdx.y;
-        int   y1        = MIN(y0+lDepth, nHeight);
+	//float*  t       = powersArr[harm];
+	float tSum      = 0;
+	uint  nHeight   = HEIGHT_HARM[harm] * noSteps;
+	int   stride    = STRIDE_HARM[harm];
+	int   lDepth    = ceilf(nHeight/(float)gridDim.y);
+	int   y0        = lDepth*blockIdx.y;
+	int   y1        = MIN(y0+lDepth, nHeight);
 
-        FOLD // Read data from planes  .
-        {
-          for ( int y = y0; y < y1; y++ )
-          {
-            int idx     = (y) * stride;
+	FOLD // Read data from planes  .
+	{
+	  for ( int y = y0; y < y1; y++ )
+	  {
+	    int idx     = (y) * stride;
 
-            FOLD // Read  .
-            {
-              tSum += getPower(array[harm], tid + idx );
-            }
-          }
-        }
+	    FOLD // Read  .
+	    {
+	      tSum += getPower(array[harm], tid + idx );
+	    }
+	  }
+	}
 
-        if ( tSum < 0 )	// This should never be the case but needed so the compiler doesn't optimise out the sum
-        {
-          printf("add_and_searchCU00_k tSum < 0 tid: %04i ???\n", tid);
-        }
+	if ( tSum < 0 )	// This should never be the case but needed so the compiler doesn't optimise out the sum
+	{
+	  printf("add_and_searchCU00_k tSum < 0 tid: %04i ???\n", tid);
+	}
       }
     }
   }
@@ -92,20 +92,32 @@ __host__ void add_and_searchCU00_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   if      ( batch->flags & FLAG_POW_HALF         )
   {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDA_VERSION >= 7050
     add_and_searchCU00_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
-#else
+#else	// CUDA_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
     add_and_searchCU00_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+#else	// WITH_SINGLE_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
   }
   else
   {
+#ifdef	WITH_COMPLEX_POWERS
     add_and_searchCU00_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+#else	// WITH_COMPLEX_POWERS
+    EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
+#endif	// WITH_COMPLEX_POWERS
   }
 }
 
@@ -143,10 +155,10 @@ __global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, int oSt
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
-        for ( int step = 0; step < noSteps; step++)		// Loop over steps
-        {
-          d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
-        }
+	for ( int step = 0; step < noSteps; step++)		// Loop over steps
+	{
+	  d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
+	}
       }
     }
 
@@ -157,26 +169,26 @@ __global__ void add_and_searchCU01_k(const uint width, candPZs* d_cands, int oSt
 
       if ( tid < maxW )
       {
-        uint nHeight  = HEIGHT_STAGE[harm] * noSteps;
-        float tSum    = 0;
-        int   lDepth    = ceilf(nHeight/(float)gridDim.y);
-        int   y0        = lDepth*blockIdx.y;
-        int   y1        = MIN(y0+lDepth, nHeight);
+	uint nHeight  = HEIGHT_STAGE[harm] * noSteps;
+	float tSum    = 0;
+	int   lDepth    = ceilf(nHeight/(float)gridDim.y);
+	int   y0        = lDepth*blockIdx.y;
+	int   y1        = MIN(y0+lDepth, nHeight);
 
-        for ( int y = y0; y < y1; y++ )
-        {
-          int idx  = (y) * stride;
+	for ( int y = y0; y < y1; y++ )
+	{
+	  int idx  = (y) * stride;
 
-          FOLD // Read  .
-          {
-            tSum += getPower(array[harm], tid + idx );
-          }
-        }
+	  FOLD // Read  .
+	  {
+	    tSum += getPower(array[harm], tid + idx );
+	  }
+	}
 
-        if ( tSum < 0 )	// This should never be the case but needed so the compiler doesn't optimise out the sum
-        {
-          printf("add_and_searchCU01_k");
-        }
+	if ( tSum < 0 )	// This should never be the case but needed so the compiler doesn't optimise out the sum
+	{
+	  printf("add_and_searchCU01_k");
+	}
       }
     }
   }
@@ -195,20 +207,32 @@ __host__ void add_and_searchCU01_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   if      ( batch->flags & FLAG_POW_HALF         )
   {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDA_VERSION >= 7050
     add_and_searchCU01_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
-#else
+#else	// CUDA_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
     add_and_searchCU01_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+#else	// WITH_SINGLE_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
   }
   else
   {
+#ifdef	WITH_COMPLEX_POWERS
     add_and_searchCU01_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+#else	// WITH_COMPLEX_POWERS
+    EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
+#endif	// WITH_COMPLEX_POWERS
   }
 }
 
@@ -240,10 +264,10 @@ __global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, int oSt
 
       for ( int stage = 0; stage < noStages; stage++ )
       {
-        for ( int step = 0; step < noSteps; step++)		// Loop over steps
-        {
-          d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
-        }
+	for ( int step = 0; step < noSteps; step++)		// Loop over steps
+	{
+	  d_cands[stage*gridDim.y*xStride + blockIdx.y*xStride + step*ALEN + tid].value = 0;
+	}
       }
     }
 
@@ -254,29 +278,29 @@ __global__ void add_and_searchCU02_k(const uint width, candPZs* d_cands, int oSt
 
       if ( tid < maxW )
       {
-        uint nHeight = HEIGHT_STAGE[0] * noSteps;
-        float tSum = 0;
-        int   lDepth    = ceilf(nHeight/(float)gridDim.y);
-        int   y0        = lDepth*blockIdx.y;
-        int   y1        = MIN(y0+lDepth, nHeight);
+	uint nHeight = HEIGHT_STAGE[0] * noSteps;
+	float tSum = 0;
+	int   lDepth    = ceilf(nHeight/(float)gridDim.y);
+	int   y0        = lDepth*blockIdx.y;
+	int   y1        = MIN(y0+lDepth, nHeight);
 
-        FOLD // Read data from planes  .
-        {
-          for ( int y = y0; y < y1; y++ )
-          {
-            int idx  = (y) * stride ;
+	FOLD // Read data from planes  .
+	{
+	  for ( int y = y0; y < y1; y++ )
+	  {
+	    int idx  = (y) * stride ;
 
-            FOLD // Read  .
-            {
-              tSum += getPower(array, tid + idx );
-            }
-          }
-        }
+	    FOLD // Read  .
+	    {
+	      tSum += getPower(array, tid + idx );
+	    }
+	  }
+	}
 
-        if ( tSum < 0 )	// This should never be the case but needed so the compiler doesn't optimise out the sum
-        {
-          printf("add_and_searchCU02_k");
-        }
+	if ( tSum < 0 )	// This should never be the case but needed so the compiler doesn't optimise out the sum
+	{
+	  printf("add_and_searchCU02_k");
+	}
       }
     }
   }
@@ -295,20 +319,32 @@ __host__ void add_and_searchCU02_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
   if      ( batch->flags & FLAG_POW_HALF         )
   {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if	CUDA_VERSION >= 7050
     add_and_searchCU02_k< half, 0>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
-#else
+#else	// CUDA_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW )
   {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
     add_and_searchCU02_k< float, 0>       <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+#else	// WITH_SINGLE_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
   }
   else
   {
+#ifdef	WITH_COMPLEX_POWERS
     add_and_searchCU02_k< fcomplexcu, 0>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+#else	// WITH_COMPLEX_POWERS
+    EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
+#endif	// WITH_COMPLEX_POWERS
   }
 
 }

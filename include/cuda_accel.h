@@ -85,15 +85,18 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-#define NVVP			// Uncomment to allow CUDA profiling
+//#define NVVP			// Uncomment to allow CUDA profiling
 
 
 ////////	General
-#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
+//#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
 
 #define			MIN_STEPS	1		///< The minimum number of steps in a single batch
 #define			MAX_STEPS	12		///< The maximum number of steps in a single batch
 
+#define			WITH_HALF_RESCISION_POWERS
+//#define 		WITH_SINGLE_RESCISION_POWERS
+//#define 		WITH_COMPLEX_POWERS
 
 ////////	Normalisation
 #define 		WITH_NORM_GPU
@@ -105,18 +108,18 @@ extern "C"
 #define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better 
 
 //#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - Just write to ffdot plane - 1 thread per complex value  .
-#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - Read input, read kernel, write to ffdot plane - 1 thread per column  .
+//#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - Read input, read kernel, write to ffdot plane - 1 thread per column  .
 //#define 		WITH_MUL_02			///< Compile with test Multiplication kernel - Version 2 - Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
 
-#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
+//#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 
-#define			WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
+//#define 		WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
 
 #define 		WITH_MUL_21			///< Stack multiplication kernel 1 - (fastest) 	- This is the preferred method if compute version is > 3.0 - read all input - loop over kernel - loop over planes
 #define 		WITH_MUL_22			///< Stack multiplication kernel 2 - (faster)	- Loop ( column, plain - Y )
-#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
+//#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
 
-#define			WITH_MUL_31			///< Batch multiplication kernel 1 - (slow) - Do an entire batch in one kernel
+//#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow) - Do an entire batch in one kernel
 
 
 ////////	Powers
@@ -127,7 +130,7 @@ extern "C"
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
-#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - this is just for debugging and should generally not be defined
+//#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - this is just for debugging and should generally not be defined
 //#define 		WITH_SAS_01			///< Compile with test SAS kernel - Version 1 - this is just for debugging and should generally not be defined
 //#define		WITH_SAS_02			///< Compile with test SAS kernel - Version 2 - this is just for debugging and should generally not be defined
 
@@ -135,16 +138,17 @@ extern "C"
 
 #define			WITH_SAS_IM			///< Compile with main in-memory SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
 
-#define			WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
+//#define 		WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
 
 ////////	Candidate
-#define  		WITH_SAS_COUNT
+#define  		WITH_SAS_COUNT			///< Alow counting of canidates in sum and search kernel
 
 
 ////////	Optimisation
 //#define		WITH_OPT_BLK1
 //#define		WITH_OPT_BLK2
 #define 		WITH_OPT_BLK3
+
 //#define 		WITH_OPT_PLN1
 //#define 		WITH_OPT_PLN2
 #define 		WITH_OPT_PLN3

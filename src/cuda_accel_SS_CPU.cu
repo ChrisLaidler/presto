@@ -269,8 +269,6 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 	float v2 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 	batch->compTime[NO_STKS*COMP_GEN_STR] += v2;
       }
-
-
     }
   }
 

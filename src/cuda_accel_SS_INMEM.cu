@@ -21,7 +21,7 @@
  *     Added preprocessor directives for steps and chunks
  */
 
- #include "cuda_accel_SS.h"
+#include "cuda_accel_SS.h"
 
 #define SSIM_X		16						///< X Thread Block
 #define SSIM_Y		16						///< Y Thread Block
@@ -442,7 +442,6 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
 
 #endif	// WITH_SAS_IM
 
-
 __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 {
 #ifdef WITH_SAS_IM
@@ -493,16 +492,24 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
 
       if ( batch->flags & FLAG_POW_HALF  )
       {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDA_VERSION >= 7050
 	searchINMEM_p<half>(batch);
-#else
+#else	// CUDA_VERSION
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+	EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
       }
       else
       {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
 	searchINMEM_p<float>(batch);
+#else	// WITH_SINGLE_RESCISION_POWERS
+	EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
       }
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Calling searchINMEM kernel.");

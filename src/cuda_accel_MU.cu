@@ -547,7 +547,6 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 	      // Copy pain from GPU
 	      for( int y = 0; y < cHInfo->noZ; y++ )
 	      {
-		fcomplexcu *cmplxData;
 		void *powers;
 		int offset;
 		int elsz;
@@ -575,7 +574,8 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
 		  if      ( batch->flags & FLAG_POW_HALF )
 		  {
-#if CUDA_VERSION >= 7050   // Half precision getter and setter  .
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDA_VERSION >= 7050   // Half precision getter and setter  .
 		    powers =  &((half*)      plan->d_planePowr)[offset];
 		    elsz   = sizeof(half);
 		    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
@@ -584,19 +584,30 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		    {
 		      outVals[i] = half2float(((ushort*)tmpRow)[i]);
 		    }
-#else
+#else	// CUDA_VERSION
 		    fprintf(stderr, "ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
 		    exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+		    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
 		  }
 		  else if ( batch->flags & FLAG_CUFFT_CB_POW )
 		  {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
 		    powers =  &((float*)     plan->d_planePowr)[offset];
 		    elsz   = sizeof(float);
 		    CUDA_SAFE_CALL(cudaMemcpy(outVals, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
+
+#else	// WITH_SINGLE_RESCISION_POWERS
+		    EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
 		  }
 		  else
 		  {
+#ifdef	WITH_COMPLEX_POWERS
+		    fcomplexcu *cmplxData;
+
 		    powers =  &((fcomplexcu*) plan->d_planePowr)[offset];
 		    elsz   = sizeof(cmplxData);
 		    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
@@ -605,6 +616,10 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		    {
 		      outVals[i] = POWERC(((fcomplexcu*)tmpRow)[i]);
 		    }
+
+#else	// WITH_COMPLEX_POWERS
+		    EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
+#endif	// WITH_COMPLEX_POWERS
 		  }
 		}
 

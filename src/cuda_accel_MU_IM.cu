@@ -1,6 +1,5 @@
 #include "cuda_accel_MU.h"
 
-
 /** Kernel to copy powers from complex plane to in-mem plane  .
  *
  * One thread per column
@@ -239,34 +238,43 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 	  src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
 	}
 #else
-  else
-  {
-    fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-    exit(EXIT_FAILURE);
-  }
+	else
+	{
+	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	  exit(EXIT_FAILURE);
+	}
 #endif
       }
 
       if ( batch->flags & FLAG_POW_HALF )
       {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if	CUDA_VERSION >= 7050
 	// Each Step has its own start location in the inmem plane
 	half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
 	// Call kernel
 	cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
-#else
+#else	// CUDA_VERSION
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+	EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
       }
       else
       {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
 	// Each Step has its own start location in the inmem plane
 	float *dst  = ((float*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
 	// Call kernel
 	cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+
+#else	// WITH_SINGLE_RESCISION_POWERS
+	EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
       }
     }
   }
@@ -348,16 +356,24 @@ void copyToInMemPln(cuFFdotBatch* batch)
 	    // Copy memory using a 2D async memory copy
 	    if ( batch->flags & FLAG_POW_HALF )
 	    {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDA_VERSION >= 7050
 	      copyIFFTtoPln<half,half>( batch, cStack );
 #else
 	      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	      exit(EXIT_FAILURE);
 #endif
+#else	// WITH_HALF_RESCISION_POWERS
+	      EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
 	    }
 	    else
 	    {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
 	      copyIFFTtoPln<float, float>( batch, cStack );
+#else	// WITH_SINGLE_RESCISION_POWERS
+	      EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
 	    }
 	  }
 	  else

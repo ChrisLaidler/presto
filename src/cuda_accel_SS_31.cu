@@ -22,7 +22,7 @@
  */
 
 
- #include "cuda_accel_SS.h"
+#include "cuda_accel_SS.h"
 
 #define SS31_X		16			// X Thread Block
 #define SS31_Y		8			// Y Thread Block
@@ -611,7 +611,7 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
 __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 {
-#ifdef WITH_SAS_31
+#ifdef 	WITH_SAS_31
 
   dim3 dimBlock, dimGrid;
 
@@ -638,20 +638,32 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 
   if      ( batch->flags & FLAG_POW_HALF	)	// CUFFT callbacks using half powers  .
   {
-#if CUDA_VERSION >= 7050
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDA_VERSION >= 7050
     add_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, batch );
-#else
+#else	// CUDA_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
-#endif
+#endif	// CUDA_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
   }
   else if ( batch->flags & FLAG_CUFFT_CB_POW	)	// CUFFT callbacks use float powers  .
   {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
     add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
+#else	// WITH_SINGLE_RESCISION_POWERS
+    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
   }
   else							// NO CUFFT callbacks so use complex values  .
   {
+#ifdef	WITH_COMPLEX_POWERS
     add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
+#else	// WITH_COMPLEX_POWERS
+    EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
+#endif	// WITH_COMPLEX_POWERS
   }
 
 #else	// WITH_SAS_31
