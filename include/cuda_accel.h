@@ -39,13 +39,21 @@ extern "C"
 #endif
 
 
-//====================================== Section Enables =================================================
+
+/***************************************** Section Enables *****************************************
+ *
+ *  This block has preprocessor directives to enable and disable a number of feature at compile time
+ *  A number of them are options enabling a number of different method to perform the various compounds
+ *  usually on the GPU. A number are for debugging purposes and profiling purposes, such as the "optimal"
+ *  kernels.
+ *
+ */
 
 // Just encase these define have been used elsewhere
-#undef  TIMING
-#undef  PROFILING
-#undef  NVVP
-#undef  CUDA_PROF
+//#undef  TIMING
+//#undef  PROFILING
+//#undef  NVVP
+//#undef  CUDA_PROF
 
 // A user can enable or disable GPU functionality with the defines below, if any of them are changed a full recompile is required (including an make clean!)
 
@@ -56,28 +64,41 @@ extern "C"
 #define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
-//#define NVVP			// Uncomment to allow CUDA profiling
+#define NVVP			// Uncomment to allow CUDA profiling
 
-//	Normalisation
+
+////////	General
+//#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
+
+#define			MIN_STEPS	1		///< The minimum number of steps in a single batch
+#define			MAX_STEPS	12		///< The maximum number of steps in a single batch
+
+
+////////	Normalisation
 #define 		WITH_NORM_GPU
 #define 		WITH_NORM_GPU_OS
 
-//	Multiplication
+////////	Multiplication
 //#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 #define			MIN_MUL_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time, generally multiplication chunks are higher so this value can be high
 #define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better 
 
-//	Powers
+////////	Powers
 #define 		WITH_POW_POST_CALLBACK		///< Powers to be calculated in CUFFT callbacks - Always a good option
 
-//	Sum & Search
+////////	Sum & Search
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
-//	Candidate
+#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - this is just for debugging and should generally not be defined
+//#define		WITH_SAS_01			///< Compile with test SAS kernel - Version 1 - this is just for debugging and should generally not be defined
+//#define		WITH_SAS_02			///< Compile with test SAS kernel - Version 2 - this is just for debugging and should generally not be defined
+
+
+////////	Candidate		\\\\\\\\
 #define  		WITH_SAS_COUNT
 
-//	Optimisation
+////////	Optimisation
 //#define		WITH_OPT_BLK1
 //#define		WITH_OPT_BLK2
 #define 		WITH_OPT_BLK3
@@ -86,16 +107,8 @@ extern "C"
 #define 		WITH_OPT_PLN3
 //#define 		WITH_OPT_PLN4
 
-//	General
-//#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
 
-//	Sum & Search
-#define			MIN_STEPS	1		///< The minimum number of steps in a single batch
-#define			MAX_STEPS	12		///< The maximum number of steps in a single batch
-
-
-
-//=========================================== Defines ====================================================
+/******************************************* Defines ****************************************************/
 
 #define		BIT(x)			(1ULL<<(x))
 
@@ -110,7 +123,7 @@ extern "C"
 #define		CORRECT_MULT		1		///< Generate the kernel values the correct way and do the
 #define		NO_OPT_LEVS		7		///< The number of optimisation planes/steps
 
-//====================================== Bit flag values =================================================
+/************************************** Bit flag values *************************************************/
 
 //---- General ----//
 
@@ -222,7 +235,7 @@ extern "C"
 //#define		FLAG_RAND_1		BIT(59)		///< Random Flag 1
 
 
-//================================== data types identifiers ==============================================
+/********************************** data types identifiers **********************************************/
 
 // ----------- This is a list of the data types that and storage structures
 
@@ -255,16 +268,16 @@ extern "C"
 #define     HAVE_RES            	BIT(5)          ///< The S&S is complete and the data is read to read
 
 
-//=========================================== enums ======================================================
+/******************************************* enums ******************************************************/
 
 
 typedef enum {
-  FFT_INPUT,
-  FFT_PLANE,
-  FFT_BOTH
+  FFT_INPUT,//!< FFT_INPUT
+  FFT_PLANE,//!< FFT_PLANE
+  FFT_BOTH  //!< FFT_BOTH
 } presto_fft_type;
 
-//=========================================== enums ======================================================
+/******************************************* enums ******************************************************/
 
 #define  TIME_CPU_INIT		0			/// CPU - Initialisation
 #define  TIME_GPU_INIT		1			/// GPU - Initialisation
@@ -316,7 +329,7 @@ typedef enum {
 
 
 
-//========================================== Macros ======================================================
+/****************************************** Macros ******************************************************/
 
 ///< Defines for safe calling usable in C
 #define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
@@ -359,17 +372,17 @@ typedef enum {
 #endif
 
 
-//====================================== Global variables ================================================
+/************************************** Global variables ************************************************/
 
 extern int    useUnopt;                                                         /// Use a saved text list of candidates this is used in development for optimising the optimisation stage
 extern int    msgLevel;                                                         /// The level of debug messages to print, 0 -> none  higher results in more messages
 
-//===================================== Struct prototypes ================================================
+/************************************* Struct prototypes ************************************************/
 
 typedef struct cuSearch cuSearch;
 typedef struct resThrds resThrds;
 
-//======================================== Type defines ==================================================
+/**************************************** Type defines **************************************************/
 
 ///< A complex float in device texture memory
 typedef cudaTextureObject_t fCplxTex;
@@ -1090,7 +1103,7 @@ typedef struct candSrch
 
 
 
-//===================================== Function prototypes ===============================================
+/************************************* Function prototypes ***********************************************/
 
 /** Read the GPU details from clig command line  .
  *
