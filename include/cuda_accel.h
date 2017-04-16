@@ -141,7 +141,7 @@ extern "C"
 //#define 		WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
 
 ////////	Candidate
-#define  		WITH_SAS_COUNT			///< Alow counting of canidates in sum and search kernel
+#define  		WITH_SAS_COUNT			///< Allow counting of candidates in sum & search kernel
 
 
 ////////	Optimisation

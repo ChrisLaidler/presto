@@ -12,6 +12,7 @@
  *
  *  [2017-04-16]
  *     Added host function for mult11
+ *     Added capability for row interleaving
  *
  */
 
@@ -22,15 +23,15 @@
 /** Convolution kernel - One thread per r location (input FFT)
  * Each thread reads one input value and loops down over the kernels
  */
-__global__ void mult11(fcomplexcu *ffdot, uint width, uint stride, uint height, const fcomplexcu *data, const fcomplexcu *kernels)
+__global__ void mult11(fcomplexcu *ffdot, uint width, uint kerStride, uint plnStride, uint height, const fcomplexcu *data, const fcomplexcu *kernels)
 {
   const int bidx  = threadIdx.y * CNV_DIMX + threadIdx.x;
   const int tid   = blockIdx.x  * CNV_DIMX * CNV_DIMY     + bidx;
 
-  if (tid < width)    // Clip
+  if (tid < width)	// Clip
   {
-    fcomplexcu ker;   // item from kernel
-    int idx = 0;      // flat index
+    fcomplexcu ker;	// item from kernel
+    int idx = 0;	// flat index
 
     const float inpReal = data[tid].r / (float) width;
     const float inpImag = data[tid].i / (float) width;
@@ -42,10 +43,9 @@ __global__ void mult11(fcomplexcu *ffdot, uint width, uint stride, uint height, 
     //#pragma unroll
     for (int y = 0; y < height; y++)
     {
-      idx = y * stride;
+      ker = kernels[y*kerStride];
 
-      ker = kernels[idx];
-
+      idx = y * plnStride;
 #if CORRECT_MULT
       ffdot[idx].r = (inpReal * ker.r - inpImag * ker.i);
       ffdot[idx].i = (inpImag * ker.r + inpReal * ker.i);
@@ -78,14 +78,21 @@ __host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
     dimGrid.x = ceil(cHInfo->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = 1;
 
+    uint plnStride = 0;
+
     for (int step = 0; step < batch->noSteps; step++)             // Loop through Steps
     {
       d_iData         = cPlane->d_iData + cStack->strideCmplx * step;
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
-	fprintf(stderr,"ERROR: Cannot do single plane multiplications with row-interleaved multi step stacks.\n");
-	exit(EXIT_FAILURE);
+	// Shift stride 
+	if ( batch->flags & FLAG_DOUBLE )
+	  d_planeData   = (double2*)cPlane->d_planeMult + step * cStack->strideCmplx;
+	else
+	  d_planeData   = (float2*) cPlane->d_planeMult + step * cStack->strideCmplx;
+
+	plnStride = cStack->strideCmplx*batch->noSteps;
       }
 #ifdef WITH_ITLV_PLN
       else
@@ -95,6 +102,8 @@ __host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 	  d_planeData   = (double2*)cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
 	else
 	  d_planeData   = (float2*) cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
+
+	plnStride = cStack->strideCmplx;
       }
 #else
       else
@@ -104,16 +113,13 @@ __host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
       }
 #endif
 
-      // Texture memory in multiplication is now deprecated
-      //if ( batch->flag & FLAG_TEX_MUL )
-      //  mult12<<<dimGrid, dimBlock, 0, multStream>>>(d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->height, d_iData, cPlane->kernel->kerDatTex);
-      //else
-      mult11<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, cHInfo->noZ, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
+      mult11<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, plnStride, cHInfo->noZ, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
 
       // Run message
       CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");
     }
   }
+
 #else
   EXIT_DIRECTIVE("WITH_MUL_11");
 #endif

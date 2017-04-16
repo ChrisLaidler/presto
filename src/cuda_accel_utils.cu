@@ -5183,21 +5183,8 @@ void readAccelDefalts(searchSpecs *sSpec)
 	else if ( strCom("11", str2 ) )
 	{
 #ifdef WITH_MUL_11
-#ifdef WITH_ITLV_PLN
-	  (*flags) &=  ~FLAG_ITLV_ROW;		// Disable row interleaving (plane interleaving)
-
 	  (*flags) &= ~FLAG_MUL_ALL;
 	  (*flags) |=  FLAG_MUL_11;
-
-#else	// WITH_ITLV_PLN
-	  fprintf(stderr, "WARNING: Cannot do single plane multiplications, plane interleaving disabled at compile time. ( You need to uncomment #define WITH_ITLV_PLN )   (FLAG: \"%s\" line %i in %s)\n", line, lineno, fName);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
-#endif	// WITH_ITLV_PLN
 #else	// WITH_MUL_11
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 1.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
@@ -5264,7 +5251,7 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  (*flags) |=  FLAG_MUL_31;
 #else	// WITH_MUL_31
 	  line[flagLen] = 0;
-	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.3 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+	  fprintf(stderr, "WARNING: Not compiled with multiplication 3.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
 	  FOLD  // TMP REM - Added to mark an error for thesis timing
 	  {
