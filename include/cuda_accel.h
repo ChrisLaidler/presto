@@ -334,7 +334,7 @@ typedef enum {
 ///< Defines for safe calling usable in C
 #define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
 #define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
-
+#define EXIT_DIRECTIVE(flag)                __exit_directive(__FILE__, __LINE__, flag )
 
 #ifdef	TIMING
   #define TIME if(1)			//< A macro used to encapsulate timing code, if TIMING is not defined all timing code should be omitted at compile time

@@ -261,6 +261,12 @@ void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const 
   }
 }
 
+void __exit_directive(const char *file, const int line, const char *flag)
+{
+  fprintf(stderr, "ERROR: This code has not bee compiled with the \"%s\" preprocessor directive. Line: %d In: %s.\n\tIf you have enabled this you may need a full recompile ie. make cudaclean; make \n", flag,line, file);
+  exit(EXIT_FAILURE);
+}
+
 int getGPUCount()
 {
   int deviceCount;
