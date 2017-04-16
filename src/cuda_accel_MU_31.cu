@@ -264,11 +264,11 @@ __host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch)
   else
     mult31_s<0>(dimGrid, dimBlock, 0, multStream, batch);
 #else
-    else
-    {
-      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-      exit(EXIT_FAILURE);
-    }
+  else
+  {
+    fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
 #endif
 
 #else
