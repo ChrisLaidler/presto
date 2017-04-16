@@ -2139,21 +2139,21 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 		  break;
 	      }
 
-	      if      ( maxBatches > 3 )
+	      if      ( maxBatches >= 3 )
 	      {
 		printf("     Requested %i steps per batch, could do up to %i batches, using 3.\n", noSteps, maxBatches);
 		// Lets just do 3 batches, more than that doesn't really help often
 		noBatches         = 3;
 		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
 	      }
-	      else if ( maxBatches > 2 )
+	      else if ( maxBatches >= 2 )
 	      {
 		printf("     Requested %i steps per batch, can do 2 batches.\n", noSteps);
 		// Lets do 2 batches
 		noBatches         = 2;
 		kernel->noSteps   = MAX(noSteps,MIN_STEPS);
 	      }
-	      else if ( maxBatches > 1 )
+	      else if ( maxBatches >= 1 )
 	      {
 		// Lets just do 2 batches
 		printf("     Requested %i steps per batch, can only do 1 batch.\n", noSteps);
