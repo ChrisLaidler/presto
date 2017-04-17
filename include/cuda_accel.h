@@ -107,19 +107,19 @@ extern "C"
 #define			MIN_MUL_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time, generally multiplication chunks are higher so this value can be high
 #define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better 
 
-//#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - Just write to ffdot plane - 1 thread per complex value  .
-//#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - Read input, read kernel, write to ffdot plane - 1 thread per column  .
-//#define 		WITH_MUL_02			///< Compile with test Multiplication kernel - Version 2 - Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
+//#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - DEBUG ONLY: Just write to ffdot plane - 1 thread per complex value  .
+#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  .
+//#define 		WITH_MUL_02			///< Compile with test Multiplication kernel - Version 2 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
 
 //#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 
-//#define 		WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
+#define 		WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
 
 #define 		WITH_MUL_21			///< Stack multiplication kernel 1 - (fastest) 	- This is the preferred method if compute version is > 3.0 - read all input - loop over kernel - loop over planes
 #define 		WITH_MUL_22			///< Stack multiplication kernel 2 - (faster)	- Loop ( column, plain - Y )
-//#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
+#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
 
-//#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow) - Do an entire batch in one kernel
+#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow) - Do an entire batch in one kernel
 
 
 ////////	Powers
@@ -130,9 +130,7 @@ extern "C"
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
-//#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - this is just for debugging and should generally not be defined
-//#define 		WITH_SAS_01			///< Compile with test SAS kernel - Version 1 - this is just for debugging and should generally not be defined
-//#define		WITH_SAS_02			///< Compile with test SAS kernel - Version 2 - this is just for debugging and should generally not be defined
+#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - DEBUG ONLY: Memory reads and writes only - sliced
 
 #define			WITH_SAS_31			///< Compile with main SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
 

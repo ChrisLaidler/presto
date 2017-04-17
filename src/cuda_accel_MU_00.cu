@@ -85,7 +85,7 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
 
           if ( ipd.r < 0 && ipd.r > 0 ) 	                        // Required so as to not optimise out  .
           {
-            printf("ipd \n");
+            printf("mult01_k ipd < 0????   tid: %04i  %9.5f %9.5f\n", tid, ipd.r, ipd.i );
           }
         }
       }
@@ -104,7 +104,7 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
 
         if ( ker.r < 0 && ker.r > 0 )                             // Required so as to not optimise out  .
         {
-          printf("ker \n");
+          printf("mult01_k ker < 0????   tid: %04i  %9.5f %9.5f\n", tid, ker.r, ker.i );
         }
       }
     }
@@ -132,7 +132,6 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
   }
 }
 #endif	// WITH_MUL_01
-
 
 #ifdef WITH_MUL_02	// Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
 
