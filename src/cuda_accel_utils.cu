@@ -73,6 +73,9 @@
  *  	Re worked the search size data structure and the manner number of steps is calculated
  *  	Converted some debug messages sizes from GiB to GB and MiB to MB
  *  	Added separate candidate array resolution - Deprecating FLAG_STORE_EXP
+ *
+ *  [2017-04-17]
+ *  	Fixed clipping of multiplication chunks back to max slice height
  */
 
 #include <cufft.h>
@@ -3209,10 +3212,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  if ( cStack->mulChunk <= 0 )
 	  {
 	    cStack->mulChunk = 12;	// TODO: Profile this parameter
-
-	    // Clamp chunk length to slice length
-	    MINN(cStack->mulChunk, ceilf(cStack->kerHeigth/(float)cStack->mulSlices) );
 	  }
+
+	  // Clamp chunk length to slice length
+	  MINN(cStack->mulChunk, ceilf(cStack->kerHeigth/(float)cStack->mulSlices) );
 
 	  // Clamp to compilation bounds
 	  MINN(cStack->mulChunk, MAX_MUL_CHUNK);
@@ -3222,15 +3225,6 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    batch->mulChunk = cStack->mulChunk;
 
 	  infoMSG(5,5,"stack %i  mulChunk %2i \n",i, cStack->mulChunk);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    if ( ( cStack->flags & FLAG_MUL_23 ) && kernel->cuSrch->sSpec->mulChunk && ( cStack->mulChunk != kernel->cuSrch->sSpec->mulChunk ) )
-	    {
-	      printf("Temporary exit - mulChunk \n");
-	      exit(EXIT_FAILURE);
-	    }
-	  }
 	}
       }
 
