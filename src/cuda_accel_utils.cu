@@ -1960,7 +1960,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	      kernel->ssSlices		= 1 ;
 	    }
 	  }
-	  kernel->ssSlices		= MIN(kernel->ssSlices, ceil(kernel->hInfos->noZ/20.0) );		// TODO make this 20 a configurable paramiter
+	  kernel->ssSlices		= MIN(kernel->ssSlices, ceil(kernel->hInfos->noZ/20.0) );		// TODO make this 20 a configurable parameter
 
 	  infoMSG(5,5,"Sum & Search slices set to %i ", kernel->ssSlices);
 
@@ -3363,9 +3363,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    batch->ssChunk = lookup[batch->noHarmStages-1][batch->noSteps-1];
 	  }
 	}
+      }
 
-	batch->ssChunk = floor(batch->ssChunk);
-
+      FOLD // Clamps
+      {
 	// Clamp S&S chunks to slice height
 	batch->ssChunk = MINN(batch->ssChunk, ceil(kernel->hInfos->noZ/(float)batch->ssSlices) );
 
@@ -3373,16 +3374,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	MINN(batch->ssChunk, MAX_SAS_CHUNK);
 	MAXX(batch->ssChunk, MIN_SAS_CHUNK);
 
-	infoMSG(5,5,"ssChunk %2i \n",batch->ssChunk);
-
-	FOLD  // TMP REM - Added to mark an error for thesis timing
-	{
-	  if ( kernel->cuSrch->sSpec->ssChunk && batch->ssChunk != kernel->cuSrch->sSpec->ssChunk )
-	  {
-	    printf("Temporary exit - ssChunk \n");
-	    exit(EXIT_FAILURE);
-	  }
-	}
+//	FOLD  // TMP REM - Added to mark an error for thesis timing
+//	{
+//	  if ( kernel->cuSrch->sSpec->ssChunk && batch->ssChunk != kernel->cuSrch->sSpec->ssChunk )
+//	  {
+//	    printf("Temporary exit - ssChunk \n");
+//	    exit(EXIT_FAILURE);
+//	  }
+//	}
       }
 
 #ifdef CBL
@@ -6082,7 +6081,9 @@ searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs)
     sSpec.flags         |= FLAG_CENTER      ;	// Centre and align the usable part of the planes
     sSpec.flags         |= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
+#ifdef WITH_SAS_COUNT
     sSpec.flags         |= FLAG_SS_COUNT    ;	// Enable counting results in sum & search kernels
+#endif
 
     // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_CAND_MEM_PRE
 #ifndef DEBUG
