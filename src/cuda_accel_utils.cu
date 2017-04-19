@@ -1964,14 +1964,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	  infoMSG(5,5,"Sum & Search slices set to %i ", kernel->ssSlices);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    if ( cuSrch->sSpec->ssSlices && kernel->ssSlices != cuSrch->sSpec->ssSlices )
-	    {
-	      printf("Temporary exit - ssSlices \n");
-	      exit(EXIT_FAILURE);
-	    }
-	  }
+//	  FOLD  // TMP REM - Added to mark an error for thesis timing
+//	  {
+//	    if ( cuSrch->sSpec->ssSlices && kernel->ssSlices != cuSrch->sSpec->ssSlices )
+//	    {
+//	      printf("Temporary exit - ssSlices \n");
+//	      exit(EXIT_FAILURE);
+//	    }
+//	  }
 	}
       }
 
