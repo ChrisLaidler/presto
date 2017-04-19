@@ -698,11 +698,13 @@ cleanPROFILE:
 cleanMULT:
 	rm -rf build/*/accelsearch*.o
 	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_accel_utils.cu.o
 	rm -rf build/*/cuda_accel_MU*.o
 
 cleanSAS:
 	rm -rf build/*/accelsearch*.o
 	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_accel_utils.cu.o
 	rm -rf build/*/cuda_accel_SS*.o
 
 cleanGPU: cudaclean
