@@ -3328,7 +3328,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    batch->ssChunk = lookup[batch->noHarmStages-1];
 
 #ifdef WITH_SAS_COUNT
-	    // I found in this case just maximise chunk size
+	    // I found in this case just maximise chunk size 	// TODO: Recheck this
 	    batch->ssChunk = MIN(12, MAX_SAS_CHUNK);
 #endif
 	  }
@@ -3389,6 +3389,17 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	printf("ssSlices %i \n", batch->ssSlices );
 	printf("ssChunk  %i \n", batch->ssChunk  );
+
+#ifdef WITH_SAS_COUNT
+	printf("SAS_Count: 0 \n");
+#else
+	if( kernel->flags & FLAG_SS_COUNT)
+	  printf("SAS_Count: 2 \n");
+	else
+	  printf("SAS_Count: 1 \n");
+
+#endif
+
       }
 #endif
     }
