@@ -3391,13 +3391,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	printf("ssChunk  %i \n", batch->ssChunk  );
 
 #ifdef WITH_SAS_COUNT
-	printf("SAS_Count: 0 \n");
-#else
 	if( kernel->flags & FLAG_SS_COUNT)
 	  printf("SAS_Count: 2 \n");
 	else
 	  printf("SAS_Count: 1 \n");
-
+#else
+	printf("SAS_Count: 0 \n");
 #endif
 
       }
