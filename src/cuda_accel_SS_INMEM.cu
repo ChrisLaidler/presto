@@ -44,17 +44,14 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
   int		idx   = start + sid ;					///< The global index of the thread in the plane
   int		len   = end - start;					///< The total number of columns being handled by this kernel
   uint 		conts = 0;						///< Per thread count of candidates found
-  __shared__ uint  cnt;							///< Block count of candidates
 
-  FOLD  // Zero SM  .
+#ifdef WITH_SAS_COUNT	FOLD  // Zero SM  .
+  __shared__ uint  cnt;							///< Block count of candidates
+  if ( (tidx == 0) && d_counts )
   {
-#ifdef WITH_SAS_COUNT
-    if ( (tidx == 0) && d_counts )
-    {
-      cnt = 0;
-    }
-#endif
+    cnt = 0;
   }
+#endif
 
   if ( sid < len )
   {
@@ -102,72 +99,69 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 	    int start = STAGE[stage][0] ;
 	    int end   = STAGE[stage][1] ;
 
-	    FOLD	//
+	    FOLD	// Create a section of summed powers one for each step  .
 	    {
-	      FOLD	// Create a section of summed powers one for each step  .
+	      for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
 	      {
-		for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
+		int     ix1   = inds[harm] ;
+
+		if ( ix1 >= 0 ) // Valid stage
 		{
-		  int     ix1   = inds[harm] ;
+		  int   iyP       = -1;                             // The previous y-index used
+		  float pow       = 0 ;
+		  const int   yIndsStride = yIndsChnksz*harm;
 
-		  if ( ix1 >= 0 ) // Valid stage
+		  for( int yPlus = 0; yPlus < cunkSize; yPlus++ )   // Loop over the chunk  .
 		  {
-		    int   iyP       = -1;                             // The previous y-index used
-		    float pow       = 0 ;
-		    const int   yIndsStride = yIndsChnksz*harm;
+		    int yPln     = y + yPlus ;                      ///< True Y index in plane
 
-		    for( int yPlus = 0; yPlus < cunkSize; yPlus++ )   // Loop over the chunk  .
+		    // Don't check yPln against zeroHeight, YINDS contains a buffer at the end, only do the check later
+		    int iy1     = YINDS[ yIndsStride + yPln ];
+
+		    if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
 		    {
-		      int yPln     = y + yPlus ;                      ///< True Y index in plane
+		      unsigned long long izz = iy1*iStride + ix1 ;
+		      pow = getLong(read, izz );
 
-		      // Don't check yPln against zeroHeight, YINDS contains a buffer at the end, only do the check later
-		      int iy1     = YINDS[ yIndsStride + yPln ];
+		      iyP = iy1;
+		    }
 
-		      if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
-		      {
-			unsigned long long izz = iy1*iStride + ix1 ;
-			pow = getLong(read, izz );
-
-			iyP = iy1;
-		      }
-
-		      FOLD // // Accumulate powers  .
-		      {
-			powers[yPlus] += pow;
-		      }
+		    FOLD // // Accumulate powers  .
+		    {
+		      powers[yPlus] += pow;
 		    }
 		  }
 		}
 	      }
+	    }
 
-	      FOLD // Search set of powers  .
+	    FOLD // Search set of powers  .
+	    {
+	      float pow;
+	      float maxP = POWERCUT_STAGE[stage];
+	      int maxI;
+
+	      for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )    // Loop over section  .
 	      {
-		float pow;
-		float maxP = POWERCUT_STAGE[stage];
-		int maxI;
-
-		for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )    // Loop over section  .
+		pow = powers[yPlus];
+		if  ( pow > maxP )
 		{
-		  pow = powers[yPlus];
-		  if  ( pow > maxP )
+		  int idx = y + yPlus;
+		  if ( idx < y1 )
 		  {
-		    int idx = y + yPlus;
-		    if ( idx < y1 )
-		    {
-		      maxP = pow;
-		      maxI = idx;
-		    }
+		    maxP = pow;
+		    maxI = idx;
 		  }
 		}
+	      }
 
-		if  (  maxP > POWERCUT_STAGE[stage] )
+	      if  (  maxP > POWERCUT_STAGE[stage] )
+	      {
+		if ( maxP > candLists[stage].value )
 		{
-		  if ( maxP > candLists[stage].value )
-		  {
-		    // This is our new max!
-		    candLists[stage].value  = maxP;
-		    candLists[stage].z      = maxI;
-		  }
+		  // This is our new max!
+		  candLists[stage].value  = maxP;
+		  candLists[stage].z      = maxI;
 		}
 	      }
 	    }
@@ -190,29 +184,27 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
     }
   }
 
-  FOLD // Counts using SM  .
+#ifdef WITH_SAS_COUNT	// Counts using SM  .
+  if ( d_counts )
   {
-#ifdef WITH_SAS_COUNT
-    if ( d_counts )
+    // NOTE: Could do an initial warp level recurse here but not really necessary
+
+    __syncthreads();			// Make sure cnt has been zeroed
+
+    if ( conts)			// Increment block specific counts in SM  .
     {
-      // NOTE: Could do an initial warp level recurse here but not really necessary
-
-      __syncthreads();			// Make sure cnt has been zeroed
-
-      if ( conts)			// Increment block specific counts in SM  .
-      {
-	atomicAdd(&cnt, conts);
-      }
-
-      __syncthreads();			// Make sure autonomic adds are viable
-
-      if ( tidx == 0 )			// Write SM count back to main memory  .
-      {
-	d_counts[bidx] = cnt;
-      }
+      atomicAdd(&cnt, conts);
     }
-#endif
+
+    __syncthreads();			// Make sure autonomic adds are viable
+
+    if ( tidx == 0 )			// Write SM count back to main memory  .
+    {
+      d_counts[bidx] = cnt;
+    }
   }
+#endif
+
 }
 
 template<typename T, const int noStages, const int noHarms>
@@ -267,10 +259,12 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
     exit(EXIT_FAILURE);
   }
 
+#ifdef WITH_SAS_COUNT
   if ( batch->flags & FLAG_SS_COUNT)
   {
     d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
   }
+#endif
 
   switch ( batch->ssChunk )
   {

@@ -294,10 +294,12 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
     powers.val[i]   = batch->planes[sIdx].d_planePowr;
   }
 
+#ifdef WITH_SAS_COUNT
   if ( batch->flags & FLAG_SS_COUNT)
   {
     d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
   }
+#endif
 
   switch (batch->noSteps)
   {

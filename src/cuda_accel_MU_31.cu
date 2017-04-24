@@ -52,7 +52,7 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
 #endif
 
       // read input for each step into registers
-      for (int step = 0; step < noSteps; step++)      // Loop over planes  .
+      for (int step = 0; step < noSteps; step++)		// Loop over planes  .
       {
         input[step]       = datas[step*stride];
 
@@ -64,7 +64,7 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
       // Stride input data
       datas              += stride*noSteps;
 
-      for (int planeY = y0; planeY < y1; planeY++)              // Loop over individual plane  .
+      for (int planeY = y0; planeY < y1; planeY++)		// Loop over individual plane  .
       {
         int off1;
         FOLD // Calculate partial offset  .
@@ -82,7 +82,7 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
         }
 
         // Multiply and write data
-        for (int step = 0; step < noSteps; step++)  // Loop over steps  .
+        for (int step = 0; step < noSteps; step++)		// Loop over steps  .
         {
           //
           fcomplexcu out;
@@ -123,7 +123,7 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
         ker += stride;
       }
 
-      // Track plane offsett
+      // Track plane offset
       pHeight += noSteps*plnHeight*stride;
     }
   }

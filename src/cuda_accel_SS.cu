@@ -32,6 +32,9 @@
  *  [2017-03-30]
  *  	Reworked the way the main in-mem search loop iterates (bounds)
  *  	Added separate candidate array resolution
+ *
+ *  [2017-03-24]
+ *  	Reactor of Y-Indices calculations
  */
 
 #include "cuda_accel_SS.h"
@@ -182,7 +185,7 @@ int setConstVals( cuFFdotBatch* batch )
     }
 
     freeNull(batch->cuSrch->yInds);
-    batch->cuSrch->yInds    = (int*) malloc( (batch->hInfos->noZ + INDS_BUFF) * noHarms * sizeof(int));
+    batch->cuSrch->yInds  = (int*) malloc( (batch->hInfos->noZ + INDS_BUFF) * noHarms * sizeof(int));
     int *indsY            = batch->cuSrch->yInds;
     int bace              = 0;
 
@@ -190,51 +193,50 @@ int setConstVals( cuFFdotBatch* batch )
 
     for (int ii = 0; ii < noHarms; ii++)
     {
-      if ( ii == 0 )
+      double sZstart, harmFrac;
+      int noZ, dir, sIdx;
+      cuHarmInfo* hInf;
+      cuHarmInfo* fInf;
+
+      fInf		= batch->hInfos;
+      sIdx		= batch->cuSrch->sIdx[ii];
+      hInf		= &batch->hInfos[sIdx];
+      dir		= (hInf->zEnd > hInf->zStart?1:-1);
+      harmFrac		= hInf->harmFrac;
+
+      if ( batch->flags & FLAG_SS_INMEM )
       {
-	for (int j = 0; j < batch->hInfos->noZ; j++)
-	{
-	  indsY[bace + j] = j;
-	}
+	// Only the fundamental in the full plane so use single start
+	sZstart		= fInf->zStart;
+	noZ		= fInf->noZ;
       }
       else
       {
-	float harmFrac  = HARM_FRAC_STAGE[ii];
-	double sZstart;
-	int dir = (batch->hInfos[ii].zEnd > batch->hInfos[ii].zStart?1:-1);
-	int noZ = batch->hInfos[ii].noZ;
-
-	if ( batch->flags & FLAG_SS_INMEM )
-	{
-	  sZstart = batch->hInfos->zStart;
-	}
-	else
-	{
-	  int sIdx	= batch->cuSrch->sIdx[ii];
-	  sZstart	= batch->hInfos[sIdx].zStart;
-	}
-
-	for (int j = 0; j < batch->hInfos->noZ; j++)
-	{
-	  double fundZ	= batch->hInfos->zStart + j * dir * batch->cuSrch->sSpec->zRes;
-	  double subzf	= cu_calc_required_z<double>( harmFrac, fundZ, batch->cuSrch->sSpec->zRes);
-	  int zind	= cu_index_from_z<double>( subzf, sZstart, batch->cuSrch->sSpec->zRes);
-
-	  MAXX(zind,0);
-	  MINN(zind,noZ-1);
-
-	  indsY[bace + j] = zind;
-	}
+	sZstart		= hInf->zStart;
+	noZ		= hInf->noZ;
       }
-      // Set the yindex value in the harmonic info
-      if ( ii < batch->noSrchHarms)
+
+      for ( int j = 0; j < fInf->noZ; j++ )	// Loop over rows of the fundamental  .
       {
-	batch->hInfos[ii].yInds = bace;
+	double fundZ	= fInf->zStart + j * dir * batch->cuSrch->sSpec->zRes;
+	double subzf	= cu_calc_required_z<double>( harmFrac, fundZ, batch->cuSrch->sSpec->zRes );
+	int zind	= cu_index_from_z<double>( subzf, sZstart, batch->cuSrch->sSpec->zRes );
+
+	MAXX(zind, 0);
+	MINN(zind, noZ-1);
+
+	indsY[bace + j] = zind;
       }
 
-      bace += batch->hInfos->noZ;
+      // Set the yindex value in the harmonic info for CPU sum and search
+      if ( ii < batch->noSrchHarms )
+      {
+	hInf->yInds	= bace;
+      }
 
-      // Buffer with last value
+      bace += fInf->noZ;
+
+      // Buffer with last lookup index
       for (int j = 0; j < INDS_BUFF; j++)
       {
 	indsY[bace + j] = indsY[bace + j-1];
@@ -713,7 +715,7 @@ void* processSearchResults(void* ptr)
     }
   }
 
-  FOLD  //  Thread memory  .
+  FOLD // Thread memory  .
   {
     if ( res->flags & FLAG_CAND_MEM_PRE )
     {

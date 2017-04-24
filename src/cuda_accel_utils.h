@@ -61,6 +61,7 @@ extern "C"
 #define MAX_SAS_BLKS	1024
 
 typedef enum {
+  IM_FULL,
   IM_TOP,
   IM_BOT,
 } ImPlane;

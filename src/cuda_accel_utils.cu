@@ -76,6 +76,9 @@
  *
  *  [2017-04-17]
  *  	Fixed clipping of multiplication chunks back to max slice height
+ *
+ *  [2017-04-24]
+ *  	Reworked calculating the y-index and added the setPlaneBounds function
  */
 
 #include <cufft.h>
@@ -602,6 +605,48 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
   PROF // Profiling  .
   {
     NV_RANGE_POP(); // FFT plans
+  }
+}
+
+/** Set the plane bounds for all harmonics
+ *
+ * Set the start stop and number of z values of each plane
+ *
+ * @param sSpec		Search Specifications
+ * @param hInfs		Pointer to an array harmonic infos
+ * @param noHarms	The number of harmonics in the array
+ * @param planePos	What type of plane to index
+ */
+void setPlaneBounds(searchSpecs* sSpec, cuHarmInfo* hInfs, int noHarms, ImPlane planePos)
+{
+  // Calculate the start and end z values
+  for (int i = 0; i < noHarms; i++)
+  {
+    cuHarmInfo* hInf	= &hInfs[i];
+
+    if      ( planePos == IM_FULL )
+    {
+      hInf->zStart	= cu_calc_required_z<double>(1, -hInf->zmax, sSpec->zRes);
+      hInf->zEnd	= cu_calc_required_z<double>(1,  hInf->zmax, sSpec->zRes);
+    }
+    else if ( planePos == IM_TOP )
+    {
+      hInf->zStart	= cu_calc_required_z<double>(1,  0.0,        sSpec->zRes);
+      hInf->zEnd	= cu_calc_required_z<double>(1,  hInf->zmax, sSpec->zRes);
+    }
+    else if ( planePos == IM_BOT )
+    {
+      hInf->zStart	= cu_calc_required_z<double>(1,  0.0,        sSpec->zRes);
+      hInf->zEnd	= cu_calc_required_z<double>(1, -hInf->zmax, sSpec->zRes);
+    }
+    else
+    {
+      fprintf(stderr, "ERROR: invalid in-memory plane.\n" );
+      exit(EXIT_FAILURE);
+    }
+    hInf->noZ       	= round(fabs(hInf->zEnd - hInf->zStart) / sSpec->zRes) + 1;
+
+    infoMSG(6,6,"Harm: %2i  z: %7.2f to %7.2f  noZ %4i \n", i, hInf->zStart, hInf->zEnd, hInf->noZ );
   }
 }
 
@@ -1268,9 +1313,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       FOLD // Set some harmonic related values  .
       {
-	int prevWidth       = 0;
-	int noStacks        = 0;
-	int stackHW         = 0;
+	int prevWidth		= 0;
+	int noStacks		= 0;
+	int stackHW		= 0;
 	int hIdx, sIdx;
 	double hFrac;
 
@@ -1281,28 +1326,15 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  for (int i = kernel->noSrchHarms; i > 0; i--)
 	  {
 	    cuHarmInfo* hInfs;
-	    hFrac               = (i) / (double)kernel->noSrchHarms;
-	    hIdx                = kernel->noSrchHarms-i;
-	    hInfs               = &kernel->hInfos[hIdx];                              // Harmonic index
+	    hFrac		= (i) / (double)kernel->noSrchHarms;
+	    hIdx		= kernel->noSrchHarms-i;
+	    hInfs		= &kernel->hInfos[hIdx];                              // Harmonic index
 
-	    hInfs->harmFrac     = hFrac;
-	    hInfs->zmax         = cu_calc_required_z<double>(hInfs->harmFrac, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
-	    hInfs->width        = cu_calc_fftlen<double>(hInfs->harmFrac, kernel->hInfos[0].zmax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
-	    hInfs->halfWidth    = cu_z_resp_halfwidth<double>(hInfs->zmax, accuracy);
-	    hInfs->noResPerBin  = cuSrch->sSpec->noResPerBin;
-
-	    if ( kernel->flags & FLAG_Z_SPLIT )
-	    {
-	      hInfs->zStart	= cu_calc_required_z<double>(1, 0.0, cuSrch->sSpec->zRes);
-	      hInfs->zEnd	= cu_calc_required_z<double>(1, hInfs->zmax, cuSrch->sSpec->zRes);
-	    }
-	    else
-	    {
-	      // This is the CPU orientation
-	      hInfs->zStart	= cu_calc_required_z<double>(1, -hInfs->zmax, cuSrch->sSpec->zRes);
-	      hInfs->zEnd	= cu_calc_required_z<double>(1,  hInfs->zmax, cuSrch->sSpec->zRes);
-	    }
-	    hInfs->noZ       	= round(fabs(hInfs->zEnd - hInfs->zStart) / cuSrch->sSpec->zRes) + 1;
+	    hInfs->harmFrac	= hFrac;
+	    hInfs->zmax		= cu_calc_required_z<double>(hInfs->harmFrac, cuSrch->sSpec->zMax, cuSrch->sSpec->zRes);
+	    hInfs->width	= cu_calc_fftlen<double>(hInfs->harmFrac, kernel->hInfos[0].zmax, kernel->accelLen, accuracy, cuSrch->sSpec->noResPerBin, cuSrch->sSpec->zRes);
+	    hInfs->halfWidth	= cu_z_resp_halfwidth<double>(hInfs->zmax, accuracy);
+	    hInfs->noResPerBin	= cuSrch->sSpec->noResPerBin;
 
 	    if ( prevWidth != hInfs->width )	// Stack creation and checks
 	    {
@@ -1313,28 +1345,28 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	      if ( hIdx < kernel->noGenHarms )
 	      {
-		kernel->noStacks = noStacks;
+		kernel->noStacks	= noStacks;
 	      }
 
-	      noInStack[noStacks - 1]       = 0;
-	      prevWidth                     = hInfs->width;
-	      stackHW                       = cu_z_resp_halfwidth<double>(hInfs->zmax, accuracy);
+	      noInStack[noStacks - 1]	= 0;
+	      prevWidth			= hInfs->width;
+	      stackHW			= cu_z_resp_halfwidth<double>(hInfs->zmax, accuracy);
 
 	      // Maximise, centre and align halfwidth
-	      int   sWidth                  = (int) ( ceil(kernel->accelLen * hInfs->harmFrac / (double)cuSrch->sSpec->noResPerBin ) * cuSrch->sSpec->noResPerBin ) + 1 ;	// Width of usable data for this plane
-	      float centHW                  = (hInfs->width  - sWidth)/2.0/(double)cuSrch->sSpec->noResPerBin;									//
-	      float noAlg                   = gInf->alignment / float(sizeof(fcomplex)) / (double)cuSrch->sSpec->noResPerBin ;							// halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
-	      float centAlgnHW              = floor(centHW/noAlg) * noAlg ;													// Centre and aligned half width
+	      int   sWidth	= (int) ( ceil(kernel->accelLen * hInfs->harmFrac / (double)cuSrch->sSpec->noResPerBin ) * cuSrch->sSpec->noResPerBin ) + 1 ;	// Width of usable data for this plane
+	      float centHW	= (hInfs->width  - sWidth)/2.0/(double)cuSrch->sSpec->noResPerBin;								//
+	      float noAlg	= gInf->alignment / float(sizeof(fcomplex)) / (double)cuSrch->sSpec->noResPerBin ;						// halfWidth will be multiplied by ACCEL_NUMBETWEEN so can divide by it here!
+	      float centAlgnHW	= floor(centHW/noAlg) * noAlg ;													// Centre and aligned half width
 
 	      if ( stackHW > centAlgnHW )
 	      {
-		stackHW                     = floor(centHW);
+		stackHW		= floor(centHW);
 
 		infoMSG(6,6,"can not align stack half width GPU value. Using %i \n", stackHW );
 	      }
 	      else
 	      {
-		stackHW                     = centAlgnHW;
+		stackHW		= centAlgnHW;
 
 		infoMSG(6,6,"aligned stack half width for GPU is %i \n", stackHW );
 	      }
@@ -1342,21 +1374,33 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	    infoMSG(6,6,"Harm: %2i  frac %5.3f  z-max: %5.1f  z: %7.2f to %7.2f  width: %5i half width %4i \n", i, hFrac, hInfs->zmax, hInfs->zStart, hInfs->zEnd, hInfs->width, hInfs->halfWidth );
 
-	    hInfs->stackNo      = noStacks-1;
+	    hInfs->stackNo	= noStacks-1;
 
 	    if ( kernel->flags & FLAG_CENTER )
 	    {
-	      hInfs->kerStart   = stackHW*cuSrch->sSpec->noResPerBin;
+	      hInfs->kerStart	= stackHW*cuSrch->sSpec->noResPerBin;
 	    }
 	    else
 	    {
-	      hInfs->kerStart   = hInfs->halfWidth*cuSrch->sSpec->noResPerBin;
+	      hInfs->kerStart	= hInfs->halfWidth*cuSrch->sSpec->noResPerBin;
 	    }
 
 	    if ( hIdx < kernel->noGenHarms )
 	    {
 	      noInStack[noStacks - 1]++;
 	    }
+	  }
+	}
+
+	FOLD // Set the plane bounds  .
+	{
+	  if ( kernel->flags & FLAG_Z_SPLIT )
+	  {
+	    setPlaneBounds(cuSrch->sSpec, kernel->hInfos, kernel->noSrchHarms, IM_TOP  );
+	  }
+	  else
+	  {
+	    setPlaneBounds(cuSrch->sSpec, kernel->hInfos, kernel->noSrchHarms, IM_FULL );
 	  }
 	}
 
@@ -2766,9 +2810,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       NV_RANGE_PUSH("const mem");
     }
 
-    setConstVals( kernel );
-
-    setConstVals_Fam_Order( kernel );                            // Constant values for multiply
+    setConstVals( kernel );					//
+    setConstVals_Fam_Order( kernel );				// Constant values for multiply
 
     FOLD // Set CUFFT load callback details  .
     {
@@ -7870,7 +7913,6 @@ void freeHarmInput(cuHarmInput* inp)
 void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
 {
   bool ker = false;
-  double zStart, zEnd;
 
   // for the moment there should only be one kernel!
   // Note we could split the inmem plane across two devices!
@@ -7883,33 +7925,9 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
     exit(EXIT_FAILURE);
   }
 
-
-
-  // Calculate the start and end z values
-  for (int i = kernel->noSrchHarms; i > 0; i--)
+  FOLD // Set the plane bounds  .
   {
-    cuHarmInfo* hInfs;
-    int hIdx            = kernel->noSrchHarms-i;
-    hInfs               = &kernel->hInfos[hIdx];                              // Harmonic index
-
-    if ( planePos == IM_TOP )
-    {
-      zStart		= cu_calc_required_z<double>(1, 0.0, cuSrch->sSpec->zRes);
-      zEnd		= cu_calc_required_z<double>(1, hInfs->zmax, cuSrch->sSpec->zRes);
-    }
-    else
-    {
-      zStart		= cu_calc_required_z<double>(1, 0.0, cuSrch->sSpec->zRes);
-      zEnd		= cu_calc_required_z<double>(1, -hInfs->zmax, cuSrch->sSpec->zRes);
-    }
-
-    if ( hInfs->zStart != zStart || hInfs->zEnd != zEnd )
-    {
-      ker = true;
-    }
-    hInfs->zStart	= zStart;
-    hInfs->zEnd		= zEnd;
-    hInfs->noZ       	= round(fabs(hInfs->zEnd - hInfs->zStart) / cuSrch->sSpec->zRes) + 1;
+    setPlaneBounds(cuSrch->sSpec, kernel->hInfos, kernel->noSrchHarms, planePos  );
   }
 
   FOLD // Set the sizes values of the harmonics and kernels and pointers to kernel data  .
@@ -7919,16 +7937,12 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
 
   FOLD // Generate kernel values if needed  .
   {
-    if ( ker )
-    {
-      printf("\nGenerating GPU multiplication kernels using device %i (%s).\n", kernel->gInf->devid, kernel->gInf->name);
-
-      createBatchKernels(kernel, batch->d_planeMult);
-    }
+    printf("\nGenerating GPU multiplication kernels using device %i (%s).\n", kernel->gInf->devid, kernel->gInf->name);
+    createBatchKernels(kernel, batch->d_planeMult);
   }
 
-  setConstVals( kernel );
-  setConstVals_Fam_Order( kernel );                            // Constant values for multiply
+  setConstVals( kernel );					//
+  setConstVals_Fam_Order( kernel );				// Constant values for multiply
 }
 
 void genPlane(cuSearch* cuSrch, char* msg)
