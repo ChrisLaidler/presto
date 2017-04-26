@@ -45,7 +45,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
   int		len   = end - start;					///< The total number of columns being handled by this kernel
   uint 		conts = 0;						///< Per thread count of candidates found
 
-#ifdef WITH_SAS_COUNT	FOLD  // Zero SM  .
+#ifdef WITH_SAS_COUNT	// Zero SM  .
   __shared__ uint  cnt;							///< Block count of candidates
   if ( (tidx == 0) && d_counts )
   {
