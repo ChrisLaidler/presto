@@ -1663,9 +1663,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	}
       }
 
-      printf("\nGenerating GPU multiplication kernels using device %i (%s).\n\n", kernel->gInf->devid, kernel->gInf->name);
-
-      createBatchKernels(kernel, NULL);
+      if ( !( (kernel->flags & FLAG_SS_INMEM) && (kernel->flags & FLAG_Z_SPLIT) ) )
+      {
+	// In-mem kernels are created separately (top and bottom)
+	printf("\nGenerating GPU multiplication kernels using device %i (%s).\n\n", kernel->gInf->devid, kernel->gInf->name);
+	createBatchKernels(kernel, NULL);
+      }
     }
   }
 
@@ -8278,6 +8281,7 @@ cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec)
     {
       sprintf(srcTyp, "GPU search");
       genPlane(cuSrch, srcTyp);
+      // This incleds the search (standard)
     }
 
     TIME // Basic timing  .
