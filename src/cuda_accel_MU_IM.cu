@@ -139,7 +139,6 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   outSz = sizeof(Tout);
 
   dpitch  = batch->cuSrch->inmemStride * outSz;
-  width   = batch->accelLen * outSz;
   height  = cStack->height;
   spitch  = cStack->stridePower * inSz;
 
@@ -159,21 +158,30 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
   for ( int step = 0; step < batch->noSteps; step++ )
   {
-    rVals* rVal = &(*batch->rAraays)[batch->rActive][step][0];
+    rVals* rVal	= &(*batch->rAraays)[batch->rActive][step][0];
 
     if ( rVal->numrs )
     {
-      dst     = ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
+      width	= rVal->numrs * outSz;    // Width is dependent on the number of good values
+
+      dst	= ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
+
+      size_t  end = rVal->step * batch->accelLen + rVal->numrs ;
+      if ( end >= batch->cuSrch->inmemStride )
+      {
+	fprintf(stderr,"ERROR: Data exceeds plane.\n");
+	exit(EXIT_FAILURE);
+      }
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
-	src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
-	spitch  = cStack->stridePower*batch->noSteps*inSz;
+	src	= ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
+	spitch	= cStack->stridePower*batch->noSteps*inSz;
       }
 #ifdef WITH_ITLV_PLN
       else
       {
-	src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
+	src	= ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
       }
 #else
       else
