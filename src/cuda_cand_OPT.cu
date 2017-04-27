@@ -2693,7 +2693,11 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     int ti          = 0; // tread specific index
 
     cuOptCand* oPlnPln = &(cuSrch->oInf->opts[tid]);
+
     setDevice(oPlnPln->gInf->devid) ;
+
+    // Make sure all initialisation and other stuff on the device is complete
+    CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Synchronising device before candidate generation");
 
     while (listptr)  // Main Loop  .
     {

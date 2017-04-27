@@ -8004,6 +8004,9 @@ void genPlane(cuSearch* cuSrch, char* msg)
     // Set the device this thread will be using
     setDevice(batch->gInf->devid) ;
 
+    // Make sure kernel create and all constant memory reads and writes are complete
+    CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Synchronising device before candidate generation");
+
     FOLD // Clear the r array  .
     {
       clearRvals(batch);

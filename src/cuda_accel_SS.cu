@@ -1237,6 +1237,9 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
     setDevice(batch->gInf->devid) ;
 
+    // Make sure kernel create and all constant memory reads and writes are complete
+    CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Synchronising device before candidate generation");
+
     int		firstStep	= 0;							///< Thread specific value for the first step the batch is processing
     double	firstR		= 0;							///< Thread specific value for the first input FT bin index being searched
     int		ite		= 0;							///< The iteration the batch is working on (local to each thread)
