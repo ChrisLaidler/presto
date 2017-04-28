@@ -57,17 +57,14 @@ __global__ void add_and_searchCU31_k(const uint width, candPZs* d_cands, const i
   const int sid		= blockIdx.x  * SS31BS     +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
 
   uint 		conts	= 0;						///< Per thread count of candidates found
-  __shared__ uint  cnt;							///< Block count of candidates
 
-  FOLD  // Zero SM  .
+#ifdef WITH_SAS_COUNT	// Zero SM  .
+  __shared__ uint  cnt;							///< Block count of candidates
+  if ( (tidx == 0) && d_counts )
   {
-#ifdef WITH_SAS_COUNT
-    if ( (tidx == 0) && d_counts )
-    {
-      cnt = 0;
-    }
-#endif
+    cnt = 0;
   }
+#endif
 
   if ( sid < width )
   {
@@ -257,29 +254,26 @@ __global__ void add_and_searchCU31_k(const uint width, candPZs* d_cands, const i
     }
   }
 
-  FOLD // Counts using SM  .
+#ifdef WITH_SAS_COUNT	// Counts using SM  .
+  if ( d_counts )
   {
-#ifdef WITH_SAS_COUNT
-    if ( d_counts )
+    // NOTE: Could do an initial warp level recurse here but not really necessary
+
+    __syncthreads();			// Make sure cnt has been zeroed
+
+    if ( conts)				// Increment block specific counts in SM  .
     {
-      // NOTE: Could do an initial warp level recurse here but not really necessary
-
-      __syncthreads();			// Make sure cnt has been zeroed
-
-      if ( conts)			// Increment block specific counts in SM  .
-      {
-	atomicAdd(&cnt, conts);
-      }
-
-      __syncthreads();			// Make sure autonomic adds are viable
-
-      if ( tidx == 0 )			// Write SM count back to main memory  .
-      {
-	d_counts[bidx] = cnt;
-      }
+      atomicAdd(&cnt, conts);
     }
-#endif
+
+    __syncthreads();			// Make sure autonomic adds are viable
+
+    if ( tidx == 0 )			// Write SM count back to main memory  .
+    {
+      d_counts[bidx] = cnt;
+    }
   }
+#endif
 }
 
 template< typename T, int64_t FLAGS, int noStages, const int noHarms, const int cunkSize>
