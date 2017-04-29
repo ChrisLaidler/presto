@@ -163,7 +163,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
     if ( rVal->numrs )
     {
       width	= rVal->numrs;					// Width is dependent on the number of good values
-      MINN( width, batch->cuSrch->inmemStride - rVal->step * batch->accelLen );	// Clamp to plane
+      MINN( width, batch->cuSrch->inmemStride - rVal->step * batch->accelLen -1 );	// Clamp to plane
 
       // Check
       size_t  end = rVal->step * batch->accelLen + width ;
