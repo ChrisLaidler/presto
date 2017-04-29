@@ -162,16 +162,19 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 
     if ( rVal->numrs )
     {
-      width	= rVal->numrs * outSz;    // Width is dependent on the number of good values
+      width	= rVal->numrs;					// Width is dependent on the number of good values
+      MINN( width, batch->cuSrch->inmemStride - rVal->step * batch->accelLen );	// Clamp to plane
 
-      dst	= ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
-
-      size_t  end = rVal->step * batch->accelLen + rVal->numrs ;
+      // Check
+      size_t  end = rVal->step * batch->accelLen + width ;
       if ( end >= batch->cuSrch->inmemStride )
       {
 	fprintf(stderr,"ERROR: Data exceeds plane.\n");
 	exit(EXIT_FAILURE);
       }
+
+      width	*= outSz;
+      dst	= ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
