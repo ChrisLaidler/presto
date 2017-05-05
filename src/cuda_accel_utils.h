@@ -199,42 +199,50 @@ typedef struct float128
 
 typedef struct ptr01
 {
-    void* val[1];
+    void* __restrict__ val[1];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr01;
 
 typedef struct ptr02
 {
-    void* val[2];
+    void* __restrict__ val[2];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr02;
 
 typedef struct ptr04
 {
-    void* val[4];
+    void* __restrict__ val[4];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr04;
 
 typedef struct ptr08
 {
-    void* val[8];
+    void* __restrict__ val[8];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr08;
 
 typedef struct ptr16
 {
-    void* val[16];
+    void* __restrict__ val[16];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr16;
 
 typedef struct ptr32
 {
-    void* val[32];
+    void* __restrict__ val[32];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr32;
 
 typedef struct ptr64
 {
-    void* val[64];
+    void* __restrict__ val[64];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr64;
 
 typedef struct ptr128
 {
-    void* val[128];
+    void* __restrict__ val[128];
+    __host__ __device__ inline void* operator [](const int idx) { return val[idx]; }
 } ptr128;
 
 //------------- Arrays that can be passed to kernels -------------------\\
@@ -563,10 +571,16 @@ __device__ inline void set(float* adress, uint offset, float value)
   adress[offset] = value;
 }
 
-__device__ inline float getPower(float* adress, uint offset)
+__device__ inline float getFloat(float value)
+{
+  return value;
+}
+
+__device__ inline float getPowerAsFloat(float* adress, uint offset)
 {
   return adress[offset];
 }
+
 
 __device__ inline fcomplexcu get(fcomplexcu* __restrict__ adress, int offset)
 {
@@ -578,14 +592,17 @@ __device__ inline fcomplexcu getLong(fcomplexcu* __restrict__ adress, unsigned l
   return adress[offset];
 }
 
-
-
 __device__ inline void set(fcomplexcu* adress, uint offset, fcomplexcu value)
 {
   adress[offset] = value;
 }
 
-__device__ inline float getPower(fcomplexcu* adress, uint offset)
+__device__ inline float getFloat(fcomplexcu value)
+{
+  return POWERC(value);
+}
+
+__device__ inline float getPowerAsFloat(fcomplexcu* adress, uint offset)
 {
   return POWERC(adress[offset]);
 }
@@ -609,7 +626,12 @@ __device__ inline void set(half* adress, uint offset, float value)
   adress[offset] = __float2half(value);
 }
 
-__device__ inline float getPower(half* adress, uint offset)
+__device__ inline float getFloat(half value)
+{
+  return __half2float(value);
+}
+
+__device__ inline float getPowerAsFloat(half* adress, uint offset)
 {
   return __half2float(adress[offset]);
 }

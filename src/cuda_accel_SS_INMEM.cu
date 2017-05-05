@@ -32,7 +32,7 @@
 template<typename T, const int noStages, const int noHarms, const int cunkSize>
 __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, int start, int end, candPZs* d_cands, int* d_counts )
 {
-  const int bidx	= blockIdx.y  * gridDim.x  + blockIdx.x;	///< Block index
+  //const int bidx	= blockIdx.y  * gridDim.x  + blockIdx.x;	///< Block index
   const int tidx	= threadIdx.y * SSIM_X     + threadIdx.x;	///< Thread index within in the block
   const int sid		= blockIdx.x  * SSIMBS     + tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
   const int zeroHeight	= HEIGHT_STAGE[0];				///< The height of the fundamental plane
@@ -43,9 +43,9 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
   int		idx   = start + sid ;					///< The global index of the thread in the plane
   int		len   = end - start;					///< The total number of columns being handled by this kernel
-  uint 		conts = 0;						///< Per thread count of candidates found
 
 #ifdef WITH_SAS_COUNT	// Zero SM  .
+  uint 		conts = 0;						///< Per thread count of candidates found
   __shared__ uint  cnt;							///< Block count of candidates
   if ( (tidx == 0) && d_counts )
   {
@@ -55,7 +55,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
   if ( sid < len )
   {
-    FOLD  // Set the local and return candidate powers to zero  .
+    FOLD // Set the local and return candidate powers to zero  .
     {
       for ( int stage = 0; stage < noStages; stage++ )
       {
@@ -178,7 +178,10 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 	{
 	  // Write to DRAM
 	  d_cands[stage*gridDim.y*oStride + blockIdx.y*oStride + sid] = candLists[stage];
+
+#ifdef WITH_SAS_COUNT	// Counts using SM  .
 	  conts++;
+#endif
 	}
       }
     }

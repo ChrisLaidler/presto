@@ -39,14 +39,6 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, int oSt
 
   if ( tid < width )
   {
-    T* array[MAX_HARM_NO];					///< A pointer array
-
-    // Set the values of the pointer array
-    for ( int i = 0; i < noHarms; i++)
-    {
-      array[i] = (T*)powersArr[i];
-    }
-
     FOLD  // Set the local and return candidate powers to zero
     {
       int xStride = noSteps*oStride ;
@@ -60,18 +52,26 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, int oSt
       }
     }
 
+    T* array[MAX_HARM_NO];					///< A pointer array
+
+    // Set the values of the pointer array
+    for ( int harm = 0; harm < noHarms; harm++)
+    {
+      array[harm] = (T*)powersArr[harm] + PSTART_STAGE[harm] + tid ;
+    }
+
     for ( int harm = 0; harm < noHarms ; harm++)		// Loop over planes
     {
-      int maxW      = ceilf(width * FRAC_STAGE[harm]);
-      int stride    = STRIDE_STAGE[harm];
+      const int maxW	= ceilf(width * FRAC_STAGE[harm]);
+      const int stride	= STRIDE_STAGE[harm];
 
       if ( tid < maxW )
       {
-	uint nHeight  = HEIGHT_STAGE[harm] * noSteps;
-	float tSum    = 0;
-	int   lDepth    = ceilf(nHeight/(float)gridDim.y);
-	int   y0        = lDepth*blockIdx.y;
-	int   y1        = MIN(y0+lDepth, nHeight);
+	uint nHeight	= HEIGHT_STAGE[harm] * noSteps;
+	float tSum	= 0;
+	int   lDepth	= ceilf(nHeight/(float)gridDim.y);
+	int   y0	= lDepth*blockIdx.y;
+	int   y1	= MIN(y0+lDepth, nHeight);
 
 	for ( int y = y0; y < y1; y++ )
 	{
@@ -79,7 +79,7 @@ __global__ void add_and_searchCU00_k(const uint width, candPZs* d_cands, int oSt
 
 	  FOLD // Read  .
 	  {
-	    tSum += getPower(array[harm], tid + idx );
+	    tSum += getPowerAsFloat(array[harm], idx );
 	  }
 	}
 

@@ -71,12 +71,14 @@ __device__ __constant__ int       ALEN;                               ///< CUDA 
 //====================================== Constant variables  ===============================================\\
 
 __device__ const float FRAC_STAGE[16]     =  { 1.0000f, 0.5000f, 0.7500f, 0.2500f, 0.8750f, 0.6250f, 0.3750f, 0.1250f, 0.9375f, 0.8125f, 0.6875f, 0.5625f, 0.4375f, 0.3125f, 0.1875f, 0.0625f } ;
+__device__ const float STP_STAGE[16]      =  { 32, 16, 24, 8, 28, 20, 12, 4, 30, 26, 22, 18, 14, 10, 6, 2 } ;
 
 //__device__ const float FRAC_STAGE[16]     =  { 1.0000f, 0.5000f, 0.2500f, 0.7500f, 0.1250f, 0.3750f, 0.6250f, 0.8750f, 0.0625f, 0.1875f, 0.3125f, 0.4375f, 0.5625f, 0.6875f, 0.8125f, 0.9375f } ;
 
 __device__ const float FRAC_HARM[16]      =  { 1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f } ;
 __device__ const short STAGE[5][2]        =  { {0,0}, {1,1}, {2,3}, {4,7}, {8,15} } ;
-__device__ const short CHUNKSZE[5]        =  { 4, 8, 8, 8, 8 } ;
+__device__ const short NO_HARMS[5]        =  { 1, 1, 2, 4, 8 } ;
+
 
 //======================================= Global variables  ================================================\\
 
@@ -119,12 +121,12 @@ __device__ inline int getY(int planeY, const int noSteps,  const int step, const
   return planeY * noSteps + step;
 }
 
-template<int64_t FLAGS>
-__device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t tex, fcomplexcu* base, const int stride)
-{
-  const fcomplexcu cmpc  = base[iy*stride+ix];
-  return (cmpc.r * cmpc.r + cmpc.i * cmpc.i);
-}
+//template<int64_t FLAGS>
+//__device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t tex, fcomplexcu* base, const int stride)
+//{
+//  const fcomplexcu cmpc  = base[iy*stride+ix];
+//  return (cmpc.r * cmpc.r + cmpc.i * cmpc.i);
+//}
 
 /** Main loop down call
  *

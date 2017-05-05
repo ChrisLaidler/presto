@@ -61,7 +61,7 @@
  *
  *  [0.0.03] [2017-03-09]
  *     Added slicing exit for testing
- *     
+ *
  *  [0.0.03] [2017-03-25]
  *  Improved multiplication chunk handling
  *  Added temporary output of chunks and step size
@@ -1184,7 +1184,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	char typeS[1024];
 	sprintf(typeS, "Doing");
-	
+
 	if ( kernel->flags & FLAG_SS_INMEM )
 	{
 	  sprintf(typeS, "%s a in-memory search", typeS);
@@ -1232,7 +1232,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       memset(kernel->hInfos,  0, kernel->noSrchHarms * sizeof(cuHarmInfo));
       memset(kernel->kernels, 0, kernel->noGenHarms  * sizeof(cuKernel));
     }
-    
+
     if ( master == NULL ) 	// Calculate details for the batch  .
     {
       FOLD // Determine step size  .
@@ -1651,9 +1651,9 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  float contamination = (cStack->harmInf->halfWidth*2*cuSrch->sSpec->noResPerBin)/(float)cStack->harmInf->width*100 ;
 	  float padding       = (1-(kernel->accelLen*cStack->harmInf->harmFrac + cStack->harmInf->halfWidth*2*cuSrch->sSpec->noResPerBin ) / (float)cStack->harmInf->width)*100.0 ;
 
-	  printf("  ■ Stack %i has %02i f-∂f plane(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i+1, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0);
+	  printf("  ■ Stack %i has %02i f-∂f plane(s). width: %5li  stride: %5li  Height: %6li  Memory size: %7.1f MB \n", i+1, cStack->noInStack, cStack->width, cStack->strideCmplx, cStack->height, cStack->height*cStack->strideCmplx*sizeof(fcomplex)*1e-6);
 
-	  printf("    ► Created kernel %i  Size: %7.1f MB  Height %4lu   Contamination: %5.2f %%  Padding: %5.2f %%\n", i+1, cStack->harmInf->noZ*cStack->strideCmplx*sizeof(fcomplex)/1024.0/1024.0, cStack->harmInf->noZ, contamination, padding);
+	  printf("    ► Created kernel %i  Size: %7.1f MB  Height %4lu   Contamination: %5.2f %%  Padding: %5.2f %%\n", i+1, cStack->harmInf->noZ*cStack->strideCmplx*sizeof(fcomplex)*1e-6, cStack->harmInf->noZ, contamination, padding);
 
 	  for (int j = 0; j < cStack->noInStack; j++)
 	  {
@@ -2047,7 +2047,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     FOLD // Calculate batch size and number of steps and batches on this device  .
     {
       infoMSG(4,4,"No Steps and batches.\n");
-      
+
       PROF // Profiling  .
       {
 	NV_RANGE_PUSH("Calc steps");
@@ -2091,7 +2091,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	  bool	trySomething = 0;
 	  int	targetSteps = 0;
 	  int	noSteps;
-	  
+
 	  // Reset # steps and batches, steps at least was changed previously
 	  noBatches		= cuSrch->gSpec->noDevBatches[devID];
 	  noSteps		= cuSrch->gSpec->noDevSteps[devID];
@@ -3005,7 +3005,7 @@ void setBatchPointers(cuFFdotBatch* batch)
 }
 
 /**
- * 
+ *
  * @param batch
  */
 void setKernelPointers(cuFFdotBatch* batch)

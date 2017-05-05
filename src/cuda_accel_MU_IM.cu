@@ -44,7 +44,7 @@ __global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  s
 	{
 	  int gy = iy + by;
 
-	  buff[by]          = getPower(src, gy*spitch + ix);
+	  buff[by]          = getPowerAsFloat(src, gy*spitch + ix);
 	}
 
 	for ( int by = 0 ; by < buffLen; by++)
@@ -64,7 +64,7 @@ __global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  s
 
 	if ( gy < height)
 	{
-	  buff[by]          = getPower(src, gy*spitch + ix);
+	  buff[by]          = getPowerAsFloat(src, gy*spitch + ix);
 	}
       }
 
