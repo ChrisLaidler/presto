@@ -130,6 +130,10 @@ extern "C"
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
+#define			MIN_SAS_COLUMN	1		///< Not in use yet - min columns for sas kernels
+#define			MAX_SAS_COLUMN	32		///< Not in use yet - max columns for sas kernels
+
+
 #define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - DEBUG ONLY: Memory reads and writes only - sliced
 
 #define			WITH_SAS_31			///< Compile with main SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
@@ -763,6 +767,8 @@ typedef struct searchSpecs
     int                 ssChunk;                        ///< The multiplication chunk size
     int                 mulChunk;                       ///< The Sum and search chunk size
 
+    int			ssColumn;			///< The number of sum and search columns
+
     int                 retType;                        ///< The type of output
     int                 cndType;                        ///< The type of output
 
@@ -840,7 +846,8 @@ typedef struct cuFFdotBatch
     // Batch specific search parameters
     int             	mulSlices;		///< The number of slices to do multiplication with
     int             	ssSlices;		///< The number of slices to do sum and search with
-    int             	ssChunk;		///< The multiplication chunk size
+    int             	ssChunk;		///< The Sum and search chunk size
+    int             	ssColumn;		///< The Sum and search number of columns
     int             	mulChunk;		///< The Sum and search chunk size
 
     // Batch independent search parameters

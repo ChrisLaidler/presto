@@ -1985,6 +1985,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  kernel->ssChunk		= cuSrch->sSpec->ssChunk;
 	  kernel->ssSlices		= cuSrch->sSpec->ssSlices;
+	  kernel->ssColumn		= cuSrch->sSpec->ssColumn;
 
 	  if ( kernel->ssSlices <= 0 )
 	  {
@@ -3411,6 +3412,12 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	}
       }
 
+      if ( batch->ssColumn <= 0 )
+      {
+	// TODO: Profile this
+	batch->ssColumn = 8;
+      }
+
       FOLD // Clamps
       {
 	// Clamp S&S chunks to slice height
@@ -3419,6 +3426,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	// Clamp S&S chunks to valid bounds
 	MINN(batch->ssChunk, MAX_SAS_CHUNK);
 	MAXX(batch->ssChunk, MIN_SAS_CHUNK);
+
+	MINN(batch->ssColumn, MAX_SAS_COLUMN);
+	MAXX(batch->ssColumn, MIN_SAS_COLUMN);
 
 //	FOLD  // TMP REM - Added to mark an error for thesis timing
 //	{
@@ -3435,6 +3445,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	printf("ssSlices %i \n", batch->ssSlices );
 	printf("ssChunk  %i \n", batch->ssChunk  );
+	printf("ssColumn %i \n", batch->ssColumn  );
+
 
 #ifdef WITH_SAS_COUNT
 	if( kernel->flags & FLAG_SS_COUNT)
@@ -5633,6 +5645,47 @@ void readAccelDefalts(searchSpecs *sSpec)
 	  }
 	}
       }
+
+      else if ( strCom("SS_COLUMN", str1 ) )
+      {
+	if ( strCom(str2, "A"   ) )
+	{
+	  sSpec->ssColumn = 0;
+	}
+	else
+	{
+	  int no;
+	  int read1 = sscanf(str2, "%i", &no  );
+	  if ( read1 == 1 )
+	  {
+	    if ( no <= 0 )		// Auto
+	    {
+	      sSpec->ssColumn = 0;
+	    }
+	    else if ( (no >= MIN_SAS_COLUMN) and (no <= MAX_SAS_COLUMN) )
+	    {
+	      sSpec->ssColumn = no;
+	    }
+	    else
+	    {
+	      fprintf(stderr, "WARNING: Sum & search column size not in compiled bounds (%i - %i). Line %i of %s.\n", MIN_SAS_COLUMN, MAX_SAS_COLUMN, lineno, fName);
+	      sSpec->ssColumn = 0;
+
+	      FOLD  // TMP REM - Added to mark an error for thesis timing
+	      {
+		printf("Temporary exit - ssColumn \n");
+		exit(EXIT_FAILURE);
+	      }
+	    }
+	  }
+	  else
+	  {
+	    line[flagLen] = 0;
+	    fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	  }
+	}
+      }
+
 
       else if ( strCom("SS_INMEM_SZ", str1 ) )
       {

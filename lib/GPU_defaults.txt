@@ -257,6 +257,9 @@ SS_SLICES		0
 SS_CHUNK		0
 
 
+SS_COLUMN		8
+
+
 # The step size of the in-mem search, this can be any value good choices are powers of two: 2048 or 4096 or 8192 or 16384 or 32768 or 65536 or 131072
 # SS_INMEM_SZ:
 # D	0       		# Let the application decide
