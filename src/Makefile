@@ -29,7 +29,7 @@ ARCH_FLAGS =
 BINPATH    = $(PRESTO)/bin
 LIBPATH    = $(PRESTO)/lib
 
-PRESTOOBJS_BASE = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
+PRESTOOBJS_BASE = accel_utils.o amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 	characteristics.o cldj.o chkio.o corr_prep.o corr_routines.o\
 	correlations.o database.o dcdflib.o dispersion.o\
 	fastffts.o fftcalls.o fminbr.o fold.o fresnl.o ioinf.o\
@@ -104,7 +104,7 @@ CFITSIOINC  := $(shell pkg-config --cflags cfitsio)
 CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
-PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(FFTLINK)
+PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(GLIBLINK) $(FFTLINK)
 CUACCELLINK = ""
 
 CC 	= gcc
