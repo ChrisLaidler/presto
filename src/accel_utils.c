@@ -613,15 +613,19 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
   int *r_offset;
   fcomplex **data;
   double r, z;
+  double *norm;
 
   //printf("\n%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sigma: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
   cand->pows   = gen_dvect(cand->numharm);
   cand->hirs   = gen_dvect(cand->numharm);
   cand->hizs   = gen_dvect(cand->numharm);
+  norm	       = gen_dvect(cand->numharm);
+
   r_offset     = (int*) malloc(sizeof(int)*cand->numharm);
   data         = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
   cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
+
 
   if (obs->use_harmonic_polishing)
   {
@@ -631,6 +635,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
       {
         r_offset[ii]   = obs->lobin;
         data[ii]       = obs->fft;
+        norm[ii]	= 0;
       }
       max_rz_arr_harmonics(data,
           cand->numharm,
@@ -641,7 +646,8 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
           &r,
           &z,
           cand->derivs,
-          cand->pows);
+          cand->pows,
+          norm);
     }
     else
     {

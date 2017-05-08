@@ -195,7 +195,7 @@ void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int nu
 
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
-void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[])
+void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[], double norm[])
 {
    double y[3], x[3][2], step = 0.4;
    float *locpow;
@@ -210,8 +210,11 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
    //FIXME: z needs to be multiplied by i everywhere
    for (i=1;i<=num_harmonics;i++) {
+     if ( norm[i-1] <= 0 )
        locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
-       maxlocpow[i-1]=locpow[i-1];
+     else
+       locpow[i-1] = norm[i-1];
+     maxlocpow[i-1]=locpow[i-1];
    }
    nummaxdata = numdata;
    max_num_harmonics = num_harmonics;
@@ -302,6 +305,8 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
   int* r_offset;
   fcomplex** filedata;
 
+  double norm[16];
+
   r_offset = (int*)malloc(sizeof(int)*num_harmonics);
   filedata = (fcomplex**)malloc(sizeof(fcomplex*)*num_harmonics);
   maxz = fabs(zin*num_harmonics) + 4.0;
@@ -312,13 +317,14 @@ void max_rz_file_harmonics(FILE * fftfile, int num_harmonics,
     rin_frac = modf(rin*i, &rin_int);
     r_offset[i-1] = (int) rin_int - filedatalen / 2 + lobin;
     filedata[i-1] = read_fcomplex_file(fftfile, r_offset[i-1], filedatalen);
+    norm[i] =0;
   }
   rin_frac = modf(rin, &rin_int);
   max_rz_arr_harmonics(filedata, num_harmonics,
       r_offset,
       filedatalen, rin_frac + filedatalen / 2,
       zin, rout, zout, derivs,
-      maxpow);
+      maxpow, &norm);
 
   *rout += r_offset[0];
   for (i=1;i<=num_harmonics;i++) {
