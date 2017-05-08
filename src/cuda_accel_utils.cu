@@ -6949,7 +6949,7 @@ void accelMax(cuSearch* srch)
   cuFFdotBatch* master   = NULL;    // The first kernel stack created
   master = srch->pInf->kernels;
 
-#ifdef WITHOMP
+#ifdef	WITHOMP
   omp_set_num_threads(srch->pInf->noBatches);
 #endif	// WITHOMP
 

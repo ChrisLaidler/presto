@@ -421,8 +421,8 @@ void calcNQ(double qOrr, long long n, double* p, double* q)
       pp  += term;
       dff  = fabs(sum0-qq);
 
-      //      if ( trueV > 0.5 )
-      //printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
+//      if ( trueV > 0.5 )
+//	printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
     }
     while ( dff > 0 && k < n && k <= 20 );
 

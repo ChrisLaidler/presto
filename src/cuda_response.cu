@@ -785,25 +785,25 @@ __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBi
   *real = (T)0.0;
   *imag = (T)0.0;
 
-  dataT   inp;                                                  // The input data, this is a complex number stored as, float2 or double2
-  double  fracfreq;                                             // Fractional part of r   - double precision
-  double  dintfreq;                                             // Integer part of r      - double precision
-  long    location;                                             // The first bin to use
-  T       offset;                                               // The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-  T       resReal       = 0;                                    // Response value - real
-  T       resImag       = 0;                                    // Response value - imaginary
+  dataT   inp; 							// The input data, this is a complex number stored as, float2 or double2
+  double  fracfreq;						// Fractional part of r   - double precision
+  double  dintfreq;						// Integer part of r      - double precision
+  long    location;						// The first bin to use
+  T       offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+  T       resReal       = 0;					// Response value - real
+  T       resImag       = 0;					// Response value - imaginary
 
-  FOLD                                                          // Calculate the reference bin (closes integer bin to r)  .
+  FOLD								// Calculate the reference bin (closes integer bin to r)  .
   {
-    fracfreq	= modf_t(r, &dintfreq);                         // This is always double precision because - r needs to be r
+    fracfreq	= modf_t(r, &dintfreq);				// This is always double precision because - r needs to be r
     location	= dintfreq + 1 - kern_half_width + i ;
     offset 	= (r - location);				// This is rc-k for the first bin
   }
 
-  FOLD                                                          // Adjust for FFT
+  FOLD								// Adjust for FFT
   {
     // Adjust to FFT
-    location -= loR;                                             // Adjust for accessing the input FFT
+    location -= loR;						// Adjust for accessing the input FFT
 
     if ( location < 0 )
       return;
@@ -811,7 +811,7 @@ __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBi
       return;
   }
 
-  if ( z < getFIlim(resReal) && z > -getFIlim(resReal) )        // Do a Fourier interpolation  .
+  if ( z < getFIlim(resReal) && z > -getFIlim(resReal) )	// Do a Fourier interpolation  .
   {
     T dist = offset;
 
@@ -819,7 +819,7 @@ __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBi
     T sinsinPI, sincosPI;
 
     // Do all the trig calculations for the constants, can drop PI*dintfreq (signs work out)
-    sincos_t((T)PI*fracfreq, &sin, &cos);                       // Highest precision using (T)PI*fracfreq
+    sincos_t((T)PI*fracfreq, &sin, &cos);			// Highest precision using (T)PI*fracfreq
     sinsinPI = sin * sin / (T)PI;
     sincosPI = sin * cos / (T)PI;
 
@@ -829,18 +829,18 @@ __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBi
       inp     = inputData[location];
     }
 
-    FOLD                                                      // Calculate response  .
+    FOLD							// Calculate response  .
     {
       calc_r_response<T>(dist, sinsinPI,  sincosPI, &resReal, &resImag);
     }
 
-    FOLD                                                      //  Do the multiplication and sum  accumulate  .
+    FOLD							//  Do the multiplication and sum  accumulate  .
     {
       *real += (resReal * inp.x - resImag * inp.y);
       *imag += (resReal * inp.y + resImag * inp.x);
     }
   }
-  else                                                          // Use a correlation kernel  .
+  else								// Use a correlation kernel  .
   {
     // Calculate all the constants
     int signZ       = (z < (T)0.0) ? -1 : 1;
@@ -849,19 +849,19 @@ __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBi
     T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
     T PIoverZ       = (T)PI / z;
     T overSq2AbsZ   = (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
-    T Qk            = offset - z / (T)2.0;                      // Adjust for acceleration
+    T Qk            = offset - z / (T)2.0;			// Adjust for acceleration
 
-    FOLD                                                      //  Read the input value  .
+    FOLD							//  Read the input value  .
     {
       inp     = inputData[location];
     }
 
-    FOLD                                                      // Calculate response  .
+    FOLD							// Calculate response  .
     {
       calc_z_response<T>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal, &resImag);
     }
 
-    FOLD                                                      //  Do the multiplication and sum  accumulate  .
+    FOLD							//  Do the multiplication and sum  accumulate  .
     {
       *real += (resReal * inp.x - resImag * inp.y);
       *imag += (resReal * inp.y + resImag * inp.x);

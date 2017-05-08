@@ -21,7 +21,7 @@
  *     Added preprocessor directives for steps and chunks
  *
  *  [2017-05-05]
- *	General kernel optimisations with some focus on reducing register use
+ *	General kernel optimisation's with some focus on reducing register use
  *	Added shfl instructions making this dependent on Kepler microarchitecture
  *
  */

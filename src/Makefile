@@ -320,12 +320,12 @@ ifeq ($(WITH_CUDA),yes)
 
   GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/getAccelLen$(POSTFIX) # $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
-	# Check for CUDA 6.5 for CUFFT callbacks
-	ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
-  	CUDALIBS  	+= -lcufft_static -lculibos
-	else
-	  CUDALIBS		+= -lcufft
-	endif
+  # Check for CUDA 6.5 for CUFFT callbacks
+  ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
+    CUDALIBS  	+= -lcufft_static -lculibos
+  else
+   CUDALIBS	+= -lcufft
+  endif
 
 else
   NVCC        = $(CPP)
