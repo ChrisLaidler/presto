@@ -373,24 +373,24 @@ __global__ void ffdotPln_ker2(float2* powers, float2* fft, int noHarms, int half
     T real = 0;
     T imag = 0;
 
-    //    FOLD
-    //    {
-    //      FOLD // Determine half width
-    //      {
-    //        if ( hw.val[hrm] )
-    //          halfW = hw.val[hrm];
-    //        else
-    //          halfW = cu_z_resp_halfwidth_high<float>(z*(hrm+1));
-    //      }
-    //
-    //      if (off < halfW*2 )
-    //      {
-    //        rz_single_mult_cu<T, float2>(&fft[iStride*hrm], loR.val[hrm], iStride, r*(hrm+1), z*(hrm+1), halfW, &real, &imag, off);
-    //
-    //        atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms+hrm].x), (float)(real));
-    //        atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms+hrm].y), (float)(imag));
-    //      }
-    //    }
+//    FOLD
+//    {
+//      FOLD // Determine half width
+//      {
+//        if ( hw.val[hrm] )
+//          halfW = hw.val[hrm];
+//        else
+//          halfW = cu_z_resp_halfwidth_high<float>(z*(hrm+1));
+//      }
+//
+//      if (off < halfW*2 )
+//      {
+//        rz_single_mult_cu<T, float2>(&fft[iStride*hrm], loR.val[hrm], iStride, r*(hrm+1), z*(hrm+1), halfW, &real, &imag, off);
+//
+//        atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms+hrm].x), (float)(real));
+//        atomicAdd(&(powers[iy*oStride*noHarms + ix*noHarms+hrm].y), (float)(imag));
+//      }
+//    }
 
     for( int i = 1; i <= noHarms; i++ )
     {
@@ -893,7 +893,7 @@ int chKpn( cuOptCand* pln, fftInfo* fft )
       int startV = MIN( ((datStart + datEnd - pln->input->stride ) / 2.0), datStart ); //Start value if the data is centred
 
       pln->input->loR[h]     = startV;
-      double factor   = sqrt(pln->input->norm[h]);		// Correctly normalised by the sqrt of the local power
+      double factor   = sqrt(pln->input->norm[h]);		// Correctly normalise input by the sqrt of the local power
 
       for ( int i = 0; i < pln->input->stride; i++ )		// Normalise input  .
       {
@@ -939,13 +939,10 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
   size_t	outSz		= 0;	//
 
-  double maxZ           = (pln->centZ + pln->zSize/2.0);
-  double minR           = (pln->centR - pln->rSize/2.0);
-
   int lftIdx;
   int topZidx;
 
-  infoMSG(4,4,"ff section, Height: %5.4f z - Width: %5.4f r   Centred on (%.6f, %.6f)\n", pln->zSize, pln->rSize, pln->centR, pln->centZ );
+  infoMSG(4,4,"Generating ff section, Centred on (%.6f, %.6f)\n", pln->centR, pln->centZ );
 
   FOLD // Determine optimisation kernels  .
   {
@@ -1028,6 +1025,12 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     pln->outStride    = pln->noR;
   }
 
+  infoMSG(5,5,"Height: %5.4f z - Width: %5.4f \n", pln->zSize, pln->rSize );
+
+  // Calculate bounds on potently newly scaled plane
+  double maxZ           = (pln->centZ + pln->zSize/2.0);
+  double minR           = (pln->centR - pln->rSize/2.0);
+
   // Check input
   int newInp = chKpn( pln, fft );
 
@@ -1052,11 +1055,16 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
   // Halfwidth stuff
   if ( (sSpec->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
   {
+    infoMSG(5,5,"Using dynamic half Width");
     for( int h = 0; h < pln->noHarms; h++)
     {
       hw.val[h] = 0;
     }
     maxHW = pln->halfWidth;
+  }
+  else
+  {
+    infoMSG(5,5,"Using constant half Width of %i", maxHW);
   }
 
   FOLD // Check output size  .
@@ -1064,7 +1072,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
     // One float per point
     outSz = pln->outStride*pln->noZ*sizeof(float) ;
     if ( optKer & ( OPT_KER_PLN_BLK_EXP | OPT_KER_PLN_PTS_EXP ) )
-      outSz = pln->outStride*pln->noZ*pln->noHarms*sizeof(fcomplex);
+      outSz = pln->outStride*pln->noZ*pln->noHarms*sizeof(fcomplex);	// One point per harmonic
 
     if ( outSz > pln->outSz )
     {
@@ -1230,6 +1238,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 
       if ( optKer & OPT_KER_PLN_BLK_3 )
       {
+#ifdef WITH_OPT_BLK3
 	infoMSG(5,5,"Block kernel 3");
 
 	dimBlock.x = 16;
@@ -1285,6 +1294,10 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 	}
 
 	CUDA_SAFE_CALL(cudaEventRecord(pln->tComp2, pln->stream),"Recording event: tComp1");
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK3.\n");
+	exit(EXIT_FAILURE);
+#endif
       }
     }
     else                  // Use normal kernel
@@ -1394,7 +1407,7 @@ int ffdotPln( cuOptCand* pln, fftInfo* fft )
 #endif
       }
 
-      if ( optKer & OPT_KER_PLN_PTS_3   ) // Thread response pos  .
+      if ( optKer & OPT_KER_PLN_PTS_3   ) // Thread point of harmonic  .
       {
 #ifdef WITH_OPT_PLN3
 	infoMSG(5,5,"Grid kernel 3");
@@ -1960,7 +1973,7 @@ T pow(initCand* cand, cuHarmInput* inp)
 
   for( int i = 1; i <= cand->numharm; i++ )
   {
-    // Determine half width
+    // Determine half width - high precision
     halfW = cu_z_resp_halfwidth_high<float>(z*i);
 
     rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(i-1)*inp->stride], inp->loR[i-1], inp->stride, r*i, z*i, halfW, &real, &imag);
@@ -2017,6 +2030,7 @@ int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, doub
   cnds[2] = *cand;
 
   pow<T>(&cnds[0], inp);
+  double inpPow = cnds[0].power;
 
   cnds[1].r += rSize;
   pow<T>(&cnds[1], inp);
@@ -2128,11 +2142,14 @@ int optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, doub
     }
   }
 
+  double dist = sqrt( (cand->r-olst[NM_BEST]->r)*(cand->r-olst[NM_BEST]->r) + (cand->z-olst[NM_BEST]->z)*(cand->z-olst[NM_BEST]->z) );
+  double powInc  = olst[NM_BEST]->power - inpPow;
+
   cand->r = olst[NM_BEST]->r;
   cand->z = olst[NM_BEST]->z;
   cand->power = olst[NM_BEST]->power;
 
-  infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) after %3i iterations.", cand->power, cand->r, cand->z, ite);
+  infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) %3i iterations moved %9.7f  power inc: %9.7f", cand->power, cand->r, cand->z, ite, dist, powInc);
 
   return 1;
 }
@@ -2169,91 +2186,34 @@ cuHarmInput* duplicateHost(cuHarmInput* orr)
   }
 }
 
-/** Optimise derivatives of a candidate this is usually run in a separate CPU thread  .
- *
- * This function is meant to be the entry of a separate thread
+/** Optimise derivatives of a candidate  .
  *
  */
-void* optCandDerivs(void* ptr)
+void* optCandDerivs(accelcand* cand, cuSearch* srch )
 {
-  candSrch*	res	= (candSrch*)ptr;
-  cuSearch*	srch	= res->cuSrch;
-
   int ii;
   struct timeval start, end;    // Profiling variables
 
-  accelcand*    cand  = res->cand;
   searchSpecs*  sSpec = srch->sSpec;
   fftInfo*      fft   = &sSpec->fftInf;
-
-  if ( srch->sSpec->flags & FLAG_OPT_NM_REFINE )
-  {
-    PROF // Profiling  .
-    {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
-      {
-	NV_RANGE_PUSH("NM_REFINE");
-      }
-
-      if ( srch->sSpec->flags & FLAG_PROF )
-      {
-        gettimeofday(&start, NULL);
-      }
-    }
-
-    initCand iCand;
-    iCand.numharm = cand->numharm;
-    iCand.power = cand->power;
-    iCand.r	= cand->r;
-    iCand.z	= cand->z;
-
-    // Run the NM
-    optInitCandPosSim<double>(&iCand,  res->input, 0.0005, 0.0005*srch->sSpec->optPlnScale);
-
-    cand->r	= iCand.r;
-    cand->z	= iCand.z;
-    cand->power	= iCand.power;
-
-    freeHarmInput(res->input);
-    res->input = NULL;
-
-    PROF // Profiling  .
-    {
-      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
-      {
-	NV_RANGE_POP(); // NM_REFINE
-      }
-
-      if ( srch->sSpec->flags & FLAG_PROF )
-      {
-	gettimeofday(&end, NULL);
-        float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
-
-        // Thread (pthread) safe add to timing value
-        pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
-        srch->timings[COMP_OPT_REFINE_2] += v1;
-        pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
-      }
-    }
-  }
 
   FOLD // Update fundamental values to the optimised ones  .
   {
     infoMSG(5,5,"DERIVS\n");
 
-    float   	maxSig		= 0;
-    int     	bestH		= 0;
-    float   	bestP		= 0;
+    float	maxSig		= 0;
+    int		bestH		= 0;
+    float	bestP		= 0;
     double  	sig		= 0; // can be a float
-    int     	numindep;
-    float   	candHPower	= 0;
-    int     	noStages	= 0;
+    long long	numindep;
+    float	candHPower	= 0;
+    int		noStages	= 0;
     int 	kern_half_width;
-    double 	locpow;
-    double 	real;
-    double 	imag;
-    double 	power;
-    int 	maxHarms  	= MAX(cand->numharm, sSpec->optMinRepHarms) ;
+    double	locpow;
+    double	real;
+    double	imag;
+    double	power;
+    int		maxHarms  	= MAX(cand->numharm, sSpec->optMinRepHarms) ;
 
     PROF // Profiling  .
     {
@@ -2305,7 +2265,7 @@ void* optCandDerivs(void* ptr)
 
 	cand->pows[ii-1] = power;
 
-	get_derivs3d(fft->fft, fft->noBins, cand->r*ii, cand->z*ii, 0.0, locpow, &res->cand->derivs[ii-1] );
+	get_derivs3d(fft->fft, fft->noBins, cand->r*ii, cand->z*ii, 0.0, locpow, &cand->derivs[ii-1] );
 
 	cand->power	+= power;
 	numindep	= (sSpec->fftInf.rhi - sSpec->fftInf.rlo ) * (sSpec->zMax+1) * (sSpec->zRes / 6.95) / (double)(ii) ;
@@ -2365,12 +2325,85 @@ void* optCandDerivs(void* ptr)
         float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
 
         // Thread (pthread) safe add to timing value
-        pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
+        pthread_mutex_lock(&srch->threasdInfo->candAdd_mutex);
         srch->timings[COMP_OPT_DERIVS] += v1;
+        pthread_mutex_unlock(&srch->threasdInfo->candAdd_mutex);
+      }
+    }
+  }
+
+  return (NULL);
+}
+
+/** CPU process results
+ *
+ * This function is meant to be the entry of a separate thread
+ *
+ */
+void* cpuProcess(void* ptr)
+{
+  candSrch*	res	= (candSrch*)ptr;
+  cuSearch*	srch	= res->cuSrch;
+
+  //int ii;
+  struct timeval start, end;    // Profiling variables
+
+  accelcand*    cand  = res->cand;
+  searchSpecs*  sSpec = srch->sSpec;
+  //fftInfo*      fft   = &sSpec->fftInf;
+
+  if ( srch->sSpec->flags & FLAG_OPT_NM_REFINE )
+  {
+    PROF // Profiling  .
+    {
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
+      {
+	NV_RANGE_PUSH("NM_REFINE");
+      }
+
+      if ( srch->sSpec->flags & FLAG_PROF )
+      {
+        gettimeofday(&start, NULL);
+      }
+    }
+
+    initCand iCand;
+    iCand.numharm = cand->numharm;
+    iCand.power = cand->power;
+    iCand.r	= cand->r;
+    iCand.z	= cand->z;
+
+    // Run the NM
+    optInitCandPosSim<double>(&iCand,  res->input, 0.0005, 0.0005*srch->sSpec->optPlnScale);
+
+    cand->r	= iCand.r;
+    cand->z	= iCand.z;
+    cand->power	= iCand.power;
+
+    freeHarmInput(res->input);
+    res->input = NULL;
+
+    PROF // Profiling  .
+    {
+      if ( !(!(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD)) )
+      {
+	NV_RANGE_POP(); // NM_REFINE
+      }
+
+      if ( srch->sSpec->flags & FLAG_PROF )
+      {
+	gettimeofday(&end, NULL);
+        float v1 =  (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+
+        // Thread (pthread) safe add to timing value
+        pthread_mutex_lock(&res->cuSrch->threasdInfo->candAdd_mutex);
+        srch->timings[COMP_OPT_REFINE_2] += v1;
         pthread_mutex_unlock(&res->cuSrch->threasdInfo->candAdd_mutex);
       }
     }
   }
+
+  optCandDerivs(cand, srch);
 
   // Decrease the count number of running threads
   sem_trywait(&srch->threasdInfo->running_threads);
@@ -2410,7 +2443,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
   if ( !(srch->sSpec->flags & FLAG_SYNCH) && (srch->sSpec->flags & FLAG_OPT_THREAD) )  // Create thread  .
   {
     pthread_t thread;
-    int  iret1 = pthread_create( &thread, NULL, optCandDerivs, (void*) thrdDat);
+    int  iret1 = pthread_create( &thread, NULL, cpuProcess, (void*) thrdDat);
 
     if (iret1)	// Check return status
     {
@@ -2420,7 +2453,7 @@ void processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL,
   }
   else                              // Just call the function  .
   {
-    optCandDerivs( (void*) thrdDat );
+    cpuProcess( (void*) thrdDat );
   }
 
   PROF // Profiling  .
@@ -2687,7 +2720,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 #endif
   FOLD  	// Main GPU loop  .
   {
-    accelcand *candGPUP;
+    accelcand *candGPU;
 
     int tid         = omp_get_thread_num();
     int ti          = 0; // tread specific index
@@ -2702,7 +2735,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     while (listptr)  // Main Loop  .
     {
 #pragma omp critical
-
       FOLD  // Synchronous behaviour  .
       {
 #ifndef  DEBUG
@@ -2718,33 +2750,34 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	{
 	  if ( listptr )
 	  {
-	    candGPUP  = (accelcand *) (listptr->data);
-	    listptr   = listptr->next;
+	    candGPU	= (accelcand *) (listptr->data);
+	    listptr	= listptr->next;
 	    ii++;
 	    ti = ii;
 #ifdef CBL
 	    FOLD // TMP: This can get removed
 	    {
-	      candGPUP->init_power    = candGPUP->power;
-	      candGPUP->init_sigma    = candGPUP->sigma;
-	      candGPUP->init_numharm  = candGPUP->numharm;
-	      candGPUP->init_r        = candGPUP->r;
-	      candGPUP->init_z        = candGPUP->z;
+	      candGPU->init_power    = candGPU->power;
+	      candGPU->init_sigma    = candGPU->sigma;
+	      candGPU->init_numharm  = candGPU->numharm;
+	      candGPU->init_r        = candGPU->r;
+	      candGPU->init_z        = candGPU->z;
 	    }
 #endif
 	  }
 	  else
 	  {
-	    candGPUP = NULL;
+	    candGPU = NULL;
 	  }
 	}
       }
 
-      if ( candGPUP ) // Optimise  .
+      if ( candGPU ) // Optimise  .
       {
-	infoMSG(2,2,"\nOptimising initial candidate %i/%i, Power: %.3f  Sigma %.2f  Harm %i at (%.3f %.3f)\n", ti, numcands, candGPUP->power, candGPUP->sigma, candGPUP->numharm, candGPUP->r, candGPUP->z );
+	infoMSG(2,2,"\nOptimising initial candidate %i/%i, Power: %.3f  Sigma %.2f  Harm %i at (%.3f %.3f)\n", ti, numcands, candGPU->power, candGPU->sigma, candGPU->numharm, candGPU->r, candGPU->z );
 
-	opt_accelcand(candGPUP, oPlnPln, ti);
+	opt_accelcand(candGPU, oPlnPln, ti);
+
 
 #pragma omp atomic
 	comp++;

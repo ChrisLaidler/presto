@@ -509,7 +509,6 @@ __host__ __device__ void rz_response_cu(double r, T z, int kern_half_width, outT
   }
 }
 
-
 /** calculate a single point in the f-fdot plain from FFT values
  *
  * This calculation is done by direct application of a convolution
@@ -916,7 +915,7 @@ __host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inS
     offset = ( r - start);					// This is rc-k for the first bin
   }
 
-  FOLD 								// Adjust for FFT
+  FOLD 								// Adjust for FFT  .
   {
     // Adjust to FFT
     start -= loR;						// Adjust for accessing the input FFT

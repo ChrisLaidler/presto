@@ -145,7 +145,7 @@ __host__ __device__ double incdf (double p, double q )
   else
   {
     if ( p == 0 )
-      return 0;
+      return NAN;	// I found sigma bottoms out at ~ -35 0 NAN marks an error
 
     if ( 0.02425 > p )
     {
