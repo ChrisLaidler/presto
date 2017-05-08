@@ -2707,7 +2707,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
   int ii	= 0;
   int comp	= 0;
 
-#ifndef DEBUG   // Parallel if we are not in debug mode  .
+#if	!defined(DEBUG) && defined(WITHOMP)   // Parallel if we are not in debug mode  .
   if ( cuSrch->sSpec->flags & FLAG_SYNCH )
   {
     omp_set_num_threads(1);
@@ -2717,13 +2717,16 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     omp_set_num_threads(cuSrch->oInf->noOpts);
   }
 #pragma omp parallel
-#endif
+#endif	// !DEBUG && WITHOMP
   FOLD  	// Main GPU loop  .
   {
     accelcand *candGPU;
 
-    int tid         = omp_get_thread_num();
+    int tid         = 0;
     int ti          = 0; // tread specific index
+#ifdef	WITHOMP
+    omp_get_thread_num();
+#endif;	// WITHOMP
 
     cuOptCand* oPlnPln = &(cuSrch->oInf->opts[tid]);
 

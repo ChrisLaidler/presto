@@ -2705,6 +2705,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       if ( ( kernel->flags & CU_INPT_FFT_CPU ) && master == NULL )
       {
+
+#ifdef USEFFTW
 	PROF // Profiling  .
 	{
 	  NV_RANGE_PUSH("read_wisdom");
@@ -2716,6 +2718,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	{
 	  NV_RANGE_POP(); // read_wisdom
 	}
+#else
+	fprintf(stderr,"ERROR: GPU need fftw");
+	exit(EXIT_FAILURE);
+#endif
+
+
       }
 
       if ( kernel->flags & CU_FFT_SEP_ALL  )
@@ -4834,12 +4842,10 @@ void printContext()
   cuCtxGetCurrent ( &pctx );
   CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
 
-  int trd;
-#ifdef WITHOMP
+  int trd = 0;
+#ifdef	WITHOMP
   trd = omp_get_thread_num();
-#else
-  trd = 0;
-#endif
+#endif	// WITHOMP
 
   printf("Thread %02i  currentDevvice: %i Context %p \n", trd, currentDevvice, pctx);
 }
@@ -6945,7 +6951,7 @@ void accelMax(cuSearch* srch)
 
 #ifdef WITHOMP
   omp_set_num_threads(srch->pInf->noBatches);
-#endif
+#endif	// WITHOMP
 
   int ss = 0;
   int maxxx = ( srch->sSpec->fftInf.rhi - srch->sSpec->fftInf.rlo ) * srch->sSpec->noResPerBin / (float)( master->accelLen ) ; /// The number of planes we can work with
@@ -6960,11 +6966,10 @@ void accelMax(cuSearch* srch)
 #endif
   FOLD
   {
-#ifdef WITHOMP
-    int tid = omp_get_thread_num();
-#else
     int tid = 0;
-#endif
+#ifdef	WITHOMP
+    tid = omp_get_thread_num();
+#endif	// WITHOMP
 
     cuFFdotBatch* trdBatch = &srch->pInf->batches[tid];
 
@@ -8034,7 +8039,7 @@ void genPlane(cuSearch* cuSrch, char* msg)
     infoMSG(1,0,"\nGPU loop will process %i steps\n", ceil(noSteps) );
   }
 
-#ifndef DEBUG 	// Parallel if we are not in debug mode  .
+#if !defined(DEBUG) && defined(WITHOMP)   // Parallel if we are not in debug mode  .
   if ( cuSrch->sSpec->flags & FLAG_SYNCH )
   {
     // NOTE: this uses the search flags not the batch specific flags, but FLAG_SYNCH should be set before initialising the kernels
@@ -8047,11 +8052,15 @@ void genPlane(cuSearch* cuSrch, char* msg)
   }
 
 #pragma omp parallel
-#endif
+#endif	// !DEBUG && WITHOMP
   FOLD  //					---===== Main Loop =====---  .
   {
     // These are all thread specific variables
-    int tid = omp_get_thread_num();
+    int tid = 0;
+#ifdef	WITHOMP
+    tid = omp_get_thread_num();
+#endif	// WITHOMP
+
     cuFFdotBatch* batch		= &cuSrch->pInf->batches[tid];				///< Thread specific batch to process
     int		firstStep	= 0;							///< Thread specific value for the first step the batch is processing
     double	firstR		= 0;							///< Thread specific value for the first input FT bin index being searched

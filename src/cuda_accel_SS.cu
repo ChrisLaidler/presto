@@ -1219,8 +1219,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     }
   }
 
-#ifndef DEBUG   // Parallel if we are not in debug mode  .
-
+#if	!defined(DEBUG) && defined(WITHOMP)   // Parallel if we are not in debug mode  .
   if ( cuSrch->sSpec->flags & FLAG_SYNCH )
   {
     omp_set_num_threads(1);
@@ -1231,10 +1230,14 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   }
 
 #pragma omp parallel
-#endif
+#endif	// !DEBUG && WITHOMP
   FOLD  //                              ---===== Main Loop =====---  .
   {
-    int tid = omp_get_thread_num();
+    int tid = 0;
+#ifdef	WITHOMP
+    omp_get_thread_num();
+#endif	// WITHOMP
+
     cuFFdotBatch* batch = &cuSrch->pInf->batches[tid];
 
     setDevice(batch->gInf->devid) ;
