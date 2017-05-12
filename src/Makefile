@@ -104,12 +104,12 @@ CFITSIOINC  := $(shell pkg-config --cflags cfitsio)
 CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
-PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(GLIBLINK) $(FFTLINK)
+PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(GLIBLINK) $(FFTLINK) -ldl
 CUACCELLINK = ""
 
-CC 	= gcc
+CC  = gcc
 CPP = g++
-FC = gfortran
+FC  = gfortran
 #FC = g77
 NVCC = nvcc
 
@@ -193,13 +193,15 @@ CUDAINC    += -I$(CUDA_PATH)/include
 NVCCFLAGS  =  $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
 NVCCFLAGS  += $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 #NVCCFLAGS  += -Xcompiler -Wno-comment
-NVCCFLAGS	 += $(foreach root, $(CXXWARN), -Xcompiler $(root))
+NVCCFLAGS  += $(foreach root, $(CXXWARN), -Xcompiler $(root))
 
-NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)
-NVCLFLAGS  += $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+NVCLFLAGS  = --cudart shared $(CUDA_ARCH)
+NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 GPUOUTP		=
 
+NVCCFLAGS += -DNVVP
+NVCLFLAGS += -DNVVP
 
 $(info)
 
@@ -211,9 +213,12 @@ ifeq ($(DEBUG),1)
 
   OPT_FLAGS     += -O0 -ggdb -DDEBUG
 
-  NVCCFLAGS     += -g -G -O0 -DDEBUG
-  NVCLFLAGS     += -g -G -O0 -DDEBUG
+  NVCCFLAGS     += -g -G -O0 -DDEBUG -lineinfo
+  NVCLFLAGS     += -g -G -O0 -DDEBUG -lineinfo
 
+#  NVCCFLAGS     += --relocatable-device-code=true
+#  NVCLFLAGS     += --relocatable-device-code=true
+  
   DEBUG_TARGET  =debug
   POSTFIX       =_debug
   export DEBUG  =1
@@ -282,7 +287,7 @@ ifeq ($(WITHCBL),yes)
   INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)
 
   NVCCFLAGS  	+= -DCBL $(INDARR)
-  NVCLFLAGS  	+= -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
 
   CFLAGS     	+= -DCBL
   CXXFLAGS   	+= -DCBL $(INDARR) -Wno-unknown-pragmas
@@ -322,7 +327,7 @@ ifeq ($(WITH_CUDA),yes)
 
   # Check for CUDA 6.5 for CUFFT callbacks
   ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
-    CUDALIBS  	+= -lcufft_static -lculibos
+   CUDALIBS  	+= -lcufft_static -lculibos
   else
    CUDALIBS	+= -lcufft
   endif
@@ -437,10 +442,10 @@ $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),libpresto$(POSTFIX))
 
 
-$(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
+$(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(libpresto) $(NVCC_LIB_OBS)
 	@echo ""
 	@echo "Linking libcuaccel$(POSTFIX)"
-	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(FFTLINK) $(NVCLFLAGS)
+	$(NVCC) $(LIBCMD) $(NVCLFLAGS) -o $@ $(NVCC_LIB_OBS) $(FFTLINK) $(PRESTOLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),libcuaccel$(POSTFIX))
 
 ###############   Tests   ################
@@ -481,20 +486,20 @@ mpiprepsubband: mpiprepsubband_cmd.c $(OBJDIR)mpiprepsubband_cmd.o $(OBJDIR)mpip
 ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o
 	@echo ""
 	@echo "Linking accelsearch$(POSTFIX)"
-	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(CUDALIBS) $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),accelsearch$(POSTFIX))
 
 $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o
 	@echo ""
 	@echo "Linking test_GPUaccel"${POSTFIX}
-	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(CUDALIBS) $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),test_GPUaccel${POSTFIX})
 
 
 $(BINPATH)/getAccelLen$(POSTFIX): $(OBJDIR)accel_utils.o $(OBJDIR)getAccelLen.o $(NVCC_OBS) $(libpresto)
 	@echo ""
 	@echo "Linking getAccelLen"${POSTFIX}
-	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
+	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(CUDALIBS) $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),getAccelLen${POSTFIX})
 
 check_parkes_raw: $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(libpresto)

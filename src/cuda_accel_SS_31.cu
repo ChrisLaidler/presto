@@ -82,7 +82,7 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
       // Calculate the x indices or create a pointer offset by the correct amount
       for ( int harm = 0; harm < noHarms; harm++ )			// loop over harmonic  .
       {
-	//// NB NOTE: the indexing below assume each plane starts on a multiple of noHarms
+	//// NB NOTE: the indexing below assume each plane starts on a integer thus the fndemental must start on a multiple of noHarms
 	int   ix		= lround_t( sid*FRAC_STAGE[harm] ) + PSTART_STAGE[harm] ;
 
 	// Stride plane pointers
@@ -614,13 +614,32 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
 
   rVal->noBlocks	= dimGrid.x * dimGrid.y;
 
+  FOLD // Check first step for divisibility  .
+  {
+    // Note: Could do all steps?
+    double devisNo	= batch->noGenHarms;
+    for ( int step = 0; step < batch->noSteps; step++)
+    {
+      rVals* rVal2 = &(*batch->rAraays)[batch->rActive][step][0];
+
+      double firsrR	= rVal2->drlo;
+      double rem = fmod(firsrR, devisNo);
+
+      if ( fabs(rem) >= 1e-6 )
+      {
+	printf("ERROR: Invalid r-value in %s, value not divisabe %.3f %% %.3f = %.3f  \n",__FUNCTION__, firsrR, devisNo, rem);
+	exit(EXIT_FAILURE);
+      }
+    }
+  }
+
   if( rVal->noBlocks > MAX_SAS_BLKS )
   {
     fprintf(stderr, "ERROR: Too many blocks in sum and search kernel, try reducing SS_SLICES %i > %i. (in function %s in %s )\n", rVal->noBlocks, MAX_SAS_BLKS, __FUNCTION__, __FILE__);
     exit(EXIT_FAILURE);
   }
 
-  infoMSG(7,7," no ThreadBlocks %i  width %i  stride %i  remainder: %i ", dimBlock.x * dimBlock.y, batch->accelLen, batch->strideOut,  (batch->strideOut-batch->accelLen)*2);
+  infoMSG(7,7," SAS 3.1 - no ThreadBlocks %i  width %i  stride %i  remainder: %i ", dimBlock.x * dimBlock.y, batch->accelLen, batch->strideOut,  (batch->strideOut-batch->accelLen)*2);
 
   if      ( batch->flags & FLAG_POW_HALF	)	// CUFFT callbacks using half powers  .
   {

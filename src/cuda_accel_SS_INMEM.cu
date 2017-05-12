@@ -220,7 +220,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
   FOLD // Check if we can use the specific data types in the kernel  .
   {
     // Check the length of the addressable
-    double lastBin_d  = batch->cuSrch->SrchSz->searchRLow*batch->cuSrch->sSpec->noResPerBin + batch->cuSrch->inmemStride ;
+    double lastBin_d  = batch->cuSrch->sSpec->searchRLow*batch->conf->noResPerBin + batch->cuSrch->inmemStride ;
     double maxUint    = std::numeric_limits<int>::max();
     if ( maxUint <= lastBin_d )
     {
@@ -238,8 +238,8 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 
   }
 
-  int firstBin  = batch->cuSrch->SrchSz->searchRLow * batch->cuSrch->sSpec->noResPerBin ;
-  int start     = rVal->drlo * batch->cuSrch->sSpec->noResPerBin ;
+  int firstBin  = batch->cuSrch->sSpec->searchRLow * batch->conf->noResPerBin ;
+  int start     = rVal->drlo * batch->conf->noResPerBin ;
   int end       = start + rVal->numrs;
   int noBins    = end - start;
   int* d_cnts	= NULL;

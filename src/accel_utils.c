@@ -11,7 +11,7 @@
 #else
 #  undef inline
 #endif
- 
+
 /*#undef USEMMAP*/
 
 #ifdef USEMMAP

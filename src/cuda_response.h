@@ -19,8 +19,8 @@
 #define FOLD if(1)
 #endif
 
-template<typename T>
-__host__ __device__ void fresnl(T xxa, T* ss, T* cc);
+template<typename T, typename idxT>
+__host__ __device__ void fresnl(idxT x, T* ss, T* cc);
 
 template<typename T, uint flags>
 __host__ __device__ void calc_z_response(long iPart, T Qk, T z, T sq2overAbsZ, T PIoverZ, T overSq2AbsZ, int sighnZ, T* real, T* imag);

@@ -329,7 +329,7 @@ __host__ void normAndSpread(cudaStream_t stream, cuFFdotBatch* batch, uint stack
   dimGrid.x = cStack->noInStack * batch->noSteps;
   dimGrid.y = 1;
 
-  if ( batch->cuSrch->sSpec->normType != 0 )
+  if ( batch->conf->normType != 0 )
   {
     fprintf(stderr, "ERROR: GPU normalisation can only perform old-style block median normalisation of the step input.\n");
     exit(EXIT_FAILURE);

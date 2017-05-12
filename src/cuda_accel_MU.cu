@@ -539,7 +539,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
 	      for ( int i = 0; i < rVal->numrs; i++)
 	      {
-		double r = rVal->drlo + i / (double)batch->cuSrch->sSpec->noResPerBin;
+		double r = rVal->drlo + i / (double)batch->conf->noResPerBin;
 		fprintf(f2,"\t%.6f",r);
 	      }
 	      fprintf(f2,"\n");

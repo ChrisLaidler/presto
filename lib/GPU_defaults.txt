@@ -1,20 +1,24 @@
-#!/bin/bash
+#!/bin/bash	# This is just to enable automatic syntax highlighting this isn't really a bash script
+#
 #	This file contains the settings to control how the GPU acceleration search is carried out
 #	#'s Comment out lines, blank lines are ignored
 #
 #	None of the values in this file are "essential" anything can be commented out and the application
-#	will determine an appropriate default.
-#	If you have any questions pleas e-mail Chris Laidler  chris.laidler+presto@gmail.com
+#	will determine an appropriate default, so you wont break it by removing something.
+#	However you can make things go slow or bad by changing values so be careful, you can always get the defaults off the GIT repo
+#
+#	There are some comments, but for most configurations there is to much information to really go into detail
+#	If you have any questions pleas e-mail Chris Laidler:  chris.laidler+presto@gmail.com
 #	I will happily answer any queries you may have
 #
 #	There are two formats to the parameters.
-#	The first is simply the a line with the parameter name (case sensitive) followed by white space followed by the value ie:
+#	The first is simply a line with the parameter name (case sensitive) followed by white space followed by the value ie:
 
 DUMMY_PARAMETER	DUMMY_VALUE
 
-#	I have included some description of these in commented blocks above the parameter, the layout is something like below:
+#	I have included some description of these in commented blocks above the parameter, the layout is something like:
 
-# DUMMY_PARAMETER:		# This is the name of the parameter (excluding colon), Below is a list of the possible values, these are generally text values but can be numeric
+# DUMMY_PARAMETER:		# This is the name of the parameter (excluding colon), Below is a list of the possible values, these could be text or numeric
 #	VAL_01			# The value is "VAL_01" and here is a comment describing what it dose
 # D	VAL_02			# The D on the far left shows that "VAL_02" is the default option
 #	DUMMY_VALUE		# This is the value I set in the example above
@@ -22,10 +26,10 @@ DUMMY_PARAMETER	DUMMY_VALUE	# This uncommented line setts the actual value of th
 
 #	The second way a parameter is set is simply with the parameter name. These "flags" can be disable by simply commenting them out or they can be explicitly turned off by following them with "0" or "off"
 #	Below is an example of these:
-DUMMY_FLAG_ONE
-DUMMY_FLAG_TWO off
+DUMMY_FLAG_ONE			# This enables the flag "DUMMY_FLAG_ONE"
+DUMMY_FLAG_TWO off		# This will disable the flag "DUMMY_FLAG_TWO", you can just comment it out as well
 
-#	These flags often correspond to one of the bit flags used in "cuda_accel.h" used to configure the search, and
+#	These flags often correspond to one of the bit flags used in "cuda_accel.h" used to configure the GPU search
 
 
 ########################### General ###########################
@@ -35,7 +39,7 @@ R_RESOLUTION	2
 
 Z_RESOLUTIOM	2
 
-#FLAG_Z_SPLIT
+#FLAG_Z_SPLIT			# Force splitting of the in-memory plane - Not advisable
 
 RESULTS_RING	3
 
@@ -59,7 +63,7 @@ INTERLEAVE		ROW
 RESPONSE		STD
 
 
-# Choose largest possible response function width - Not really a good idea
+# Use the largest possible response function width - Not really a good idea
 #FLAG_KER_MAX
 
 
@@ -216,7 +220,7 @@ IN_MEM_POWERS		AUTO
 #	HALF			# Force half precision powers - much faster a good very good option! (requires CUDA 7.5 or greater)
 #	SINGLE			# Force single precision powers
 #	DOUBLE			# Not yet implemented - Not sure if this is really necessary
-# D	AUTO			# Let the application decide
+# D	AUTO			# Let the application decide - Will usually result in half
 POWER_PRECISION		AUTO
 
 
@@ -257,7 +261,7 @@ SS_SLICES		0
 SS_CHUNK		0
 
 
-SS_COLUMN		8
+SS_COLUMN		0
 
 
 # The step size of the in-mem search, this can be any value good choices are powers of two: 2048 or 4096 or 8192 or 16384 or 32768 or 65536 or 131072
@@ -335,8 +339,10 @@ OPT_R_RES		16
 
 # How to normalise the powers of the optimised candidates
 # OPT_NORM
-# D	MEDIAN  		# Use 1D median power for normalisation
-#	LOCAVE  		# Use Local 3D power average for normalisation
+# 	NONE  			# Not recommended
+# D	MEDIAN1D  		# Use 1D median power for normalisation
+# 	MEDIAN2D  		# Use 2D median power for normalisation
+#	LOCAVE  		# Use Local 3D power average for normalisation - This is the original PRESTO method and its actually 2D
 OPT_NORM		MEDIAN
 
 
@@ -372,7 +378,8 @@ OPT_NELDER_MEAD_REFINE	1
 #### The rest are optimisation plane parameters ####
 
 # Optimisation location finding step down
-# D	10			#
+# Each successive iteration of the incremental planes will be X times smaller
+# D	10			# Each plane reduces the template size by one order of magnitude  ( /10 )
 optPlnScale		10
 
 # Use dynamic half-width in the optimisation planes, this is on by default
@@ -390,14 +397,13 @@ optPlnDim 6 0   		# The number of elements in the 6th optimisation plane - These
 optPlnDim 7 0   		# The number of elements in the 7th optimisation plane (this is a double precision plane)
 
 
-# The Numbers below dictate the size in bins of the incremental planes used to refine the location of the maximum f-fdot value
-# Lager numbers will explore the f-fdot plane faster but will reduce resolution
+# The Numbers below dictate the size, in bins, of the first incremental plane used to refine the location of the maximum f-fdot value, for each number of harmonics
+# Lager numbers will "explore" the f-fdot plane faster but will reduce resolution
 optPlnSiz 1  16
 optPlnSiz 2  14
 optPlnSiz 4  12
 optPlnSiz 8  10
 optPlnSiz 16 8
-
 
 
 ######################### Debug ###########################

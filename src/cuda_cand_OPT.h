@@ -11,14 +11,7 @@
 #include "cuda_accel.h"
 
 
-#define		OPT_KER_PLN_BLK_NRM	BIT(1)
-#define		OPT_KER_PLN_BLK_EXP	BIT(2)
-#define		OPT_KER_PLN_BLK_3	BIT(3)
-#define		OPT_KER_PLN_BLK		( OPT_KER_PLN_BLK_NRM | OPT_KER_PLN_BLK_EXP | OPT_KER_PLN_BLK_3 )
-#define		OPT_KER_PLN_PTS_NRM	BIT(5)
-#define		OPT_KER_PLN_PTS_EXP	BIT(6)
-#define		OPT_KER_PLN_PTS_3	BIT(7)
-#define		OPT_KER_PLN_PTS_SHR	BIT(8)
+
 
 
 #define		OPT_LOC_PNT_NO		16
@@ -46,5 +39,22 @@ ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noH
 
 ExternC void opt_accelcand(accelcand* cand, cuOptCand* pln, int no);
 
+// TODO: write up descrition
+cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0 );
+
+
+int ffdotPln_prep( cuOptCand* pln, fftInfo* fft );
+
+int ffdotPln_input( cuOptCand* pln, fftInfo* fft );
+
+template<typename T>
+int ffdotPln_ker( cuOptCand* pln, fftInfo* fft );
+
+int ffdotPln_get( cuOptCand* pln, fftInfo* fft );
+
+int ffdotPln_process( cuOptCand* pln, fftInfo* fft );
+
+template<typename T>
+int ffdotPln( cuOptCand* pln, fftInfo* fft );
 
 #endif

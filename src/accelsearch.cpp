@@ -44,7 +44,6 @@ extern "C"
 
 #include "cuda_accel.h"
 #include "cuda_accel_utils.h"
-#include "cuda_response.h"
 #endif
 
 #ifdef USEDMALLOC
@@ -112,7 +111,7 @@ int main(int argc, char *argv[])
   showOptionValues();
 #endif
 
-#ifdef CUDA
+#ifdef CUDA	// List GPU's & default to GPU
 
   if (cmd->lsgpuP) // List GPU's  .
   {
@@ -142,13 +141,11 @@ int main(int argc, char *argv[])
 
 #ifdef CUDA // CUDA Runtime initialisation  .
 
-  cuSearch*     cuSrch = NULL;
-  gpuSpecs      gSpec;
-  searchSpecs   sSpec;
+  cuSearch*	cuSrch = NULL;
+  gpuSpecs*	gSpec;
+  pthread_t	cntxThread = 0;
 
-  pthread_t     cntxThread = 0;
-
-  TIME // Start the timer
+  TIME // Start the timer  .
   {
     NV_RANGE_PUSH("Prep");
     gettimeofday(&start, NULL);
@@ -161,10 +158,10 @@ int main(int argc, char *argv[])
     printf("      If you find any bugs pleas report to:\n");
     printf("            chris.laidler@gmail.com\n\n");
 
-    gSpec         = readGPUcmd(cmd);
+    gSpec	= readGPUcmd(cmd);
 
     // Initialise CUDA context
-    contextInit += initCudaContext(&gSpec);
+    contextInit	+= initCudaContext(gSpec);
   }
 
 #endif
@@ -172,9 +169,8 @@ int main(int argc, char *argv[])
   /* Create the accelobs structure */
   create_accelobs(&obs, &idata, cmd, 1);
 
-#ifdef CUDA
-  sSpec       = readSrchSpecs(cmd, &obs);
-  cuSrch      = initSearchInf(&sSpec, &gSpec, cuSrch);
+#ifdef CUDA	// Initialise CU Search data struct
+  cuSrch	= initSearchInfCMD(cmd, &obs, gSpec);
   printf("\n");
 #endif
 
@@ -208,11 +204,8 @@ int main(int argc, char *argv[])
   printf("  r = %.1f to %.1f Fourier bins\n", obs.rlo, obs.rhi);
   printf("  z = %.1f to %.1f Fourier bins drifted\n\n", obs.zlo, obs.zhi);
 
-#ifdef CUDA
+#ifdef CUDA // Timing  .
   char fname[1024];
-  sprintf(fname,"%s_hs%02i_zmax%06.1f_sig%06.3f", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
-  char candsFile[1024];
-  sprintf(candsFile,"%s.unoptcands", fname );
 
   TIME // Timing  .
   {
@@ -223,7 +216,11 @@ int main(int argc, char *argv[])
   }
 #endif
 
-#ifdef CBL  // The CPU and GPU main loop  .
+#ifdef CBL  // Unoptcands  .
+  char candsFile[1024];
+  sprintf(fname,"%s_hs%02i_zmax%06.1f_sig%06.3f", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
+  sprintf(candsFile,"%s.unoptcands", fname );
+
   if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		// DEBUG: Read candidates from previous search  .
   {
     int numcands;
@@ -242,7 +239,9 @@ int main(int argc, char *argv[])
     fclose(file);
 
     // Wait for the context thread to complete
-    long long contextTinme = compltCudaContext(&gSpec);
+    long long contextTinme = compltCudaContext(gSpec);
+
+    candsCPU = cands ;		// Just encase we are not doing the candidate generation
 
     TIME // Timing  .
     {
@@ -373,7 +372,7 @@ int main(int argc, char *argv[])
 
 	printf("\n");
 
-	if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
+	if ( cuSrch->conf->gen->flags & FLAG_DPG_PRNT_CAND )
 	{
 	  sprintf(name,"%s_CPU_01_Cands.csv", fname);
 	  printCands(name, candsCPU, obs.T);
@@ -393,9 +392,7 @@ int main(int argc, char *argv[])
 	  candsCPU = duplicate_accelcands(cands);
 	}
 
-	searchGPU(cuSrch, &gSpec, &sSpec);
-
-	cands = cuSrch->cands;
+	cands = generateCandidatesGPU(cuSrch);
 
 #else
 	fprintf(stderr,"ERROR: Requested a GPU search but, not compiled with CUDA. Edit the make file, and rebuild.\n");
@@ -468,7 +465,7 @@ int main(int argc, char *argv[])
     }
 
 #ifdef CBL
-    if ( sSpec.flags & FLAG_DPG_PLT_OPT )
+    if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
     {
       time ( &rawtime );
       ptm = localtime ( &rawtime );
@@ -485,7 +482,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    if ( sSpec.flags & FLAG_DPG_SKP_OPT )
+    if ( cuSrch->conf->opt->flags & FLAG_DPG_SKP_OPT )
       numcands = 0;
 #endif
 
@@ -496,7 +493,7 @@ int main(int argc, char *argv[])
       cands = sort_accelcands(cands);
 
 #ifdef CUDA
-      if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
+      if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
       {
 	sprintf(name,"%s_GPU_02_Cands_Sorted.csv",fname);
 	printCands(name, cands, obs.T);
@@ -513,7 +510,7 @@ int main(int argc, char *argv[])
       numcands = g_slist_length(cands);
 
 #ifdef CUDA
-      if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
+      if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
       {
 	sprintf(name,"%s_GPU_04_Cands_Thinned.csv",fname);
 	printCands(name, cands, obs.T);
@@ -580,7 +577,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Initialise optimisation details!
-	initCuOpt(&sSpec, &gSpec, cuSrch);
+	initCuOpt(cuSrch);
 
 	// Optimise all the candidates
 	optList(cands, cuSrch);
@@ -648,7 +645,7 @@ int main(int argc, char *argv[])
       cands = sort_accelcands(cands);
 
 #ifdef CUDA
-      if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
+      if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
       {
 	sprintf(name,"%s_GPU_05_Cands_Optemised.csv",fname);
 	printCands(name, cands, obs.T);
@@ -685,7 +682,7 @@ int main(int argc, char *argv[])
       }
 
 #ifdef CUDA
-      if ( sSpec.flags & FLAG_DPG_PRNT_CAND )
+      if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
       {
 	sprintf(name,"%s_GPU_06_Cands_Optemised_cleaned.csv",fname);
 	printCands(name, cands, obs.T);
@@ -755,143 +752,6 @@ int main(int argc, char *argv[])
       printf("\nDone optimizing.\n\n");
 
       double N =   obs.N;
-
-#ifdef CBL // TMP Chris: This is some temporary output to generate data for my thesis.
-      Fout
-      {
-	Fout // Test sigma calculations  .
-	{
-	  double noVals = 100 ;
-	  double base = 0.9998 ;
-	  double rest = 1 - base ;
-
-	  double ajustP;
-	  double ajustQ;
-
-	  int i;
-	  for ( i = 0; i < noVals; i++ )
-	  {
-	    double p = base + i/noVals*rest ;
-	    double q = (noVals-i)/noVals*rest ;
-
-	    calcNQ(q, obs.numindep[0], &ajustP, &ajustQ);
-
-	    printf("%.20lf\t%.20lf\t%.20lf\t%.20lf\n", p, q, ajustP, ajustQ);
-	  }
-	}
-
-	numcands 	= g_slist_length(cands);
-	listptr 	= cands;
-	accelcand* cand;
-
-	double T      = obs.T;
-
-	double pSum   = 0;
-	double pSum2  = 0;
-
-	for (ii = 0; ii < cuSrch->sSpec->fftInf.noBins; ii++)
-	{
-	  fcomplex bin = cuSrch->sSpec->fftInf.fft[ii];
-
-	  double pow = bin.i*bin.i + bin.r*bin.r;
-	  //pow = fabs(bin.i) + fabs(bin.r) ;
-
-	  //pSum  += pow/N*2/sqrt(2);
-	  //pSum2 += sqrt(pow)/N*2/sqrt(2);
-
-	  pSum  += pow;
-	  pSum2 += sqrt(pow);
-	}
-
-	//printf("\n\n pSum %.2f ss %.2f \n", pSum, pSum2);
-
-	printf("\n\nFFT\n");
-	printf("SS\t%.5f\n", pSum);
-	printf("Sum Norms\t%.5f\n", pSum2);
-
-	printf("\n\n");
-
-	pSum   = 0;
-	pSum2  = 0;
-
-	Logger slog(stdout);
-	slog.setCsvDeliminator('\t');
-
-	for (ii = 0; ii < numcands; ii++)
-	{
-	  cand    = (accelcand *) (listptr->data);
-	  listptr = listptr->next;
-
-	  Fout
-	  {
-	    long long baseR = round(cand->init_r);
-
-	    int hn;
-	    for ( hn = 1; hn <= cand->numharm; hn++ )
-	    {
-	      long long idx   = baseR * hn ;
-	      float     freq  =  idx / T ;
-	      double 	hr = cand->init_r * hn;
-	      if ( (idx >= 0) && ( idx <  cuSrch->sSpec->fftInf.noBins ) )
-	      {
-		fcomplex	bin	= cuSrch->sSpec->fftInf.fft[idx - cuSrch->sSpec->fftInf.firstBin];
-		double	norm	= get_scaleFactorZ(cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.noBins - cuSrch->sSpec->fftInf.firstBin, idx - cuSrch->sSpec->fftInf.firstBin, 0, 0.0);
-
-		double	ang1	= atan (bin.r/bin.i) ;
-		double	ang2	= atan (bin.i/bin.r) ;
-
-		double	pow	= bin.i*bin.i + bin.r*bin.r;
-
-		double factor = sqrt(norm);
-		double pow2   = pow / factor / factor ;
-		double sigma  = candidate_sigma_cu(pow2, 1, obs.numindep[0] );
-
-		if ( sigma < 0  )
-		{
-		  sigma = candidate_sigma_cu(pow2, 1, obs.numindep[0] );
-		}
-
-		//printf("%2i\t%.4f\t%lli\t%10.5f\t%9.5f\t%12.5f\t%15.2f\t%.15lf\t%.15lf\n", hn, freq, idx, sigma, pow2, pow, sqrt(pow), ang1, ang2 );
-
-		printf("%2i\t%.4f\t%.4f\n", hn, cand->r * hn / T, cand->z * hn );
-		printf("\n");
-		double real, imag;
-		rz_convolution_cu_inc<double, float2>((float2*)cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.firstBin, cuSrch->sSpec->fftInf.noBins, cand->r * hn, cand->z * hn, cand->z * hn * 2 + 4, &real, &imag);
-
-		printf("\n\n\n");
-
-		pSum  += pow;
-		pSum2 += sqrt(pow);
-	      }
-
-	    }
-
-	  }
-
-	  slog.csvWrite("idx","%i",ii);
-
-	  slog.csvWrite("int freq","%9.7f",cand->init_r/T);
-	  slog.csvWrite("opt freq","%9.7f",cand->r/T);
-
-	  slog.csvWrite("int z   ","%9.6f",cand->init_z);
-	  slog.csvWrite("opt z   ","%9.6f",cand->z);
-
-	  slog.csvWrite("int harm","%9i",cand->init_numharm);
-	  slog.csvWrite("opt harm","%9i",cand->numharm);
-
-	  slog.csvWrite("int pow ","%9.5f",cand->init_power);
-	  slog.csvWrite("opt pow ","%9.5f",cand->power);
-
-	  slog.csvWrite("int sigma","%9.4f",cand->init_sigma);
-	  slog.csvWrite("opt sigma","%9.4f",cand->sigma);
-
-	  slog.csvEndLine();
-
-	  printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma, pSum, pSum2  );
-	}
-      }
-#endif
-
     }
     else
     {
@@ -909,7 +769,7 @@ int main(int argc, char *argv[])
     }
 
 #ifdef CBL
-    if ( sSpec.flags & FLAG_DPG_PLT_OPT )
+    if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
     {
       sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
       mkdir(dirname, 0755);
@@ -986,7 +846,7 @@ int main(int argc, char *argv[])
 
       PROF // Profiling  .
       {
-	if ( sSpec.flags & FLAG_PROF )  // Advanced timing massage  .
+	if ( cuSrch->conf->opt->flags & FLAG_PROF )  // Advanced timing massage  .
 	{
 	  char pres[] =  "%15.06f";
 
@@ -1166,9 +1026,9 @@ int main(int argc, char *argv[])
   freeCuSearch(cuSrch);
 
   // Debug stuff
-  for ( int i = 0; i < gSpec.noDevices; i++)
+  for ( int i = 0; i < gSpec->noDevices; i++)
   {
-    CUDA_SAFE_CALL(cudaSetDevice(gSpec.devId[i]), "ERROR in cudaSetDevice");
+    CUDA_SAFE_CALL(cudaSetDevice(gSpec->devId[i]), "ERROR in cudaSetDevice");
     CUDA_SAFE_CALL(cudaDeviceReset(), "Error in device reset.");
   }
 

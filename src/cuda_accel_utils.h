@@ -20,7 +20,6 @@
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
-#include "candTree.h"
 #include "cuda_math.h"
 
 
@@ -36,7 +35,7 @@ extern "C"
 #include "accel.h"
 }
 
-//#pragma once
+#define MAX_GPU_MEM	3400000000						///< This is a TMP REM: GTX 970 memory hack.  REALLY NVIDIA, YOU SUCK!!!
 
 #define CNV_DIMX        16                    // X Thread Block
 #define CNV_DIMY        8                     // Y Thread Block
@@ -644,6 +643,30 @@ __device__ inline float getPowerAsFloat(half* adress, uint offset)
 
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
+// TODO: Write up headdins
+void __printErrors( int value, const char* file, int lineNo, const char* errorMsg);
+
+searchSpecs* duplicate(searchSpecs* sSpec);
+confSpecsGen* duplicate(confSpecsGen* conf);
+confSpecsOpt* duplicate(confSpecsOpt* conf);
+confSpecs* duplicate(confSpecs* conf);
+gpuSpecs* duplicate(gpuSpecs* gSpec);
+
+bool compare(searchSpecs* sSpec1, searchSpecs* sSpec2);
+bool compare(confSpecsGen* conf1, confSpecsGen* conf2);
+bool compare(confSpecsOpt* conf1, confSpecsOpt* conf2);
+bool compare(fftInfo* fft1, fftInfo* fft2);
+bool compare(gpuSpecs* gSpec1, gpuSpecs* gSpec2);
+bool compare(cuSearch* search, searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, fftInfo* fftInf);
+
+
+int remOptFlag(cuOptCand* pln, int64_t flag);
+int setOptFlag(cuOptCand* pln, int64_t flag);
+int remOptFlag(cuOptInfo* oInf, int64_t flag);
+int setOptFlag(cuOptInfo* oInf, int64_t flag);
+int setOptFlag(cuSearch* cuSrch, int64_t flag);
+int remOptFlag(cuSearch* cuSrch, int64_t flag);
+
 float half2float(const ushort h);
 
 /** Set up the threading  .
@@ -651,10 +674,18 @@ float half2float(const ushort h);
  */
 void intSrchThrd(cuSearch* srch);
 
-/** Set the active batch  .
+/** Set the iteration the following components will act on  .
+ *
+ * A batch has multiple memory locations for the various components
+ * When run in asynchronous mode, a single batch can hold data from previous iterations at
+ * various stage of processing.
+ *
+ * You really need to know what you are doing if you want to use this!
+ *
+ * If in doubt just leave it at zero, this will be semi synchronous behaviour.
  *
  */
-void setActiveBatch(cuFFdotBatch* batch, int rIdx = 0);
+void setActiveIteration(cuFFdotBatch* batch, int rIdx = 0);
 
 /** Cycle the arrays of r-values  .
  *
@@ -778,6 +809,8 @@ uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accura
 
 ///////////////////////////////////////// Init prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
+void setSrchSize(searchSpecs* SrchSz, int halfWidth, int noHarms = 1, int alighnment = 1);
+
 float cuGetMedian(float *data, uint len);
 
 void setGenRVals(cuFFdotBatch* batch);
@@ -871,8 +904,6 @@ void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
 
 
 //////////////////////////////////////// Optimisation \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-
-candTree* opt_cont(candTree* oTree, cuOptCand* pln, container* cont, fftInfo* fft, int nn = 0 );
 
 void opt_genResponse(cuRespPln* pln, cudaStream_t stream);
 

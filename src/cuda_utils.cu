@@ -293,61 +293,7 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
   return -1;
 }
 
-void initGPUs(gpuSpecs* gSpec)
-{
-  int currentDevvice, deviceCount;
-  char txt[1024];
 
-  int major           = 0;
-  int minor           = 0;
-
-  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
-
-  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
-  {
-    int device    = gSpec->devId[dIdx];
-    gpuInf* gInf  = &gSpec->devInfo[dIdx];
-
-    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-
-    // Check if the the current device is 'device'
-    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-
-    if ( currentDevvice != device)
-    {
-      fprintf(stderr, "ERROR: Device not set.\n");
-    }
-    else // call something to initialise the device
-    {
-      sprintf(txt,"Init device %02i", device );
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_PUSH(txt);
-      }
-
-      cudaDeviceProp deviceProp;
-      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
-
-      major                           = deviceProp.major;
-      minor                           = deviceProp.minor;
-      gInf->capability                = major + minor/10.0f;
-      gInf->alignment                 = getMemAlignment();                  // This action will initialise the CUDA context
-      gInf->devid                     = device;
-      gInf->name                      = (char*)malloc(256*sizeof(char));
-
-      sprintf(gInf->name, "%s", deviceProp.name );
-
-      // TODO: Profile this
-      CUDA_SAFE_CALL(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1),"Failed to set cache config"); // cudaFuncCachePreferNone OR cudaFuncCachePreferShared OR cudaFuncCachePreferL1 OR cudaFuncCachePreferEqual
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_POP(); // txt
-      }
-    }
-  }
-}
 
 void listDevices()
 {
@@ -637,4 +583,39 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, long long* timeSum, con
     fprintf(stderr, "CUDA ERROR: %s [ %s ]\n", msg2, cudaGetErrorString(ret));
     exit(EXIT_FAILURE);
   }
+}
+
+void printContext()
+{
+  int currentDevvice;
+  CUcontext pctx;
+  cuCtxGetCurrent ( &pctx );
+  CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+
+  int trd = 0;
+#ifdef	WITHOMP
+  trd = omp_get_thread_num();
+#endif	// WITHOMP
+
+  printf("Thread %02i  currentDevvice: %i Context %p \n", trd, currentDevvice, pctx);
+}
+
+int setDevice(int device)
+{
+  int dev;
+
+  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+
+  if ( dev != device )
+  {
+    CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
+    CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+    if ( dev != device )
+    {
+      fprintf(stderr, "ERROR: CUDA Device not set.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  return dev;
 }

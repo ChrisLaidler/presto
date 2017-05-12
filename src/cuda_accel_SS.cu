@@ -34,7 +34,10 @@
  *  	Added separate candidate array resolution
  *
  *  [2017-03-24]
- *  	Reactor of Y-Indices calculations
+ *  	Refactor of Y-Indices calculations
+ *
+ *  [2017-05-12]
+ *  	Main Loop bounds using newly refactored bounds
  */
 
 #include "cuda_accel_SS.h"
@@ -52,6 +55,7 @@
 #include "cuda_utils.h"
 #include "cuda_accel_utils.h"
 #include "cuda_accel_SS.h"
+#include "candTree.h"
 
 //======================================= Constant memory =================================================\\
 
@@ -220,9 +224,9 @@ int setConstVals( cuFFdotBatch* batch )
 
       for ( int j = 0; j < fInf->noZ; j++ )	// Loop over rows of the fundamental  .
       {
-	double fundZ	= fInf->zStart + j * dir * batch->cuSrch->sSpec->zRes;
-	double subzf	= cu_calc_required_z<double>( harmFrac, fundZ, batch->cuSrch->sSpec->zRes );
-	int zind	= cu_index_from_z<double>( subzf, sZstart, batch->cuSrch->sSpec->zRes );
+	double fundZ	= fInf->zStart + j * dir * batch->conf->zRes;
+	double subzf	= cu_calc_required_z<double>( harmFrac, fundZ, batch->conf->zRes );
+	int zind	= cu_index_from_z<double>( subzf, sZstart, batch->conf->zRes );
 
 	MAXX(zind, 0);
 	MINN(zind, noZ-1);
@@ -336,11 +340,11 @@ int setConstVals( cuFFdotBatch* batch )
 	for (int i = batch->noGenHarms; i < MAX_HARM_NO; i++)
 	{
 	  float harmFrac	= HARM_FRAC_FAM[i];
-	  double zmax		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zmax,   batch->cuSrch->sSpec->zRes);
-	  double zStart		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zStart, batch->cuSrch->sSpec->zRes);
-	  double zEnd		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zEnd,   batch->cuSrch->sSpec->zRes);
-	  height[i]		= abs(cu_index_from_z<double>(zEnd-zStart, 0, batch->cuSrch->sSpec->zRes));
-	  stride[i]		= cu_calc_fftlen<double>(harmFrac, zmax, batch->accelLen, accuracy, batch->cuSrch->sSpec->noResPerBin, batch->cuSrch->sSpec->zRes);
+	  double zmax		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zmax,   batch->conf->zRes);
+	  double zStart		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zStart, batch->conf->zRes);
+	  double zEnd		= cu_calc_required_z<double>(harmFrac, batch->hInfos->zEnd,   batch->conf->zRes);
+	  height[i]		= abs(cu_index_from_z<double>(zEnd-zStart, 0, batch->conf->zRes));
+	  stride[i]		= cu_calc_fftlen<double>(harmFrac, zmax, batch->accelLen, accuracy, batch->conf->noResPerBin, batch->conf->zRes);
 	  pStart[i]		= -1;
 	}
       }
@@ -452,7 +456,7 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
 {
   cuSearch*	cuSrch	= res->cuSrch;
 
-  if ( floor(rr) < cuSrch->SrchSz->searchRHigh )
+  if ( floor(rr) < cuSrch->sSpec->searchRHigh )
   {
     // NOTE: I tested only doing the sigma calculations after doing a check against the power and harmonics in the area of the result, it was slightly faster (~4%) not enough to warrant it
     sig     = candidate_sigma_cu(poww, numharm, cuSrch->numindep[stage]);
@@ -479,7 +483,7 @@ static inline int procesCanidate(resultData* res, double rr, double zz, double p
     }
     else if ( res->cndType & CU_STR_ARR     )
     {
-      double  	rDiff = rr - cuSrch->SrchSz->searchRLow ;
+      double  	rDiff = rr - cuSrch->sSpec->searchRLow ;
       long long	grIdx;   /// The index of the candidate in the global array
 
       grIdx = round(rDiff*res->candRRes);
@@ -802,23 +806,23 @@ void processBatchResults(cuFFdotBatch* batch)
       infoMSG(3,3,"Initialise thread data structure");
 
       thrdDat->cuSrch		= batch->cuSrch;
-      thrdDat->cndType  	= batch->cndType;
-      thrdDat->retType  	= batch->retType;
-      thrdDat->flags    	= batch->flags;
-      thrdDat->resultTime 	= &batch->compTime[NO_STKS*COMP_GEN_STR];
-      thrdDat->blockTime 	= NULL;
-      thrdDat->noResults  	= &batch->noResults;
+      thrdDat->cndType		= batch->cndType;
+      thrdDat->retType		= batch->retType;
+      thrdDat->flags		= batch->flags;
+      thrdDat->resultTime	= &batch->compTime[NO_STKS*COMP_GEN_STR];
+      thrdDat->blockTime	= NULL;
+      thrdDat->noResults	= &batch->noResults;
       thrdDat->preBlock		= batch->candCpyComp;
 
-      thrdDat->rLow       	= rVal->drlo;
-      thrdDat->noResPerBin	= batch->cuSrch->sSpec->noResPerBin;
-      thrdDat->candRRes		= batch->cuSrch->sSpec->candRRes;
+      thrdDat->rLow		= rVal->drlo;
+      thrdDat->noResPerBin	= batch->conf->noResPerBin;
+      thrdDat->candRRes		= batch->conf->candRRes;
 
       thrdDat->noZ		= batch->hInfos->noZ;
       thrdDat->zStart		= batch->hInfos->zStart;
       thrdDat->zEnd		= batch->hInfos->zEnd;
 
-      thrdDat->x0      		= 0;
+      thrdDat->x0		= 0;
       thrdDat->x1		= 0;
       thrdDat->y0		= 0;
       thrdDat->y1		= batch->ssSlices;
@@ -1158,27 +1162,27 @@ void inmemSS(cuFFdotBatch* batch, double drlo, int len)
 {
   PROF
   {
-    setActiveBatch(batch, 0);
+    setActiveIteration(batch, 0);
     rVals* rVal = &((*batch->rAraays)[batch->rActive][0][0]);
     infoMSG(1,1,"\nIteration %4i - Start step %4i   processing %02i steps on GPU %i - Start bin: %9.2f \n", rVal->iteration, rVal->step, 1, batch->gInf->devid, rVal->drlo );
   }
 
-  setActiveBatch(batch, 0);
+  setActiveIteration(batch, 0);
   setSearchRVals(batch, drlo, len);
 
   // Synchronous and asynchronous execution have the same ordering
-  setActiveBatch(batch, 0);
+  setActiveIteration(batch, 0);
   add_and_search_IMMEM(batch);
 
-  setActiveBatch(batch, 1);
+  setActiveIteration(batch, 1);
   processBatchResults(batch);
 
-  setActiveBatch(batch, 0);
+  setActiveIteration(batch, 0);
   getResults(batch);
 
   // Cycle r values
   cycleRlists(batch);
-  setActiveBatch(batch, 1); // Set active batch to 1, why?
+  setActiveIteration(batch, 1); // Set active batch to 1, why?
 
   // Cycle candidate output - Flip / flop device memory
   cycleOutput(batch);
@@ -1194,14 +1198,12 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   double startr		= 0;				/// The first bin to start searching at
   double cuentR		= 0;				/// The start bin of the input FFT to process next
   double noR		= 0;				/// The number of input FFT bins the search covers
-  //double noSteps	= 0;				/// The number of steps to generate the initial candidates		// TODO: check if this can be removed
   int iteration		= 0;
   int step		= 0;
 
   // Search bounds
-  startr		= cuSrch->SrchSz->searchRLow;
-  noR			= cuSrch->SrchSz->noSearchR;
-  //noSteps		= noR * cuSrch->sSpec->noResPerBin / (double)master->accelLen ;
+  startr		= cuSrch->sSpec->searchRLow;
+  noR			= cuSrch->sSpec->noSearchR;
   cuentR 		= startr;
 
   TIME // Timing  .
@@ -1220,7 +1222,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   }
 
 #if	!defined(DEBUG) && defined(WITHOMP)   // Parallel if we are not in debug mode  .
-  if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+  if ( cuSrch->conf->gen->flags & FLAG_SYNCH )
   {
     omp_set_num_threads(1);
   }
@@ -1250,7 +1252,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
     int		ite		= 0;							///< The iteration the batch is working on (local to each thread)
     double	len      	= 0;							///< The length in expanded bins of the section being searched over - This can be depricated
 
-    while ( cuentR < cuSrch->sSpec->fftInf.rhi )  //			---===== Main Loop =====---  .
+    while ( cuentR < cuSrch->sSpec->searchRHigh )  //			---===== Main Loop =====---  .
     {
 #pragma omp critical
       FOLD // Calculate the step  .
@@ -1258,7 +1260,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 	FOLD  // Synchronous behaviour  .
 	{
 #ifndef  DEBUG
-	  if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+	  if ( cuSrch->conf->gen->flags & FLAG_SYNCH )
 #endif
 	  {
 	    // If running in synchronous mode use multiple batches, just synchronously
@@ -1273,15 +1275,15 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 	firstStep	= iteration;
 	step		+= 1;
 	firstR		= cuentR;
-	cuentR		+= batch->strideOut / (double)cuSrch->sSpec->noResPerBin ;
+	cuentR		+= batch->strideOut / (double)cuSrch->conf->gen->noResPerBin ;
       }
       
       FOLD // Set other thread specific values  .
       {
-	len         	= MIN(batch->strideOut, (cuSrch->sSpec->fftInf.rhi - firstR)*cuSrch->sSpec->noResPerBin) ;
+	len         	= MIN(batch->strideOut, (cuSrch->sSpec->searchRHigh - firstR)*cuSrch->conf->gen->noResPerBin) ;
 	rVals* rVal 	= &(*batch->rAraays)[0][0][0];
 	rVal->drlo	= firstR;
-	rVal->drhi	= firstR + len / cuSrch->sSpec->noResPerBin ;
+	rVal->drhi	= firstR + len / cuSrch->conf->gen->noResPerBin ;
 	rVal->step  	= firstStep;
 	rVal->iteration	= ite;
       }
@@ -1317,7 +1319,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
       }
 
 #ifndef  DEBUG
-      if ( cuSrch->sSpec->flags & FLAG_SYNCH )
+      if ( cuSrch->conf->gen->flags & FLAG_SYNCH )
 #endif
       {
 	// If running in synchronous mode use multiple batches, just synchronously so clear all batches

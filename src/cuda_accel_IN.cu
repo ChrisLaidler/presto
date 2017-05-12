@@ -42,6 +42,8 @@
 
 int    cuMedianBuffSz = -1;             ///< The size of the sub sections to use in the CUDA median selection algorithm - If <= 0 an automatic value is used
 
+
+
 /** Normalise input using median normalisation
  *
  * This s done using a temporary host buffer
@@ -66,7 +68,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
       int sz = 0;
       struct timeval start, end;  // Profiling variables
-      int noRespPerBin = batch->cuSrch->sSpec->noResPerBin;
+      int noRespPerBin = batch->conf->noResPerBin;
 
       PROF // Profiling  .
       {
@@ -84,10 +86,10 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 	  if ( rVal->numdata )
 	  {
-	    if ( batch->cuSrch->sSpec->normType == 0 )	// Block median normalisation  .
+	    if ( batch->conf->normType == 0 )	// Block median normalisation  .
 	    {
 	      int startBin = rVal->lobin < 0 ? -rVal->lobin : 0 ;
-	      int endBin   = rVal->lobin + rVal->numdata >= batch->cuSrch->sSpec->fftInf.lastBin ? rVal->lobin + rVal->numdata - batch->cuSrch->sSpec->fftInf.lastBin : rVal->numdata ;
+	      int endBin   = rVal->lobin + rVal->numdata >= batch->cuSrch->fft->lastBin ? rVal->lobin + rVal->numdata - batch->cuSrch->fft->lastBin : rVal->numdata ;
 
 	      if ( rVal->norm == 0.0 )
 	      {
@@ -100,7 +102,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		  for (int ii = 0; ii < rVal->numdata; ii++)
 		  {
-		    if ( rVal->lobin+ii < batch->cuSrch->sSpec->fftInf.firstBin || rVal->lobin+ii  >= batch->cuSrch->sSpec->fftInf.lastBin ) // Zero Pad
+		    if ( rVal->lobin+ii < batch->cuSrch->fft->firstBin || rVal->lobin+ii  >= batch->cuSrch->fft->lastBin ) // Zero Pad
 		    {
 		      batch->h_normPowers[ii] = 0;
 		    }
@@ -148,7 +150,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		for (int ii = 0; ( ii < rVal->numdata ) && ( (ii*noRespPerBin) < cStack->strideCmplx ); ii++)
 		{
-		  if ( rVal->lobin+ii < batch->cuSrch->sSpec->fftInf.firstBin || rVal->lobin+ii  >= batch->cuSrch->sSpec->fftInf.lastBin ) // Zero Pad
+		  if ( rVal->lobin+ii < batch->cuSrch->fft->firstBin || rVal->lobin+ii  >= batch->cuSrch->fft->lastBin ) // Zero Pad
 		  {
 		    cStack->h_iBuffer[sz + ii * noRespPerBin].r = 0;
 		    cStack->h_iBuffer[sz + ii * noRespPerBin].i = 0;
@@ -231,6 +233,87 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
   {
     NV_RANGE_POP(); // CPU_Norm_Spread
   }
+}
+
+/** Set the position of all the steps of a batch
+ *
+ * This sets the start of the first good bin of the fundamental plane of the first step
+ * to the given value
+ *
+ * @param batch
+ * @param firstR
+ * @param iteration
+ * @param firstStep
+ */
+int startBatchR (cuFFdotBatch* batch, double firstR, int iteration, int firstStep )
+{
+  infoMSG(4,4,"Set batch R-values starting at %9.3f", firstR);
+
+  int ret = ACC_ERR_NONE;
+
+  if ( batch->flags & FLAG_SS_31 )
+  {
+    // SAS 3.1 Kernel requires the value to be aligned
+    double hold		= firstR;
+    double devisNo	= batch->noGenHarms;
+    firstR 		= round(firstR/devisNo)*devisNo;
+
+    if ( firstR != hold )
+    {
+      infoMSG(5,5,"Auto aligning R-Vals");
+      ret |= ACC_ERR_ALIGHN;
+    }
+  }
+
+  int validSteps = 0;
+
+  for ( int batchStep = 0; batchStep < (int)batch->noSteps ; batchStep++ )
+  {
+    rVals* rVal = &(*batch->rAraays)[0][batchStep][0];
+    clearRval(rVal);
+
+    // Set the bounds - only the fundamental is needed
+    rVal->drlo		= firstR + batchStep*( batch->accelLen / (double)batch->conf->noResPerBin );
+    rVal->drhi		= rVal->drlo + ( batch->accelLen - 1 ) / (double)batch->conf->noResPerBin;
+
+    if ( rVal->drlo < batch->cuSrch->sSpec->searchRHigh  )
+    {
+      validSteps++;
+
+      // Set step and iteration for all harmonics
+      for ( int harm = 0; harm < batch->noGenHarms; harm++)
+      {
+	rVal		= &(*batch->rAraays)[0][batchStep][harm];
+
+	rVal->step	= firstStep + batchStep;
+	rVal->iteration	= iteration;
+      }
+    }
+    else
+    {
+      infoMSG(5,5,"R-Vals too large");
+
+      // Not actually a valid step
+      rVal->drlo	= 0;
+      rVal->drhi	= 0;
+      ret |= ACC_ERR_OVERFLOW;
+    }
+  }
+
+  if (!validSteps)
+    ret |= ACC_ERR_OUTOFBOUNDS;
+
+  return ret;
+}
+
+int centerBatchR (cuFFdotBatch* batch, double r, int iteration, int firstStep )
+{
+  double stepWidth	= ( batch->accelLen / (double)batch->conf->noResPerBin ) ;
+  double low		= r - stepWidth / 2.0 ;
+  int ss 		= batch->noSteps / 2 ;
+  double firstR		= low - ss * stepWidth ;
+
+  return startBatchR (batch, firstR, iteration, firstStep );
 }
 
 /** Calculate the r bin values for this batch of steps and store them in planes->rInput
@@ -474,7 +557,7 @@ void prepInputCPU(cuFFdotBatch* batch )
     // Profiling variables  .
     struct timeval start, end, start0, end0;
 
-    fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->sSpec->fftInf.fft;
+    fcomplexcu* fft = (fcomplexcu*)batch->cuSrch->fft->data;
 
     PROF // Profiling  .
     {

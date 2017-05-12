@@ -36,22 +36,18 @@ __host__ __device__ inline double getFIlim(double nothing)
 __host__ __device__ inline void sinecos_fres(float x, float x2, float* sin, float* cos)
 {
   float trigT;
-  if ( x2 < 1e4 && x2 > -1e4 )		// Single Precision
+  if ( x2 < 1e4 )			// Single Precision
   {
     trigT 	= fmod_t(x2, 4.0f);
   }
   else					// Double Precision
   {
+    // This happens when z is close to zero, a good approximation is:
+    // |z| < 2e-4 x (offset)^2
     trigT 	= fmod_t((double)x*(double)x, 4.0);
   }
   trigT 	= trigT*(float)PIBYTWO;
   sincos_t(trigT, sin, cos);
-
-  //  Force to double precision
-  //  double sinD, cosD;
-  //  sincos_t((double)x*(double)x*(double)PIBYTWO, &sinD, &cosD);
-  //  *sin = sinD;
-  //  *cos = cosD;
 }
 
 __host__ __device__ inline void sinecos_fres(double x, double x2, double* sin, double* cos)
@@ -120,8 +116,22 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
   T absX;					// Absolute value of x
   absX       = fabs_t(x);			// Use templated absolute CUDA function
 
+  /**
+   *  In our case x = sqrt(2/|z|) * (-offset - z / 2.0 )
+   *
+   *  TODO: This function can be templayed for accuracy 1-9 determining the number of elments of the plynomials that are used
+   */
+
   if      ( absX < (T)FREESLIM1  )		// Small so use a polynomial approximation  .
   {
+    /*
+       This method only gets used about 5 % of the time
+
+       Op-Count
+        * 31
+        / 2
+        + 21
+    */
     T x2	= absX * absX;
     t		= x2 * x2;
 
@@ -146,6 +156,19 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
   }
   else						// Auxiliary functions for large argument  .
   {
+
+    /*
+       This method gets used more than 95 % of the time and is coputationaly more intensive, with ~115 basic flops as well as trig and fabs
+
+       Op-Count
+        * 59 + 1
+        / 6
+        + 43
+        - 3
+        fmod
+        sincos
+    */
+
     T x2	= absX * absX;			// x * x ( Standard precision value of x squared )
 
     t		= (T)PI * x2;
@@ -171,7 +194,7 @@ __host__ __device__ void fresnl(idxT x, T* ss, T* cc)
     f     = (T)1.0 - u * fn / fd;
     g     =          t * gn / gd;
 
-    sinecos_fres(x, x2, &s, &c);	// Templated for double precision phase calculations for large x
+    sinecos_fres(x, x2, &s, &c);		// Templated for double precision phase calculations for large x
 
     t     = (T)PI * absX;
 
@@ -199,17 +222,13 @@ __host__ __device__ inline void sinecos_resp(float Qk, float z, float PIoverZ, f
   else
   {
     // Have to use double
+    // This generally only happes z is very small, ie very close to zero acceleration, and some times when half-width/distance is large (ysyall beyon normal bounds!)
     double x_double	= (double)Qk * (double)Qk / (double)z ;
     x_float		= fmod_t(x_double, 2.0);
   }
 
   x_float *= (float)PI;
   sincos_t(x_float, sin, cos);
-  
-  //double sinD, cosD;
-  //sincos_t((double)PIoverZ*(double)Qk*(double)Qk, &sinD, &cosD);
-  //*sin = sinD;
-  //*cos = cosD;
 }
 
 __host__ __device__ inline void sinecos_resp(double Qk, double z, double PIoverZ, double* sin, double* cos)
@@ -268,10 +287,13 @@ __host__ __device__ void calc_z_response(T Qk, T z, T sq2overAbsZ, T PIoverZ, T 
   T Sk, Ck;
 
   // Trig calculations templated for large Qk so phase value is calculated as a double if needed
+  // Doube will generally happens at very low z an aproximation when |z| < 1.02e-4 x (offset)^2
   sinecos_resp(Qk, z, PIoverZ, &sin, &cos);
 
   FOLD // Fresnel stuff  .
   {
+    // |Yk| or |Zk| < FRES_DOUBLE happens at aprocimatly when: |z| < 5.103e-5 x (offset)^2
+    // Abou half of the limit of the trig
     Yk = sq2overAbsZ * Qk ;
     if ( Yk > (T)FRES_DOUBLE || Yk < -(T)FRES_DOUBLE )
     {
@@ -419,7 +441,7 @@ __host__ __device__ void calc_response_off(T offset, T z, T* real, T* imag)
   }
 }
 
-// I found that calling the function above with pointers somtimes gave errors
+// I found that calling the function above with pointers sometimes gave errors
 // So the two functions below pass actual values
 __host__ __device__ double2 calc_response_off(double offset, double z)
 {
@@ -1157,7 +1179,6 @@ __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long 
     }
   }
 }
-
 
 
 template void fresnl<float,  float>  (float  xxa, float*  ss, float*  cc);

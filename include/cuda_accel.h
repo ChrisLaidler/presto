@@ -13,7 +13,6 @@
 #endif
 
 
-
 #ifdef WITHOMP
 #include <omp.h>
 #endif
@@ -147,14 +146,14 @@ extern "C"
 
 
 ////////	Optimisation
-//#define		WITH_OPT_BLK1
-//#define		WITH_OPT_BLK2
+#define 		WITH_OPT_BLK1
+#define 		WITH_OPT_BLK2
 #define 		WITH_OPT_BLK3
 
-//#define 		WITH_OPT_PLN1
-//#define 		WITH_OPT_PLN2
+#define 		WITH_OPT_PLN1
+#define 		WITH_OPT_PLN2
 #define 		WITH_OPT_PLN3
-//#define 		WITH_OPT_PLN4
+#define 		WITH_OPT_PLN4
 
 
 /******************************************* Defines ****************************************************/
@@ -255,19 +254,38 @@ extern "C"
 #define		FLAG_CAND_THREAD	BIT(42)		///< Use separate CPU threads to search for candidates in returned data
 #define		FLAG_CAND_MEM_PRE	BIT(43)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
 
-// ---- Optimisation ----//
+// ---- Optimisation ----// \\ Optimisation only //
 
-#define		FLAG_OPT_NM		BIT(45)		///< Use particle swarm to optimise candidate location
-#define		FLAG_OPT_SWARM		BIT(46)		///< Use particle swarm to optimise candidate location
+#define		FLAG_OPT_NM		BIT(10)		///< Use particle swarm to optimise candidate location
+#define		FLAG_OPT_SWARM		BIT(11)		///< Use particle swarm to optimise candidate location
 #define		FLAG_OPT_ALL		( FLAG_OPT_NM | FLAG_OPT_SWARM )
 
-#define		FLAG_OPT_LOCAVE		BIT(47)		///< Use local average normalisation instead of median in the optimisation
-#define		FLAG_OPT_BEST		BIT(48)		///< Use local average normalisation instead of median in the optimisation
-#define		FLAG_OPT_DYN_HW		BIT(49)		///< Use Dynamic half-width in optimisation
-#define		FLAG_OPT_NM_REFINE	BIT(50)		///< Use local average normalisation instead of median in the optimisation
-#define		FLAG_OPT_THREAD		BIT(51)		///< Use separate CPU threads for CPU component of optimisation
+#define		FLAG_OPT_NRM_LOCAVE	BIT(15)		///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_OPT_NRM_MEDIAN1D	BIT(16)		///< Use local 1D Median
+#define		FLAG_OPT_NRM_MEDIAN2D	BIT(17)		///< Use local 2D Median
+#define		FLAG_OPT_NRM_ALL	( FLAG_OPT_NRM_LOCAVE | FLAG_OPT_NRM_MEDIAN1D | FLAG_OPT_NRM_MEDIAN2D )
 
-// ---- Debug ----//
+
+#define		FLAG_OPT_BEST		BIT(20)		///<
+#define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
+#define		FLAG_OPT_NM_REFINE	BIT(22)		///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_OPT_THREAD		BIT(23)		///< Use separate CPU threads for CPU component of optimisation
+
+
+#define		FLAG_OPT_BLK_NRM	BIT(25)
+#define		FLAG_OPT_BLK_EXP	BIT(26)
+#define		FLAG_OPT_BLK_HRM	BIT(27)
+#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM )
+
+#define		FLAG_OPT_PTS_NRM	BIT(30)
+#define		FLAG_OPT_PTS_EXP	BIT(31)
+#define		FLAG_OPT_PTS_HRM	BIT(32)
+#define		FLAG_OPT_PTS_SHR	BIT(33)
+#define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR )
+
+#define		FLAG_OPT_KER_ALL	( FLAG_OPT_BLK | FLAG_OPT_PTS )
+
+// ---- Debug ----//  \\ COMMOM //
 
 #define		FLAG_PROF		BIT(55)		///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
 #define		FLAG_SYNCH		BIT(56)		///< Run the search in synchronous mode, this is slow and should only be used for testing
@@ -282,6 +300,17 @@ extern "C"
 #define		FLAG_DBG_TEST_ALL	( FLAG_DBG_TEST_1 | FLAG_DBG_TEST_2 | FLAG_DBG_TEST_3 )
 
 //#define		FLAG_RAND_1		BIT(59)		///< Random Flag 1
+
+/**************************************** ERROR flag ****************************************************/
+
+#define		ACC_ERR_NONE		(0)		///< No error
+#define		ACC_ERR_NAN		BIT(0)		///<
+#define		ACC_ERR_NEG		BIT(1)		///<
+#define		ACC_ERR_STRIDE		BIT(2)		///<
+#define		ACC_ERR_ALIGHN		BIT(3)		///<
+#define		ACC_ERR_OVERFLOW	BIT(4)		///<
+#define		ACC_ERR_OUTOFBOUNDS	BIT(5)		///<
+#define		ACC_ERR_NULL		BIT(6)		///< Null pointer
 
 
 /********************************** data types identifiers **********************************************/
@@ -381,9 +410,10 @@ typedef enum {
 /****************************************** Macros ******************************************************/
 
 ///< Defines for safe calling usable in C
-#define CUDA_SAFE_CALL(value, errorMsg)     __cuSafeCall   (value, __FILE__, __LINE__, errorMsg )
-#define CUFFT_SAFE_CALL(value,  errorMsg)   __cufftSafeCall(value, __FILE__, __LINE__, errorMsg )
-#define EXIT_DIRECTIVE(flag)                __exit_directive(__FILE__, __LINE__, flag )
+#define CUDA_SAFE_CALL(value, errorMsg)		__cuSafeCall   		(value, __FILE__, __LINE__, errorMsg )
+#define CUFFT_SAFE_CALL(value,  errorMsg)	__cufftSafeCall		(value, __FILE__, __LINE__, errorMsg )
+#define EXIT_DIRECTIVE(flag)			__exit_directive	(__FILE__, __LINE__, flag )
+#define ERROR_MSG(value, errorMsg)		__printErrors		(value, __FILE__, __LINE__, errorMsg )
 
 #ifdef	TIMING
   #define TIME if(1)			//< A macro used to encapsulate timing code, if TIMING is not defined all timing code should be omitted at compile time
@@ -526,14 +556,16 @@ typedef struct stackInfo
  */
 typedef struct fftInfo
 {
-    double	rlo;			///< The Low bin   (of interest)
-    double	rhi;			///< The high bin  (of interest)
-
     long long	firstBin;		///< The FFT bin index of the first memory location
-    long long	lastBin;		///< The FFT bin index of the last memory location
+    long long	lastBin;		///< The FFT bin index of the last  memory location
     long long	noBins;			///< The number of bins in the memory location
 
-    fcomplex*	fft;			///< The array of complex numbers (nor long)
+    long long	N;			///< The number of bins in the FT
+
+    double	dt;			///< Data sample length (s)
+    double	T;			///< Total observation length
+
+    fcomplex*	data;			///< The array of complex numbers (nor long)
 } fftInfo;
 
 typedef struct candOpt
@@ -553,6 +585,9 @@ typedef struct gpuInf
     char*   name;                       ///<
 } gpuInf;
 
+/** Used in optimisation
+ *
+ */
 typedef struct cuHarmInput
 {
     fcomplexcu*	h_inp;			///< A pointer to host memory size bytes big
@@ -562,8 +597,9 @@ typedef struct cuHarmInput
 
     int		stride;			///< The current stride of the input elements
     int         size;			///< The size in bytes of the full input data
-    int		loR[16];
-    double	norm[16];
+
+    int		loR[16];		///< The bin index of the first memory location
+    double	norm[16];		///< The normalisation factor used - TODO: CHeck if this is for powers or input
 } cuHarmInput;
 
 //------------- Data structures for, planes, stacks, batches etc ----------------
@@ -701,20 +737,6 @@ typedef struct cuFfdotStack
 
 } cuFfdotStack;
 
-/** Details of the number of bins of the full search  .
- */
-typedef struct searchScale
-{
-    double          searchRLow;         ///< The value of the input r bin to start the search at
-    double          searchRHigh;        ///< The value of the input r bin to end   the search at
-
-    long long       rLow;               ///< The lowest  possible R this search could find, Including halfwidth, thus may be less than 0
-    long long       rHigh;              ///< The highest possible R this search could find, Including halfwidth
-
-    unsigned long long noInpR;          ///< The maximum number of r input ( this is essentially  (rHigh - rLow) ) and me be longer than fft length because of halfwidth this requires the FFT to be padded!
-    unsigned long long noSearchR;	///< The maximum number of FFT bins ( of the input FT ) covered by the search
-} searchScale;
-
 /** Details of the section/step of the input FFT  .
  */
 typedef struct rVals
@@ -734,61 +756,96 @@ typedef struct rVals
     bool		outBusy;			///< A flag to show a thread is still using the output memory
 } rVals;
 
-/** User specified search details  .
- *
+/** Details of the number of bins of the full search  .
  */
 typedef struct searchSpecs
 {
-    int                 noHarmStages;                   ///< The number of stages of harmonic summing
+    int 		noHarms;			///< The number of harmonics to sum in the search
+    int			noHarmStages;			///< The number of stages of harmonic summing to use in the search
+    double		zMax;				///< The highest z drift of the fundamental plane
 
-    int			noResPerBin;			///< The number of response values per bin of the input fft - this allows "over sampling" the standard value is 2 interbinning.
-    float		candRRes;			///< The resolution of the candidate array ( measured in input FT bins')
+    float		sigma;				///< The cut off sigma
 
-    float               zMax;                           ///< The highest z drift of the fundamental
+    double		specRLow;			///< The user specified input r bin to start the search at
+    double		specRHigh;			///< The user specified input r bin to end   the search at
+
+    double		searchRLow;			///< The value of the input r bin to start the search at
+    double		searchRHigh;			///< The value of the input r bin to end   the search at
+
+    long long		rLow;				///< The lowest  possible R this search could find, Including halfwidth, thus may be less than 0
+    long long		rHigh;				///< The highest possible R this search could find, Including halfwidth
+
+    unsigned long long	noInpR;				///< The maximum number of r input ( this is essentially  (rHigh - rLow) ) and me be longer than fft length because of halfwidth this requires the FFT to be padded!
+    unsigned long long	noSearchR;			///< The maximum number of FFT bins ( of the input FT ) covered by the search
+} searchSpecs;
+
+/** Configuration parameters for the candidate generation stage  .
+ *
+ */
+typedef struct confSpecsGen
+{
+    int			noResPerBin;			///< The number of response values per bin of the input fft - this allows "over sampling" the standard value is 2 interbinning (has to be an int)
+
+    double		zMax;				///< The highest z drift of the fundamental plane
     double		zRes;				///< The resolution in the z dimension
 
     float		inputNormzBound;		///< The boundary z-max to swap over to CPU Normalisation	Not used if set < 0 - default is not used
     float		inputFFFTzBound;		///< The boundary z-max to swap over to CPU FFT's		Not used if set < 0 - default is not used
 
-    int                 pWidth;                         ///< The desired width of the planes
-    int                 ssStepSize;                     ///< The size of the steps to take through the in-memory plane
-    float               sigma;                          ///< The cut off sigma
-    fftInfo             fftInf;                         ///< The details of the input fft - location size and area to search
+    int			planeWidth;			///< The desired width of the planes
+    int			ssStepSize;			///< The size of the steps to take through the in-memory plane
 
-    int64_t             flags;                          ///< The search bit flags specified by the user, the actual bit flag used in the search will be different
-    int                 normType;                       ///< The type of normalisation to do
+    int64_t		flags;				///< The search bit flags specified by the user, the actual bit flag used in the search will be different
+    int			normType;			///< The type of normalisation to do
 
-    int                 mulSlices;                      ///< The number of multiplication slices
-    int                 ssSlices;                       ///< The number of Sum and search slices
+    int			mulSlices;			///< The number of multiplication slices
+    int			ssSlices;			///< The number of Sum and search slices
 
     int			ssSliceMin;			///< The minimum width (in z) of a slice of the sum and search kernels
     int			mulSliceMin;			///< The minimum width (in z) of a slice of the multiplication kernels
 
-    int                 ssChunk;                        ///< The multiplication chunk size
-    int                 mulChunk;                       ///< The Sum and search chunk size
+    int			ssChunk;			///< The multiplication chunk size
+    int			mulChunk;			///< The Sum and search chunk size
 
     int			ssColumn;			///< The number of sum and search columns
 
-    int                 retType;                        ///< The type of output
-    int                 cndType;                        ///< The type of output
-
     int			ringLength;			///< The number of elements in the results ring buffer
 
-    ///////////  Optimisation \\\\\\\\\\\\\\\\
+    int			retType;			///< The type of output
+    int			cndType;			///< The type of output
+    float		candRRes;			///< The resolution of the candidate array ( measured in input FT bins')
 
-    float               zScale;                         ///< The ratio between spacing in R and Z in the optimisation planes
+    void*		outData;			///< A pointer to the location to store candidates
 
-    int                 optResolution;                  ///< The number of r points per fft bin to use in the initial position optimisation
+} confSpecsGen;
 
-    int                 optMinLocHarms;                 ///< The minimum number of harmonics to localise on
-    int                 optMinRepHarms;                 ///< The minimum number of harmonics report on
+/** Configuration parameters for the candidate optimisation stage  .
+ *
+ */
+typedef struct confSpecsOpt
+{
+    float		zScale;				///< The ratio between spacing in R and Z in the optimisation planes
 
-    int                 optPlnSiz[MAX_NO_STAGES];       ///< The size of optimisation planes
-    int                 optPlnDim[NO_OPT_LEVS];         ///< The size of optimisation planes
-    float               optPlnScale;
+    int			optResolution;			///< The number of r points per fft bin to use in the initial position optimisation
 
-    void*               outData;                        ///< A pointer to the location to store candidates
-} searchSpecs;
+    int			optMinLocHarms;			///< The minimum number of harmonics to localise on
+    int			optMinRepHarms;			///< The minimum number of harmonics report on
+
+    int			optPlnSiz[MAX_NO_STAGES];	///< The size of optimisation planes
+    int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
+    float		optPlnScale;
+
+    int64_t		flags;				///< The search bit flags specified by the user, the actual bit flag used in the search will be different
+} confSpecsOpt;
+
+/** Configuration parameters  .
+ *
+ */
+typedef struct confSpecs
+{
+    confSpecsGen*	gen;				///< Configuration specifications of the candidate generation
+    confSpecsOpt*	opt;				///< Configuration specifications of the candidate optimisation
+} confSpecs;
 
 /** User specified GPU search details  .
  */
@@ -812,6 +869,7 @@ typedef struct gpuSpecs
 typedef struct cuFFdotBatch
 {
     cuSearch*       	cuSrch;           	///< A pointer to the parent search info
+    confSpecsGen*	conf;			///< Configuration - NB: This is a duplicate of the search configuration and should not be edited manually if the search configuration is edited the multiplication kernel and batches should be recreated!
     gpuInf*		gInf;			///< GPU information for the batch
 
     ////////////////// Batch parameters \\\\\\\\\\\\\\\\\\
@@ -969,51 +1027,56 @@ typedef struct cuRespPln
  */
 typedef struct cuOptCand
 {
-    cuSearch*       	cuSrch;			///< Details of the search
-
+    cuSearch*		cuSrch;			///< Details of the search
+    confSpecsOpt*	conf;			///< Configuration parameters
     gpuInf*		gInf;			///< Information on the GPU being used
+    int			pIdx;			///< The index of this optimiser in the list
 
-    double          	centR;
-    double          	centZ;
-    double          	rSize;			///< The width of the r plane
-    double          	zSize;			///< The width of the z plane
+    int			noHarms;
+    int64_t		flags;			///< CUDA accel search bit flags
 
-    int             	maxNoR;
-    int             	maxNoZ;
+    double		centR;			///< Centre of the plane
+    double		centZ;			///< Centre of the plane
+    double		rSize;			///< The width of the r plane
+    double		zSize;			///< The width of the z plane
 
-    int             	pIdx;			///< The index of this optimiser in the list
+    int			maxNoR;
+    int			maxNoZ;
 
-    int             	noZ;
-    int             	noR;
+    int			noZ;
+    int			noR;
 
-    int             	halfWidth;
+    int			blkCnt;			///< The number of blocks each thread will cover
+    int			blkWidth;		///< Width of the block in R -
+    int			blkDimX;		///< The number of cuda threads in the x dimension of a the blocked kernel
 
-    int             	noHarms;
+    int			lftIdx;			///< X index of the pre calculated kernel
+    int			topZidx;		///< Y index of the pre calculated kernel
+
+    int			halfWidth;
+    int			hw[32];
+    int			maxHalfWidth;
 
     cuHarmInput*	input;			///< A pointer holding input data
 
-    int             	hw[32];
-
-    int             	maxHalfWidth;
-    int             	outSz;			///< The size in bytes of device output buffer
-
-    void*           	d_out;
-    void*           	h_out;
-
-    int             	outStride;
+    size_t		resSz;			///< The size of the actual plane results
+    size_t		outSz;			///< The size in bytes of device output buffer
+    int			outStride;		///< Stride of the output data
+    void*		d_out;			///< Return data device
+    void*		h_out;			///< Return data host
 
     cuRespPln*		responsePln;		///< A device specific plane holding possibly pre calculated response function values
 
     // Streams
-    cudaStream_t    	stream;			///< CUDA stream for work
+    cudaStream_t	stream;			///< CUDA stream for work
 
     // Events
-    cudaEvent_t     	inpInit;		///< Copying input data to device
-    cudaEvent_t     	inpCmp;			///< Copying input data to device
-    cudaEvent_t     	compInit;		///< Copying input data to device
-    cudaEvent_t     	compCmp;		///< Copying input data to device
-    cudaEvent_t     	outInit;		///< Copying input data to device
-    cudaEvent_t     	outCmp;			///< Copying input data to device
+    cudaEvent_t		inpInit;		///< Copying input data to device
+    cudaEvent_t		inpCmp;			///< Copying input data to device
+    cudaEvent_t		compInit;		///< Copying input data to device
+    cudaEvent_t		compCmp;		///< Copying input data to device
+    cudaEvent_t		outInit;		///< Copying input data to device
+    cudaEvent_t		outCmp;			///< Copying input data to device
 
     cudaEvent_t     	tInit1;			///< Timing
     cudaEvent_t     	tComp1;			///< Timing
@@ -1033,9 +1096,6 @@ typedef struct cuOptInfo
     int                 noOpts;                 ///< The total number of optimisations to do across all devices
     cuOptCand*          opts;                   ///< A list noBatches long of
     cuRespPln*          responsePlanes;         ///< A collection of response functions for optimisation, one per GPU
-
-    float               zScale;			///< The ratio between spacing in R and Z in the optimisation planes
-    int                 optResolution;		///< The number of r points per fft bin to use in the initial position optimisation
 } cuOptInfo;
 
 /** Details of the GPU's  .
@@ -1055,33 +1115,35 @@ typedef struct cuGpuInfo
  */
 struct cuSearch
 {
-    searchSpecs*        sSpec;			///< Specifications of the search
-    gpuSpecs*           gSpec;			///< Specifications of the GPU's to use
-    searchScale*        SrchSz;			///< Details on o the size (in bins) of the search
-    resThrds*           threasdInfo;		///< Information on threads to handle returned candidates.
-    cuPlnInfo*          pInf;			///< The allocated Device and host memory and data structures to create planes including the kernels
-    cuOptInfo*          oInf;			///< Details of optimisations
+    searchSpecs*	sSpec;				///< Details on o the size (in bins) of the search
+    confSpecs*		conf;				///< Configuration specifications of the candidate generation
+    gpuSpecs*		gSpec;				///< Specifications of the GPU's to use
+    fftInfo*		fft;				///< The details of the input fft - location size and area to search
 
-    // Some extra search details
-    int                 noHarmStages;		///< The number of stages of harmonic summing
-    int                 noGenHarms;		///< The number of harmonics in the family
-    int                 noSrchHarms;		///< The number of harmonics to search over
+    resThrds*		threasdInfo;			///< Information on threads to handle returned candidates.
+    cuPlnInfo*		pInf;				///< The allocated Device and host memory and data structures to create planes including the kernels
+    cuOptInfo*		oInf;				///< Details of optimisations
 
-    long long           timings[COMP_MAX];	///< Array for timing values (values stored in μs) - These are used for both timing and profiling, they are only filled if TIMING and or PROFILING are defined in cuda_accel.h
+    //// Some extra search details
+    int			noHarmStages;			///< The number of stages of harmonic summing
+    int			noGenHarms;			///< The number of harmonics in the family
+    int			noSrchHarms;			///< The number of harmonics to search over
+
+    long long		timings[COMP_MAX];		///< Array for timing values (values stored in μs) - These are used for both timing and profiling, they are only filled if TIMING and or PROFILING are defined in cuda_accel.h
 
     // Search power cutoff values
-    int*                sIdx;			///< The index of the planes in the Presto harmonic summing order
-    float*              powerCut;		///< The power cutoff
-    long long*          numindep;		///< The number of independent trials
-    int*                yInds;			///< The Y indices
+    int*		sIdx;				///< The index of the planes in the Presto harmonic summing order
+    float*		powerCut;			///< The power cutoff
+    long long*		numindep;			///< The number of independent trials
+    int*		yInds;				///< The Y indices
 
     // Search specific memory
-    void*               h_candidates;		///< Host memory for candidates
-    void*               d_planeFull;		///< Device memory for the in-mem f-∂f plane
-    GSList*		cands;			///< The candidates from the GPU search
+    void*		h_candidates;			///< Host memory for candidates
+    void*		d_planeFull;			///< Device memory for the in-mem f-∂f plane
+    GSList*		cands;				///< The candidates from the GPU search
 
-    unsigned int	inmemStride;		///< The stride (in units) of the in-memory plane data in device memory
-    unsigned int	candStride;		///< The stride (in units) of the host candidate array
+    unsigned int	inmemStride;			///< The stride (in units) of the in-memory plane data in device memory
+    unsigned int	candStride;			///< The stride (in units) of the host candidate array
 };
 
 /** Information of the P-threads used in the search  .
@@ -1101,43 +1163,43 @@ struct resThrds
  */
 typedef struct resultData
 {
-    cuSearch*           cuSrch;                 ///< Details of the search
+    cuSearch*		cuSrch;                 ///< Details of the search
 
-    void*               retData;		///< A pointer to the memory the results are stored in (usual pinned host memory)
+    void*		retData;		///< A pointer to the memory the results are stored in (usual pinned host memory)
     bool*		outBusy;		///< A pointer to the flag indicating that the memory has all been read
     int			resSize;		///< The size of the results data
 
-    uint                retType;		///< The way the candidates should be stored
-    uint                cndType;		///<
-    int64_t             flags;			///< CUDA accel search bit flags
+    uint		retType;		///< The way the candidates should be stored
+    uint		cndType;		///<
+    int64_t		flags;			///< CUDA accel search bit flags
 
     cudaEvent_t		preBlock;		///< An event to block the thread on before processing the data
     cudaEvent_t		postScan;		///< An CUDA event to create after the data has finished being used
     cudaStream_t	stream;			///< The stream to record the event in
 
-    uint                x0;
-    uint                x1;
+    uint		x0;
+    uint		x1;
 
-    uint                y0;
-    uint                y1;
+    uint		y0;
+    uint		y1;
 
-    uint                xStride;
-    uint                yStride;
+    uint		xStride;
+    uint		yStride;
 
     double		zStart;			///< Max Z-value
     double		zEnd;			///< Min Z-value
     uint		noZ;			///< The number of z-values searched
 
-    double              rLow;			///< The input FT bin "index" of the first valid result
+    double		rLow;			///< The input FT bin "index" of the first valid result
     int 		noResPerBin;		///< The number of response values per bin of the input fft - this allows "over sampling" the standard value is 2 interbinning.
     float		candRRes;		///< The resolution of the candidate array ( measured in input FT bins')
 
-    rVals               rVal;
+    rVals		rVal;
 
-    uint*               noResults;		///< A value to keep tack of the number of candidates found
+    uint*		noResults;		///< A value to keep tack of the number of candidates found
 
-    long long*          resultTime;
-    long long*          blockTime;		///< This can't really get used...
+    long long*		resultTime;
+    long long*		blockTime;		///< This can't really get used...
 } resultData;
 
 /** This is just a wrapper to be passed to a CPU thread  .
@@ -1157,32 +1219,55 @@ typedef struct candSrch
 
 /************************************* Function prototypes ***********************************************/
 
-/** Read the GPU details from clig command line  .
- *
- * @param cmd
- * @return A pointer to the accel info struct to fill
- */
-ExternC gpuSpecs readGPUcmd(Cmdline *cmd);
+int startBatchR  (cuFFdotBatch* batch, double firstR, int firstIteration = 1, int firstStep = 1 );
+
+int centerBatchR (cuFFdotBatch* batch, double firstR, int firstIteration = 1, int firstStep = 1 );
 
 /** Read the GPU details from clig command line  .
  *
  * @param cmd
  * @return A pointer to the accel info struct to fill
  */
-ExternC searchSpecs readSrchSpecs(Cmdline *cmd, accelobs* obs);
+ExternC gpuSpecs* readGPUcmd(Cmdline *cmd);
 
-ExternC cuSearch* initSearchInf(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+// TODO - Wite these descriotios
+gpuSpecs* getGpuSpec(int devID = -1, int batch = 0, int steps = 0, int opts = 0 );
 
-ExternC cuSearch* initCuKernels(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+searchSpecs* getSpec(fftInfo* fft);
 
-ExternC cuSearch* initCuOpt(searchSpecs* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+confSpecs* getConfig();
+
+void initCandGeneration(cuSearch* sSrch );
+
+/** Read the GPU details from clig command line  .
+ *
+ * @param cmd
+ * @return A pointer to the accel info struct to fill
+ */
+ExternC confSpecsGen readSrchSpecs(Cmdline *cmd, accelobs* obs);
+
+ExternC cuSearch* initSearchInfCMD(Cmdline *cmd, accelobs* obs, gpuSpecs* gSpec);
+
+ExternC cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, fftInfo* fftInf);
+
+ExternC cuSearch* initCuKernels(confSpecsGen* sSpec, gpuSpecs* gSpec, cuSearch* srch);
+
+ExternC GSList* generateCandidatesGPU(cuSearch* cuSrch);
+
+ExternC void libTst();
+
+ExternC fftInfo* readFFT(char* fileName);
+
+ExternC cuSearch* initCuOpt(cuSearch* srch);
 
 ExternC void freeCuSearch(cuSearch* srch);
 
 ExternC void freeAccelGPUMem(cuPlnInfo* mInf);
 
-ExternC cuOptCand* initOptPln(searchSpecs* sSpec);
-ExternC cuOptCand* initOptSwrm(searchSpecs* sSpec);
+ExternC cuOptCand* initOptPln(confSpecsGen* sSpec);
+ExternC cuOptCand* initOptSwrm(confSpecsGen* sSpec);
+
+
 
 
 /** Initialise the template structure and kernels for a multi-step batches  .
@@ -1276,7 +1361,7 @@ ExternC long long compltCudaContext(gpuSpecs* gSpec);
  */
 ExternC void CycleBackRlists(cuFFdotBatch* batch);
 
-ExternC cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, searchSpecs* sSpec);
+ExternC cuSearch* searchGPU(cuSearch* cuSrch, gpuSpecs* gSpec, confSpecsGen* sSpec);
 
 ExternC void clearRvals(cuFFdotBatch* batch);
 
