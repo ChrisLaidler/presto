@@ -61,8 +61,10 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
   const int sid		= blockIdx.x  * SS31BS     +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
 
 #ifdef WITH_SAS_COUNT	// Zero SM  .
+  const int bidx  = threadIdx.y * SS31_X  +  threadIdx.x;		///< Block index
   uint 		conts	= 0;						///< Per thread count of candidates found
   __shared__ uint  cnt;							///< Block count of candidates
+
   if ( (tidx == 0) && d_counts )
   {
     cnt = 0;
