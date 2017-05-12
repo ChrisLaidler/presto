@@ -81,8 +81,8 @@
  *  	Reworked calculating the y-index and added the setPlaneBounds function
  *
  *  [2017-05-12]
- *  	Massiv refactor. Moved a nunch of stuff to a seperate candidate generation stage file
- *	Added the printErrors caperbility
+ *  	Massive refactor. Moved a bunch of stuff to a separate candidate generation stage file
+ *	Added the printErrors capability
  */
 
 #include <cufft.h>
@@ -223,7 +223,10 @@ void __printErrors( int value, const char* file, int lineNo, const char* errorMs
   }
 }
 
-
+void setDebugMsgLevel(int lvl)
+{
+  msgLevel = lvl;
+}
 /** Calculate an optimal accellen given a width  .
  *
  * @param width		The width of the plane (usually a power of two) if width < 100 the closes power of 2 to width*1000 will be used ie 8 -> 8024
