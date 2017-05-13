@@ -155,9 +155,14 @@ double ratioARR[] = {
 };
 
 
+
+
+
+
 ///////////////////////// Function prototypes ////////////////////////////////////
 
-void __printErrors( int value, const char* file, int lineNo, const char* errorMsg)
+
+void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg)
 {
   if (value)
   {
@@ -227,6 +232,7 @@ void setDebugMsgLevel(int lvl)
 {
   msgLevel = lvl;
 }
+
 /** Calculate an optimal accellen given a width  .
  *
  * @param width		The width of the plane (usually a power of two) if width < 100 the closes power of 2 to width*1000 will be used ie 8 -> 8024

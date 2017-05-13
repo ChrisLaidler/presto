@@ -644,7 +644,7 @@ __device__ inline float getPowerAsFloat(half* adress, uint offset)
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 // TODO: Write up headdins
-void __printErrors( int value, const char* file, int lineNo, const char* errorMsg);
+void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg);
 
 searchSpecs* duplicate(searchSpecs* sSpec);
 confSpecsGen* duplicate(confSpecsGen* conf);

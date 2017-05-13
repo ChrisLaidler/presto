@@ -301,18 +301,6 @@ extern "C"
 
 //#define		FLAG_RAND_1		BIT(59)		///< Random Flag 1
 
-/**************************************** ERROR flag ****************************************************/
-
-#define		ACC_ERR_NONE		(0)		///< No error
-#define		ACC_ERR_NAN		BIT(0)		///<
-#define		ACC_ERR_NEG		BIT(1)		///<
-#define		ACC_ERR_STRIDE		BIT(2)		///<
-#define		ACC_ERR_ALIGHN		BIT(3)		///<
-#define		ACC_ERR_OVERFLOW	BIT(4)		///<
-#define		ACC_ERR_OUTOFBOUNDS	BIT(5)		///<
-#define		ACC_ERR_NULL		BIT(6)		///< Null pointer
-
-
 /********************************** data types identifiers **********************************************/
 
 // ----------- This is a list of the data types that and storage structures
@@ -354,6 +342,58 @@ typedef enum {
   FFT_PLANE,//!< FFT_PLANE
   FFT_BOTH  //!< FFT_BOTH
 } presto_fft_type;
+
+typedef enum
+{
+  ACC_ERR_NONE		=	(0),		///< No error
+  ACC_ERR_NAN		=	BIT(0),		///<
+  ACC_ERR_NEG		=	BIT(1),		///<
+  ACC_ERR_STRIDE	=	BIT(2),		///<
+  ACC_ERR_ALIGHN	=	BIT(3),		///<
+  ACC_ERR_OVERFLOW	=	BIT(4),		///<
+  ACC_ERR_OUTOFBOUNDS	=	BIT(5),		///<
+  ACC_ERR_NULL		=	BIT(6)		///< Null pointer
+} ACC_ERR_CODE;
+
+inline ACC_ERR_CODE operator ~(ACC_ERR_CODE a)
+{
+    return static_cast<ACC_ERR_CODE>(~static_cast<int>(a));
+}
+
+inline ACC_ERR_CODE operator |(ACC_ERR_CODE a, ACC_ERR_CODE b)
+{
+    return static_cast<ACC_ERR_CODE>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+inline ACC_ERR_CODE& operator |=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
+{
+    return a= a | b;
+}
+
+inline bool operator ==(ACC_ERR_CODE a, ACC_ERR_CODE b)
+{
+    return (a & b) > 0 ? 1 : 0 ;
+}
+
+inline ACC_ERR_CODE operator &(ACC_ERR_CODE a, ACC_ERR_CODE b)
+{
+    return static_cast<ACC_ERR_CODE>(static_cast<int>(a) & static_cast<int>(b));
+}
+
+inline ACC_ERR_CODE& operator &=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
+{
+    return a= a & b;
+}
+
+inline ACC_ERR_CODE& operator +=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
+{
+    return a= a | b;
+}
+
+inline ACC_ERR_CODE& operator -=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
+{
+    return a= a & ~b;
+}
 
 /******************************************* enums ******************************************************/
 
@@ -1219,9 +1259,11 @@ typedef struct candSrch
 
 /************************************* Function prototypes ***********************************************/
 
-int startBatchR  (cuFFdotBatch* batch, double firstR, int firstIteration = 1, int firstStep = 1 );
+void setDebugMsgLevel(int lvl);
 
-int centerBatchR (cuFFdotBatch* batch, double firstR, int firstIteration = 1, int firstStep = 1 );
+ACC_ERR_CODE startBatchR  (cuFFdotBatch* batch, double firstR, int firstIteration = 1, int firstStep = 1 );
+
+ACC_ERR_CODE centerBatchR (cuFFdotBatch* batch, double firstR, int firstIteration = 1, int firstStep = 1 );
 
 /** Read the GPU details from clig command line  .
  *

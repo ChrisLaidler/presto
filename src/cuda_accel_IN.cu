@@ -245,11 +245,11 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
  * @param iteration
  * @param firstStep
  */
-int startBatchR (cuFFdotBatch* batch, double firstR, int iteration, int firstStep )
+ACC_ERR_CODE startBatchR (cuFFdotBatch* batch, double firstR, int iteration, int firstStep )
 {
   infoMSG(4,4,"Set batch R-values starting at %9.3f", firstR);
 
-  int ret = ACC_ERR_NONE;
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
 
   if ( batch->flags & FLAG_SS_31 )
   {
@@ -306,7 +306,7 @@ int startBatchR (cuFFdotBatch* batch, double firstR, int iteration, int firstSte
   return ret;
 }
 
-int centerBatchR (cuFFdotBatch* batch, double r, int iteration, int firstStep )
+ACC_ERR_CODE centerBatchR (cuFFdotBatch* batch, double r, int iteration, int firstStep )
 {
   double stepWidth	= ( batch->accelLen / (double)batch->conf->noResPerBin ) ;
   double low		= r - stepWidth / 2.0 ;

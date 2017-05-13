@@ -5507,7 +5507,7 @@ int genPlane(cuSearch* cuSrch, char* msg)
   cuFFdotBatch* master	= &cuSrch->pInf->kernels[0];	/// The first kernel created holds global variables
   int iteration 	= 0;				/// Actual loop iteration
   int   step		= 0;				/// The next step to be processed (each iteration can handle multiple steps)
-  int	ret		= ACC_ERR_NONE;
+  ACC_ERR_CODE ret	= ACC_ERR_NONE;
   confSpecsGen*	conf	= cuSrch->conf->gen;
 
   TIME // Basic timing  .
