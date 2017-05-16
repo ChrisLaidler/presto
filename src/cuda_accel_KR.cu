@@ -96,19 +96,19 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
     }
 
     int noResp	= half_width * rSteps;				// The number of response variables per side
-    genT offset	= 0;						// The distance of the response value from 0 (negative to the leaf)
+    genT offset	= 0;						// The distance of the response value from 0
 
     // Calculate the kernel index for this thread (centred on zero inverted and wrapped)
     if		( cx < noResp )
     {
-      // Beginning of array ( left half of response values mirrored about zero)
-      offset = -1 * cx / (genT)rSteps;
+      // Beginning of array ( left half of response values mirrored about zero, cos of convolution)
+      offset = cx / (genT)rSteps;
       rx = 1;
     }
     else if	(cx >= width - noResp )
     {
-      // End of array ( right half of response values mirrored about zero)
-      offset = ( width - cx ) / (genT)rSteps;
+      // End of array ( right half of response values mirrored about zero, cos of convolution)
+      offset = ( cx - width ) / (genT)rSteps;
       rx = 1;
     }
 
