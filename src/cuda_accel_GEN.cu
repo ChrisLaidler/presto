@@ -881,7 +881,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //      {
 //	// Default to S&S 3.1
 //	kernel->flags |= FLAG_SS_31;
-//	kernel->flags |= FLAG_RET_STAGES;
+//	kernel->flags |= FLAG_STAGES;
 //      }
 //
 //      // Reset sizes as they will need to be set to the actual values
@@ -936,7 +936,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //
 //      if ( (kernel->flags & FLAG_SS_31) || (kernel->flags & FLAG_SS_INMEM) )
 //      {
-//	kernel->flags |= FLAG_RET_STAGES;
+//	kernel->flags |= FLAG_STAGES;
 //      }
 //
 //      if ( !(kernel->flags & FLAG_SS_INMEM) && (kernel->flags & FLAG_Z_SPLIT) )
@@ -1454,7 +1454,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       {
 	// Default to S&S 3.1
 	kernel->flags |= FLAG_SS_31;
-	kernel->flags |= FLAG_RET_STAGES;
+	kernel->flags |= FLAG_STAGES;
       }
 
       // Reset sizes as they will need to be set to the actual values
@@ -1510,7 +1510,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       if ( (kernel->flags & FLAG_SS_31) || (kernel->flags & FLAG_SS_INMEM) )
       {
-	kernel->flags |= FLAG_RET_STAGES;
+	kernel->flags |= FLAG_STAGES;
       }
 
       if ( !(kernel->flags & FLAG_SS_INMEM) && (kernel->flags & FLAG_Z_SPLIT) )
@@ -2112,10 +2112,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	setSrchSize(cuSrch->sSpec, kernel->hInfos->halfWidth, kernel->noGenHarms, alignemen);
 
-	if ( (kernel->flags & FLAG_STORE_ALL) && !( kernel->flags  & FLAG_RET_STAGES) )
+	if ( (kernel->flags & FLAG_STORE_ALL) && !( kernel->flags  & FLAG_STAGES) )
 	{
-	  printf("   Storing all results implies returning all results so adding FLAG_RET_STAGES to flags!\n");
-	  kernel->flags  |= FLAG_RET_STAGES;
+	  printf("   Storing all results implies returning all results so adding FLAG_STAGES to flags!\n");
+	  kernel->flags  |= FLAG_STAGES;
 	}
       }
     }
@@ -2395,7 +2395,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       // Calculate return data size for one step
       kernel->cndDataSize   = retY*kernel->strideOut*retSZ;
 
-      if ( kernel->flags & FLAG_RET_STAGES )
+      if ( kernel->flags & FLAG_STAGES )
 	kernel->cndDataSize *= kernel->noHarmStages;
 
       infoMSG(6,6,"retSZ: %i  alignment: %i  strideOut: %i  cndDataSize: ~%.2f MB\n", retSZ, kernel->gInf->alignment, kernel->strideOut, kernel->cndDataSize*1e-6);
@@ -5460,7 +5460,7 @@ void finish_Search(cuFFdotBatch* batch)
     {
       cuFfdotStack* cStack = &batch->stacks[stack];
 
-      infoMSG(4,4,"blocking synchronisation on %s stack %i", "ifftMemComp", stack );
+      infoMSG(4,4,"Blocking synchronisation on %s stack %i", "ifftMemComp", stack );
 
       PROF // Profiling  .
       {
@@ -5616,7 +5616,7 @@ int genPlane(cuSearch* cuSrch, char* msg)
 
       FOLD // Set start r-vals for all steps in this batch  .
       {
-	ret = startBatchR (batch, firstR, ite, firstStep )	& (~ACC_ERR_OVERFLOW);
+	ret = startBatchR (batch, firstR, ite, firstStep ) & (~ACC_ERR_OVERFLOW);
 	if ( ret )
 	{
 	  ERROR_MSG(ret, "ERROR: Setting batch r location");

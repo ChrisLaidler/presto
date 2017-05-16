@@ -582,7 +582,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	FOLD // Synchronisation [ blocking ]  .
 	{
-	  infoMSG(4,4,"blocking synchronisation on %s", "iDataCpyComp" );
+	  infoMSG(4,4,"Blocking synchronisation on %s", "iDataCpyComp" );
 
 	  PROF // Profiling  .
 	  {
@@ -711,7 +711,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	  FOLD // Synchronisation [ blocking ]  .
 	  {
-	    infoMSG(4,4,"blocking synchronisation on %s", "iDataCpyComp" );
+	    infoMSG(4,4,"Blocking synchronisation on %s", "iDataCpyComp" );
 
 	    PROF // Profiling  .
 	    {

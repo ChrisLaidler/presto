@@ -875,7 +875,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
     FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
     {
-      infoMSG(4,4,"blocking synchronisation on %s", "candCpyComp" );
+      infoMSG(4,4,"Blocking synchronisation on %s", "candCpyComp" );
 
       PROF // Profiling  .
       {

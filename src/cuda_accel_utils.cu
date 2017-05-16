@@ -1205,7 +1205,7 @@ void readAccelDefalts(confSpecs *conf)
 	{
 	  (*genFlags) &= ~FLAG_SS_ALL;
 	  (*genFlags) |= FLAG_SS_00;
-	  (*genFlags) |= FLAG_RET_STAGES;
+	  (*genFlags) |= FLAG_STAGES;
 	}
 	else if ( strCom("CPU", str2 ) )
 	{
@@ -1233,7 +1233,7 @@ void readAccelDefalts(confSpecs *conf)
 	{
 	  (*genFlags) &= ~FLAG_SS_ALL;
 	  (*genFlags) |= FLAG_SS_31;
-	  (*genFlags) |= FLAG_RET_STAGES;
+	  (*genFlags) |= FLAG_STAGES;
 	}
 	else if ( strCom("INMEM", str2 ) || strCom("IM", str2 ) )
 	{
@@ -1470,7 +1470,7 @@ void readAccelDefalts(confSpecs *conf)
 
       else if ( strCom("RETURN", str1 ) )
       {
-	singleFlag ( genFlags, str1, str2, FLAG_RET_STAGES, "STAGES", "FINAL", lineno, fName );
+	singleFlag ( genFlags, str1, str2, FLAG_STAGES, "STAGES", "FINAL", lineno, fName );
       }
 
       else if ( strCom("FLAG_RET_ARR", str1 ) )
@@ -1968,7 +1968,7 @@ confSpecs* defaultConfig()
 //      sSpec.flags	|= FLAG_SS_INMEM;
 //    }
 
-    conf->gen->flags	|= FLAG_RET_STAGES;
+    conf->gen->flags	|= FLAG_STAGES;
 
     conf->gen->cndType	|= CU_CANDFULL;  	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
     conf->gen->cndType	|= CU_STR_ARR;  	// Candidate storage structure - CU_STR_ARR    is generally the fastest

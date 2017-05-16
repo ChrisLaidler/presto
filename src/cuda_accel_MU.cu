@@ -506,7 +506,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
     {
       FOLD // Synchronisation  .
       {
-	infoMSG(4,4,"blocking synchronisation on %s", "ifftMemComp" );
+	infoMSG(4,4,"Blocking synchronisation on %s", "ifftMemComp" );
 
 	CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
       }

@@ -104,7 +104,7 @@ extern "C"
 
 ////////	Multiplication
 #define			MIN_MUL_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time, generally multiplication chunks are higher so this value can be high
-#define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better 
+#define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better
 
 //#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - DEBUG ONLY: Just write to ffdot plane - 1 thread per complex value  .
 #define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  .
@@ -126,7 +126,7 @@ extern "C"
 
 
 ////////	Sum & Search
-#define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
+#define			MIN_SAS_CHUNK	1	///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
 #define			MIN_SAS_COLUMN	1		///< Not in use yet - min columns for sas kernels
@@ -146,14 +146,14 @@ extern "C"
 
 
 ////////	Optimisation
-#define 		WITH_OPT_BLK1
-#define 		WITH_OPT_BLK2
-#define 		WITH_OPT_BLK3
+#define 		WITH_OPT_BLK_NRM
+#define 		WITH_OPT_BLK_EXP
+#define 		WITH_OPT_BLK_HRM
 
-#define 		WITH_OPT_PLN1
-#define 		WITH_OPT_PLN2
-#define 		WITH_OPT_PLN3
-#define 		WITH_OPT_PLN4
+#define 		WITH_OPT_PLN_NRM
+#define 		WITH_OPT_PLN_EXP		///< This is generally a very bad idea =/
+#define 		WITH_OPT_PLN_HRM
+#define 		WITH_OPT_PLN_SHR
 
 
 /******************************************* Defines ****************************************************/
@@ -173,88 +173,85 @@ extern "C"
 
 /************************************** Bit flag values *************************************************/
 
-//---- General ----//
+//-------------- General --------//	\\ 0 - 9 - BOTH //
 
 #define		FLAG_DOUBLE		BIT(0)		///< Use double precision kernels and complex plane and iFFT's - Not implemented yet
 #define		FLAG_ITLV_ROW		BIT(1)		///< Multi-step Row interleaved- This seams to be best in most cases
-#define		FLAG_STK_UP		BIT(2)		///< Process stack in increasing size order
-#define		FLAG_CONV		BIT(3)		///< Multiply and FFT each stack "together"
-#define		FLAG_Z_SPLIT		BIT(4)		///< Split the f-fdot plane into top and bottom sections
 
-//---- Kernels ----//
+#define		FLAG_STAGES		BIT(2)		///< Return results for all stages of summing, default is only the final result
+#define		FLAG_HAMRS		BIT(3)		///< Return results for all harmonics,
 
-#define		FLAG_KER_HIGH		BIT(5)		///< Use increased response function width for higher accuracy at Z close to zero
-#define		FLAG_KER_MAX		BIT(6)		///< Use maximum response function width for higher accuracy at Z close to zero
-#define		FLAG_CENTER		BIT(7)		///< Centre and align the usable part of the convolution kernel
-#define		FLAG_KER_DOUBGEN	BIT(8)		///< Create kernel with double precision calculations
-#define		FLAG_KER_DOUBFFT	BIT(9)		///< Create kernel with double precision calculations and FFT's
+#define		FLAG_CMPLX		BIT(4)		///< Use complex values - Default is to use powers
+#define		FLAG_POW_HALF		BIT(5)		///< Use half precision when doing a INMEM search
 
-//---- Input ----//
+
+//------------- Kernels ------//	\\ 10 - 19 - GEN Only //
+
+#define		FLAG_KER_HIGH		BIT(10)		///< Use increased response function width for higher accuracy at Z close to zero
+#define		FLAG_KER_MAX		BIT(11)		///< Use maximum response function width for higher accuracy at Z close to zero
+#define		FLAG_CENTER		BIT(12)		///< Centre and align the usable part of the convolution kernel
+#define		FLAG_KER_DOUBGEN	BIT(13)		///< Create kernel with double precision calculations
+#define		FLAG_KER_DOUBFFT	BIT(14)		///< Create kernel with double precision calculations and FFT's
+
+#define		FLAG_STK_UP		BIT(15)		///< Process stack in increasing size order
+#define		FLAG_CONV		BIT(16)		///< Multiply and FFT each stack "together"
+
+//------------- Input ---------//	\\ 20 - 24 - GEN Only //
 
 //		NO_VALUE				///< Prepare input data one step at a time, using CPU - normalisation on CPU - Generally bets option, as CPU is "idle"
-#define		CU_NORM_GPU_SM		BIT(10)		///< Prepare input data one step at a time, using GPU - Sort using SM
-#define		CU_NORM_GPU_SM_MIN	BIT(11)		///< Prepare input data one step at a time, using CPU - Sort at most 1024 SM floats
-#define		CU_NORM_GPU_OS		BIT(12)		///< Prepare input data one step at a time, using CPU - Innovative Order statistic algorithm
+#define		CU_NORM_GPU_SM		BIT(20)		///< Prepare input data one step at a time, using GPU - Sort using SM
+#define		CU_NORM_GPU_SM_MIN	BIT(21)		///< Prepare input data one step at a time, using CPU - Sort at most 1024 SM floats
+#define		CU_NORM_GPU_OS		BIT(22)		///< Prepare input data one step at a time, using CPU - Innovative Order statistic algorithm
 #define		CU_NORM_GPU		( CU_NORM_GPU_SM | CU_NORM_GPU_SM_MIN | CU_NORM_GPU_OS )
 
-#define		CU_NORM_EQUIV		BIT(13)		///< Do the normalisation the CPU way
-#define		CU_INPT_FFT_CPU		BIT(14)		///< Do the FFT on the CPU
+#define		CU_NORM_EQUIV		BIT(23)		///< Do the normalisation the CPU way
+#define		CU_INPT_FFT_CPU		BIT(24)		///< Do the FFT on the CPU
 
 
-//---- Multiplication ----//
+//------------- Multiplication ------//	\\ 25 - 34 - GEN Only //
 
-#define		FLAG_MUL_00		BIT(15)		///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
-#define		FLAG_MUL_11		BIT(16)		///< Multiply kernel - Do the multiplication one plane ant a time
-#define		FLAG_MUL_21		BIT(17)		///< Multiply kernel - read all input - loop over kernel - loop over planes
-#define		FLAG_MUL_22		BIT(18)		///< Multiply kernel - Loop ( Plane - Y )
-#define		FLAG_MUL_23		BIT(19)		///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
-#define		FLAG_MUL_31		BIT(20)		///< Multiply kernel - Do an entire batch in one kernel
-#define		FLAG_MUL_CB		BIT(21)		///< Multiply kernel - Using a CUFFT callback
+#define		FLAG_MUL_00		BIT(25)		///< Multiply kernel (Base only do memory reads and writes - NB This does not do the actual multiplication)
+#define		FLAG_MUL_11		BIT(26)		///< Multiply kernel - Do the multiplication one plane ant a time
+#define		FLAG_MUL_21		BIT(27)		///< Multiply kernel - read all input - loop over kernel - loop over planes
+#define		FLAG_MUL_22		BIT(28)		///< Multiply kernel - Loop ( Plane - Y )
+#define		FLAG_MUL_23		BIT(29)		///< Multiply kernel - Loop ( chunk (read ker) - plan - Y - step )
+#define		FLAG_MUL_31		BIT(30)		///< Multiply kernel - Do an entire batch in one kernel
+#define		FLAG_MUL_CB		BIT(31)		///< Multiply kernel - Using a CUFFT callback
 #define		FLAG_MUL_PLN		( FLAG_MUL_11 )
 #define		FLAG_MUL_STK		( FLAG_MUL_00 | FLAG_MUL_21 | FLAG_MUL_22 | FLAG_MUL_23 | FLAG_MUL_CB )
 #define		FLAG_MUL_BATCH		( FLAG_MUL_31 )
 #define		FLAG_MUL_ALL		( FLAG_MUL_BATCH | FLAG_MUL_STK | FLAG_MUL_PLN )
 
-#define		FLAG_TEX_MUL		BIT(22)		///< [ Deprecated ]Use texture memory for multiplication- May give some advantage on pre-Fermi generation which we don't really care about
+#define		FLAG_TEX_MUL		BIT(34)		///< [ Deprecated ]Use texture memory for multiplication- May give some advantage on pre-Fermi generation which we don't really care about
 
-//---- FFT ----//
-
-#define		CU_FFT_SEP_INP		BIT(24)		///< Use a separate FFT plan for the input of each batch
-#define		CU_FFT_SEP_PLN		BIT(25)		///< Use a separate FFT plan for the plane of each batch
+//------------- FFT -----------//	\\ 35 - 39
+#define		CU_FFT_SEP_INP		BIT(35)		///< Use a separate FFT plan for the input of each batch
+#define		CU_FFT_SEP_PLN		BIT(36)		///< Use a separate FFT plan for the plane of each batch
 #define		CU_FFT_SEP_ALL		( CU_FFT_SEP_INP | CU_FFT_SEP_PLN ) /// All callbacks
 
-#define		FLAG_CUFFT_CB_POW	BIT(26)		///< Use an output callback to create powers, this works in std or in-mem searches - This is a similar iFFT speed but speeds up SS
-#define		FLAG_CUFFT_CB_INMEM	BIT(27)		///< Use the in-mem FFT's to copy values strait back to in-mem plane
+#define		FLAG_CUFFT_CB_POW	BIT(37)		///< Use an output callback to create powers, this works in std or in-mem searches - This is a similar iFFT speed but speeds up SS
+#define		FLAG_CUFFT_CB_INMEM	BIT(38)		///< Use the in-mem FFT's to copy values strait back to in-mem plane
 #define		FLAG_CUFFT_CB_OUT	( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM ) /// All output callbacks
 #define		FLAG_CUFFT_ALL		( FLAG_CUFFT_CB_OUT | FLAG_MUL_CB ) /// All callbacks
 
-//---- Power ----//
+//------------- Sum and search ------//	\\ 40 - 49 - GEN Only //
 
-#define		FLAG_POW_HALF		BIT(28)		///< Use half precision when doing a INMEM search
-
-//---- Sum and search ----//
-
-#define		FLAG_SS_CPU		BIT(30)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
-#define		FLAG_SS_00		BIT(31)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
-#define		FLAG_SS_31		BIT(32)		///< This is the standard sum and search kernel, there were others but they were deprecated
-#define		FLAG_SS_INMEM		BIT(34)		///< Do an in memory GPU search
+#define		FLAG_SS_CPU		BIT(40)		///< Do the sum and searching on the CPU, this is now deprecated cos its so slow!
+#define		FLAG_SS_00		BIT(41)		///< This is a debug kernel used as a comparison, it is close to numerically and optimal but gives the worn values
+#define		FLAG_SS_31		BIT(42)		///< This is the standard sum and search kernel, there were others but they were deprecated
+#define		FLAG_SS_INMEM		BIT(43)		///< Do an in memory GPU search
 #define		FLAG_SS_STG		( FLAG_SS_00| FLAG_SS_31 /* | FLAG_SS_32 /* | FLAG_SS_30 */ )
 #define		FLAG_SS_KERS		( FLAG_SS_STG | FLAG_SS_INMEM )
 #define		FLAG_SS_ALL		( FLAG_SS_CPU | (FLAG_SS_KERS) )
 
-#define		FLAG_RET_STAGES		BIT(35)		///< Return results for all stages of summing, default is only the final result
-#define		FLAG_SEPSRCH		BIT(36)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
-#define		FLAG_SEPRVAL		BIT(37)		///< Deprecated
-#define		FLAG_SS_COUNT		BIT(38)		///< Count initial candidates in kernel and write to memory
+#define		FLAG_Z_SPLIT		BIT(44)		///< Split the f-fdot plane into top and bottom sections
+#define		FLAG_SS_COUNT		BIT(45)		///< Count initial candidates in kernel and write to memory
+#define		FLAG_SEPSRCH		BIT(46)		///< Create a separate second output location for the search output - Generally because the complex plane is smaller than return data
+#define		FLAG_STORE_ALL		BIT(47)		///< Store candidates for all stages of summing, default is only the final result
+#define		FLAG_CAND_THREAD	BIT(48)		///< Use separate CPU threads to search for candidates in returned data
+#define		FLAG_CAND_MEM_PRE	BIT(49)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
 
-// ---- Initial candidates ----//
-
-#define		FLAG_STORE_ALL		BIT(40)		///< Store candidates for all stages of summing, default is only the final result
-
-#define		FLAG_CAND_THREAD	BIT(42)		///< Use separate CPU threads to search for candidates in returned data
-#define		FLAG_CAND_MEM_PRE	BIT(43)		///< Create a thread specific section of temporary memory and copy results to it before spawning the thread - Else just use the pinned memory of the ring buffer
-
-// ---- Optimisation ----// \\ Optimisation only //
+// ------------ Optimisation -------//	\\ 10 - 49 - Optimisation only //
 
 #define		FLAG_OPT_NM		BIT(10)		///< Use particle swarm to optimise candidate location
 #define		FLAG_OPT_SWARM		BIT(11)		///< Use particle swarm to optimise candidate location
@@ -265,7 +262,6 @@ extern "C"
 #define		FLAG_OPT_NRM_MEDIAN2D	BIT(17)		///< Use local 2D Median
 #define		FLAG_OPT_NRM_ALL	( FLAG_OPT_NRM_LOCAVE | FLAG_OPT_NRM_MEDIAN1D | FLAG_OPT_NRM_MEDIAN2D )
 
-
 #define		FLAG_OPT_BEST		BIT(20)		///<
 #define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
 #define		FLAG_OPT_NM_REFINE	BIT(22)		///< Use local average normalisation instead of median in the optimisation
@@ -273,19 +269,19 @@ extern "C"
 
 
 #define		FLAG_OPT_BLK_NRM	BIT(25)
-#define		FLAG_OPT_BLK_EXP	BIT(26)
-#define		FLAG_OPT_BLK_HRM	BIT(27)
+#define		FLAG_OPT_BLK_EXP	BIT(26)		///< - NB This returns complex values
+#define		FLAG_OPT_BLK_HRM	BIT(27)		///< Thread per harmonic point (blocked kernel)
 #define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM )
 
 #define		FLAG_OPT_PTS_NRM	BIT(30)
-#define		FLAG_OPT_PTS_EXP	BIT(31)
-#define		FLAG_OPT_PTS_HRM	BIT(32)
+#define		FLAG_OPT_PTS_EXP	BIT(31)		///< - NB This returns complex values
+#define		FLAG_OPT_PTS_HRM	BIT(32)		///< Thread per harmonic point
 #define		FLAG_OPT_PTS_SHR	BIT(33)
 #define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR )
 
 #define		FLAG_OPT_KER_ALL	( FLAG_OPT_BLK | FLAG_OPT_PTS )
 
-// ---- Debug ----//  \\ COMMOM //
+// ------------ Debug -------------//	\\ 50 - 63  - COMMOM //
 
 #define		FLAG_PROF		BIT(55)		///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
 #define		FLAG_SYNCH		BIT(56)		///< Run the search in synchronous mode, this is slow and should only be used for testing
@@ -338,9 +334,9 @@ extern "C"
 
 
 typedef enum {
-  FFT_INPUT,//!< FFT_INPUT
-  FFT_PLANE,//!< FFT_PLANE
-  FFT_BOTH  //!< FFT_BOTH
+  FFT_INPUT,		//!< FFT_INPUT
+  FFT_PLANE,		//!< FFT_PLANE
+  FFT_BOTH  		//!< FFT_BOTH
 } presto_fft_type;
 
 typedef enum
@@ -1046,7 +1042,7 @@ typedef struct cuPlnInfo
     stackInfo**     	h_stackInfo;        	///< An array of pointers to host memory for the stack info
 } cuPlnInfo;
 
-/** A structure to hold the details of a GPU plane of response function values  .
+/** A structure to hold the details of a GPU plane of response function values - Passed to CUDA kernel  .
  *
  */
 typedef struct cuRespPln
@@ -1090,9 +1086,6 @@ typedef struct cuOptCand
     int			blkWidth;		///< Width of the block in R -
     int			blkDimX;		///< The number of cuda threads in the x dimension of a the blocked kernel
 
-    int			lftIdx;			///< X index of the pre calculated kernel
-    int			topZidx;		///< Y index of the pre calculated kernel
-
     int			halfWidth;
     int			hw[32];
     int			maxHalfWidth;
@@ -1106,6 +1099,8 @@ typedef struct cuOptCand
     void*		h_out;			///< Return data host
 
     cuRespPln*		responsePln;		///< A device specific plane holding possibly pre calculated response function values
+    int			lftIdx;			///< X index of the pre calculated kernel
+    int			topZidx;		///< Y index of the pre calculated kernel
 
     // Streams
     cudaStream_t	stream;			///< CUDA stream for work
@@ -1272,7 +1267,7 @@ ACC_ERR_CODE centerBatchR (cuFFdotBatch* batch, double firstR, int firstIteratio
  */
 ExternC gpuSpecs* readGPUcmd(Cmdline *cmd);
 
-// TODO - Wite these descriotios
+// TODO - Write these descriptions
 gpuSpecs* getGpuSpec(int devID = -1, int batch = 0, int steps = 0, int opts = 0 );
 
 searchSpecs* getSpec(fftInfo* fft);
