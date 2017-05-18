@@ -679,12 +679,12 @@ int main(int argc, char *argv[])
 
   cuSearch*     cuSrch = NULL;
   gpuSpecs      gSpec;
-  searchSpecs   sSpec;
+  confSpecsGen   sSpec;
   pthread_t     cntxThread = 0;
 
   gSpec               = readGPUcmd(cmd);
   sSpec               = readSrchSpecs(cmd, &obs);
-  sSpec.pWidth        = ACCEL_USELEN;			// NB: must have same accellen for tests!
+  sSpec.planeWidth        = ACCEL_USELEN;			// NB: must have same accellen for tests!
   sSpec.flags        |= CU_NORM_EQUIV;
   sSpec.flags        &= ~FLAG_KER_HIGH;
   sSpec.flags        &= ~FLAG_KER_MAX;
@@ -803,7 +803,7 @@ int main(int argc, char *argv[])
 	  int	sart = r - nofbin / 2;
 	  float step = 0.01;
 
-	  int 	hw = sSpec.fftInf.noBins*2;
+	  int 	hw = sSpec->fft->noBins*2;
 	  hw = 10;
 
 	  //rz_interp_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, 97.99, 0, hw, &realD, &imagD );
@@ -819,7 +819,7 @@ int main(int argc, char *argv[])
 
 	  for ( int ix = 0; ix <= nofbin; ix++ )
 	  {
-	    printf("%.6f\t%.6f\t%.6f\t%.6f\t", (float)(sart+ix), sSpec.fftInf.fft[(int)sart+ix].r, sSpec.fftInf.fft[(int)sart+ix].i, sqrt(POWERCU(sSpec.fftInf.fft[(int)sart+ix].r, sSpec.fftInf.fft[(int)sart+ix].i)) );
+	    printf("%.6f\t%.6f\t%.6f\t%.6f\t", (float)(sart+ix), sSpec->fft->data[(int)sart+ix].r, sSpec->fft->data[(int)sart+ix].i, sqrt(POWERCU(sSpec->fft->data[(int)sart+ix].r, sSpec->fft->data[(int)sart+ix].i)) );
 	    //printf("%.6f\t%.6f\n", sSpec.fftInf.fft[(int)sart+ix].r, sSpec.fftInf.fft[(int)sart+ix].i);
 	    printf("\n");
 	  }
@@ -833,10 +833,10 @@ int main(int argc, char *argv[])
 	  {
 	    printf("%.6f",sart + off);
 
-	    rz_convolution_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.firstBin, sSpec.fftInf.noBins, sart + off, z, hw, &real, &imag );
+	    rz_convolution_cu<float, float2>((float2*)sSpec->fft->data, sSpec->fft->firstBin, sSpec->fft->noBins, sart + off, z, hw, &real, &imag );
 	    printf("\t%.6f\t%.6f\t%.6f\t", real, imag, sqrt(POWERCU(real, imag)) );
 
-	    rz_convolution_cu<double, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.firstBin, sSpec.fftInf.noBins, sart + off, z, hw, &realD, &imagD );
+	    rz_convolution_cu<double, float2>((float2*)sSpec->fft->data, sSpec->fft->firstBin, sSpec->fft->noBins, sart + off, z, hw, &realD, &imagD );
 	    printf("\t%.6f\t%.6f\t%.6f\t", realD, imagD, sqrt(POWERCU(realD, imagD)) );
 
 	    //rz_convolution_cu<float, float2>((float2*)sSpec.fftInf.fft, sSpec.fftInf.idx, sSpec.fftInf.nor, sart + off, 0, hw, &real, &imag );
@@ -1101,7 +1101,7 @@ int main(int argc, char *argv[])
           startr	= 0,
           lastr		= 0;
           nextr		= 0;
-          maxxx		= cuSrch->SrchSz->noSearchR / (double)batch->accelLen ;
+          maxxx		= cuSrch->sSpec->noSearchR / (double)batch->accelLen ;
 
           if ( maxxx < 0 )
             maxxx = 0;
@@ -1615,11 +1615,11 @@ int main(int argc, char *argv[])
                                       rVals* c_rVal     = &(((*batch->rAraays)[batch->rActive])[step][harmNN]);
 
                                       // GPU search
-                                      rz_convolution_cu<double, float2>((float2*)cuSrch->sSpec->fftInf.fft, cuSrch->sSpec->fftInf.firstBin, cuSrch->sSpec->fftInf.noBins, c_r, c_z, c_hw, &real, &imag);
+                                      rz_convolution_cu<double, float2>((float2*)cuSrch->data.data, cuSrch->data.firstBin, cuSrch->data.noBins, c_r, c_z, c_hw, &real, &imag);
                                       powG += real*real*c_rVal->norm*c_rVal->norm + imag*imag*c_rVal->norm*c_rVal->norm;
 
                                       // CPU search
-                                      rz_interp(&cuSrch->sSpec->fftInf.fft[-cuSrch->sSpec->fftInf.firstBin], cuSrch->sSpec->fftInf.noBins, c_r, c_z, c_hw, &ans);
+                                      rz_interp(&cuSrch->data.data[-cuSrch->data.firstBin], cuSrch->data.noBins, c_r, c_z, c_hw, &ans);
                                       powC += ans.r*ans.r*c_rVal->norm*c_rVal->norm + ans.i*ans.i*c_rVal->norm*c_rVal->norm;
                                     }
 
