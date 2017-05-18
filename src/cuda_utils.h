@@ -41,6 +41,37 @@ typedef struct
 
 const char* _cudaGetErrorEnum(cufftResult error);
 
+__inline__ __device__
+float warpReduceSum(float val)
+{
+  for (int offset = warpSize/2; offset > 0; offset /= 2)
+    val += __shfl_down(val, offset);
+    
+  return val;
+}
+
+__inline__ __device__
+float blockReduceSum(float val, int lId, int wId)
+{
+  static __shared__ float shared[32]; // Shared mem for 32 partial sums
+
+  val = warpReduceSum(val);     // Each warp performs partial reduction
+
+  if (lId==0) shared[wId]=val;  // Write reduced value to shared memory
+
+  __syncthreads();              // Wait for all partial reductions
+
+  if (wId==0)
+  {
+    //read from shared memory only if that warp existed
+    val = ( lId < blockDim.x * blockDim.y / warpSize) ? shared[lId] : 0;
+
+    val = warpReduceSum(val); //Final reduce within first warp
+  }
+
+  return val;
+}
+
 //==================================== Function Prototypes ===============================================//
 
 inline int getValFromSMVer(int major, int minor, SMVal* vals);
