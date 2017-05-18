@@ -257,10 +257,14 @@ extern "C"
 #define		FLAG_OPT_SWARM		BIT(11)		///< Use particle swarm to optimise candidate location
 #define		FLAG_OPT_ALL		( FLAG_OPT_NM | FLAG_OPT_SWARM )
 
-#define		FLAG_OPT_NRM_LOCAVE	BIT(15)		///< Use local average normalisation instead of median in the optimisation
-#define		FLAG_OPT_NRM_MEDIAN1D	BIT(16)		///< Use local 1D Median
-#define		FLAG_OPT_NRM_MEDIAN2D	BIT(17)		///< Use local 2D Median
+#define		FLAG_OPT_NRM_LOCAVE	BIT(13)		///< Use local average normalisation instead of median in the optimisation
+#define		FLAG_OPT_NRM_MEDIAN1D	BIT(14)		///< Use local 1D Median
+#define		FLAG_OPT_NRM_MEDIAN2D	BIT(15)		///< Use local 2D Median
 #define		FLAG_OPT_NRM_ALL	( FLAG_OPT_NRM_LOCAVE | FLAG_OPT_NRM_MEDIAN1D | FLAG_OPT_NRM_MEDIAN2D )
+
+#define		FLAG_RES_CLOSE		BIT(17)		///<
+#define		FLAG_RES_FAST		BIT(18)		///<
+#define		FLAG_RES_ALL		( FLAG_RES_CLOSE | FLAG_RES_FAST )
 
 #define		FLAG_OPT_BEST		BIT(20)		///<
 #define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
@@ -339,7 +343,7 @@ typedef enum {
   FFT_BOTH  		//!< FFT_BOTH
 } presto_fft_type;
 
-typedef enum
+typedef enum						///< ACC_ERR_CODE
 {
   ACC_ERR_NONE		=	(0),		///< No error
   ACC_ERR_NAN		=	BIT(0),		///<
@@ -348,7 +352,9 @@ typedef enum
   ACC_ERR_ALIGHN	=	BIT(3),		///<
   ACC_ERR_OVERFLOW	=	BIT(4),		///<
   ACC_ERR_OUTOFBOUNDS	=	BIT(5),		///<
-  ACC_ERR_NULL		=	BIT(6)		///< Null pointer
+  ACC_ERR_NULL		=	BIT(6),		///< Null pointer
+  ACC_ERR_INVLD_CONFIG	=	BIT(7),		///< Invalid configuration
+  ACC_ERR_UNINIT	=	BIT(8)		///< Uninitialised
 } ACC_ERR_CODE;
 
 inline ACC_ERR_CODE operator ~(ACC_ERR_CODE a)
@@ -626,13 +632,14 @@ typedef struct gpuInf
  */
 typedef struct cuHarmInput
 {
+    size_t	size;			///< The size, in bytes, of the full input data (the size of h_inp & d_inp)
+
     fcomplexcu*	h_inp;			///< A pointer to host memory size bytes big
     fcomplexcu*	d_inp;			///< A pointer to device memory size bytes big
 
     int		noHarms;		///< The current number of harmonics in the data set
 
     int		stride;			///< The current stride of the input elements
-    int         size;			///< The size in bytes of the full input data
 
     int		loR[16];		///< The bin index of the first memory location
     double	norm[16];		///< The normalisation factor used - TODO: CHeck if this is for powers or input
@@ -867,6 +874,8 @@ typedef struct confSpecsOpt
     int			optMinLocHarms;			///< The minimum number of harmonics to localise on
     int			optMinRepHarms;			///< The minimum number of harmonics report on
 
+    int 		blkDivisor;			///< Make blocks of points divisible by this - this is related to warp size and should be 8, 16 or 32
+
     int			optPlnSiz[MAX_NO_STAGES];	///< The size of optimisation planes
     int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
     float		optPlnScale;
@@ -1071,13 +1080,14 @@ typedef struct cuOptCand
     int			noHarms;
     int64_t		flags;			///< CUDA accel search bit flags
 
+    int			maxNoR;
+    int			maxNoZ;
+    int			maxHalfWidth;
+
     double		centR;			///< Centre of the plane
     double		centZ;			///< Centre of the plane
     double		rSize;			///< The width of the r plane
     double		zSize;			///< The width of the z plane
-
-    int			maxNoR;
-    int			maxNoZ;
 
     int			noZ;
     int			noR;
@@ -1088,12 +1098,11 @@ typedef struct cuOptCand
 
     int			halfWidth;
     int			hw[32];
-    int			maxHalfWidth;
 
     cuHarmInput*	input;			///< A pointer holding input data
 
-    size_t		resSz;			///< The size of the actual plane results
     size_t		outSz;			///< The size in bytes of device output buffer
+    size_t		resSz;			///< The size of the actual plane results
     int			outStride;		///< Stride of the output data
     void*		d_out;			///< Return data device
     void*		h_out;			///< Return data host
@@ -1302,9 +1311,8 @@ ExternC void freeCuSearch(cuSearch* srch);
 ExternC void freeAccelGPUMem(cuPlnInfo* mInf);
 
 ExternC cuOptCand* initOptPln(confSpecsGen* sSpec);
+
 ExternC cuOptCand* initOptSwrm(confSpecsGen* sSpec);
-
-
 
 
 /** Initialise the template structure and kernels for a multi-step batches  .

@@ -373,7 +373,8 @@ OPT_NELDER_MEAD_REFINE	1
 #	SEQ			# Do CPU component of optimisation in a the same CPU thread - Not a good idea
 #OPT_PROCESS		SEQ
 
-
+# TODO: Write this description
+#OPT_BLK_DIVISOR
 
 #### The rest are optimisation plane parameters ####
 

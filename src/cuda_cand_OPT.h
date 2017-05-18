@@ -39,22 +39,32 @@ ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noH
 
 ExternC void opt_accelcand(accelcand* cand, cuOptCand* pln, int no);
 
-// TODO: write up descrition
-cuOptCand* initOptCand(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0 );
+// TODO: write up description
+cuOptCand* initOptimiser(cuSearch* sSrch, cuOptCand* oPln = NULL, int devLstId = 0 );
 
-
-int ffdotPln_prep( cuOptCand* pln, fftInfo* fft );
-
-int ffdotPln_input( cuOptCand* pln, fftInfo* fft );
+ACC_ERR_CODE getKerName(cuOptCand* pln, char* name);
 
 template<typename T>
-int ffdotPln_ker( cuOptCand* pln, fftInfo* fft );
+ACC_ERR_CODE ffdotPln( cuOptCand* pln, fftInfo* fft, int* newInp = NULL );
 
-int ffdotPln_get( cuOptCand* pln, fftInfo* fft );
+ACC_ERR_CODE ffdotPln_input( cuOptCand* pln, fftInfo* fft, int* newInp = NULL );
 
-int ffdotPln_process( cuOptCand* pln, fftInfo* fft );
+ACC_ERR_CODE ffdotPln_chkInput( cuOptCand* pln, fftInfo* fft, int* newInp);
+
+ACC_ERR_CODE ffdotPln_prepInput( cuOptCand* pln, fftInfo* fft );
+
+ACC_ERR_CODE ffdotPln_cpyInput( cuOptCand* pln, fftInfo* fft );
+
+ACC_ERR_CODE ffdotPln_prep( cuOptCand* pln, fftInfo* fft );
 
 template<typename T>
-int ffdotPln( cuOptCand* pln, fftInfo* fft );
+ACC_ERR_CODE ffdotPln_ker( cuOptCand* pln, fftInfo* fft );
+
+ACC_ERR_CODE ffdotPln_cpyResultsD2H( cuOptCand* pln, fftInfo* fft );
+
+ACC_ERR_CODE ffdotPln_ensurePln( cuOptCand* pln, fftInfo* fft );
+
+ACC_ERR_CODE ffdotPln_plotPln( cuOptCand* pln, const char* dir, const char* name );
+
 
 #endif

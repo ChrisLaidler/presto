@@ -216,6 +216,17 @@ void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char
       sprintf(msg, "%s     NULL pointer\n", msg );
     }
 
+    if (value & ACC_ERR_INVLD_CONFIG )
+    {
+      value &= (~ACC_ERR_INVLD_CONFIG);
+      sprintf(msg, "%s     Invalid configuration\n", msg );
+    }
+
+    if (value & ACC_ERR_UNINIT )
+    {
+      value &= (~ACC_ERR_UNINIT);
+      sprintf(msg, "%s     Uninitialised\n", msg );
+    }
 
 
 
@@ -1589,6 +1600,28 @@ void readAccelDefalts(confSpecs *conf)
 	singleFlag ( optFlags, str1, str2, FLAG_OPT_BEST, "", "0", lineno, fName );
       }
 
+      else if ( strCom("OPT_BLK_DIVISOR", str1 ) )
+      {
+	int no;
+	int read1 = sscanf(str2, "%i", &no  );
+	if ( read1 == 1 )
+	{
+	  if ( no >= 1 && no <= 32 )
+	  {
+	    conf->opt->blkDivisor = no;
+	  }
+	  else
+	  {
+	    fprintf(stderr,"WARNING: Invalid value, %s should range between %i and %i \n", str1, 1, 32);
+	  }
+	}
+	else
+	{
+	  line[flagLen] = 0;
+	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
+      }
+
       else if ( strCom("OPT_MIN_LOC_HARMS", str1 ) )
       {
 	int no;
@@ -1997,7 +2030,8 @@ confSpecs* defaultConfig()
 
     conf->opt->zScale		= 4;
     conf->opt->optResolution	= 16;
-    conf->opt->optPlnScale	= 10;
+    conf->opt->optPlnScale	= 10;		// Decrease plane by an order of magnitude ie /10
+    conf->opt->blkDivisor	= 4;		// In testing 4 came out best
     conf->opt->optMinLocHarms	= 1;
     conf->opt->optMinRepHarms	= 1;
 
@@ -2395,7 +2429,7 @@ cuSearch* initSearchInfCMD(Cmdline *cmd, accelobs* obs, gpuSpecs* gSpec)
   return initSearchInf(sSpec, conf, gSpec, fft);
 }
 
-int remOptFlag(cuOptCand* pln, int64_t flag)
+ACC_ERR_CODE remOptFlag(cuOptCand* pln, int64_t flag)
 {
   if ( pln )
     pln->flags &= ~flag;
@@ -2407,7 +2441,7 @@ int remOptFlag(cuOptCand* pln, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-int setOptFlag(cuOptCand* pln, int64_t flag)
+ACC_ERR_CODE setOptFlag(cuOptCand* pln, int64_t flag)
 {
   if ( pln )
     pln->flags |=  flag;
@@ -2419,7 +2453,7 @@ int setOptFlag(cuOptCand* pln, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-int remOptFlag(cuOptInfo* oInf, int64_t flag)
+ACC_ERR_CODE remOptFlag(cuOptInfo* oInf, int64_t flag)
 {
   if ( !oInf )
   {
@@ -2432,15 +2466,16 @@ int remOptFlag(cuOptInfo* oInf, int64_t flag)
     return ACC_ERR_NULL;
   }
 
-  int ret = ACC_ERR_NONE;
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
   for ( int i =0; i < oInf->noOpts; i++ )
   {
-    ret |= remOptFlag(&oInf->opts[i], flag);
+    ret += remOptFlag(&oInf->opts[i], flag);
   }
+
   return ret;
 }
 
-int setOptFlag(cuOptInfo* oInf, int64_t flag)
+ACC_ERR_CODE setOptFlag(cuOptInfo* oInf, int64_t flag)
 {
   if ( !oInf )
   {
@@ -2453,36 +2488,36 @@ int setOptFlag(cuOptInfo* oInf, int64_t flag)
     return ACC_ERR_NULL;
   }
 
-  int ret = ACC_ERR_NONE;
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
   for ( int i =0; i < oInf->noOpts; i++ )
   {
-    ret |= setOptFlag(&oInf->opts[i], flag);
+    ret += setOptFlag(&oInf->opts[i], flag);
   }
   return ret;
 }
 
-int setOptFlag(cuSearch* cuSrch, int64_t flag)
+ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag)
 {
-  int ret = ACC_ERR_NONE;
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
   if ( cuSrch )
-    ret |= setOptFlag(cuSrch->oInf, flag);
+    ret += setOptFlag(cuSrch->oInf, flag);
   else
   {
     fprintf(stderr, "ERROR: Null pointer");
-    ret |= ACC_ERR_NULL;
+    ret += ACC_ERR_NULL;
   }
   return ret;
 }
 
-int remOptFlag(cuSearch* cuSrch, int64_t flag)
+ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag)
 {
-  int ret = ACC_ERR_NONE;
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
   if ( cuSrch )
-    ret |= remOptFlag(cuSrch->oInf, flag);
+    ret += remOptFlag(cuSrch->oInf, flag);
   else
   {
     fprintf(stderr, "ERROR: Null pointer");
-    ret |= ACC_ERR_NULL;
+    ret += ACC_ERR_NULL;
   }
   return ret;
 }

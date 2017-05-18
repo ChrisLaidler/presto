@@ -660,12 +660,12 @@ bool compare(gpuSpecs* gSpec1, gpuSpecs* gSpec2);
 bool compare(cuSearch* search, searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, fftInfo* fftInf);
 
 
-int remOptFlag(cuOptCand* pln, int64_t flag);
-int setOptFlag(cuOptCand* pln, int64_t flag);
-int remOptFlag(cuOptInfo* oInf, int64_t flag);
-int setOptFlag(cuOptInfo* oInf, int64_t flag);
-int setOptFlag(cuSearch* cuSrch, int64_t flag);
-int remOptFlag(cuSearch* cuSrch, int64_t flag);
+ACC_ERR_CODE remOptFlag(cuOptCand* pln, int64_t flag);
+ACC_ERR_CODE setOptFlag(cuOptCand* pln, int64_t flag);
+ACC_ERR_CODE remOptFlag(cuOptInfo* oInf, int64_t flag);
+ACC_ERR_CODE setOptFlag(cuOptInfo* oInf, int64_t flag);
+ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag);
+ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag);
 
 float half2float(const ushort h);
 
@@ -834,7 +834,7 @@ void prepInputGPU(cuFFdotBatch* batch);
  * @param searchRHi   The index of the high R bin (1 value for each step)
  * @param fft         The fft
  */
-void prepInput(cuFFdotBatch* batch);
+ACC_ERR_CODE prepInput(initCand* cand, cuOptCand* pln, double sz, int *newInp = NULL);
 
 
 

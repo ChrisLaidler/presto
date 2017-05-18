@@ -50,8 +50,8 @@ __host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, do
 template<typename T, typename dataT>
 __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag, int i);
 
-template<typename T, typename dataIn, typename dataOut, int noBlk>
-__host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth);
+template<typename T, typename dataIn, typename dataOut>
+__host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk);
 
 template<typename T, typename dataT>
 __host__ __device__ void rz_convolution_cu_inc(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag);

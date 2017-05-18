@@ -877,8 +877,8 @@ __host__ __device__ void rz_single_mult_cu(dataT* inputData, long loR, long noBi
  * @param blkWidth            The width of the blocks in bins
  * @param kern_half_width     The half width of the points to use in the interpolation
  */
-template<typename T, typename dataIn, typename dataOut, int noBlk>
-__host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth)
+template<typename T, typename dataIn, typename dataOut>
+__host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk)
 {
   for ( int blk = 0; blk < noBlk; blk++ )
   {
@@ -1189,35 +1189,35 @@ template void rz_single_mult_cu<double, double2>(double2* inputData, long loR, l
 template void rz_response_cu<double, double2>(double r, double z, int kern_half_width, double2* out);
 template void rz_response_cu<float,  float2> (double r, float  z, int kern_half_width, float2*  out);
 
-template void rz_convolution_cu<float,  float2, float2, 2> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 3> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 4> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 5> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 6> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 7> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 8> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 9> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 10>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 11>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 12>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 13>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 14>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 15>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<float,  float2, float2, 16>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
-
-
-template void rz_convolution_cu<double, float2, float2, 2> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 3> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 4> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 5> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 6> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 7> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 8> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 9> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 10>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 11>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 12>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 13>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 14>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 15>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
-template void rz_convolution_cu<double, float2, float2, 16>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+template void rz_convolution_cu<float,  float2, float2> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
+//template void rz_convolution_cu<float,  float2, float2, 2> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 3> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 4> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 5> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 6> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 7> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 8> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 9> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 10>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 11>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 12>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 13>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 14>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 15>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<float,  float2, float2, 16>(float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth);
+template void rz_convolution_cu<double, float2, float2> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
+//template void rz_convolution_cu<double, float2, float2, 2> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 3> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 4> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 5> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 6> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 7> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 8> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 9> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 10>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 11>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 12>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 13>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 14>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 15>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
+//template void rz_convolution_cu<double, float2, float2, 16>(float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth);
