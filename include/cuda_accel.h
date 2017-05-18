@@ -479,9 +479,11 @@ inline ACC_ERR_CODE& operator -=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
 #include <nvToolsExtCudaRt.h>
 #include <cuda_profiler_api.h>
 
+extern int cnttt;
+
 // Macro for adding CUDA ranges
-#define NV_RANGE_POP()          nvtxRangePop()
-#define NV_RANGE_PUSH(x)        nvtxRangePush(x)
+#define NV_RANGE_POP(x)          nvtxRangePop(); infoMSG(7,7,"POP, %2i  %s\n", cnttt, x ); cnttt--;
+#define NV_RANGE_PUSH(x)        nvtxRangePush(x); ++cnttt; infoMSG(7,7,"PUSH %2i  %s \n", cnttt, x );
 #define NV_NAME_STREAM(x,y)     nvtxNameCudaStreamA(x,y)
 
 #else
@@ -1099,7 +1101,7 @@ typedef struct cuOptCand
     int			halfWidth;
     int			hw[32];
 
-    cuHarmInput*	input;			///< A pointer holding input data
+    cuHarmInput*	input;			///< A pointer holding input data (unique to each plane)
 
     size_t		outSz;			///< The size in bytes of device output buffer
     size_t		resSz;			///< The size of the actual plane results

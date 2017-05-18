@@ -155,7 +155,7 @@ double ratioARR[] = {
 };
 
 
-
+int cnttt = 0;
 
 
 
@@ -533,7 +533,7 @@ void initGPUs(gpuSpecs* gSpec)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // txt
+	NV_RANGE_POP(txt);
       }
     }
   }
@@ -2350,6 +2350,11 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
   cuSearch* srch = new(cuSearch);
   memset(srch, 0, sizeof(cuSearch));
 
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("init Search inf");
+  }
+
   srch->noHarmStages		= sSpec->noHarmStages;
   srch->noGenHarms		= ( 1<<(srch->noHarmStages-1) );
   srch->noSrchHarms		= ( 1<<(srch->noHarmStages-1) );
@@ -2414,7 +2419,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP();	// init Search inf
+    NV_RANGE_POP("init Search inf");
   }
 
   return srch;
@@ -2749,7 +2754,7 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // Sleep
+	NV_RANGE_POP("Sleep");
       }
     }
 
@@ -2758,7 +2763,7 @@ int waitForThreads(sem_t* running_threads, const char* msg, int sleepMS )
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // Wait on CPU threads
+      NV_RANGE_POP("Wait on CPU threads");
     }
 
     return (ite);
@@ -2786,7 +2791,7 @@ void* contextInitTrd(void* ptr)
 
   TIME // End the timer  .
   {
-    NV_RANGE_POP(); // Context
+    NV_RANGE_POP("Context");
 
     gettimeofday(&end, NULL);
     gSpec->nctxTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
@@ -2828,7 +2833,7 @@ long long initCudaContext(gpuSpecs* gSpec)
 
       TIME // End the timer  .
       {
-	NV_RANGE_POP(); // Context
+	NV_RANGE_POP("Context");
 
 	gettimeofday(&end, NULL);
 	gSpec->nctxTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
@@ -2890,7 +2895,7 @@ long long compltCudaContext(gpuSpecs* gSpec)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // Wait on context thread
+	NV_RANGE_POP("Wait on context thread");
       }
     }
 

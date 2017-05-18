@@ -114,7 +114,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		  PROF // Profiling  .
 		  {
-		    NV_RANGE_POP(); // Powers
+		    NV_RANGE_POP("Powers");
 		  }
 		}
 
@@ -136,7 +136,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		  PROF // Profiling  .
 		  {
-		    NV_RANGE_POP(); // Median
+		    NV_RANGE_POP("Median");
 		  }
 		}
 	      }
@@ -170,7 +170,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
 		PROF // Profiling  .
 		{
-		  NV_RANGE_POP(); // Write
+		  NV_RANGE_POP("Write");
 		}
 	      }
 	    }
@@ -231,7 +231,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // CPU_Norm_Spread
+    NV_RANGE_POP("CPU_Norm_Spread");
   }
 }
 
@@ -426,7 +426,7 @@ void setGenRVals(cuFFdotBatch* batch)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // Set R-Vals
+    NV_RANGE_POP("Set R-Vals");
   }
 }
 
@@ -495,7 +495,7 @@ static void callInputFFTW(cuFFdotBatch* batch)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // CPU FFT
+      NV_RANGE_POP("CPU FFT");
 
       if ( batch->flags & FLAG_PROF )
       {
@@ -593,7 +593,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // EventSynch
+	    NV_RANGE_POP("EventSynch");
 	  }
 	}
 
@@ -639,7 +639,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP(); // cpy inpt FFT
+	  NV_RANGE_POP("cpy inpt FFT");
 
 	  if ( batch->flags & FLAG_PROF )
 	  {
@@ -670,7 +670,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // Zero buffer
+	    NV_RANGE_POP("Zero buffer");
 
 	    if ( batch->flags & FLAG_PROF )
 	    {
@@ -722,7 +722,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	    PROF // Profiling  .
 	    {
-	      NV_RANGE_POP(); // EventSynch
+	      NV_RANGE_POP("EventSynch");
 	    }
 	  }
 
@@ -742,7 +742,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // memcpy 1
+	    NV_RANGE_POP("memcpy 1");
 
 	    if ( batch->flags & FLAG_PROF )
 	    {
@@ -758,7 +758,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // CPU prep input
+      NV_RANGE_POP("CPU prep input");
 
       if ( batch->flags & FLAG_PROF )
       {
@@ -877,7 +877,7 @@ void copyInputToDevice(cuFFdotBatch* batch)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP();		// Inp Copy
+      NV_RANGE_POP("Inp Copy");
     }
   }
 }
@@ -1009,7 +1009,7 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP(); // Norm
+	  NV_RANGE_POP("Norm");
 	}
       }
     }
@@ -1087,14 +1087,14 @@ void prepInputGPU(cuFFdotBatch* batch)
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP(); // FFT
+	  NV_RANGE_POP("FFT");
 	}
       }
     }
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // GPU prep input
+      NV_RANGE_POP("GPU prep input");
 
       if ( batch->flags & FLAG_PROF )
       {

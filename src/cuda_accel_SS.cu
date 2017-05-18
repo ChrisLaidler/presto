@@ -445,7 +445,7 @@ void SSKer(cuFFdotBatch* batch)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // S&S Ker
+    NV_RANGE_POP("S&S Ker");
   }
 }
 
@@ -886,7 +886,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // EventSynch
+	NV_RANGE_POP("EventSynch");
       }
     }
 
@@ -962,7 +962,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // Thread
+	    NV_RANGE_POP("Thread");
 	  }
 	}
 	else                              	// Just call the function  .
@@ -978,7 +978,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // Non thread
+	    NV_RANGE_POP("Non thread");
 	  }
 	}
       }
@@ -999,7 +999,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); //CPU Process results
+      NV_RANGE_POP("CPU Process results");
     }
   }
 }
@@ -1052,7 +1052,7 @@ void getResults(cuFFdotBatch* batch)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); //Get results
+	    NV_RANGE_POP("Get results");
 	  }
 	}
 
@@ -1109,7 +1109,7 @@ void getResults(cuFFdotBatch* batch)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); //Get results
+    NV_RANGE_POP("Get results");
   }
 }
 
@@ -1352,7 +1352,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
 
   TIME // Timing  .
   {
-    NV_RANGE_POP(); // GPU IMSS
+    NV_RANGE_POP("GPU IMSS");
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_GPU_SS] += (end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec);
     cuSrch->timings[TIME_GEN_WAIT] += (end.tv_sec - start02.tv_sec) * 1e6 + (end.tv_usec - start02.tv_usec);

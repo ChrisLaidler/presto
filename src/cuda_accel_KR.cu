@@ -306,7 +306,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // Calc stack response
+      NV_RANGE_POP("Calc stack response");
     }
   }
 
@@ -364,7 +364,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // msg
+	    NV_RANGE_POP(msg);
 	  }
 	}
 
@@ -392,7 +392,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); //msg
+	    NV_RANGE_POP(msg);
 	  }
 	}
 
@@ -419,7 +419,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); //msg
+	    NV_RANGE_POP(msg);
 	  }
 	}
       }
@@ -462,7 +462,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); //msg
+	    NV_RANGE_POP(msg);
 	  }
 	}
 
@@ -490,7 +490,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // msg
+	    NV_RANGE_POP(msg);
 	  }
 	}
 
@@ -519,7 +519,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	    PROF // Profiling  .
 	    {
-	      NV_RANGE_POP(); //msg
+	      NV_RANGE_POP(msg);
 	    }
 	  }
 	}
@@ -530,7 +530,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // FFT kernels
+      NV_RANGE_POP("FFT kernels");
     }
   }
 

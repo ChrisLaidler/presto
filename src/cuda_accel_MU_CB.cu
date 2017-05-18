@@ -546,7 +546,7 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // CUFFT callbacks
+    NV_RANGE_POP("CUFFT callbacks");
   }
 }
 

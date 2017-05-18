@@ -291,7 +291,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // Get Device
+      NV_RANGE_POP("Get Device");
     }
   }
 
@@ -558,7 +558,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //
 //    PROF // Profiling  .
 //    {
-//      NV_RANGE_POP(); // Get Device
+//      NV_RANGE_POP("Get Device);
 //    }
 //  }
 //
@@ -1099,7 +1099,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // Get Device
+      NV_RANGE_POP("Get Device");
     }
   }
 
@@ -1939,7 +1939,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // streams
+      NV_RANGE_POP("streams");
     }
   }
 
@@ -1966,7 +1966,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // kernel malloc
+      NV_RANGE_POP("kernel malloc");
     }
   }
 
@@ -2785,7 +2785,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // Calc steps
+	NV_RANGE_POP("Calc steps");
       }
     }
 
@@ -2883,7 +2883,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP(); // in-mem alloc
+	  NV_RANGE_POP("in-mem alloc");
 	}
       }
     }
@@ -2922,7 +2922,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	      PROF // Profiling  .
 	      {
-		NV_RANGE_POP(); // memset
+		NV_RANGE_POP("memset");
 	      }
 
 	      hostC += fullCSize;
@@ -2976,7 +2976,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP(); // host alloc
+	  NV_RANGE_POP("host alloc");
 	}
       }
     }
@@ -2997,7 +2997,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // data
+      NV_RANGE_POP("data");
     }
   }
 
@@ -3048,7 +3048,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // streams
+	NV_RANGE_POP("streams");
       }
     }
 
@@ -3072,7 +3072,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	PROF // Profiling  .
 	{
-	  NV_RANGE_POP(); // read_wisdom
+	  NV_RANGE_POP("read_wisdom");
 	}
 #else
 	fprintf(stderr,"ERROR: GPU need fftw");
@@ -3102,7 +3102,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // FFT plans
+	NV_RANGE_POP("FFT plans");
       }
     }
   }
@@ -3164,7 +3164,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // text mem
+	NV_RANGE_POP("text mem");
       }
     }
   }
@@ -3201,7 +3201,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // const mem
+      NV_RANGE_POP("const mem");
     }
   }
 
@@ -3211,7 +3211,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // msg
+    NV_RANGE_POP('msg');
   }
 
   return noBatches;
@@ -3227,9 +3227,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
  */
 int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 {
+  char msg[1024];
+
   PROF // Profiling  .
   {
-    char msg[1024];
     sprintf(msg,"%i of %i", no+1, of+1);
     NV_RANGE_PUSH(msg); // # of #
   }
@@ -3730,7 +3731,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // malloc
+	NV_RANGE_POP("malloc");
       }
     }
 
@@ -3814,7 +3815,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // malloc device
+	NV_RANGE_POP("malloc device");
       }
     }
 
@@ -3847,7 +3848,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // Host
+	NV_RANGE_POP("Host");
       }
     }
 
@@ -4200,7 +4201,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // # of #
+    NV_RANGE_POP(msg);
   }
 
   return (batch->noSteps);
@@ -4258,7 +4259,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // FFTW
+	    NV_RANGE_POP("FFTW");
 	  }
 	}
 	else
@@ -4274,7 +4275,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); //CUFFT Inp
+	    NV_RANGE_POP("CUFFT Inp");
 	  }
 	}
       }
@@ -4307,7 +4308,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // CUFFT Pln
+	    NV_RANGE_POP("CUFFT Pln");
 	  }
 	}
       }
@@ -4336,7 +4337,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // CUFFT Pln
+	    NV_RANGE_POP("CUFFT Pln");
 	  }
 	}
       }
@@ -4344,7 +4345,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // msg
+      NV_RANGE_POP(msg);
     }
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Creating FFT plans for the stacks.");
@@ -4352,7 +4353,7 @@ void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // FFT plans
+    NV_RANGE_POP("FFT plans");
   }
 }
 
@@ -4497,7 +4498,7 @@ void createGenKernels(cuSearch* cuSrch )
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // Init Kernels
+      NV_RANGE_POP("Init Kernels");
     }
 
     if ( cuSrch->pInf->noDevices <= 0 ) // Check if we got any devices  .
@@ -4598,7 +4599,7 @@ void createGenKernels(cuSearch* cuSrch )
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // Init Batches
+      NV_RANGE_POP("Init Batches");
     }
   }
 
@@ -4649,7 +4650,7 @@ void initCandGeneration(cuSearch* cuSrch )
 
   TIME // Basic timing of device setup and kernel creation  .
   {
-    NV_RANGE_POP();	// GPU Initialise
+    NV_RANGE_POP("GPU Initialise");
 
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_GPU_INIT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
@@ -4865,7 +4866,7 @@ void freeAccelGPUMem(cuPlnInfo* aInf)
 
   PROF // Profiling  .
   {
-    NV_RANGE_POP(); // Free GPU Mem
+    NV_RANGE_POP("Free GPU Mem");
   }
 }
 
@@ -5471,7 +5472,7 @@ void finish_Search(cuFFdotBatch* batch)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // EventSynch
+	NV_RANGE_POP("EventSynch");
       }
     }
 
@@ -5488,7 +5489,7 @@ void finish_Search(cuFFdotBatch* batch)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // EventSynch
+	NV_RANGE_POP("EventSynch");
       }
     }
   }
@@ -5743,7 +5744,7 @@ int genPlane(cuSearch* cuSrch, char* msg)
 
   TIME // Basic timing  .
   {
-    NV_RANGE_POP(); // Pln Gen
+    NV_RANGE_POP("Pln Gen");
 
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_GPU_PLN] += (end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec);
@@ -5893,7 +5894,7 @@ GSList* generateCandidatesGPU(cuSearch* cuSrch)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP(); // Add to list
+	    NV_RANGE_POP("Add to list");
 	  }
 	}
       }
@@ -5934,8 +5935,8 @@ GSList* generateCandidatesGPU(cuSearch* cuSrch)
 
     TIME // Basic timing  .
     {
-      NV_RANGE_POP(); // GPU Cand
-      NV_RANGE_POP(); // Cand Gen
+      NV_RANGE_POP("GPU Cand");
+      NV_RANGE_POP("Cand Gen");
       gettimeofday(&end02, NULL);
       cuSrch->timings[TIME_GPU_CND_GEN] += (end02.tv_sec - start01.tv_sec) * 1e6 + (end02.tv_usec - start01.tv_usec);
       cuSrch->timings[TIME_CND] += (end02.tv_sec - start02.tv_sec) * 1e6 + (end02.tv_usec - start02.tv_usec);
@@ -5951,7 +5952,7 @@ GSList* generateCandidatesGPU(cuSearch* cuSrch)
 
   TIME // Basic timing  .
   {
-    NV_RANGE_POP(); // GPU Srch
+    NV_RANGE_POP("GPU Srch");
     gettimeofday(&end, NULL);
 
     cuSrch->timings[TIME_GPU_SRCH] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
