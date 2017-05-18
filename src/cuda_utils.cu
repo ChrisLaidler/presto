@@ -549,7 +549,7 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, long long* timeSum, con
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP(); // msg2
+      NV_RANGE_POP("msg2");
     }
   }
 

@@ -359,7 +359,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
     PROF // Profiling  .
     {
-      NV_RANGE_POP();
+      NV_RANGE_POP("Multiply");
     }
   }
 }
@@ -655,7 +655,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
 		PROF // Profiling  .
 		{
-		  NV_RANGE_POP();
+		  NV_RANGE_POP("Image");
 		}
 	      }
 
@@ -714,7 +714,7 @@ void IFFTBatch(cuFFdotBatch* batch)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP();
+	NV_RANGE_POP("IFFT");
       }
     }
   }

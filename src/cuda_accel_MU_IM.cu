@@ -408,7 +408,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 
       PROF // Profiling  .
       {
-	NV_RANGE_POP(); // CPY2IM
+	NV_RANGE_POP("CPY2IM");
       }
     }
   }
