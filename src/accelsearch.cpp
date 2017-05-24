@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA // CUDA Runtime initialisation  .
 
   cuSearch*	cuSrch = NULL;
-  gpuSpecs*	gSpec;
+  gpuSpecs*	gSpec = NULL;
   pthread_t	cntxThread = 0;
 
   TIME // Start the timer  .

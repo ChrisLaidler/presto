@@ -2348,7 +2348,7 @@ int main(int argc, char *argv[])
 
         //oPlnPln   = initOptPln(&sSpec);
 
-        cuOptCand* oPlnPln = &(cuSrch->oInf->opts[0]);
+        cuPlnGen* oPlnPln = &(cuSrch->oInf->opts[0]);
         setDevice(oPlnPln->gInf->devid);
 
         accelcand *candCPU;

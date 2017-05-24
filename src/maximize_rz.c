@@ -278,7 +278,11 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    *rout = x[0][0];
    *zout = x[0][1] * ZSCALE;
    for (i=1; i<=num_harmonics; i++) {
-       locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
+       if ( norm[i-1] <= 0 )
+	 locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
+       else
+	 locpow[i-1] = norm[i-1];
+
        x[0][0] = (r_offset[i-1]+*rout)*i-r_offset[i-1];
        x[0][1] = *zout/ZSCALE * i;
        maxdata = data[i-1];

@@ -24,6 +24,8 @@
 #define MAGENTA   "\033[22;35m"
 #define RESET     "\033[0m"
 
+#define WARP_SIZE (32)
+
 // Free a pointer and set value to zero
 #define freeNull(pointer) { if (pointer) free ( pointer ); pointer = NULL; }
 #define cudaFreeNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFree(pointer), "Failed to free device memory."); pointer = NULL; }
@@ -41,36 +43,36 @@ typedef struct
 
 const char* _cudaGetErrorEnum(cufftResult error);
 
-__inline__ __device__
-float warpReduceSum(float val)
-{
-  for (int offset = warpSize/2; offset > 0; offset /= 2)
-    val += __shfl_down(val, offset);
-    
-  return val;
-}
-
-__inline__ __device__
-float blockReduceSum(float val, int lId, int wId)
-{
-  static __shared__ float shared[32]; // Shared mem for 32 partial sums
-
-  val = warpReduceSum(val);     // Each warp performs partial reduction
-
-  if (lId==0) shared[wId]=val;  // Write reduced value to shared memory
-
-  __syncthreads();              // Wait for all partial reductions
-
-  if (wId==0)
-  {
-    //read from shared memory only if that warp existed
-    val = ( lId < blockDim.x * blockDim.y / warpSize) ? shared[lId] : 0;
-
-    val = warpReduceSum(val); //Final reduce within first warp
-  }
-
-  return val;
-}
+//__device__ inline
+//float warpReduceSum(float val)
+//{
+//  for (int offset = WARP_SIZE/2; offset > 0; offset /= 2)
+//    val += __shfl_down(val, offset);
+//
+//  return val;
+//}
+//
+//__device__ inline
+//float blockReduceSum(float val, int lId, int wId)
+//{
+//  static __shared__ float shared[32]; // Shared mem for 32 partial sums
+//
+//  val = warpReduceSum(val);     // Each warp performs partial reduction
+//
+//  if (lId==0) shared[wId]=val;  // Write reduced value to shared memory
+//
+//  __syncthreads();              // Wait for all partial reductions
+//
+//  if (wId==0)
+//  {
+//    //read from shared memory only if that warp existed
+//    val = ( lId < blockDim.x * blockDim.y / WARP_SIZE) ? shared[lId] : 0;
+//
+//    val = warpReduceSum(val); //Final reduce within first warp
+//  }
+//
+//  return val;
+//}
 
 //==================================== Function Prototypes ===============================================//
 
@@ -106,6 +108,10 @@ ExternC void __exit_directive(const char *file, const int line, const char *flag
 /** Get the number of CUDA capable GPUS's
  */
 ExternC int getGPUCount();
+
+ExternC gpuInf* getGPU(gpuInf* gInf);
+
+ExternC gpuInf* initGPU(int device, gpuInf* gInf);
 
 ExternC void initGPUs(gpuSpecs* gSpec);
 

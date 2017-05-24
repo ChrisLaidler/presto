@@ -721,11 +721,12 @@ cleanGPU: cudaclean
 	rm -f ../bin/getAccelLen*
 
 cleancubasics:
+	rm -f build/*/cuda_accel_GEN.cu.o
 	rm -f build/*/cuda_accel_IN.cu.o
 	rm -f build/*/cuda_accel_KR.cu.o
 	rm -f build/*/cuda_accel_SS.cu.o
-	rm -f build/*/cuda_accel_utils.cu.o
 	rm -f build/*/cuda_cand_OPT.cu.o
+	rm -f build/*/cuda_accel_utils.cu.o
 	rm -f build/*/cuda_utils.cu.cu.oF
 	rm -f build/*/accelsearch.o
 	rm -f build/*/test_GPUaccel.o

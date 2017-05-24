@@ -468,6 +468,7 @@ const char* _cudaGetErrorEnum(cufftResult error)
  **/
 void infoMSG ( int lev, int indent, const char* format, ... )
 {
+
   if ( lev <= msgLevel )
   {
     char buffer[1024];

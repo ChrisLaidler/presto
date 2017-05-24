@@ -643,8 +643,8 @@ __device__ inline float getPowerAsFloat(half* adress, uint offset)
 
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-// TODO: Write up headdins
-void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg);
+// TODO: Write up headings
+int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg);
 
 searchSpecs* duplicate(searchSpecs* sSpec);
 confSpecsGen* duplicate(confSpecsGen* conf);
@@ -660,12 +660,13 @@ bool compare(gpuSpecs* gSpec1, gpuSpecs* gSpec2);
 bool compare(cuSearch* search, searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, fftInfo* fftInf);
 
 
-ACC_ERR_CODE remOptFlag(cuOptCand* pln, int64_t flag);
-ACC_ERR_CODE setOptFlag(cuOptCand* pln, int64_t flag);
+ACC_ERR_CODE remOptFlag(cuPlnGen* pln, int64_t flag);
+ACC_ERR_CODE setOptFlag(cuPlnGen* pln, int64_t flag);
 ACC_ERR_CODE remOptFlag(cuOptInfo* oInf, int64_t flag);
 ACC_ERR_CODE setOptFlag(cuOptInfo* oInf, int64_t flag);
-ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag);
 ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag);
+ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag);
+
 
 float half2float(const ushort h);
 
@@ -823,6 +824,8 @@ void copyInputToDevice(cuFFdotBatch* batch);
 
 void prepInputGPU(cuFFdotBatch* batch);
 
+void prepInput(cuFFdotBatch* batch);
+
 /** Initialise input data for a f-∂f plane(s)  ready for multiplication  .
  * This:
  *  Normalises the chunk of input data
@@ -834,7 +837,7 @@ void prepInputGPU(cuFFdotBatch* batch);
  * @param searchRHi   The index of the high R bin (1 value for each step)
  * @param fft         The fft
  */
-ACC_ERR_CODE prepInput(initCand* cand, cuOptCand* pln, double sz, int *newInp = NULL);
+ACC_ERR_CODE prepInput(initCand* cand, cuPlnGen* pln, double sz, int *newInp = NULL);
 
 
 
@@ -907,8 +910,9 @@ void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
 
 void opt_genResponse(cuRespPln* pln, cudaStream_t stream);
 
-void freeHarmInput(cuHarmInput* inp);
+ACC_ERR_CODE freeHarmInput(cuHarmInput* inp);
 
+cuHarmInput* duplicateHostInput(cuHarmInput* orr);
 
 
 //////////////////////////////////////////// Stats \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

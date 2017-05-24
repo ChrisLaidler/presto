@@ -11,26 +11,29 @@
  *
  *  Change Log
  *
- *  [0.0.01] []
+ *  -
  *    Beginning of change log
  *    Working version un-numbed
  *
- *  [0.0.02] [2017-01-28 10:25]
+ *  2017-01-28 10:25
  *    Fixed bug in synchronous in-mem runs (added a block on event ifftMemComp)
  *    Added some debug messages on stream synchronisation on events
  *
- *  [0.0.03] [2017-01-29 08:20]
+ *  2017-01-29 08:20
  *    Added static functions to call both CPU and GPU input FFT's, these allow identical calls from non critical and non critical blocks
  *    Added non critical behaviour for CPU FFT calls
  *    Added some debug messages on stream synchronisation on events, yes even more!
  *    made CPU_Norm_Spread static
  *    Fixed bug in timing of CPU input
  *    
- *  [0.0.03] [2017-02-03 ]
+ *  2017-02-03
  *    Converted to use of clearRval
  *
- *  [0.0.03] [2017-02-18 ]
+ *  2017-02-18
  *    Different memory management for GPU normalisation
+ *
+ *  2017-04-24
+ *    Moved plane specific input functions here
  *
  */
 
@@ -261,7 +264,7 @@ ACC_ERR_CODE startBatchR (cuFFdotBatch* batch, double firstR, int iteration, int
     if ( firstR != hold )
     {
       infoMSG(5,5,"Auto aligning R-Vals");
-      ret |= ACC_ERR_ALIGHN;
+      ret += ACC_ERR_ALIGHN;
     }
   }
 
@@ -532,6 +535,412 @@ static void callInputCUFFT(cuFFdotBatch* batch, cuFfdotStack* cStack)
   {
     infoMSG(5,5,"Event %s in %s.\n", "inpFFTinitComp", "fftIStream");
     cudaEventRecord(cStack->inpFFTinitComp, cStack->fftIStream);
+  }
+}
+
+/** Check if a given section of input, is sufficient to calculate a range ff values
+ *
+ * This does not load the actual input
+ * This check the input in the input data structure of the plane
+ *
+ * @param input		Pointer to the harmonic info data structure
+ * @param r		The centre z of the area
+ * @param z		The centre r of the area
+ * @param rSize		The size, in bins of the area
+ * @param zSize		The size, in bins of the area
+ * @param noHarms	The number of harmonics
+ * @param newInp	Set to 1 if new input is needed or 0 if the current input is good
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE chkInput( cuHarmInput* input, double r, double z, double rSize, double zSize, int noHarms, int* newInp)
+{
+  ACC_ERR_CODE	err	= ACC_ERR_NONE;
+
+//  PROF // Profiling  .
+//  {
+//    NV_RANGE_PUSH("Harm INP");
+//  }
+
+  infoMSG(4,4,"Check if new input is needed.\n");
+
+  if ( newInp && input )
+  {
+    double	maxZ	= (z + zSize/2.0);
+    double	minZ	= (z - zSize/2.0);
+    double	maxR	= (r + rSize/2.0);
+    double	minR	= (r - rSize/2.0);
+
+    infoMSG(5,5,"Current r [ %.1f - %.1f ] z [ %.2f - %.2f ]  New r [ %.1f - %.1f ] z [ %.2f - %.2f ]\n", input->minR, input->maxR, input->minZ, input->maxZ, minR, maxR, minZ, maxZ );
+
+    // initialise to zero
+    *newInp = 0;
+
+    //CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdotPln.");
+
+    int halfWidth	= cu_z_resp_halfwidth_high<double>( MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms)) );
+
+    int	datStart;		// The start index of the input data
+    int	datEnd;			// The end   index of the input data
+
+    *newInp		= 0;	// Flag whether new input is needed
+
+    if ( noHarms > input->noHarms )
+    {
+      infoMSG(6,6,"New = True - Harmonics greater.\n");
+      *newInp = 1;
+    }
+
+    // Determine if new input is needed
+    for( int h = 0; (h < noHarms) && !(*newInp) ; h++ )
+    {
+      // Note we use the largest possible halfWidth from the last harmonic
+      datStart        = floor( minR*(h+1) - halfWidth );
+      datEnd          = ceil(  maxR*(h+1) + halfWidth );
+
+//      if ( datStart > fft->lastBin || datEnd <= fft->firstBin )
+//      {
+//	if ( h == 0 )
+//	{
+//	  fprintf(stderr, "ERROR: Harmonic input beyond scope of the FFT?");
+//	}
+//	else
+//	{
+//	  // Harmonic is beyond the scope of the FFT
+//	  // This is strange because the input thinks is contains that data?
+//	  fprintf(stderr, "ERROR: Harmonic input has data beyond the end of the FFT?");
+//	}
+//
+//	*newInp = 1; // Suggest new input so that that the function that gets the data will error
+//	err += ACC_ERR_OUTOFBOUNDS;
+//	break;
+//      }
+
+      if ( datStart < input->loR[h] )
+      {
+	infoMSG(6,6,"New = True - Input harm %2i  start %i < %i .\n", h+1, datStart, input->loR[h] );
+	*newInp = 1;
+      }
+      else if ( input->loR[h] + input->stride < datEnd )
+      {
+	infoMSG(6,6,"New = True - Input harm %2i  end %i > %i .\n", h+1, datEnd, input->loR[h] + input->stride );
+	*newInp = 1;
+      }
+    }
+
+    if (!*newInp)
+      infoMSG(5,5,"Current input is good.\n");
+  }
+  else
+  {
+    infoMSG(6,6,"ERROR: NULL pointer.\n" );
+    err += ACC_ERR_NULL;
+    *newInp = 0;
+  }
+
+//  PROF // Profiling  .
+//  {
+//    NV_RANGE_POP("Harm INP");
+//  }
+
+  return err;
+}
+
+
+ /** Copy relevant input from FFT to data structure normalising as needed
+ *
+ *  Note this contains a blocking synchronisation to make sure the pinned host memory is free.
+ *  If preWrite is set to null no blocking will be done
+ *
+ * @param input		The input data structure to "fill"
+ * @param fft		The FFT data that will make up the input
+ * @param r		The Centre r value of the fundamental
+ * @param z		The Centre z value of the fundamental
+ * @param rSize
+ * @param zSize
+ * @param noHarms	The number of harmonics to load into the memory
+ * @param flags		bit flags used to determine normalisation
+ * @param preWrite	A event to block on before writing - if NULL no blocking will be done
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE loadHostHarmInput( cuHarmInput* input, fftInfo* fft, double r, double z, double rSize, double zSize, int noHarms, int64_t flags, cudaEvent_t* preWrite )
+{
+  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+
+  infoMSG(5,5,"Loading host harmonic memory.\n");
+
+  if ( input && fft )
+  {
+    int	datStart;		// The start index of the input data
+    int	datEnd;			// The end   index of the input data
+    double largestZ;
+
+//    PROF	// Profiling  .
+//    {
+//      NV_RANGE_PUSH("Prep Input");
+//    }
+
+    FOLD // Calculate normalisation factor  .
+    {
+      input->maxZ		= (z + zSize/2.0);
+      input->minZ		= (z - zSize/2.0);
+      input->maxR		= (r + rSize/2.0);
+      input->minR		= (r - rSize/2.0);
+
+      largestZ			= MAX(fabs(input->maxZ*noHarms), fabs(input->minZ*noHarms)) + 4 ; 		// NOTE this include the + 4 of original accelsearch this is not the end of the world as this is just the check
+
+      input->noHarms		= noHarms;
+      input->maxHalfWidth	= cu_z_resp_halfwidth_high<double>( largestZ );
+      input->stride		= ceil((input->maxR+OPT_INP_BUF)*noHarms  + input->maxHalfWidth) - floor((input->minR-OPT_INP_BUF)*noHarms - input->maxHalfWidth);
+      if(input->gInf)
+	input->stride		= getStride(input->stride, sizeof(cufftComplex), input->gInf->alignment);
+
+      FOLD // Calculate normalisation factor  .
+      {
+	PROF // Profiling  .
+	{
+	  NV_RANGE_PUSH("Calc Norm factor");
+	}
+
+	for ( int h = 1; h <= noHarms; h++ )
+	{
+	  int hIdx = h-1;
+
+	  datStart	= floor( input->minR*(h) - input->maxHalfWidth );
+	  datEnd	= ceil(  input->maxR*(h) + input->maxHalfWidth );
+
+	  if ( datStart > fft->lastBin || datEnd <= fft->firstBin )
+	  {
+	    infoMSG(6,6,"ERROR: Max harms %2i - out of bounds.\n", h);
+
+	    input->noHarms = h; // Use previous harmonic
+	    err += ACC_ERR_OUTOFBOUNDS;
+	    break;
+	  }
+
+	  char mthd[20];	// Normalisation text
+	  if      ( flags & FLAG_OPT_NRM_LOCAVE   )
+	  {
+	    input->norm[hIdx]  = get_localpower3d(fft->data, fft->noBins, (r-fft->firstBin)*h, z*h, 0.0);
+	    sprintf(mthd,"2D Avle");
+	  }
+	  else if ( flags & FLAG_OPT_NRM_MEDIAN1D )
+	  {
+	    input->norm[hIdx]  = get_scaleFactorZ(fft->data, fft->noBins, (r-fft->firstBin)*h, z*h, 0.0);
+	    sprintf(mthd,"1D median");
+	  }
+	  else if ( flags & FLAG_OPT_NRM_MEDIAN2D )
+	  {
+	    fprintf(stderr,"ERROR: 2D median normalisation has not been written yet.\n");
+	    sprintf(mthd,"2D median");
+	    exit(EXIT_FAILURE);
+	  }
+	  else
+	  {
+	    // No normalisation this is plausible but not recommended
+	    // NOTE: Perhaps this should not be the default?
+	    input->norm[hIdx] = 1;
+	    sprintf(mthd,"None");
+	  }
+	  infoMSG(6,6,"Harm %2i %s normalisation factor: %6.4f  r [ %.1f - %.1f ]   z [ %.2f - %.2f ] \n", h, mthd, input->norm[hIdx], input->minR*(h), input->maxR*(h), input->minZ*(h), input->maxZ*(h) );
+	}
+
+	PROF // Profiling  .
+	{
+	  NV_RANGE_POP("Calc Norm factor");
+	}
+      }
+    }
+
+    infoMSG(5,5,"New input, stride %i - covers r [%.1f - %.1f]  z [%.1f - %.1f] at a max HW of %i.\n", input->stride, input->minR, input->maxR, input->minZ, input->maxZ, input->maxHalfWidth );
+
+    if ( input->stride*input->noHarms*sizeof(cufftComplex) > input->size )
+    {
+	int width1 = ceil((input->maxR+OPT_INP_BUF)*noHarms) - floor((input->minR-OPT_INP_BUF)*noHarms);
+	int strd   = input->stride - width1 - 2*input->maxHalfWidth;
+
+	infoMSG(6,6,"ERROR: Stride %i Harms %i = %i points for zmax: %.4f -> hw: %i   + %i + %i\n", input->stride, input->noHarms, input->stride*input->noHarms, largestZ, input->maxHalfWidth, width1, strd );
+
+	fprintf(stderr, "ERROR: In function %s, harmonic input not created with large enough memory buffer, require %.2f MB  have %.2f.\n", __FUNCTION__, input->stride*noHarms*sizeof(cufftComplex)*1e-6, input->size*1e-6 );
+	err += ACC_ERR_MEM;
+	input->maxHalfWidth	= 0;
+	input->maxZ		= 0;
+	input->minZ		= 0;
+	input->maxR		= 0;
+	input->minR		= 0;
+	input->noHarms		= 0;
+	NV_RANGE_POP("ERROR");
+	return err;
+    }
+
+    if ( preWrite ) // A blocking synchronisation to make sure we can write to host memory  .
+    {
+      infoMSG(4,4,"Blocking synchronisation on %s", "preWrite" );
+
+      CUDA_SAFE_CALL(cudaEventSynchronize(*preWrite), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
+    }
+
+    FOLD // Normalise host  .
+    {
+      int		off;		// Offset
+
+      infoMSG(5,5,"Normalising input in host memory.\n" );
+
+      // Calculate values for harmonics and normalise input
+      for( int h = 0; h < noHarms; h++)
+      {
+	datStart	= floor( input->minR*(h+1) - input->maxHalfWidth );
+	datEnd		= ceil(  input->maxR*(h+1) + input->maxHalfWidth );
+
+	FOLD // Normalise input and Write data to host memory  .
+	{
+	  int startV = MIN( ((datStart + datEnd - input->stride ) / 2.0), datStart ); //Start value if the data is centred
+
+	  input->loR[h]		= startV;
+	  double factor		= sqrt(input->norm[h]);		// Correctly normalise input by the sqrt of the local power
+
+	  for ( int i = 0; i < input->stride; i++ )		// Normalise input  .
+	  {
+	    off = startV - fft->firstBin + i;
+
+	    if ( off >= 0 && off < fft->noBins )
+	    {
+	      input->h_inp[h*input->stride + i].r = fft->data[off].r / factor ;
+	      input->h_inp[h*input->stride + i].i = fft->data[off].i / factor ;
+	    }
+	    else
+	    {
+	      input->h_inp[h*input->stride + i].r = 0;
+	      input->h_inp[h*input->stride + i].i = 0;
+	    }
+	  }
+	}
+      }
+    }
+
+//    PROF // Profiling  .
+//    {
+//      NV_RANGE_POP("Prep Input");
+//    }
+  }
+  else
+  {
+    infoMSG(6,6,"ERROR: NULL pointer.\n" );
+    err += ACC_ERR_NULL;
+  }
+
+  return err;
+}
+
+
+cuHarmInput* initHarmInput( int maxWidth, float zMax, int maxHarms, gpuInf* gInf )
+{
+  size_t maxHalfWidth	= cu_z_resp_halfwidth<double>( zMax, HIGHACC );
+  size_t inData	= (maxWidth + OPT_INP_BUF*2)*maxHarms;				// Data is the width of the highest harmonic
+  size_t inpSz	= (inData + 2*maxHalfWidth)*maxHarms * sizeof(cufftComplex);
+
+  infoMSG(7,7,"Input stride %i Harms %i points for zmax: %.1f -> hw: %i \n", inData + 2*maxHalfWidth, maxHarms, zMax, maxHalfWidth );
+
+  return initHarmInput( inpSz, gInf );
+}
+
+cuHarmInput* initHarmInput( size_t memSize, gpuInf* gInf )
+{
+  size_t freeMem, totalMem;
+
+  infoMSG(4,4,"New harmonic input.\n");
+
+  cuHarmInput* input	= (cuHarmInput*)malloc(sizeof(cuHarmInput));
+  memset(input, 0, sizeof(cuHarmInput));
+
+  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+  long  Diff = totalMem - MAX_GPU_MEM;
+  if( Diff > 0 )
+  {
+    freeMem  -= Diff;
+    totalMem -= Diff;
+  }
+#endif
+
+  if ( memSize > freeMem )
+  {
+    printf("Not enough GPU memory to create any more stacks.\n");
+    return NULL;
+  }
+  else
+  {
+    infoMSG(6,6,"Memory size %.2f MB.\n", memSize*1e-6 );
+
+    // Allocate device memory
+    CUDA_SAFE_CALL(cudaMalloc(&input->d_inp, memSize), "Failed to allocate device memory for kernel stack.");
+
+    // Allocate host memory
+    CUDA_SAFE_CALL(cudaMallocHost(&input->h_inp, memSize), "Failed to allocate device memory for kernel stack.");
+
+    input->size = memSize;
+    input->gInf = gInf;
+  }
+
+  return input;
+}
+
+ACC_ERR_CODE freeHarmInput(cuHarmInput* inp)
+{
+  ACC_ERR_CODE err = ACC_ERR_NONE;
+  if ( inp )
+  {
+    cudaFreeNull(inp->d_inp);
+    //cudaFreeHostNull(inp->h_inp);
+    freeNull(inp->h_inp);			// This is not cuda free host because the memory isn't always pined.
+    freeNull(inp);
+  }
+
+  return err;
+}
+
+/** Duplicate the host (CPU) data of a harmonic input data structure
+ *
+ *  This makes a copy of the host memory
+ *  The returned data structure is free of GPU information
+ *
+ * @param orr	The structure to duplicate
+ * @return	NULL on error or A pointer to a new harmonic input structure, note this must be freed manually (including host memry).
+ */
+cuHarmInput* duplicateHostInput(cuHarmInput* orr)
+{
+  if ( orr )
+  {
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("Duplicate Hamr Inp");
+    }
+
+    size_t sz = MIN(orr->size, orr->noHarms * orr->stride * sizeof(fcomplexcu) * 2.0 );
+    cuHarmInput* res = (cuHarmInput*)malloc(sizeof(cuHarmInput));
+
+    infoMSG(5,5,"Duplicating harmonic input, %.2f MB\n", sz*1e-6);
+
+    memcpy(res, orr, sizeof(cuHarmInput));
+
+    // Clear GPU dependent items
+    res->d_inp	= NULL;
+    res->gInf	= NULL;
+
+    // Duplicate host memory
+    res->h_inp	= (fcomplexcu*)malloc(sz);
+    memcpy(res->h_inp, orr->h_inp, res->noHarms * res->stride * sizeof(fcomplexcu));
+    res->size	= sz;
+
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP("Duplicate Hamr Inp");
+    }
+
+    return res;
+  }
+  else
+  {
+    return NULL;
   }
 }
 
@@ -1123,3 +1532,4 @@ void prepInput(cuFFdotBatch* batch)
   copyInputToDevice(batch);
   prepInputGPU(batch);
 }
+

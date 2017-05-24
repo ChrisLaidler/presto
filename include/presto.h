@@ -119,7 +119,8 @@ typedef enum {
 
 /*  Constants used in the interpolation routines */
 typedef enum {
-  LOWACC, HIGHACC
+  LOWACC	= -1,
+  HIGHACC	= -2
 } presto_interp_acc;
 
 /*  Constants used in the binary search routines */

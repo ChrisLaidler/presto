@@ -106,6 +106,7 @@ extern "C"
 #include "cuda_accel_utils.h"
 #include "cuda_accel_GEN.h"
 #include "cuda_accel_IN.h"
+#include "cuda_accel_PLN.h"
 #include "cuda_cand_OPT.h"
 
 #ifdef CBL
@@ -158,11 +159,10 @@ double ratioARR[] = {
 int cnttt = 0;
 
 
-
 ///////////////////////// Function prototypes ////////////////////////////////////
 
 
-void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg)
+int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg)
 {
   if (value)
   {
@@ -177,7 +177,7 @@ void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char
     if (value & ACC_ERR_NAN )
     {
       value &= (~ACC_ERR_NAN);
-      sprintf(msg, "%s     NAN \n", msg);
+      sprintf(msg, "%s     NAN - Not a number\n", msg);
     }
 
     if (value & ACC_ERR_NEG )
@@ -213,7 +213,7 @@ void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char
     if (value & ACC_ERR_NULL )
     {
       value &= (~ACC_ERR_NULL);
-      sprintf(msg, "%s     NULL pointer\n", msg );
+      sprintf(msg, "%s     NULL pointer. The power and pain of c/c++, something not initialised?\n", msg );
     }
 
     if (value & ACC_ERR_INVLD_CONFIG )
@@ -228,6 +228,25 @@ void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char
       sprintf(msg, "%s     Uninitialised\n", msg );
     }
 
+    if (value & ACC_ERR_MEM )
+    {
+      value &= (~ACC_ERR_MEM);
+      sprintf(msg, "%s     Problem with memory.\n", msg );
+    }
+
+    if (value & ACC_ERR_COMPILED )
+    {
+      value &= (~ACC_ERR_COMPILED);
+      sprintf(msg, "%s     Not compiled with feature (check the WITH_XXX hash defines in $PREST/lib/chda_accel.h, don't forget to make clean, before full recompile).\n", msg );
+    }
+
+    if (value & ACC_ERR_DEV )
+    {
+      value &= (~ACC_ERR_DEV);
+      sprintf(msg, "%s     Feature still under development.\n", msg );
+    }
+
+
 
 
     if (value )
@@ -236,7 +255,10 @@ void __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char
     }
 
     fprintf(stderr, "%s\n", msg);
+
+    return 1;
   }
+  return 0;
 }
 
 void setDebugMsgLevel(int lvl)
@@ -361,7 +383,6 @@ fftInfo* readFFT(char* fileName)
 {
   char name[1024] = {0};
   char* suffix;
-  int loc;
 
   printf("Opening %s \n", fileName);
 
@@ -483,13 +504,92 @@ void printCands(const char* fileName, GSList *cands, double T)
   }
 }
 
-void initGPUs(gpuSpecs* gSpec)
+/** Initialise a GPU
+ *
+ * @param device	The device number
+ * @param gInf		A pointer to a obediently pre initialised data structure, if NULL is passed a new struct will be created and a pointer returned
+ * @return		NULL on error, or a pointer to an initialised GPU information structure
+ */
+gpuInf* initGPU(int device, gpuInf* gInf)
 {
-  int currentDevvice, deviceCount;
+  int currentDevvice;
   char txt[1024];
 
-  int major           = 0;
-  int minor           = 0;
+  int major		= 0;
+  int minor		= 0;
+
+  infoMSG(4,4,"Init GPU %i.\n", device);
+
+  if ( gInf == NULL )
+  {
+    infoMSG(5,5,"Create new data structure.\n");
+    gInf = new gpuInf;
+  }
+
+  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
+
+  // Check if the the current device is 'device'
+  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
+
+  if ( currentDevvice != device)
+  {
+    fprintf(stderr, "ERROR: Device not set.\n");
+    return NULL;
+  }
+  else // call something to initialise the device
+  {
+    sprintf(txt,"Init device %02i", device );
+
+    PROF // Profiling  .
+    {
+	NV_RANGE_PUSH(txt);
+    }
+
+    cudaDeviceProp deviceProp;
+    CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
+
+    major                           = deviceProp.major;
+    minor                           = deviceProp.minor;
+    gInf->capability                = major + minor/10.0f;
+    gInf->alignment                 = getMemAlignment();                  // This action will initialise the CUDA context
+    gInf->devid                     = device;
+    gInf->name                      = (char*)malloc(256*sizeof(char));
+
+    sprintf(gInf->name, "%s", deviceProp.name );
+
+    // TODO: Profile this
+    CUDA_SAFE_CALL(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1),"Failed to set cache config"); // cudaFuncCachePreferNone OR cudaFuncCachePreferShared OR cudaFuncCachePreferL1 OR cudaFuncCachePreferEqual
+
+    PROF // Profiling  .
+    {
+	NV_RANGE_POP(txt);
+    }
+  }
+
+  return gInf;
+}
+
+gpuInf* getGPU(gpuInf* gInf)
+{
+  infoMSG(4,4,"Get GPU\n");
+
+  int device;
+  cudaDeviceProp props;
+
+  props.concurrentKernels = 1;
+  props.ECCEnabled = 1;			// Generally a compute device
+  props.asyncEngineCount = 2;
+  props.deviceOverlap = 1;
+  props.major = 5;
+
+  CUDA_SAFE_CALL(cudaChooseDevice(&device, &props),"Choosing device");
+
+  return initGPU(device, NULL);
+}
+
+void initGPUs(gpuSpecs* gSpec)
+{
+  int deviceCount;
 
   CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
 
@@ -498,44 +598,7 @@ void initGPUs(gpuSpecs* gSpec)
     int device    = gSpec->devId[dIdx];
     gpuInf* gInf  = &gSpec->devInfo[dIdx];
 
-    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-
-    // Check if the the current device is 'device'
-    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-
-    if ( currentDevvice != device)
-    {
-      fprintf(stderr, "ERROR: Device not set.\n");
-    }
-    else // call something to initialise the device
-    {
-      sprintf(txt,"Init device %02i", device );
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_PUSH(txt);
-      }
-
-      cudaDeviceProp deviceProp;
-      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
-
-      major                           = deviceProp.major;
-      minor                           = deviceProp.minor;
-      gInf->capability                = major + minor/10.0f;
-      gInf->alignment                 = getMemAlignment();                  // This action will initialise the CUDA context
-      gInf->devid                     = device;
-      gInf->name                      = (char*)malloc(256*sizeof(char));
-
-      sprintf(gInf->name, "%s", deviceProp.name );
-
-      // TODO: Profile this
-      CUDA_SAFE_CALL(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1),"Failed to set cache config"); // cudaFuncCachePreferNone OR cudaFuncCachePreferShared OR cudaFuncCachePreferL1 OR cudaFuncCachePreferEqual
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_POP(txt);
-      }
-    }
+    initGPU(device, gInf);
   }
 }
 
@@ -560,16 +623,6 @@ gpuSpecs* getGpuSpec(int devID, int batch, int steps, int opts)
     gSpec->noDevSteps[0]	= steps;
     gSpec->noDevOpt[0]		= opts;
   }
-
-//  // Set default
-//  for ( int i = 0; i < gSpec->noDevices; i++)
-//  {
-//    gSpec->noDevBatches[i]	= 0;
-//    gSpec->noDevSteps[i]	= 0;
-//    gSpec->noDevOpt[i]		= 0;
-//  }
-
-
 
   return gSpec;
 }
@@ -664,6 +717,8 @@ void readAccelDefalts(confSpecs *conf)
 {
   int64_t*  genFlags = &(conf->gen->flags);
   int64_t*  optFlags = &(conf->opt->flags);
+
+  infoMSG(3,3,"Reading defaults from text configuration file.\n");
 
   FILE *file;
   char fName[1024];
@@ -1748,6 +1803,40 @@ void readAccelDefalts(confSpecs *conf)
 	}
       }
 
+      else if ( strCom("optPlnAcc", str1 ) )
+      {
+	int no1;
+	int no2;
+	int read1 = sscanf(line, "%s %i %s", str1, &no1, str2 );
+	if ( read1 == 3 )
+	{
+	  if ( no1 >= 1 && no1 <= NO_OPT_LEVS )
+	  {
+	    if      ( strCom("HIGH", str2 ) || strCom("High", str2 ) ||  strCom("high", str2 ) )
+	    {
+	      conf->opt->accu[no1-1] = HIGHACC;
+	    }
+	    else if ( strCom("LOW", str2 ) || strCom("STD", str2 ) || strCom("std", str2 ) || strCom("Std", str2 ) )
+	    {
+	      conf->opt->accu[no1-1] = LOWACC;
+	    }
+	    else
+	    {
+	      fprintf(stderr,"WARNING: Invalid option for %s, valid options are: HIGH or LOW\n", str1);
+	    }
+
+	  }
+	  else
+	  {
+	    fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 1 and %i \n", no1, NO_OPT_LEVS);
+	  }
+	}
+	else
+	{
+	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
+      }
+
       else if ( strCom(line, "FLAG_OPT_DYN_HW" ) )
       {
 	singleFlag ( optFlags, str1, str2, FLAG_OPT_DYN_HW, "", "0", lineno, fName );
@@ -1958,8 +2047,15 @@ fftInfo* fftFromObs(accelobs* obs)
   return fftInf;
 }
 
+/**
+ *   Note you are probably looking for getConfig()
+ *
+ * @return
+ */
 confSpecs* defaultConfig()
 {
+  infoMSG(3,3,"Loading default configurations.\n");
+
   confSpecs* conf = new(confSpecs);
   memset(conf, 0, sizeof(confSpecs));
 
@@ -2039,6 +2135,7 @@ confSpecs* defaultConfig()
     conf->opt->flags		|= FLAG_OPT_NRM_MEDIAN1D;
     conf->opt->flags		|= FLAG_OPT_BLK_HRM;
     conf->opt->flags		|= FLAG_OPT_PTS_HRM;
+    conf->opt->flags		|= FLAG_RES_FAST;		// Use fast blockedd planes
     conf->opt->flags		|= FLAG_OPT_NM_REFINE;
 
     conf->opt->optPlnDim[0]	= 128;
@@ -2048,6 +2145,14 @@ confSpecs* defaultConfig()
     conf->opt->optPlnDim[4]	= 0;
     conf->opt->optPlnDim[5]	= 0;
     conf->opt->optPlnDim[6]	= 0;
+
+    conf->opt->accu[0]		= LOWACC;
+    conf->opt->accu[1]		= LOWACC;
+    conf->opt->accu[2]		= HIGHACC;
+    conf->opt->accu[3]		= HIGHACC;
+    conf->opt->accu[4]		= HIGHACC;
+    conf->opt->accu[5]		= HIGHACC;
+    conf->opt->accu[6]		= HIGHACC;
 
     conf->opt->optPlnSiz[0]	= 16;
     conf->opt->optPlnSiz[1]	= 14;
@@ -2059,8 +2164,14 @@ confSpecs* defaultConfig()
   return conf;
 }
 
+/**
+ *
+ * @return
+ */
 confSpecs* getConfig()
 {
+  infoMSG(2,2,"Get configurations.\n");
+
   confSpecs* conf = defaultConfig();
 
   // Now read the
@@ -2222,9 +2333,6 @@ bool compare(confSpecsGen* conf1, confSpecsGen* conf2)
 
     if ( (conf1->flags & (CU_NORM_GPU) ) != ( conf2->flags & (CU_NORM_GPU) ) )
       return false;
-
-    int64_t mul1 = conf1->flags & (FLAG_MUL_ALL);
-    int64_t mul2 = conf2->flags & (FLAG_MUL_ALL);
 
     if ( (conf1->flags & (FLAG_MUL_CB) ) != ( conf2->flags & (FLAG_MUL_CB) ) )
       return false;
@@ -2434,10 +2542,10 @@ cuSearch* initSearchInfCMD(Cmdline *cmd, accelobs* obs, gpuSpecs* gSpec)
   return initSearchInf(sSpec, conf, gSpec, fft);
 }
 
-ACC_ERR_CODE remOptFlag(cuOptCand* pln, int64_t flag)
+ACC_ERR_CODE remOptFlag(cuPlnGen* plnGen, int64_t flag)
 {
-  if ( pln )
-    pln->flags &= ~flag;
+  if ( plnGen )
+    plnGen->flags &= ~flag;
   else
   {
     fprintf(stderr, "ERROR: Null pointer");
@@ -2446,10 +2554,42 @@ ACC_ERR_CODE remOptFlag(cuOptCand* pln, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-ACC_ERR_CODE setOptFlag(cuOptCand* pln, int64_t flag)
+ACC_ERR_CODE setOptFlag(cuPlnGen* plnGen, int64_t flag)
 {
-  if ( pln )
-    pln->flags |=  flag;
+  if ( plnGen )
+    plnGen->flags |=  flag;
+  else
+  {
+    fprintf(stderr, "ERROR: Null pointer");
+    return ACC_ERR_NULL;
+  }
+  return ACC_ERR_NONE;
+}
+
+ACC_ERR_CODE setOptFlag(cuOpt* opt, int64_t flag)
+{
+  if ( opt )
+  {
+    opt->flags |=  flag;
+    if ( opt->plnGen )
+      return ( setOptFlag(opt->plnGen, flag) );
+  }
+  else
+  {
+    fprintf(stderr, "ERROR: Null pointer");
+    return ACC_ERR_NULL;
+  }
+  return ACC_ERR_NONE;
+}
+
+ACC_ERR_CODE remOptFlag(cuOpt* opt, int64_t flag)
+{
+  if ( opt )
+  {
+    opt->flags &= ~flag;
+    if ( opt->plnGen )
+      return ( remOptFlag(opt->plnGen, flag) );
+  }
   else
   {
     fprintf(stderr, "ERROR: Null pointer");

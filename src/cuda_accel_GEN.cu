@@ -4706,7 +4706,7 @@ void freeBatchGPUmem(cuFFdotBatch* batch)
     infoMSG(3,3,"Free pinned memory\n");
 
     cudaFreeHostNull(batch->h_iData);
-    freeNull(batch->h_iBuffer);
+    freeNull(batch->h_iBuffer);			// This could be cudaFreeHostNull, is this memory ever allocated "normally"
     //cudaFreeHostNull(batch->h_outData1);
   }
 
@@ -5618,10 +5618,7 @@ int genPlane(cuSearch* cuSrch, char* msg)
       FOLD // Set start r-vals for all steps in this batch  .
       {
 	ret = startBatchR (batch, firstR, ite, firstStep ) & (~ACC_ERR_OVERFLOW);
-	if ( ret )
-	{
-	  ERROR_MSG(ret, "ERROR: Setting batch r location");
-	}
+	ERROR_MSG(ret, "ERROR: Setting batch r location");
 
 //	for ( int batchStep = 0; batchStep < (int)batch->noSteps ; batchStep++ )
 //	{

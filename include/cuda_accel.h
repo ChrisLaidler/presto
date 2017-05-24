@@ -149,11 +149,13 @@ extern "C"
 #define 		WITH_OPT_BLK_NRM
 #define 		WITH_OPT_BLK_EXP
 #define 		WITH_OPT_BLK_HRM
+#define 		WITH_OPT_BLK_RSP
 
-#define 		WITH_OPT_PLN_NRM
-#define 		WITH_OPT_PLN_EXP		///< This is generally a very bad idea =/
-#define 		WITH_OPT_PLN_HRM
-#define 		WITH_OPT_PLN_SHR
+#define 		WITH_OPT_PTS_NRM
+#define 		WITH_OPT_PTS_EXP		///< This is generally a very bad idea =/
+#define 		WITH_OPT_PTS_HRM
+#define 		WITH_OPT_PTS_SHR
+#define 		WITH_OPT_PTS_RSP
 
 
 /******************************************* Defines ****************************************************/
@@ -170,6 +172,9 @@ extern "C"
 #define		MAX_GPUS		32		///< The maximum number GPU's
 #define		CORRECT_MULT		1		///< Generate the kernel values the correct way and do the
 #define		NO_OPT_LEVS		7		///< The number of optimisation planes/steps
+#define 	OPT_INP_BUF   		25		///< Buffer sections of the input FT with this many bins
+#define		OPT_LOC_PNT_NO		16
+
 
 /************************************** Bit flag values *************************************************/
 
@@ -275,13 +280,15 @@ extern "C"
 #define		FLAG_OPT_BLK_NRM	BIT(25)
 #define		FLAG_OPT_BLK_EXP	BIT(26)		///< - NB This returns complex values
 #define		FLAG_OPT_BLK_HRM	BIT(27)		///< Thread per harmonic point (blocked kernel)
-#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM )
+#define		FLAG_OPT_BLK_RSP	BIT(28)		///< Thread per harmonic point (blocked kernel)
+#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_RSP )
 
 #define		FLAG_OPT_PTS_NRM	BIT(30)
 #define		FLAG_OPT_PTS_EXP	BIT(31)		///< - NB This returns complex values
 #define		FLAG_OPT_PTS_HRM	BIT(32)		///< Thread per harmonic point
 #define		FLAG_OPT_PTS_SHR	BIT(33)
-#define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR )
+#define		FLAG_OPT_PTS_RSP	BIT(34)
+#define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR | FLAG_OPT_PTS_RSP)
 
 #define		FLAG_OPT_KER_ALL	( FLAG_OPT_BLK | FLAG_OPT_PTS )
 
@@ -305,25 +312,6 @@ extern "C"
 
 // ----------- This is a list of the data types that and storage structures
 
-#define     CU_CMPLXF           	BIT(1)          ///< Complex float
-#define     CU_INT              	BIT(2)          ///< INT
-#define     CU_HALF             	BIT(3)          ///< 2 byte float
-#define     CU_FLOAT            	BIT(4)          ///< Float
-#define     CU_DOUBLE           	BIT(5)          ///< Float
-#define     CU_POWERZ_S         	BIT(6)          ///< A value and a z bin         candPZs
-#define     CU_POWERZ_I         	BIT(7)          ///< A value and a z bin         candPZi
-#define     CU_CANDMIN          	BIT(8)          ///< A compressed candidate      candMin
-#define     CU_CANDSMAL         	BIT(9)          ///< A compressed candidate      candSml
-#define     CU_CANDBASC         	BIT(10)         ///< A compressed candidate      accelcandBasic
-#define     CU_CANDFULL         	BIT(11)         ///< Full detailed candidate     cand
-#define     CU_POWERH_S         	BIT(12)         ///< A value and a z bin         candHs
-#define     CU_TYPE_ALLL        	(CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_POWERH_S | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
-
-#define     CU_STR_ARR          	BIT(20)         ///< Candidates are stored in an array (requires more memory)
-#define     CU_STR_PLN          	BIT(21)
-#define     CU_STR_LST          	BIT(22)         ///< Candidates are stored in a list  (usually a dynamic linked list)
-#define     CU_STR_QUAD         	BIT(23)         ///< Candidates are stored in a dynamic quadtree
-#define     CU_SRT_ALL          	(CU_STR_ARR | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
 // ----------- This is ??????
 
@@ -335,6 +323,33 @@ extern "C"
 
 
 /******************************************* enums ******************************************************/
+
+typedef enum	///< CU_TYPE
+{
+  CU_NONE		=	0,
+  CU_CMPLXF		=	BIT(1),		///< Complex float
+  CU_INT		=	BIT(2),		///< INT
+  CU_HALF		=	BIT(3),		///< 2 byte float
+  CU_FLOAT		=	BIT(4),		///< Float
+  CU_DOUBLE		=	BIT(5),		///< Float
+  CU_POWERZ_S		=	BIT(6),		///< A value and a z bin         candPZs
+  CU_POWERZ_I		=	BIT(7),		///< A value and a z bin         candPZi
+  CU_CANDMIN		=	BIT(8),		///< A compressed candidate      candMin
+  CU_CANDSMAL		=	BIT(9),		///< A compressed candidate      candSml
+  CU_CANDBASC		=	BIT(10),	///< A compressed candidate      accelcandBasic
+  CU_CANDFULL		=	BIT(11),	///< Full detailed candidate     cand
+  CU_POWERH_S		=	BIT(12),	///< A value and a z bin         candHs
+
+  CU_STR_ARR		=	BIT(20),	///< Candidates are stored in an array (requires more memory)
+  CU_STR_PLN		=	BIT(21),	///< Plane 2D?
+  CU_STR_LST		=	BIT(22),	///< Candidates are stored in a list  (usually a dynamic linked list)
+  CU_STR_QUAD		=	BIT(23),	///< Candidates are stored in a dynamic quadtree
+  CU_STR_HARMONICS	=	BIT(24),	///< Stored in an expanded planes (1 value per harmonic)
+  CU_STR_INCOHERENT_SUM	=	BIT(25)
+} CU_TYPE;
+
+#define		CU_TYPE_ALLL	(CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_POWERH_S | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
+#define		CU_SRT_ALL	(CU_STR_ARR | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
 
 typedef enum {
@@ -354,7 +369,11 @@ typedef enum						///< ACC_ERR_CODE
   ACC_ERR_OUTOFBOUNDS	=	BIT(5),		///<
   ACC_ERR_NULL		=	BIT(6),		///< Null pointer
   ACC_ERR_INVLD_CONFIG	=	BIT(7),		///< Invalid configuration
-  ACC_ERR_UNINIT	=	BIT(8)		///< Uninitialised
+  ACC_ERR_UNINIT	=	BIT(8),		///< Uninitialised
+  ACC_ERR_MEM		=	BIT(9),		///< Problem with memory
+  ACC_ERR_DATA_TYPE	= 	BIT(10),	///< Data type ...
+  ACC_ERR_COMPILED	= 	BIT(11),	///< Broken because of compile
+  ACC_ERR_DEV		= 	BIT(12)		///< Under development
 } ACC_ERR_CODE;
 
 inline ACC_ERR_CODE operator ~(ACC_ERR_CODE a)
@@ -393,6 +412,48 @@ inline ACC_ERR_CODE& operator +=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
 }
 
 inline ACC_ERR_CODE& operator -=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
+{
+    return a= a & ~b;
+}
+
+
+
+inline CU_TYPE operator ~(CU_TYPE a)
+{
+    return static_cast<CU_TYPE>(~static_cast<int>(a));
+}
+
+inline CU_TYPE operator |(CU_TYPE a, CU_TYPE b)
+{
+    return static_cast<CU_TYPE>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+inline CU_TYPE& operator |=(CU_TYPE& a, CU_TYPE b)
+{
+    return a= a | b;
+}
+
+inline bool operator ==(CU_TYPE a, CU_TYPE b)
+{
+    return (a & b) > 0 ? 1 : 0 ;
+}
+
+inline CU_TYPE operator &(CU_TYPE a, CU_TYPE b)
+{
+    return static_cast<CU_TYPE>(static_cast<int>(a) & static_cast<int>(b));
+}
+
+inline CU_TYPE& operator &=(CU_TYPE& a, CU_TYPE b)
+{
+    return a= a & b;
+}
+
+inline CU_TYPE& operator +=(CU_TYPE& a, CU_TYPE b)
+{
+    return a= a | b;
+}
+
+inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 {
     return a= a & ~b;
 }
@@ -447,12 +508,28 @@ inline ACC_ERR_CODE& operator -=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
 #define  COMP_GEN_END		12			/// Nothing - A value to indicate the end of the used variables
 #define  COMP_GEN_MAX		20			/// Nothing - A value to indicate the maximum array length
 
+// Optemisation componets
+#define  COMP_OPT_NRM		0			/// Normalising input
+#define  COMP_OPT_H2D		1			/// Copying data to the device
+#define  COMP_OPT_PLN1		2			/// Generating plane 1
+#define  COMP_OPT_PLN2		3			/// Generating plane 2
+#define  COMP_OPT_PLN3		4			/// Generating plane 3
+#define  COMP_OPT_PLN4		5			/// Generating plane 4
+#define  COMP_OPT_PLN5		6			/// Generating plane 5
+#define  COMP_OPT_PLN6		7			/// Generating plane 6
+#define  COMP_OPT_PLN7		8			/// Generating plane 7
+#define  COMP_OPT_D2H		9			/// Copy results back from device
+#define  COMP_OPT_NM1		10			/// First Simplex
+#define  COMP_OPT_NM2		11			/// Second refining Simplex
+#define  COMP_OPT_DRV		12			/// Calculate derivatives
+#define  COMP_OPT_END		13			///
+#define  COMP_OPT_MAX		20			/// Nothing - A value to indicate the maximum array length
 
 
 /****************************************** Macros ******************************************************/
 
 ///< Defines for safe calling usable in C
-#define CUDA_SAFE_CALL(value, errorMsg)		__cuSafeCall   		(value, __FILE__, __LINE__, errorMsg )
+#define CUDA_SAFE_CALL(value, errorMsg)		__cuSafeCall		(value, __FILE__, __LINE__, errorMsg )
 #define CUFFT_SAFE_CALL(value,  errorMsg)	__cufftSafeCall		(value, __FILE__, __LINE__, errorMsg )
 #define EXIT_DIRECTIVE(flag)			__exit_directive	(__FILE__, __LINE__, flag )
 #define ERROR_MSG(value, errorMsg)		__printErrors		(value, __FILE__, __LINE__, errorMsg )
@@ -482,9 +559,9 @@ inline ACC_ERR_CODE& operator -=(ACC_ERR_CODE& a, ACC_ERR_CODE b)
 extern int cnttt;
 
 // Macro for adding CUDA ranges
-#define NV_RANGE_POP(x)          nvtxRangePop(); infoMSG(7,7,"POP, %2i  %s\n", cnttt, x ); cnttt--;
-#define NV_RANGE_PUSH(x)        nvtxRangePush(x); ++cnttt; infoMSG(7,7,"PUSH %2i  %s \n", cnttt, x );
-#define NV_NAME_STREAM(x,y)     nvtxNameCudaStreamA(x,y)
+#define NV_RANGE_POP(x)		nvtxRangePop(); 		// infoMSG(7,7,"POP, %2i  %s\n", cnttt, x ); cnttt--;
+#define NV_RANGE_PUSH(x)	nvtxRangePush(x); 		// ++cnttt; infoMSG(7,7,"PUSH %2i  %s \n", cnttt, x );
+#define NV_NAME_STREAM(x,y)	nvtxNameCudaStreamA(x,y)	// 
 
 #else
 
@@ -634,17 +711,23 @@ typedef struct gpuInf
  */
 typedef struct cuHarmInput
 {
-    size_t	size;			///< The size, in bytes, of the full input data (the size of h_inp & d_inp)
+  double	maxZ;			///< The largest  fundamental Z value the input can handle
+  double	minZ;			///< The smallest fundamental Z value the input can handle
+  double	maxR;			///< The largest  fundamental R value the input can handle
+  double	minR;			///< The smallest fundamental R value the input can handle
+  int 		maxHalfWidth;		///< The maximum halfwidth (at the highest harmonic) this data can handle
 
-    fcomplexcu*	h_inp;			///< A pointer to host memory size bytes big
-    fcomplexcu*	d_inp;			///< A pointer to device memory size bytes big
+  int		noHarms;		///< The current number of harmonics in the data set
+  int		stride;			///< The current stride (harmonic) of the input elements, (measured in fcomplexcu, ie. float2 ) - Used for both host and device
+  size_t	size;			///< The size, in bytes, of the full input data (the size of h_inp & d_inp)
 
-    int		noHarms;		///< The current number of harmonics in the data set
+  fcomplexcu*	h_inp;			///< A pointer to host memory size bytes big
+  fcomplexcu*	d_inp;			///< A pointer to device memory size bytes big
 
-    int		stride;			///< The current stride of the input elements
+  gpuInf*	gInf;			///< This can handle GPU memory so lets have some info on the device
 
-    int		loR[16];		///< The bin index of the first memory location
-    double	norm[16];		///< The normalisation factor used - TODO: CHeck if this is for powers or input
+  int		loR[16];		///< The bin index of the first memory location
+  double	norm[16];		///< The normalisation factor used - TODO: CHeck if this is for powers or input
 } cuHarmInput;
 
 //------------- Data structures for, planes, stacks, batches etc ----------------
@@ -871,7 +954,7 @@ typedef struct confSpecsOpt
 {
     float		zScale;				///< The ratio between spacing in R and Z in the optimisation planes
 
-    int			optResolution;			///< The number of r points per fft bin to use in the initial position optimisation
+    int			optResolution;			///< The number of r points per fft bin to use in the preallocated initial position optimisation
 
     int			optMinLocHarms;			///< The minimum number of harmonics to localise on
     int			optMinRepHarms;			///< The minimum number of harmonics report on
@@ -880,6 +963,7 @@ typedef struct confSpecsOpt
 
     int			optPlnSiz[MAX_NO_STAGES];	///< The size of optimisation planes
     int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
+    presto_interp_acc	accu[NO_OPT_LEVS];		///< The size of optimisation planes
     float		optPlnScale;
 
     int64_t		flags;				///< The search bit flags specified by the user, the actual bit flag used in the search will be different
@@ -1069,45 +1153,51 @@ typedef struct cuRespPln
     size_t		size;			///< The size in bytes of the response plane
 } cuRespPln;
 
-/** Data structure to hold the GPU information for performing GPU optimisation  .
+/** Data structure to hold information of a section of f-fdot plane
  *
  */
-typedef struct cuOptCand
+typedef struct cuRzHarmPlane
 {
-    cuSearch*		cuSrch;			///< Details of the search
-    confSpecsOpt*	conf;			///< Configuration parameters
-    gpuInf*		gInf;			///< Information on the GPU being used
-    int			pIdx;			///< The index of this optimiser in the list
-
-    int			noHarms;
-    int64_t		flags;			///< CUDA accel search bit flags
-
-    int			maxNoR;
-    int			maxNoZ;
-    int			maxHalfWidth;
-
     double		centR;			///< Centre of the plane
     double		centZ;			///< Centre of the plane
     double		rSize;			///< The width of the r plane
     double		zSize;			///< The width of the z plane
 
-    int			noZ;
-    int			noR;
+    int			noZ;			///< The number of z - The "rows"     of the plane(s)
+    int			noR;			///< The number or r - The "columns"  of the plane(s)
 
-    int			blkCnt;			///< The number of blocks each thread will cover
-    int			blkWidth;		///< Width of the block in R -
-    int			blkDimX;		///< The number of cuda threads in the x dimension of a the blocked kernel
+    int			noHarms;		///< The number of harmonics in the plane
 
-    int			halfWidth;
-    int			hw[32];
+    int			blkCnt;			///< The number of column(s) the plane cane be broken down into
+    int			blkWidth;		///< Width of a single column, measured in R - This must be an integer because of the fractional part of r is the value and is shared across integer spaced values
+    int			blkDimX;		///< The number of points in a single column
 
+//    int			hStride;		///< Stride of each harmonic, ie. the total size of a single plane
+    int			zStride;		///< Stride of the r "columns"
+
+    CU_TYPE		type;			///< The data type of the data in the plane
+
+    size_t		resSz;			///< The size of the actual plane results (including striding)
+    size_t		size;			///< The size in bytes of device output buffer
+    void*		d_data;			///< Return data device
+    void*		h_data;			///< Return data host
+} cuRzHarmPlane;
+
+/** A data structure to hold configurations needed generate a harmonically related section of rz plane
+ *
+ */
+typedef struct cuPlnGen
+{
+    confSpecsOpt*	conf;			///< Global configuration parameters
+    gpuInf*		gInf;			///< Information on the GPU being used
+    cuRzHarmPlane*	pln;			///< The ffdot plane section
     cuHarmInput*	input;			///< A pointer holding input data (unique to each plane)
 
-    size_t		outSz;			///< The size in bytes of device output buffer
-    size_t		resSz;			///< The size of the actual plane results
-    int			outStride;		///< Stride of the output data
-    void*		d_out;			///< Return data device
-    void*		h_out;			///< Return data host
+    int64_t		flags;			///< CUDA accel configuration bit flags
+
+    presto_interp_acc	accu;			///< Accuracy to create the plane at
+    int			hw[32];			///< The halfwidth to use to generate each harmonic
+    int			maxHalfWidth;		///< The maximum half-width of all harmonics
 
     cuRespPln*		responsePln;		///< A device specific plane holding possibly pre calculated response function values
     int			lftIdx;			///< X index of the pre calculated kernel
@@ -1117,31 +1207,41 @@ typedef struct cuOptCand
     cudaStream_t	stream;			///< CUDA stream for work
 
     // Events
-    cudaEvent_t		inpInit;		///< Copying input data to device
-    cudaEvent_t		inpCmp;			///< Copying input data to device
-    cudaEvent_t		compInit;		///< Copying input data to device
-    cudaEvent_t		compCmp;		///< Copying input data to device
-    cudaEvent_t		outInit;		///< Copying input data to device
-    cudaEvent_t		outCmp;			///< Copying input data to device
-
-    cudaEvent_t     	tInit1;			///< Timing
-    cudaEvent_t     	tComp1;			///< Timing
-    cudaEvent_t     	tInit2;			///< Timing
-    cudaEvent_t     	tComp2;			///< Timing
-    cudaEvent_t     	tInit3;			///< Timing
-    cudaEvent_t     	tComp3;			///< Timing
-    cudaEvent_t     	tInit4;			///< Timing
-    cudaEvent_t     	tComp4;			///< Timing
-
+    cudaEvent_t		inpInit;		///< Start copying input data to device
+    cudaEvent_t		inpCmp;			///< End   copying input data to device
+    cudaEvent_t		compInit;		///< Start computation of plane
+    cudaEvent_t		compCmp;		///< End   computation of plane
+    cudaEvent_t		outInit;		///< start copying results from device
+    cudaEvent_t		outCmp;			///< End   copying results from device
 } cuOptCand;
+
+/** Data structure to hold the GPU information for performing GPU optimisation  .
+ *
+ */
+typedef struct cuOpt
+{
+    cuSearch*		cuSrch;			///< Details of the search
+    confSpecsOpt*	conf;			///< Global configuration parameters
+    gpuInf*		gInf;			///< Information on the GPU being used
+    cuPlnGen*		plnGen;			///< A GPU plane generator
+    cuHarmInput*	input;			///< A pointer holding input data
+
+    int			pIdx;			///< The index of this optimiser in the list
+
+    int64_t		flags;			///< CUDA accel configuration bit flags
+
+    // TIMING values
+    long long*		compTime;		///< Array of floats from timing, one float for each stack
+
+} cuOpt;
 
 /** A struct to keep info on all the kernels and batches to use with cuda accelsearch  .
  */
 typedef struct cuOptInfo
 {
-    int                 noOpts;                 ///< The total number of optimisations to do across all devices
-    cuOptCand*          opts;                   ///< A list noBatches long of
-    cuRespPln*          responsePlanes;         ///< A collection of response functions for optimisation, one per GPU
+    int			noOpts;			///< The total number of optimisations to do across all devices
+    cuOpt*		opts;			///< A list noOpts long of
+    cuRespPln*		responsePlanes;		///< A collection of response functions for optimisation, one per GPU
 } cuOptInfo;
 
 /** Details of the GPU's  .
@@ -1149,12 +1249,12 @@ typedef struct cuOptInfo
 typedef struct cuGpuInfo
 {
     // Details of the GPU's in use
-    int             noDevices;          ///< The number of devices (GPU's to use in the search)
+    int			noDevices;		///< The number of devices (GPU's to use in the search)
 
-    int             devid[MAX_GPUS];
-    int             alignment[MAX_GPUS];
-    float           capability[MAX_GPUS];
-    char*           name[MAX_GPUS];
+    int			devid[MAX_GPUS];
+    int			alignment[MAX_GPUS];
+    float		capability[MAX_GPUS];
+    char*		name[MAX_GPUS];
 } cuGpuInfo;
 
 /** User independent details  .
@@ -1197,10 +1297,10 @@ struct cuSearch
  */
 struct resThrds
 {
-    sem_t           running_threads;
+    sem_t		running_threads;		///< Semaphore for running threads
 
-    pthread_mutex_t running_mutex;
-    pthread_mutex_t candAdd_mutex;
+    pthread_mutex_t	running_mutex;			///<
+    pthread_mutex_t	candAdd_mutex;			///< Mutex to change the global list of candidates
 
 };
 
@@ -1209,7 +1309,7 @@ struct resThrds
  */
 typedef struct resultData
 {
-    cuSearch*		cuSrch;                 ///< Details of the search
+    cuSearch*		cuSrch;			///< Details of the search
 
     void*		retData;		///< A pointer to the memory the results are stored in (usual pinned host memory)
     bool*		outBusy;		///< A pointer to the flag indicating that the memory has all been read
@@ -1253,17 +1353,25 @@ typedef struct resultData
  */
 typedef struct candSrch
 {
-    cuSearch*           cuSrch;                 ///< Details of the search
+    cuSearch*		cuSrch;			///< Details of the search
     cuHarmInput*	input;			///< Input data for the harmonics
-    accelcand*          cand;                   ///< The candidate to optimise
-    cuOptCand*          optPln;                 ///< The plane data used for optimisation
-    int                 candNo;                 ///< The 0 based index of this candidate
-    double*             norms;                  ///< Normalisation values for each harmonic
+    accelcand*		cand;			///< The candidate to optimise
+    cuPlnGen*		optPln;			///< The plane data used for optimisation
+    int			candNo;			///< The 0 based index of this candidate
+    double*		norms;			///< Normalisation values for each harmonic
 } candSrch;
 
 
 
 /************************************* Function prototypes ***********************************************/
+
+cuHarmInput* initHarmInput( int maxWidth, float zMax, int maxHarms, gpuInf* gInf );
+
+cuHarmInput* initHarmInput( size_t memSize, gpuInf* gInf );
+
+ACC_ERR_CODE chkInput( cuHarmInput* input, double r, double z, double rSize, double zSize, int noHarms, int* newInp);
+
+ACC_ERR_CODE loadHostHarmInput( cuHarmInput* input, fftInfo* fft, double r, double z, double rSize, double zSize, int noHarms, int64_t flags = FLAG_OPT_NRM_LOCAVE, cudaEvent_t* preWrite = NULL );
 
 void setDebugMsgLevel(int lvl);
 
@@ -1308,13 +1416,15 @@ ExternC fftInfo* readFFT(char* fileName);
 
 ExternC cuSearch* initCuOpt(cuSearch* srch);
 
+ExternC ACC_ERR_CODE freeOptimisers(cuSearch* sSrch);
+
 ExternC void freeCuSearch(cuSearch* srch);
 
 ExternC void freeAccelGPUMem(cuPlnInfo* mInf);
 
-ExternC cuOptCand* initOptPln(confSpecsGen* sSpec);
+ExternC cuPlnGen* initOptPln(confSpecsGen* sSpec);
 
-ExternC cuOptCand* initOptSwrm(confSpecsGen* sSpec);
+ExternC cuPlnGen* initOptSwrm(confSpecsGen* sSpec);
 
 
 /** Initialise the template structure and kernels for a multi-step batches  .
