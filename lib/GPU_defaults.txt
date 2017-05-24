@@ -374,7 +374,7 @@ OPT_NELDER_MEAD_REFINE	1
 #OPT_PROCESS		SEQ
 
 # TODO: Write this description
-#OPT_BLK_DIVISOR
+OPT_BLK_DIVISOR		4
 
 #### The rest are optimisation plane parameters ####
 
@@ -390,13 +390,20 @@ FLAG_OPT_DYN_HW		1
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
 optPlnDim 1 128			# The number of elements in the 1st optimisation plane
-optPlnDim 2 32   		# The number of elements in the 2nd optimisation plane
-optPlnDim 3 16  		# The number of elements in the 3rd optimisation plane
+optPlnDim 2 32			# The number of elements in the 2nd optimisation plane
+optPlnDim 3 16			# The number of elements in the 3rd optimisation plane
 optPlnDim 4 16			# The number of elements in the 4th optimisation plane
-optPlnDim 5 0   		# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
-optPlnDim 6 0   		# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
-optPlnDim 7 0   		# The number of elements in the 7th optimisation plane (this is a double precision plane)
+optPlnDim 5 0			# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
+optPlnDim 6 0			# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
+optPlnDim 7 0			# The number of elements in the 7th optimisation plane (this is a double precision plane)
 
+optPlnAcc 1 STD
+optPlnAcc 2 STD
+optPlnAcc 3 HIGH
+optPlnAcc 4 HIGH
+optPlnAcc 5 HIGH
+optPlnAcc 6 HIGH
+optPlnAcc 7 HIGH
 
 # The Numbers below dictate the size, in bins, of the first incremental plane used to refine the location of the maximum f-fdot value, for each number of harmonics
 # Lager numbers will "explore" the f-fdot plane faster but will reduce resolution
@@ -421,11 +428,11 @@ optPlnSiz 16 8
 #	7			# Excessive!
 DBG_LEV			0
 
-#FLAG_DPG_UNOPT  		# [ Debug ]	Use saved initial search values
+#FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
 #FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
 #FLAG_DPG_PRNT_CAND		# [ Debug ]     Print CSV of candidates at various stages
-#FLAG_DPG_PLT_POWERS		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
-#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes
+#FLAG_DPG_PLT_POWERS 		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
+#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes - This takes much longer than generating them!
 #FLAG_DBG_TEST		0
 
 #FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
