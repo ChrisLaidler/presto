@@ -993,6 +993,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
   cuRespPln* 	 rpln 		= plnGen->responsePln;
   cuRzHarmPlane* pln 		= plnGen->pln;
   cuHarmInput*	 input		= plnGen->input;
+
   // Data structures to pass to the kernels
   optLocInt_t	rOff;			// Row offset
   optLocInt_t	hw;			// The halfwidth for each harmonic
@@ -1016,7 +1017,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
     hw.val[h]		= plnGen->hw[h];
     norm.val[h]		= sqrt(input->norm[h]);			// Correctly normalised by the sqrt of the local power
 
-    if ( plnGen->hw[h] == 0 )
+    if ( h < plnGen->pln->noHarms && plnGen->hw[h] == 0 )
     {
       err += ACC_ERR_UNINIT;
     }
@@ -1028,56 +1029,6 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
   }
 
   err += setPlnGenTypeFromFlags(plnGen);
-
-//  // Halfwidth stuff
-//  if ( (conf->flags & FLAG_OPT_DYN_HW) || (pln->zSize >= 2) )
-//  {
-//
-//    for( int h = 0; h < pln->noHarms; h++)
-//    {
-//      hw.val[h] = 0;
-//    }
-//    maxHW = pln->halfWidth;
-//  }
-//  else
-//  {
-//    infoMSG(5,5,"Using constant half Width of %i", maxHW);
-//  }
-
-//  FOLD // Check output size  .
-//  {
-//    // No points
-//    //pln->resSz = pln->zStride*pln->noZ;
-//
-//    // Size of type
-//    if ( opt->flags & FLAG_CMPLX )
-//    {
-//      pln->resSz *= sizeof(float2);
-//      infoMSG(7,7,"Return complex values\n");
-//    }
-//    else
-//    {
-//      pln->resSz *= sizeof(float);
-//      infoMSG(7,7,"Return powers\n");
-//    }
-//
-//    // ( FLAG_OPT_BLK_EXP | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_NRM ) )
-//    if ( opt->flags & FLAG_HAMRS )
-//    {
-//      pln->resSz *= pln->noHarms;			// One point per harmonic
-//      infoMSG(7,7,"Return individual harmonics\n");
-//    }
-//    else
-//    {
-//      infoMSG(7,7,"Return incoherent sum\n");
-//    }
-//
-//    if ( pln->resSz > pln->outSz )
-//    {
-//      fprintf(stderr, "ERROR: Optimisation plane larger than allocated memory.\n");
-//      exit(EXIT_FAILURE);
-//    }
-//  }
 
   FOLD // Call kernel  .
   {
@@ -1599,11 +1550,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 
     if ( conf->flags & FLAG_OPT_BLK ) // Use the block kernel  .
     {
-      /*	NOTE:	Chris Laidler	22/06/2016
-       *
-       * The per harmonic blocked kernel is fastest in my testing
-       */
-
       err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor);
 
 #ifdef 	WITH_OPT_PTS_HRM
@@ -1624,14 +1570,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     }
     else
     {
-      /*	NOTE:	Chris Laidler	22/06/2016
-       *
-       * I found 16 testing on a 750ti, running in synchronous mode.
-       * This could probably be tested on more cards but I expect similar results
-       * This relates to a optPlnDim of 16, I found anything less than 20 shows
-       * significant speed up using the finer granularity kernel.
-       */
-
       char kerName[20];
 
       remOptFlag(plnGen, FLAG_OPT_KER_ALL);
@@ -1678,14 +1616,11 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       plnGen->flags &= ~(FLAG_CMPLX);
     }
 
-    // All kernels use the same output stride
-    //pln->outStride    = pln->noR;
-
     err += setPlnGenTypeFromFlags(plnGen);
 
     err += stridePln(plnGen->pln, plnGen->gInf);
 
-    // Now snap the grid to the center
+    // Now snap the grid to the centre
     //err += snapPlane(opt->pln); // TODO: This is bad, need to snap to the candidate
   }
 
@@ -1704,8 +1639,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 ACC_ERR_CODE ffdotPln_cpyResultsD2H( cuPlnGen* plnGen, fftInfo* fft )
 {
   ACC_ERR_CODE	err		= ACC_ERR_NONE;
-  //confSpecsOpt*	conf		= pln->conf;
-  //cuRespPln* 	rpln 		= pln->responsePln;
 
   FOLD // Copy data back to host  .
   {
@@ -2199,9 +2132,9 @@ ACC_ERR_CODE addPlnToTree(candTree* tree, cuRzHarmPlane* pln)
 	  canidate->z       = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
 	  canidate->sig     = yy2;
 	  if ( pln->noZ == 1 )
-	    canidate->z = pln->centZ;
+	    canidate->z     = pln->centZ;
 	  if ( pln->noR == 1 )
-	    canidate->r = pln->centR;
+	    canidate->r     = pln->centR;
 
 	  ggr++;
 
@@ -2336,13 +2269,6 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
     infoMSG(5,6,"Create streams.\n");
 
     CUDA_SAFE_CALL(cudaStreamCreate(&plnGen->stream),"Creating stream for candidate optimisation.");
-
-    //    PROF // Profiling, name stream  .
-    //    {
-    //      char nmStr[1024];
-    //      sprintf(nmStr,"Optimisation Stream %02i", opt->pIdx);
-    //      NV_NAME_STREAM(plnGen->stream, nmStr);
-    //    }
   }
 
   FOLD // Create events  .
@@ -2357,17 +2283,6 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
       CUDA_SAFE_CALL(cudaEventCreate(&plnGen->compCmp),     "Creating input event compCmp." );
       CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outInit),     "Creating input event outInit." );
       CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outCmp),      "Creating input event outCmp."  );
-
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit1),      "Creating input event tInit1."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp1),      "Creating input event tComp1."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit2),      "Creating input event tInit2."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp2),      "Creating input event tComp2."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit3),      "Creating input event tInit3."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp3),      "Creating input event tComp3."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit4),      "Creating input event tInit4."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp4),      "Creating input event tComp4."  );
-
-
     }
     else
     {
@@ -2377,15 +2292,6 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
       CUDA_SAFE_CALL(cudaEventCreate(&plnGen->compCmp,	cudaEventDisableTiming),	"Creating input event compCmp." );
       CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outInit,	cudaEventDisableTiming),	"Creating input event outInit." );
       CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outCmp,	cudaEventDisableTiming),	"Creating input event outCmp."  );
-
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit1, cudaEventDisableTiming),      "Creating input event tInit1."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp1, cudaEventDisableTiming),      "Creating input event tComp1."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit2, cudaEventDisableTiming),      "Creating input event tInit2."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp2, cudaEventDisableTiming),      "Creating input event tComp2."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit3, cudaEventDisableTiming),      "Creating input event tInit3."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp3, cudaEventDisableTiming),      "Creating input event tComp3."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tInit4, cudaEventDisableTiming),      "Creating input event tInit4."  );
-      //	CUDA_SAFE_CALL(cudaEventCreate(&plnGen->tComp4, cudaEventDisableTiming),      "Creating input event tComp4."  );
     }
   }
 
@@ -2393,18 +2299,14 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
   {
     infoMSG(5,6,"Allocate device memory.\n");
 
-    //size_t freeMem, totalMem;
-
     int	maxDim		= 1;					///< The max plane width in points
     int	maxWidth	= 1;					///< The max width (area) the plane can cover for all harmonics
     float	zMaxMax		= 1;					///< Max Z-Max this plane should be able to handle
 
     int	maxNoR		= 1;					///<
     int	maxNoZ		= 1;					///<
-    //int	maxHalfWidth	= 1;					///<
 
     // Number of harmonics to check, I think this could go up to 32!
-
 
     FOLD // Determine max plane size  .
     {
@@ -2432,37 +2334,15 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
 
       maxNoR		= maxDim*1.5;					// The maximum number of r points, in the generated plane. The extra is to cater for block kernels which can auto increase
       maxNoZ 		= maxDim;					// The maximum number of z points, in the generated plane
-      //maxHalfWidth	= cu_z_resp_halfwidth<double>( zMaxMax, HIGHACC );	// The halfwidth of the largest plane we think we may handle
     }
 
-    //plnGen->input	= (cuHarmInput*)malloc(sizeof(cuHarmInput));
-    //memset(plnGen->input, 0, sizeof(cuHarmInput));
-    //plnGen->input->size	=
-    //plnGen->input->gInf	= plnGen->gInf;
-
-    // NOTE this could be optimised a bit by allocating the various memory as a single block and the setting pointers
-
-    //size_t inData	= (maxWidth*10 + OPT_INP_BUF*2)*maxHarms;			// Data is the width of the highest harmonic
-    //size_t inpSz	= (inData + 2*maxHalfWidth)*maxHarms * sizeof(cufftComplex);	// The noR is very oversized to allow for moves of the plane without getting new input
-    //plnGen->input	= initHarmInput(inpSz, plnGen->gInf);
-
+    // Allocate input memory
     plnGen->input	= initHarmInput(maxWidth*10, zMaxMax, maxHarms, plnGen->gInf);
 
     FOLD // Create plane and set its settings  .
     {
       size_t plnSz	= (maxNoR * maxNoZ * maxHarms ) * sizeof(float2);	// This allows the possibility of returning complex value for the base plane
       plnGen->pln	= initPln( plnSz );
-
-      plnGen->pln->type = CU_NONE;
-
-      if ( conf->flags & FLAG_CMPLX )
-	plnGen->pln->type += CU_CMPLXF;
-      else
-	plnGen->pln->type += CU_FLOAT;
-      if ( conf->flags & FLAG_HAMRS )
-	plnGen->pln->type += CU_STR_HARMONICS;
-      else
-	plnGen->pln->type += CU_STR_INCOHERENT_SUM;
     }
   }
 

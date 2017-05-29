@@ -614,7 +614,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
     {
       centroid.r = ( olst[NM_BEST]->r + olst[NM_MIDL]->r ) / 2.0  ;
       centroid.z = ( olst[NM_BEST]->z + olst[NM_MIDL]->z ) / 2.0  ;
-      //pow<T>(&centroid, inp);
+      // Don't calculate the power as it's not used
     }
 
     ite++;

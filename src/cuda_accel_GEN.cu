@@ -3238,7 +3238,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
   char strBuff[1024];
   size_t free, total;
 
-  infoMSG(3,3,"\n%s - Device %i, batch %i of %i \n",__FUNCTION__, kernel->gInf->devid, no+1, of+1);
+  infoMSG(3,3,"\n%s - Device %i, batch %i of %i  (%p)\n",__FUNCTION__, kernel->gInf->devid, no+1, of+1, batch);
 
   FOLD // See if we can use the cuda device  .
   {
@@ -3299,7 +3299,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    if ( batch->gInf->capability > 3.0 )
 	    {
 	      // Lots of registers per thread so 2.1 is good
-	      infoMSG(5,5,"Compute caperbility %.1f > 3.0. Easy, use multiplication kernel 2.1\n", batch->gInf->capability);
+	      infoMSG(5,5,"Compute capability %.1f > 3.0. Easy, use multiplication kernel 2.1\n", batch->gInf->capability);
 #ifdef WITH_MUL_21
 	      mFlag |= FLAG_MUL_21;
 #else	// WITH_MUL_21
@@ -4468,6 +4468,7 @@ void createGenKernels(cuSearch* cuSrch )
     }
 
     cuSrch->pInf->kernels = (cuFFdotBatch*)malloc(cuSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
+    memset(cuSrch->pInf->kernels, 0, cuSrch->gSpec->noDevices*sizeof(cuFFdotBatch));
 
     int added;
     cuFFdotBatch* master = NULL;
@@ -4523,6 +4524,7 @@ void createGenKernels(cuSearch* cuSrch )
     cuSrch->pInf->devNoStacks   = (int*)malloc(cuSrch->gSpec->noDevices*sizeof(int));
     cuSrch->pInf->h_stackInfo   = (stackInfo**)malloc(cuSrch->gSpec->noDevices*sizeof(stackInfo*));
 
+    memset(cuSrch->pInf->batches, 0, cuSrch->pInf->noBatches*sizeof(cuFFdotBatch));
     memset(cuSrch->pInf->devNoStacks,0,cuSrch->gSpec->noDevices*sizeof(int));
 
     int bNo = 0;

@@ -1623,8 +1623,6 @@ void readAccelDefalts(confSpecs *conf)
 
       else if ( strCom("OPT_NORM", str1 ) )
       {
-	singleFlag ( optFlags, str1, str2, FLAG_OPT_NRM_LOCAVE, "LOCAVE", "MEDIAN", lineno, fName );
-
 	if      ( strCom("NONE", str2 ) )
 	{
 	  (*optFlags) &= ~FLAG_OPT_NRM_ALL;

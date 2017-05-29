@@ -593,12 +593,12 @@ void printContext()
   cuCtxGetCurrent ( &pctx );
   CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
 
-  int trd = 0;
+  int tid = 0;
 #ifdef	WITHOMP
-  trd = omp_get_thread_num();
+  tid = omp_get_thread_num();
 #endif	// WITHOMP
 
-  printf("Thread %02i  currentDevvice: %i Context %p \n", trd, currentDevvice, pctx);
+  printf("Thread %02i  currentDevvice: %i Context %p \n", tid, currentDevvice, pctx);
 }
 
 int setDevice(int device)

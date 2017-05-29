@@ -343,7 +343,7 @@ OPT_R_RES		16
 # D	MEDIAN1D  		# Use 1D median power for normalisation
 # 	MEDIAN2D  		# Use 2D median power for normalisation
 #	LOCAVE  		# Use Local 3D power average for normalisation - This is the original PRESTO method and its actually 2D
-OPT_NORM		MEDIAN
+OPT_NORM		MEDIAN1D
 
 
 # FLAG_OPT_BEST:		# Report the harmonic with the highest sigma value rather than the number of harmonic found during the initial search, this generally wont hurt
