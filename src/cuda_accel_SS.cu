@@ -1237,7 +1237,7 @@ void inmemSumAndSearch(cuSearch* cuSrch)
   {
     int tid = 0;
 #ifdef	WITHOMP
-    omp_get_thread_num();
+    tid = omp_get_thread_num();
 #endif	// WITHOMP
 
     cuFFdotBatch* batch = &cuSrch->pInf->batches[tid];
