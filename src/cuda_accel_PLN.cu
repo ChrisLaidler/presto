@@ -1449,7 +1449,7 @@ ACC_ERR_CODE chkInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp)
  *
  *  Note this contains a blocking synchronisation to make sure the pinned host memory is free
  *
- * @param pln     The plane to check
+ * @param plnGen  The plane to check
  * @param fft     The FFT data that will make up the input
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
@@ -1463,42 +1463,55 @@ ACC_ERR_CODE prepInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
   err += loadHostHarmInput(plnGen->input, fft, plnGen->pln->centR, plnGen->pln->centZ, rSize, zSize, plnGen->pln->noHarms, plnGen->flags, &plnGen->inpCmp );
   ERROR_MSG(err, "ERROR: Loading input values.");
 
+  return err;
+}
+
+/** Set the per harmonic half width using plane accuracy
+ *
+ * @param plnGen  The plane to check
+ * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE setHalfWidth_ffdotPln( cuPlnGen* plnGen )
+{
+  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+
+  // Check input
   if ( plnGen->accu == 0 )
+  {
     err += ACC_ERR_UNINIT;
+  }
   else
   {
-    // Initialise values to 0
-    for( int h = 0; h < OPT_MAX_LOC_HARMS; h++)
+    if ( plnGen->accu == LOWACC )
     {
-      plnGen->hw[h] = 0;
+      infoMSG(4,4,"Half width: standard accuracy");
+    }
+    else
+    {
+      infoMSG(4,4,"Half width: high accuracy");
+    }
+
+    // Initialise values to 0
+    for( int hIdx = 0; hIdx < OPT_MAX_LOC_HARMS; hIdx++)
+    {
+      plnGen->hw[hIdx] = 0;
     }
     plnGen->maxHalfWidth = 0;
 
-    double 	maxZ		= (plnGen->pln->centZ + plnGen->pln->zSize/2.0);
-    double	minZ		= (plnGen->pln->centZ - plnGen->pln->zSize/2.0);
-    double	maxR		= (plnGen->pln->centR + plnGen->pln->rSize/2.0);
-    double	minR		= (plnGen->pln->centR - plnGen->pln->rSize/2.0);
+    double 	maxZ	= (plnGen->pln->centZ + plnGen->pln->zSize/2.0);
+    double	minZ	= (plnGen->pln->centZ - plnGen->pln->zSize/2.0);
+    double	lrgstZ	= MAX(fabs(maxZ), fabs(minZ));
 
-    double	lrgstZ		= MAX(fabs(maxZ), fabs(minZ));
-
-    for( int h = 0; h < plnGen->pln->noHarms; h++)
+    for( int hIdx = 0; hIdx < plnGen->pln->noHarms; hIdx++)
     {
-      long	lowerBound	= floor((minR - plnGen->hw[h])*(h+1) );
-      long	upperBound	= ceil ((maxR + plnGen->hw[h])*(h+1) );
-
       // TODO: Check OPT
-      plnGen->hw[h]	= cu_z_resp_halfwidth<double>(lrgstZ*(h+1), plnGen->accu );
-      MAXX(plnGen->maxHalfWidth, plnGen->hw[h]);
+      plnGen->hw[hIdx]	= cu_z_resp_halfwidth<double>(lrgstZ*(hIdx+1), plnGen->accu );
+      MAXX(plnGen->maxHalfWidth, plnGen->hw[hIdx]);
 
-      if ( (plnGen->flags & FLAG_OPT_DYN_HW) || (plnGen->pln->zSize >= 2) )
+      // Reset the halfwidth back to what its meant to be back
+      if ( (plnGen->flags & FLAG_OPT_DYN_HW) || (plnGen->pln->zSize*(hIdx+1) >= 2) )
       {
-	plnGen->hw[h] = plnGen->accu;
-      }
-
-      if ( ( lowerBound <= plnGen->input->loR[h] ) || ( upperBound >= plnGen->input->loR[h]+plnGen->input->stride ) )
-      {
-	fprintf(stderr, "ERROR: Plane requires input beyond what is in memory.");
-	err += ACC_ERR_OUTOFBOUNDS;
+	plnGen->hw[hIdx] = plnGen->accu;
       }
     }
   }
@@ -1623,6 +1636,8 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     // Now snap the grid to the centre
     //err += snapPlane(opt->pln); // TODO: This is bad, need to snap to the candidate
   }
+
+  err += setHalfWidth_ffdotPln( plnGen );
 
   return err;
 }
