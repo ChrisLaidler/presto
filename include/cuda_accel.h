@@ -508,7 +508,7 @@ inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 #define  COMP_GEN_END		12			/// Nothing - A value to indicate the end of the used variables
 #define  COMP_GEN_MAX		20			/// Nothing - A value to indicate the maximum array length
 
-// Optemisation componets
+// Optimisation components
 #define  COMP_OPT_NRM		0			/// Normalising input
 #define  COMP_OPT_H2D		1			/// Copying data to the device
 #define  COMP_OPT_PLN1		2			/// Generating plane 1
@@ -1172,7 +1172,6 @@ typedef struct cuRzHarmPlane
     int			blkWidth;		///< Width of a single column, measured in R - This must be an integer because of the fractional part of r is the value and is shared across integer spaced values
     int			blkDimX;		///< The number of points in a single column
 
-//    int			hStride;		///< Stride of each harmonic, ie. the total size of a single plane
     int			zStride;		///< Stride of the r "columns"
 
     CU_TYPE		type;			///< The data type of the data in the plane

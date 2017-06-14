@@ -59,12 +59,12 @@ T pow(double r, double z, int numharm, cuHarmInput* inp)
   T real = 0;
   T imag = 0;
 
-  for( int i = 1; i <= numharm; i++ )
+  for( int hIdx = 1; hIdx <= numharm; hIdx++ )
   {
     // Determine half width - high precision
-    halfW = cu_z_resp_halfwidth_high<float>(z*i);
+    halfW = cu_z_resp_halfwidth_high<float>(z*hIdx);
 
-    rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(i-1)*inp->stride], inp->loR[i-1], inp->stride, r*i, z*i, halfW, &real, &imag);
+    rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(hIdx-1)*inp->stride], inp->loR[hIdx-1], inp->stride, r*hIdx, z*hIdx, halfW, &real, &imag);
 
     total_power     += POWERCU(real, imag);
   }
@@ -75,7 +75,6 @@ T pow(double r, double z, int numharm, cuHarmInput* inp)
 template<typename T>
 T pow(initCand* cand, cuHarmInput* inp)
 {
-
   double total_power = pow<T>(cand->r, cand->z, cand->numharm, inp);
 
   cand->power =  total_power;
@@ -471,22 +470,22 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
       NV_RANGE_PUSH("Get Max");
     }
 
+    int noStrHarms = 0;
+    if      ( pln->type == CU_STR_HARMONICS )
+      noStrHarms = pln->noHarms;
+    else if ( pln->type == CU_STR_INCOHERENT_SUM )
+      noStrHarms = 1;
+    else
+    {
+      infoMSG(6,6,"Plane type has not been initialised.\n" );
+      err += ACC_ERR_UNINIT;
+    }
+
     for (int indy = 0; indy < pln->noZ; indy++ )
     {
       for (int indx = 0; indx < pln->noR ; indx++ )
       {
 	float yy2 = 0;
-	int noStrHarms;
-	if      ( pln->type == CU_STR_HARMONICS )
-	  noStrHarms = pln->noHarms;
-	else if ( pln->type == CU_STR_INCOHERENT_SUM )
-	  noStrHarms = 1;
-	else
-	{
-	  infoMSG(6,6,"Plane type has not been initialised.\n" );
-	  err += ACC_ERR_UNINIT;
-	  break;
-	}
 
 	for ( int hIdx = 0; hIdx < noStrHarms; hIdx++)
 	{
@@ -515,7 +514,7 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
       }
     }
 
-    infoMSG(4,4,"Max Power %8.3f at (%.6f %.6f)\n", cand->power, cand->r, cand->z);
+    infoMSG(4,4,"Max Power %8.5f at (%.6f %.6f)\n", cand->power, cand->r, cand->z);
 
     PROF // Profiling  .
     {
@@ -780,7 +779,7 @@ ACC_ERR_CODE initOptimisers(cuSearch* sSrch )
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
-  infoMSG(4,4,"Initialise all optimisers.\n");
+  infoMSG(2,2,"Initialise all optimisers.\n");
 
   sSrch->oInf = new cuOptInfo;
   memset(sSrch->oInf, 0, sizeof(cuOptInfo));
@@ -1166,6 +1165,8 @@ void* cpuProcess(void* ptr)
  */
 ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, int candNo = -1)
 {
+  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+
   infoMSG(2,2,"Calc Cand Derivatives. r: %.6f  z: %.6f  harm: %i  power: %.2f \n", cand->r, cand->z, cand->numharm, cand->power);
 
   candSrch*     thrdDat  = new candSrch;
@@ -1213,6 +1214,8 @@ ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp
   }
 
   infoMSG(2,2,"Done");
+
+  return err;
 }
 
 /** Optimise a candidate location using ffdot planes  .
@@ -1366,6 +1369,8 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
  */
 ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 {
+  ACC_ERR_CODE	err	= ACC_ERR_NONE;
+
   confSpecsOpt*  conf	= opt->conf;
   char Txt[128];
 
@@ -1395,7 +1400,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
       }
     }
 
-    if      ( conf->flags & FLAG_OPT_NM )
+    if      ( conf->flags & FLAG_OPT_NM    )
     {
       double sz = 15;	// This size could be a configurable parameter
       prepInput_cand( &iCand, opt->input, opt->cuSrch->fft, sz, sz*conf->zScale, NULL, opt->flags );
@@ -1408,7 +1413,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
     }
     else // Default use planes
     {
-      optInitCandLocPlns(&iCand, opt, candNo);
+      err += optInitCandLocPlns(&iCand, opt, candNo);
     }
 
     PROF // Profiling  .
@@ -1435,13 +1440,15 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
   FOLD // Optimise derivatives  .
   {
-    processCandDerivs(cand, opt->cuSrch, opt->plnGen->input, candNo);
+    err += processCandDerivs(cand, opt->cuSrch, opt->plnGen->input, candNo);
   }
 
   PROF // Profiling  .
   {
     NV_RANGE_POP(Txt);
   }
+
+  return err;
 }
 
 /** Optimise all the candidates in a list
@@ -1480,8 +1487,8 @@ int optList(GSList *listptr, cuSearch* cuSrch)
   {
     accelcand *candGPU;
 
-    int tid         = 0;
-    int ti          = 0; // tread specific index
+    int tid	= 0;
+    int ti	= 0; // tread specific index
 
 #ifdef	WITHOMP
     tid = omp_get_thread_num();

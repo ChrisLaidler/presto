@@ -1207,7 +1207,7 @@ void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs)
   unsigned long rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
   float *outpow;
 
-  for (ii = 0 ; ii < ffd->numzs ; ii++) {
+  for (ii = 0 ; ii < (unsigned long)ffd->numzs ; ii++) {
     outpow =  obs->ffdotplane + ii * rlen + (unsigned long)ffd->rlo * ACCEL_RDR ;
     memcpy(outpow, ffd->powers[ii], ffd->numrs*sizeof(float));
   }

@@ -577,7 +577,8 @@ ACC_ERR_CODE chkInput( cuHarmInput* input, double r, double z, double rSize, dou
 
     //CUDA_SAFE_CALL(cudaGetLastError(), "Entering ffdotPln.");
 
-    int halfWidth	= cu_z_resp_halfwidth_high<double>( MAX(fabs(maxZ*noHarms), fabs(minZ*noHarms)) );
+    int maxZmax		= MAX(fabs(maxZ), fabs(minZ)) * noHarms ;
+    int maxHalfWidth	= cu_z_resp_halfwidth_high<double>( maxZmax );
 
     int	datStart;		// The start index of the input data
     int	datEnd;			// The end   index of the input data
@@ -594,8 +595,8 @@ ACC_ERR_CODE chkInput( cuHarmInput* input, double r, double z, double rSize, dou
     for( int h = 0; (h < noHarms) && !(*newInp) ; h++ )
     {
       // Note we use the largest possible halfWidth from the last harmonic
-      datStart        = floor( minR*(h+1) - halfWidth );
-      datEnd          = ceil(  maxR*(h+1) + halfWidth );
+      datStart		= floor( minR*(h+1) - maxHalfWidth );
+      datEnd		= ceil(  maxR*(h+1) + maxHalfWidth );
 
 //      if ( datStart > fft->lastBin || datEnd <= fft->firstBin )
 //      {
@@ -686,7 +687,7 @@ ACC_ERR_CODE loadHostHarmInput( cuHarmInput* input, fftInfo* fft, double r, doub
       input->maxR		= (r + rSize/2.0);
       input->minR		= (r - rSize/2.0);
 
-      largestZ			= MAX(fabs(input->maxZ*noHarms), fabs(input->minZ*noHarms)) + 4 ; 		// NOTE this include the + 4 of original accelsearch this is not the end of the world as this is just the check
+      largestZ			= MAX(fabs(input->maxZ), fabs(input->minZ))*noHarms + 4 ;		// NOTE this include the + 4 of original accelsearch this is not the end of the world as this is just the check
 
       input->noHarms		= noHarms;
       input->maxHalfWidth	= cu_z_resp_halfwidth_high<double>( largestZ );
@@ -721,7 +722,7 @@ ACC_ERR_CODE loadHostHarmInput( cuHarmInput* input, fftInfo* fft, double r, doub
 	  if      ( flags & FLAG_OPT_NRM_LOCAVE   )
 	  {
 	    input->norm[hIdx]  = get_localpower3d(fft->data, fft->noBins, (r-fft->firstBin)*h, z*h, 0.0);
-	    sprintf(mthd,"2D Avle");
+	    sprintf(mthd,"2D average");
 	  }
 	  else if ( flags & FLAG_OPT_NRM_MEDIAN1D )
 	  {
