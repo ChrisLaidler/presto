@@ -1265,7 +1265,12 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
     for ( int lvl = 0; lvl < NO_OPT_LEVS; lvl++ )
     {
       noP		= conf->optPlnDim[lvl];		// Set in the defaults text file
-      opt->plnGen->accu	= conf->accu[lvl];
+
+      if ( opt->plnGen->accu != conf->accu[lvl])
+      {
+	opt->plnGen->accu	= conf->accu[lvl];
+	cand->power		= 0;			// Reset cand power as we are now using a different half-width
+      }
 
       lrep		= 0;
       depth		= 1;
