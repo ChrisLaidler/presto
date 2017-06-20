@@ -1733,7 +1733,17 @@ void readAccelDefalts(confSpecs *conf)
 
       else if ( strCom("OPT_NELDER_MEAD_REFINE", str1 ) )
       {
-	singleFlag ( optFlags, str1, str2, FLAG_OPT_NM_REFINE, "", "0", lineno, fName );
+	int no;
+	int read1 = sscanf(str2, "%i", &no  );
+	if ( read1 == 1 )
+	{
+	  conf->opt->NelderMeadReps = no;
+	}
+	else
+	{
+	  line[flagLen] = 0;
+	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
       }
 
       else if ( strCom("OPT_PROCESS", str1 ) )
@@ -2133,8 +2143,9 @@ confSpecs* defaultConfig()
     conf->opt->flags		|= FLAG_OPT_NRM_MEDIAN1D;
     conf->opt->flags		|= FLAG_OPT_BLK_HRM;
     conf->opt->flags		|= FLAG_OPT_PTS_HRM;
-    conf->opt->flags		|= FLAG_RES_FAST;		// Use fast blockedd planes
-    conf->opt->flags		|= FLAG_OPT_NM_REFINE;
+    conf->opt->flags		|= FLAG_RES_FAST;		// Use fast blocked planes
+
+    conf->opt->NelderMeadReps	= 100;		// By default do a short NM optimisation
 
     conf->opt->optPlnDim[0]	= 128;
     conf->opt->optPlnDim[1]	= 32;

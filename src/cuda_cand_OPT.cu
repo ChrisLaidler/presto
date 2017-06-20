@@ -14,6 +14,9 @@
  *  [0.0.02] [2017-02-16]
  *    Separated candidate and optimisation CPU threading
  *
+ *  [2017-06-20]
+ *    Made HW a parameter in NM optimisation and power calculations.
+ *    Made the maximum repetitions of the NM refinement a configurable parameter
  */
 
 #include <curand.h>
@@ -51,7 +54,7 @@ extern "C"
 
 
 template<typename T>
-T pow(double r, double z, int numharm, cuHarmInput* inp)
+T pow(double r, double z, int numharm, cuHarmInput* inp, int hw = HIGHACC)
 {
   int halfW;
 
@@ -61,8 +64,8 @@ T pow(double r, double z, int numharm, cuHarmInput* inp)
 
   for( int hIdx = 1; hIdx <= numharm; hIdx++ )
   {
-    // Determine half width - high precision
-    halfW = cu_z_resp_halfwidth_high<float>(z*hIdx);
+    // Determine half width
+    halfW = getHw<T>(z*hIdx, hw);
 
     rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(hIdx-1)*inp->stride], inp->loR[hIdx-1], inp->stride, r*hIdx, z*hIdx, halfW, &real, &imag);
 
@@ -73,9 +76,9 @@ T pow(double r, double z, int numharm, cuHarmInput* inp)
 }
 
 template<typename T>
-T pow(initCand* cand, cuHarmInput* inp)
+T pow(initCand* cand, cuHarmInput* inp, int hw = HIGHACC)
 {
-  double total_power = pow<T>(cand->r, cand->z, cand->numharm, inp);
+  double total_power = pow<T>(cand->r, cand->z, cand->numharm, inp, hw);
 
   cand->power =  total_power;
 
@@ -83,9 +86,9 @@ T pow(initCand* cand, cuHarmInput* inp)
 }
 
 template<typename T>
-T pow(accelcand* cand, cuHarmInput* inp)
+T pow(accelcand* cand, cuHarmInput* inp, int hw = HIGHACC)
 {
-  double total_power = pow<T>(cand->r, cand->z, cand->numharm, inp);
+  double total_power = pow<T>(cand->r, cand->z, cand->numharm, inp, hw);
 
   cand->power =  total_power;
 
@@ -117,6 +120,19 @@ ACC_ERR_CODE chkInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, do
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 ACC_ERR_CODE prepInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int64_t flags )
+{
+  return loadHostHarmInput(input, fft, cand->r, cand->z, rSize, zSize, cand->numharm, flags, NULL );
+}
+
+/** Copy relevant input from FFT to data structure normalising as needed
+ *
+ *  Note this contains a blocking synchronisation to make sure the pinned host memory is free
+ *
+ * @param pln     The plane to check
+ * @param fft     The FFT data that will make up the input
+ * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE prepInput_cand( accelcand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int64_t flags )
 {
   return loadHostHarmInput(input, fft, cand->r, cand->z, rSize, zSize, cand->numharm, flags, NULL );
 }
@@ -551,7 +567,7 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int plt = 0, int nn = 0, int lv = 0 )
+ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, int plt = 0, int nn = 0, int lv = 0 )
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
@@ -575,14 +591,14 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
   cnds[1] = *cand;
   cnds[2] = *cand;
 
-  pow<T>(&cnds[0], inp);
+  pow<T>(&cnds[0], inp, hw);
   double inpPow = cnds[0].power;
 
   cnds[1].r += rSize;
-  pow<T>(&cnds[1], inp);
+  pow<T>(&cnds[1], inp, hw);
 
   cnds[2].z += zSize;
-  pow<T>(&cnds[2], inp);
+  pow<T>(&cnds[2], inp, hw);
 
   olst[NM_BEST] = &cnds[0];
   olst[NM_MIDL] = &cnds[1];
@@ -625,7 +641,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
       break;
     }
 
-    if ( ite == 100 )
+    if ( ite >= maxReps )
     {
       break;
     }
@@ -634,7 +650,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
     {
       reflection.r = centroid.r + reflect*(centroid.r - olst[NM_WRST]->r ) ;
       reflection.z = centroid.z + reflect*(centroid.z - olst[NM_WRST]->z ) ;
-      pow<T>(&reflection, inp);
+      pow<T>(&reflection, inp, hw);
 
       if ( olst[NM_BEST]->power <= reflection.power && reflection.power < olst[NM_MIDL]->power )
       {
@@ -649,7 +665,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
       {
 	expansion.r = centroid.r + expand*(reflection.r - centroid.r ) ;
 	expansion.z = centroid.z + expand*(reflection.z - centroid.z ) ;
-	pow<T>(&expansion, inp);
+	pow<T>(&expansion, inp, hw);
 
 	if (expansion.power > reflection.power)
 	{
@@ -667,7 +683,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
     {
       contraction.r = centroid.r + contract*(olst[NM_WRST]->r - centroid.r) ;
       contraction.z = centroid.z + contract*(olst[NM_WRST]->z - centroid.z) ;
-      pow<T>(&contraction, inp);
+      pow<T>(&contraction, inp, hw);
 
       if ( contraction.power > olst[NM_WRST]->power )
       {
@@ -680,11 +696,11 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
     {
       olst[NM_MIDL]->r = olst[NM_BEST]->r + shrink*(olst[NM_MIDL]->r - olst[NM_BEST]->r);
       olst[NM_MIDL]->z = olst[NM_BEST]->z + shrink*(olst[NM_MIDL]->z - olst[NM_BEST]->z);
-      pow<T>(olst[NM_MIDL], inp);
+      pow<T>(olst[NM_MIDL], inp, hw);
 
       olst[NM_WRST]->r = olst[NM_BEST]->r + shrink*(olst[NM_WRST]->r - olst[NM_BEST]->r);
       olst[NM_WRST]->z = olst[NM_BEST]->z + shrink*(olst[NM_WRST]->z - olst[NM_BEST]->z);
-      pow<T>(olst[NM_WRST], inp);
+      pow<T>(olst[NM_WRST], inp, hw);
     }
   }
 
@@ -696,6 +712,38 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
   cand->power = olst[NM_BEST]->power;
 
   infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) %3i iterations moved %9.7f  power inc: %9.7f", cand->power, cand->r, cand->z, ite, dist, powInc);
+
+  return err;
+}
+
+/** Refine candidate location using simplex
+ *
+ * @param cand
+ * @param inp
+ * @param rSize
+ * @param zSize
+ * @param plt
+ * @param nn
+ * @param lv
+ * @return
+ */
+template<typename T>
+ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, int plt = 0, int nn = 0, int lv = 0 )
+{
+  ACC_ERR_CODE err = ACC_ERR_NONE;
+
+  initCand tCand;
+  tCand.numharm	= cand->numharm;
+  tCand.r	= cand->r;
+  tCand.z	= cand->z;
+  //tCand.sig	= cand->numharm;
+
+  err += optInitCandPosSim<T>(&tCand, inp, rSize, zSize, hw, maxReps, plt, nn, lv );
+
+  cand->numharm	= tCand.numharm;
+  cand->r	= tCand.r;
+  cand->z	= tCand.z;
+  cand->power	= tCand.power;
 
   return err;
 }
@@ -728,7 +776,10 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
 
     if      ( conf->flags & FLAG_OPT_NM )
     {
-      opt->input	= initHarmInput(20, sSrch->sSpec->zMax, maxHarms, gInf);
+      int zMaxMax = sSrch->sSpec->zMax + 50;
+      MAXX(zMaxMax, 50*maxHarms);
+
+      opt->input	= initHarmInput(40, zMaxMax, maxHarms, gInf);
     }
     else if ( conf->flags & FLAG_OPT_SWARM )
     {
@@ -738,6 +789,7 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
     else // Default use planes
     {
       opt->plnGen	= initPlnGen(maxHarms, sSrch->sSpec->zMax, conf, gInf);
+      opt->input	= opt->plnGen->input;
     }
   }
 
@@ -759,10 +811,18 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
 ACC_ERR_CODE freeOptimiser(cuOpt* opt)
 {
   ACC_ERR_CODE err	= ACC_ERR_NONE;
+  confSpecsOpt*	conf	= opt->conf;
 
   err += freePlnGen(opt->plnGen);
 
+  if ( conf->flags & FLAG_OPT_NM )
+    err += freeHarmInput(opt->input);
+  else
+    opt->input = NULL;
+
   freeNull(opt->compTime);
+
+  freeNull(opt);
 
   return err;
 }
@@ -1010,7 +1070,7 @@ void* optCandDerivs(accelcand* cand, cuSearch* srch )
 
 	sig		= candidate_sigma_cu(cand->power, (ii), numindep );
 
-	infoMSG(6,6,"Harm %2i  local power %6.3f, normalised power %8.3f,   sigma %5.2f \n", ii, locpow, power, sig );
+	infoMSG(6,6,"Harm %2i  local power %6.3f, normalised power: %8.3f,   cumulative sigma: %6.2f  r: %12.2f  z: %8.2f\n", ii, locpow, power, sig, cand->r*ii, cand->z*ii );
 
 	if ( sig > maxSig || ii == 1 )
 	{
@@ -1095,7 +1155,7 @@ void* cpuProcess(void* ptr)
   iCand.r		= cand->r;
   iCand.z		= cand->z;
 
-  if ( conf->flags & FLAG_OPT_NM_REFINE )
+  if ( conf->NelderMeadReps )
   {
     FOLD // Prep input
     {
@@ -1119,7 +1179,8 @@ void* cpuProcess(void* ptr)
       }
 
       // Run the NM
-      optInitCandPosSim<double>(&iCand,  res->input, 0.0005, 0.0005*conf->optPlnScale );
+      float nmScale = 0.002; // This is 0.01 in original accelsearch - NOTE: this could be configurable or based on the final resolution of the previous optimisation
+      optInitCandPosSim<double>(&iCand,  res->input, nmScale, nmScale*conf->zScale, HIGHACC, conf->NelderMeadReps );
 
       cand->r		= iCand.r;
       cand->z		= iCand.z;
@@ -1178,7 +1239,7 @@ ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp
   thrdDat->cuSrch	= srch;
   thrdDat->candNo	= candNo;
 
-  if ( conf->flags & FLAG_OPT_NM_REFINE )
+  if ( conf->NelderMeadReps )
   {
     // Make a copy of the input data for the thread to use
     thrdDat->input = duplicateHostInput(inp);
@@ -1227,6 +1288,8 @@ ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp
 ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 {
   infoMSG(2,2,"Refine location by plain\n");
+
+  ACC_ERR_CODE	err		= ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
@@ -1376,7 +1439,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 {
   ACC_ERR_CODE	err	= ACC_ERR_NONE;
 
-  confSpecsOpt*  conf	= opt->conf;
+  confSpecsOpt*	conf	= opt->conf;
   char Txt[128];
 
   PROF // Profiling  .
@@ -1409,7 +1472,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
     {
       double sz = 15;	// This size could be a configurable parameter
       prepInput_cand( &iCand, opt->input, opt->cuSrch->fft, sz, sz*conf->zScale, NULL, opt->flags );
-      optInitCandPosSim<double>(&iCand, opt->input, 0.5, 0.5*conf->zScale);
+      optInitCandPosSim<double>(&iCand, opt->input, 0.5, 0.5*conf->zScale, LOWACC, 1000 );
     }
     else if ( conf->flags & FLAG_OPT_SWARM )
     {
@@ -1445,7 +1508,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
   FOLD // Optimise derivatives  .
   {
-    err += processCandDerivs(cand, opt->cuSrch, opt->plnGen->input, candNo);
+    err += processCandDerivs(cand, opt->cuSrch, opt->input, candNo);
   }
 
   PROF // Profiling  .

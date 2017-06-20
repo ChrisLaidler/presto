@@ -700,10 +700,11 @@ __host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, do
   {
     //fracfreq	= modf_t(r, &dintfreq);				// This is always double precision because - r needs to be r
     dintfreq	= r;						// This type cast will always be the floor - unless R is negative =/
+    start	= dintfreq + 1 - kern_half_width ;
     offset 	= (r - start);					// This is rc-k for the first bin
     numkern 	= 2 * kern_half_width;
   }
-
+  
   FOLD 								// Adjust to input Data
   {
     // Adjust to start of input Data
@@ -752,9 +753,12 @@ __host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, do
 
       FOLD 							//  Do the multiplication and sum  accumulate  .
       {
+	// This is the "correct" version
 	*real += (resReal * inp.x - resImag * inp.y);
 	*imag += (resReal * inp.y + resImag * inp.x);
       }
+
+      printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   Sum: %13.10f %13.10f  %12.2f \n", i, start+i, inp.x, inp.y, resReal, resImag, *real, *imag,  (*real)*(*real)+(*imag)*(*imag) );
     }
   }
   else								// Use a correlation kernel  .
@@ -780,25 +784,13 @@ __host__ void rz_convolution_cu_debg(dataT* inputData, long loR, long noBins, do
 	calc_z_response<T>(Qk, z, sq2overAbsZ, PIoverZ, overSq2AbsZ, signZ, &resReal, &resImag);
       }
 
-      // LOG
-#ifdef CBL
-      slog.csvWrite("i","%i", i + 1  );
-      slog.csvWrite("r","%i", start + loR + i );
-
-      slog.csvWrite("reso","%11.7f", resReal );
-      slog.csvWrite("imag","%11.7f", resImag );
-
-      slog.csvWrite("inp_r","%11.7f", inp.x );
-      slog.csvWrite("inp_i","%11.7f", inp.y );
-
-      slog.csvEndLine();
-#endif
-
       FOLD 							//  Do the multiplication and sum  accumulate  .
       {
 	*real += (resReal * inp.x - resImag * inp.y);
 	*imag += (resReal * inp.y + resImag * inp.x);
       }
+
+      printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   Sum: %13.10f %13.10f  %12.2f \n", i, start+i, inp.x, inp.y, resReal, resImag, *real, *imag,  (*real)*(*real)+(*imag)*(*imag) );
     }
   }
 }

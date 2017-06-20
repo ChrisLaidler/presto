@@ -1,6 +1,7 @@
 #ifndef CUTIL_CORR_H
 #define CUTIL_CORR_H
 
+#include "cuda_accel_utils.h"
 
 //#define FILIM_F		1e-10		// Testing
 //#define FILIM_D		1e-10		// Testing
@@ -18,6 +19,35 @@
 #ifndef FOLD
 #define FOLD if(1)
 #endif
+
+/** Shared device function to get halfwidth for optimisation planes
+ *
+ * Note this could be templated for accuracy
+ *
+ * @param z	The z (acceleration) for the relevant halfwidth
+ * @param def	If a halfwidth has been supplied this is its value, multiple value could be given here
+ * @return	The half width for the given z
+ */
+template<typename T>
+__host__ __device__ inline int getHw(float z, int val)
+{
+  int halfW;
+
+  if      ( val == LOWACC  )
+  {
+    halfW	= cu_z_resp_halfwidth_low<T>(z);
+  }
+  else if ( val == HIGHACC )
+  {
+    halfW	= cu_z_resp_halfwidth_high<T>(z);
+  }
+  else
+  {
+    halfW	= val;
+  }
+
+  return halfW;
+}
 
 template<typename T, typename idxT>
 __host__ __device__ void fresnl(idxT x, T* ss, T* cc);

@@ -273,9 +273,7 @@ extern "C"
 
 #define		FLAG_OPT_BEST		BIT(20)		///<
 #define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
-#define		FLAG_OPT_NM_REFINE	BIT(22)		///< Use local average normalisation instead of median in the optimisation
-#define		FLAG_OPT_THREAD		BIT(23)		///< Use separate CPU threads for CPU component of optimisation
-
+#define		FLAG_OPT_THREAD		BIT(22)		///< Use separate CPU threads for CPU component of optimisation
 
 #define		FLAG_OPT_BLK_NRM	BIT(25)
 #define		FLAG_OPT_BLK_EXP	BIT(26)		///< - NB This returns complex values
@@ -296,7 +294,7 @@ extern "C"
 
 #define		FLAG_PROF		BIT(55)		///< Record and report timing for the various steps in the search, this should only be used with FLAG_SYNCH
 #define		FLAG_SYNCH		BIT(56)		///< Run the search in synchronous mode, this is slow and should only be used for testing
-#define		FLAG_DPG_PRNT_CAND	BIT(57)		///< Print candidates to
+#define		FLAG_DPG_PRNT_CAND	BIT(57)		///< Print candidates to file
 #define		FLAG_DPG_SKP_OPT	BIT(58)		///< Skip optimisation stage
 #define		FLAG_DPG_PLT_OPT	BIT(59)		///< Plot optimisation stages
 #define		FLAG_DPG_PLT_POWERS	BIT(60)		///< Plot powers
@@ -961,10 +959,12 @@ typedef struct confSpecsOpt
 
     int 		blkDivisor;			///< Make blocks of points divisible by this - this is related to warp size and should be 8, 16 or 32
 
+    int			NelderMeadReps;			///< The number of final, double precision high accuracy, Nelder-Mead refinements to do - 0 dose no additional optimisation
+
     int			optPlnSiz[MAX_NO_STAGES];	///< The size of optimisation planes
     int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
     presto_interp_acc	accu[NO_OPT_LEVS];		///< The size of optimisation planes
-    float		optPlnScale;
+    float		optPlnScale;			///< The ratio by which to decrease the optimisation planes (I like 10)
 
     int64_t		flags;				///< The search bit flags specified by the user, the actual bit flag used in the search will be different
 } confSpecsOpt;

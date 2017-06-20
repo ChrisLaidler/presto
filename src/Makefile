@@ -200,6 +200,8 @@ NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 GPUOUTP		=
 
+CXXFLAGS  += -DNVVP
+CFLAGS    += -DNVVP
 NVCCFLAGS += -DNVVP
 NVCLFLAGS += -DNVVP
 
@@ -712,6 +714,14 @@ cleanSAS:
 	rm -rf build/*/test_GPUaccel*.o
 	rm -rf build/*/cuda_accel_utils.cu.o
 	rm -rf build/*/cuda_accel_SS*.o
+	
+cleanOPT:
+	rm -rf build/*/accelsearch*.o
+	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_response.cu.o
+	rm -rf build/*/cuda_accel_PLN.o
+	rm -rf build/*/cuda_cand_OPT.cu.o
+	
 
 cleanGPU: cudaclean
 	rm -f ../lib/libpresto*

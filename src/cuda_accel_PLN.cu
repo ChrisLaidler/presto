@@ -24,33 +24,7 @@
 
 
 
-/** Shared device function to get halfwidth for optimisation planes
- *
- * Note this could be templated for accuracy
- *
- * @param z	The z (acceleration) for the relevant halfwidth
- * @param def	If a halfwidth has been supplied this is its value, multiple value could be given here
- * @return	The half width for the given z
- */
-__device__ inline int getHw(float z, int val)
-{
-  int halfW;
 
-  if      ( val == LOWACC  )
-  {
-    halfW	= cu_z_resp_halfwidth_low<float>(z);
-  }
-  else if ( val == HIGHACC )
-  {
-    halfW	= cu_z_resp_halfwidth_high<float>(z);
-  }
-  else
-  {
-    halfW	= val;
-  }
-
-  return halfW;
-}
 
 #ifdef WITH_OPT_BLK_NRM
 
@@ -85,7 +59,7 @@ __global__ void ffdotPlnByBlk_ker1(float* powers, float2* data, int noHarms, dou
 
 	FOLD // Determine half width
 	{
-	  halfW = getHw(z*hamr, hw.val[hIdx]);
+	  halfW = getHw<T>(z*hamr, hw.val[hIdx]);
 	}
 
 	// Set complex values to 0 for this harmonic
@@ -206,7 +180,7 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
 
 	FOLD // Determine half width
 	{
-	  halfW = getHw(zIdx * hrm * pln.dZ, hw.val[hIdx]);
+	  halfW = getHw<T>(zIdx * hrm * pln.dZ, hw.val[hIdx]);
 	}
 
 	if ( ix < halfW*2 )
@@ -292,7 +266,7 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
 
       FOLD // Determine half width
       {
-	halfW = getHw(z*hrm, hw.val[hIdx]);
+	halfW = getHw<T>(z*hrm, hw.val[hIdx]);
       }
 
       // Set complex values to 0 for this harmonic
@@ -371,7 +345,7 @@ __global__ void ffdotPln_ker1(float* powers, float2* data, int noHarms, double f
 
       FOLD // Determine half width
       {
-	halfW = getHw(z*hrm, hw.val[hIdx]);
+	halfW = getHw<T>(z*hrm, hw.val[hIdx]);
       }
 
       rz_convolution_cu<T, float2>(&data[iStride*hIdx], loR.val[hIdx], iStride, r*hrm, z*hrm, halfW, &real, &imag);
@@ -453,7 +427,7 @@ __global__ void ffdotPln_ker2(float2* powers, float2* data, int noHarms, int hal
 
 	  FOLD // Determine half width
 	  {
-	    halfW = getHw(z*harm, hw.val[hIdx]);
+	    halfW = getHw<T>(z*harm, hw.val[hIdx]);
 	  }
 
 	  T real = 0;
@@ -533,7 +507,7 @@ __global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmW
 
     FOLD // Determine half width
     {
-      halfW = getHw(z*hrm, hw.val[hIdx]);
+      halfW = getHw<T>(z*hrm, hw.val[hIdx]);
     }
 
     rz_convolution_cu<T, float2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r*hrm, z*hrm, halfW, &real, &imag);

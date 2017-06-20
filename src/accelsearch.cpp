@@ -209,7 +209,7 @@ int main(int argc, char *argv[])
 
   TIME // Timing  .
   {
-    NV_RANGE_POP(); // Prep
+    NV_RANGE_POP("Prep");
 
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_PREP] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
@@ -289,7 +289,7 @@ int main(int argc, char *argv[])
 
 	TIME // Timing  .
 	{
-	  NV_RANGE_POP(); // CPU kernel
+	  NV_RANGE_POP("CPU kernel");
 	  NV_RANGE_PUSH("CPU Cand Gen");
 
 	  gettimeofday(&end, NULL);
@@ -360,8 +360,8 @@ int main(int argc, char *argv[])
 
 	TIME // Timing  .
 	{
-	  NV_RANGE_POP(); // CPU Cand Gen
-	  NV_RANGE_POP(); // CPU Srch
+	  NV_RANGE_POP("CPU Cand Gen");
+	  NV_RANGE_POP("CPU Srch");
 
 	  gettimeofday(&end, NULL);
 	  cuSrch->timings[TIME_CPU_SRCH] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
@@ -458,14 +458,8 @@ int main(int argc, char *argv[])
     time_t rawtime;
     struct tm* ptm;
 
-    TIME // Timing  .
-    {
-	NV_RANGE_PUSH("Optimisation All");
-	gettimeofday(&start, NULL);       // Note could start the timer after kernel init
-    }
-
 #ifdef CBL
-    if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
+    //if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
     {
       time ( &rawtime );
       ptm = localtime ( &rawtime );
@@ -479,8 +473,17 @@ int main(int argc, char *argv[])
 
       sprintf(scmd,"mv /home/chris/accel/*.csv %s/ 2> /dev/null", dirname );
       system(scmd);
+
+      // Remove empty directories
+      rmdir(dirname);
     }
 #endif
+
+    TIME // Timing  .
+    {  
+       NV_RANGE_PUSH("Optimisation All");
+       gettimeofday(&start, NULL);       // Note could start the timer after kernel init
+    }
 
     if ( cuSrch->conf->opt->flags & FLAG_DPG_SKP_OPT )
       numcands = 0;
@@ -552,7 +555,7 @@ int main(int argc, char *argv[])
 
 	TIME // Timing  .
 	{
-	  NV_RANGE_POP(); // CPU refine
+	  NV_RANGE_POP("CPU refine");
 
 	  gettimeofday(&end01, NULL);
 	  cuSrch->timings[TIME_CPU_REFINE] += (end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec);
@@ -584,7 +587,7 @@ int main(int argc, char *argv[])
 
 	TIME // Timing  .
 	{
-	  NV_RANGE_POP(); // GPU refine
+	  NV_RANGE_POP("GPU refine");
 
 	  gettimeofday(&end01, NULL);
 	  cuSrch->timings[TIME_GPU_REFINE] += (end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec);
@@ -694,7 +697,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA		// Basic timing  .
       TIME // Basic timing  .
       {
-	NV_RANGE_POP(); // props
+	NV_RANGE_POP("props");
 	NV_RANGE_PUSH("Write");
 	NV_RANGE_PUSH("Fundamentals");
 
@@ -707,7 +710,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA
       TIME // Basic timing  .
       {
-	NV_RANGE_POP(); // Fundamentals
+	NV_RANGE_POP("Fundamentals");
       }
 #endif
 
@@ -725,7 +728,7 @@ int main(int argc, char *argv[])
 #ifdef CUDA
       TIME // Basic timing  .
       {
-	NV_RANGE_POP(); //Harmonics
+	NV_RANGE_POP("Harmonics");
 	NV_RANGE_PUSH("props");
       }
 #endif
@@ -739,8 +742,8 @@ int main(int argc, char *argv[])
 #ifdef CUDA 		// Basic timing  .
       TIME // Basic timing  .
       {
-	NV_RANGE_POP(); //props
-	NV_RANGE_POP(); //Write
+	NV_RANGE_POP("props");
+	NV_RANGE_POP("Write");
 
   	gettimeofday(&end01, NULL);
 	float v1 =  (end01.tv_sec - start01.tv_sec) * 1e6 + (end01.tv_usec - start01.tv_usec);
@@ -762,23 +765,26 @@ int main(int argc, char *argv[])
 
     TIME // Timing  .
     {
-      NV_RANGE_POP();	// Optimisation All
+      NV_RANGE_POP("Optimisation All");	// Optimisation All
 
       gettimeofday(&end, NULL);
       cuSrch->timings[TIME_ALL_OPT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
     }
 
 #ifdef CBL
-    if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
+    //if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
     {
-      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s", timeMsg );
+      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pst", timeMsg );
       mkdir(dirname, 0755);
 
-      sprintf(scmd,"mv /home/chris/accel/*.png %s/              2>/dev/null", dirname );
+      sprintf(scmd,"mv /home/chris/accel/*.png %s/ 2> /dev/null", dirname );
       system(scmd);
 
-      sprintf(scmd,"mv /home/chris/accel/*.csv %s/              2>/dev/null", dirname );
+      sprintf(scmd,"mv /home/chris/accel/*.csv %s/ 2> /dev/null", dirname );
       system(scmd);
+
+      // Remove empty directories
+      rmdir(dirname);
     }
 #endif
 
