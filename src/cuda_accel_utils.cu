@@ -604,11 +604,15 @@ void initGPUs(gpuSpecs* gSpec)
 
 gpuSpecs* getGpuSpec(int devID, int batch, int steps, int opts)
 {
+  infoMSG(3,3,"Get GPU specifications for device %i.\n", devID);
+
   gpuSpecs* gSpec = new gpuSpecs;
   memset(gSpec, 0, sizeof(gpuSpecs));
 
   if (devID < 0 )
   {
+    infoMSG(5,5,"Detecting all devices.\n");
+
     gSpec->noDevices		= getGPUCount();
 
     for ( int i = 0; i < gSpec->noDevices; i++)
@@ -2955,19 +2959,25 @@ long long initCudaContext(gpuSpecs* gSpec)
 {
   if (gSpec)
   {
-    infoMSG(4, 4, "Creating context pthread for CUDA context initialisation.\n");
-
     int iret1 = 1;
 
 #ifndef DEBUG
+    infoMSG(4, 4, "Creating context pthread for CUDA context initialisation.\n");
+
     iret1 = pthread_create( &gSpec->cntxThread, NULL, contextInitTrd, (void*) gSpec);
+
+    if ( iret1 )
+    {
+      fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
+    }
+#else
+    infoMSG(4, 4, "Creating context for CUDA context initialisation. (Synchronous)\n");
 #endif
 
     if ( iret1 )
     {
       struct timeval start, end;
 
-      fprintf(stderr,"ERROR: Failed to initialise context tread. pthread_create() return code: %d.\n", iret1);
       gSpec->cntxThread = 0;
 
       TIME // Start the timer  .

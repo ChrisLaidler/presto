@@ -950,6 +950,96 @@ void opt_genResponse(cuRespPln* pln, cudaStream_t stream)
 #endif
 }
 
+/** Calculate the number of convolution operations needed to generate the plane
+ *
+ * This uses the current settings (size and half-width), thus assumes prep_Opt(...) has been called.
+ *
+ * This function returns values for each harmonic
+ *
+ * @param plnGen	The plane to read the flags from
+ * @param cOps		A pointer to an array of minimum length of the number of harmonics, the results will be written to this array
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE ffdotPln_cOps_harms( cuPlnGen* plnGen, unsigned long long* cOps)
+{
+  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
+  cuRzHarmPlane* pln 		= plnGen->pln;
+
+  if ( !cOps )
+    return ACC_ERR_NULL;
+
+  // Check input
+  if ( plnGen->accu == 0 )
+  {
+    err += ACC_ERR_UNINIT;
+  }
+  else
+  {
+    for ( int hIdx = 0; hIdx < pln->noHarms; hIdx++ )
+    {
+      cOps[hIdx] = 0;
+      for ( int z = 0; z < pln->noZ; z++ )
+      {
+	double zv	= pln->centZ + pln->zSize/2.0 - pln->zSize*(z+1)/(double)pln->noZ;
+	int halfW;
+
+	if ( plnGen->hw[hIdx] <= 0 )
+	{
+	  // In this case the hw value is the accuracy, so calculate halfwidth
+	  halfW		= cu_z_resp_halfwidth<double>( zv*(hIdx+1), (presto_interp_acc)plnGen->hw[hIdx] );
+	}
+	else
+	{
+	  // halfwidth was previously calculated
+	  halfW		= plnGen->hw[hIdx];
+	}
+
+	cOps[hIdx] += halfW * 2 * ( pln->noR ) ;
+      }
+    }
+  }
+
+  return err;
+}
+
+/** Calculate the number of convolution operations needed to generate the plane
+ *
+ * This uses the current settings (size and half-width), thus assumes prep_Opt(...) has been called.
+ *
+ * @param plnGen	The plane to read the flags from
+ * @param cOps		A pointer to a value where the result will be written to
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps)
+{
+  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
+  cuRzHarmPlane* pln 		= plnGen->pln;
+
+  if ( !cOps )
+    return ACC_ERR_NULL;
+
+  // Check input
+  if ( plnGen->accu == 0 )
+  {
+    err += ACC_ERR_UNINIT;
+  }
+  else
+  {
+    unsigned long long cOps_hrm[32];
+    *cOps = 0;
+
+    err += ffdotPln_cOps_harms( plnGen, cOps_hrm);
+    ERROR_MSG(err, "ERROR: Preparing plane.");
+
+    for ( int hIdx = 0; hIdx < pln->noHarms; hIdx++ )
+    {
+      *cOps += cOps_hrm[hIdx];
+    }
+  }
+
+  return err;
+}
+
 /** Call the kernel to create the plane
  *
  * This assumes the settings for the plane have been checked - ffdotPln_prep
@@ -1685,7 +1775,7 @@ ACC_ERR_CODE ffdotPln_ensurePln( cuPlnGen* plnGen, fftInfo* fft )
  * @param plnGen
  * @param fft
  * @param newInp
- * @return
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 template<typename T>
 ACC_ERR_CODE ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
@@ -1863,10 +1953,10 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
  * This does not load the actual input
  * This check the input in the input data structure of the plane
  *
- * @param pln     The plane to check, current settings ( centZ, centR, zSize, rSize, etc.) used
- * @param fft     The FFT data that will make up the input
- * @param newInp  Set to 1 if new input is needed
- * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ * @param pln		The plane to check, current settings ( centZ, centR, zSize, rSize, etc.) used
+ * @param fft		The FFT data that will make up the input
+ * @param newInp	Set to 1 if new input is needed
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp)
 {
@@ -1878,7 +1968,7 @@ ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, 
  * @param pln
  * @param elSize
  * @param gInf
- * @return
+ * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf)
 {
@@ -2144,7 +2234,7 @@ ACC_ERR_CODE addPlnToTree(candTree* tree, cuRzHarmPlane* pln)
 /** Initialise a plane, allocating matched host and device memory for the plane
  *
  * @param memSize
- * @return
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 cuRzHarmPlane* initPln( size_t memSize )
 {
@@ -2190,10 +2280,10 @@ cuRzHarmPlane* initPln( size_t memSize )
   return pln;
 }
 
-/**
+/** Free all memory related to a cuRzHarmPlane
  *
- * @param pln
- * @return
+ * @param pln	The pointer of the plane to free
+ * @return	ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 ACC_ERR_CODE freePln(cuRzHarmPlane* pln)
 {
@@ -2217,6 +2307,10 @@ ACC_ERR_CODE freePln(cuRzHarmPlane* pln)
     }
 
     freeNull(pln);
+  }
+  else
+  {
+    return ACC_ERR_NULL;
   }
 
   return ACC_ERR_NONE;

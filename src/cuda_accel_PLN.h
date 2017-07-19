@@ -70,6 +70,10 @@ ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft );
 
 ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft );
 
+ACC_ERR_CODE ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps);
+
+ACC_ERR_CODE ffdotPln_cOps_harms( cuPlnGen* plnGen, unsigned long long* cOps);
+
 template<typename T>
 ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen );
 

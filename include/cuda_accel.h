@@ -557,8 +557,8 @@ inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 extern int cnttt;
 
 // Macro for adding CUDA ranges
-#define NV_RANGE_POP(x)		nvtxRangePop(); 		// infoMSG(7,7,"POP, %2i  %s\n", cnttt, x ); cnttt--;
-#define NV_RANGE_PUSH(x)	nvtxRangePush(x); 		// ++cnttt; infoMSG(7,7,"PUSH %2i  %s \n", cnttt, x );
+#define NV_RANGE_POP(x)		nvtxRangePop(); 		//infoMSG(7,7,"POP, %2i  %s\n", cnttt, x ); cnttt--;
+#define NV_RANGE_PUSH(x)	nvtxRangePush(x); 		//++cnttt; infoMSG(7,7,"PUSH %2i  %s \n", cnttt, x );
 #define NV_NAME_STREAM(x,y)	nvtxNameCudaStreamA(x,y)	// 
 
 #else
@@ -957,7 +957,7 @@ typedef struct confSpecsOpt
     int			optMinLocHarms;			///< The minimum number of harmonics to localise on
     int			optMinRepHarms;			///< The minimum number of harmonics report on
 
-    int 		blkDivisor;			///< Make blocks of points divisible by this - this is related to warp size and should be 8, 16 or 32
+    int 		blkDivisor;			///< Make blocks of points divisible by this - this is related to warp size and should be 4, 8, 16 or 32
 
     int			NelderMeadReps;			///< The number of final, double precision high accuracy, Nelder-Mead refinements to do - 0 dose no additional optimisation
 

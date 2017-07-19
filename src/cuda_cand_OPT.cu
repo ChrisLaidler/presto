@@ -419,7 +419,7 @@ candTree* opt_cont(candTree* oTree, cuPlnGen* pln, container* cont, fftInfo* fft
   return NULL;
 }
 
-/** Refine candidate location using repetitive planes
+/** Refine candidate location using repetitive planes  .
  *
  * @param cand
  * @param opt
@@ -453,7 +453,7 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
     err += centerPlaneOnCand(pln, cand);
     ERROR_MSG(err, "ERROR: Placing ffdot plane.");
 
-    // Over ride the candidate number of harmonics (this must be done after centring the plane)
+    // Override the candidate number of harmonics (this must be done after centring the plane)
     pln->noHarms	= maxHarms;
 
     err += ffdotPln<T>(opt->plnGen, fft, &newInput);
@@ -538,10 +538,10 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
     }
   }
 
-  FOLD // Write CVS & plot output  .
+  FOLD // Write CSV & plot output  .
   {
 #ifdef CBL
-    if ( conf->flags & FLAG_DPG_PLT_OPT ) // Write CVS & plot output  .
+    if ( conf->flags & FLAG_DPG_PLT_OPT ) // Write CSV & plot output  .
     {
       // TODO: Check if we can get the dir name and then this can be added into standard accelsearch
       char tName[1024];
@@ -1312,15 +1312,15 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
     double sz;
     float posR, posZ;
 
-    if ( cand->numharm == 1  )
+    if      ( cand->numharm == 1  )
       sz = conf->optPlnSiz[0];
-    if ( cand->numharm == 2  )
+    else if ( cand->numharm == 2  )
       sz = conf->optPlnSiz[1];
-    if ( cand->numharm == 4  )
+    else if ( cand->numharm == 4  )
       sz = conf->optPlnSiz[2];
-    if ( cand->numharm == 8  )
+    else if ( cand->numharm == 8  )
       sz = conf->optPlnSiz[3];
-    if ( cand->numharm == 16 )
+    else if ( cand->numharm == 16 )
       sz = conf->optPlnSiz[4];
 
     cand->power		= 0;				// Set initial power to zero

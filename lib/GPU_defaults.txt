@@ -363,8 +363,11 @@ OPT_MIN_LOC_HARMS	1
 OPT_MIN_REP_HARMS	1
 
 
-# Do a final Nelder Mead refinement on the location, generally a good idea
-OPT_NELDER_MEAD_REFINE	1
+# Do a final Nelder-Mead refinement on the location, generally a good idea
+# OPT_NELDER_MEAD_REFINE
+#	int			# This specif yes the maximum number of Nelder-Mead repetitions
+# D	100			# 100 repetitions is the default
+OPT_NELDER_MEAD_REFINE	100
 
 
 # Use separate CPU threads to process results
@@ -373,8 +376,12 @@ OPT_NELDER_MEAD_REFINE	1
 #	SEQ			# Do CPU component of optimisation in a the same CPU thread - Not a good idea
 #OPT_PROCESS		SEQ
 
-# TODO: Write this description
+# OPT_BLK_DIVISOR:		When manually calculating sections of f-fdot plane using a blocked kernel, make the blocks divisible by this number
+# This is related to warp size and should be 4, 8, 16 or 32
+#	int			# Integer value greater than 1 - Sugested: 4, 8, 16 or 32
+# D	4			# In my testing 4 came out best and smaller is better
 OPT_BLK_DIVISOR		4
+
 
 #### The rest are optimisation plane parameters ####
 
@@ -395,8 +402,15 @@ optPlnDim 3 16			# The number of elements in the 3rd optimisation plane
 optPlnDim 4 16			# The number of elements in the 4th optimisation plane
 optPlnDim 5 0			# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
 optPlnDim 6 0			# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
-optPlnDim 7 0			# The number of elements in the 7th optimisation plane (this is a double precision plane)
+optPlnDim 7 0			# The number of elements in the 7th optimisation plane - This is always a double precision plane
 
+
+# optPlnAcc:
+# The convolution accuracy to use at the various levels of optimisation planes.
+# optPlnAcc LVL ACC 
+# LVL int 1-7  Specifies the level of the plane, 1 is the first largest and 7 the smallest
+# ACC is one of [ STD or HIGH ] STD are standard, lower accuracy half-widths, while HIGH are longer higher precision half-widths, HIGH is about twice STD and will thus take twice as long.
+# The first planes can be calculated at STD accuracy only switching over to HIGH for the final planes
 optPlnAcc 1 STD
 optPlnAcc 2 STD
 optPlnAcc 3 HIGH
@@ -405,8 +419,14 @@ optPlnAcc 5 HIGH
 optPlnAcc 6 HIGH
 optPlnAcc 7 HIGH
 
-# The Numbers below dictate the size, in bins, of the first incremental plane used to refine the location of the maximum f-fdot value, for each number of harmonics
-# Lager numbers will "explore" the f-fdot plane faster but will reduce resolution
+
+# optPlnSiz:
+# This dictates the size, in Fourier bins, of the first incremental plane used to refine the location of the maximum f-fdot value.
+# optPlnSiz HARM SIZE
+# HARM				# A separate size can be specified for each level of harmonic summing, HARM specifies the number of harmonics summed.
+# SIZE				# The size, in Fourier bins, of the first incremental plane used to refine the location of the maximum f-fdot value.
+#				# Lager numbers will "explore" the f-fdot plane faster but can reduce resolution (dependent on optPlnDim).
+#				# Lager sizes and dimensions can increase computation and run-time.
 optPlnSiz 1  16
 optPlnSiz 2  14
 optPlnSiz 4  12
