@@ -378,7 +378,7 @@ OPT_NELDER_MEAD_REFINE	100
 
 # OPT_BLK_DIVISOR:		When manually calculating sections of f-fdot plane using a blocked kernel, make the blocks divisible by this number
 # This is related to warp size and should be 4, 8, 16 or 32
-#	int			# Integer value greater than 1 - Sugested: 4, 8, 16 or 32
+#	int			# Integer value greater than 1 - Suggested: 4, 8, 16 or 32
 # D	4			# In my testing 4 came out best and smaller is better
 OPT_BLK_DIVISOR		4
 

@@ -1785,19 +1785,24 @@ ACC_ERR_CODE ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
   infoMSG(4,4,"Generate plane ff section, Centred on (%.6f, %.6f) with %2i harmonics.\n", plnGen->pln->centR, plnGen->pln->centZ, plnGen->pln->noHarms );
 
   err += prep_Opt( plnGen,  fft );
-  ERROR_MSG(err, "ERROR: Preparing plane.");
+  if (ERROR_MSG(err, "ERROR: Preparing plane."))
+    return err;
 
   err += input_plnGen( plnGen, fft, newInp );
-  ERROR_MSG(err, "ERROR: Getting input for the plane.");
+  if (ERROR_MSG(err, "ERROR: Getting input for the plane."))
+    return err;
 
   err += ffdotPln_ker<T>( plnGen );
-  ERROR_MSG(err, "ERROR: Running the kernel.");
+  if (ERROR_MSG(err, "ERROR: Running the kernel."))
+    return err;
 
   err += ffdotPln_cpyResultsD2H( plnGen, fft );
-  ERROR_MSG(err, "ERROR: Copying the results.");
+  if (ERROR_MSG(err, "ERROR: Copying the results."))
+    return err;
 
   err += ffdotPln_ensurePln( plnGen, fft );
-  ERROR_MSG(err, "ERROR: Waiting.");
+  if (ERROR_MSG(err, "ERROR: Waiting."))
+    return err;
 
   return err;
 }
@@ -1915,8 +1920,8 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	{
 	  // NOTE: Could look for higher divisors ie 3/2
 	  pln->blkCnt		= ceil(pln->noR/(double)colDivisor);
-	  pln->blkDimX	= colDivisor;
-	  pln->blkWidth	= floor(pln->rSize/(double)pln->blkCnt);
+	  pln->blkDimX		= colDivisor;
+	  pln->blkWidth		= floor(pln->rSize/(double)pln->blkCnt);
 	}
 
 	pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1; // May as well get close but above

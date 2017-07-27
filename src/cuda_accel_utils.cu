@@ -2111,11 +2111,11 @@ confSpecs* defaultConfig()
 
     conf->gen->flags	|= FLAG_STAGES;
 
-    conf->gen->cndType	|= CU_CANDFULL;  	// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
-    conf->gen->cndType	|= CU_STR_ARR;  	// Candidate storage structure - CU_STR_ARR    is generally the fastest
+    conf->gen->cndType	|= CU_CANDFULL;		// Candidate data type - CU_CANDFULL this should be the default as it has all the needed data
+    conf->gen->cndType	|= CU_STR_ARR;		// Candidate storage structure - CU_STR_ARR    is generally the fastest
 
-    conf->gen->retType	|= CU_POWERZ_S;  	// Return type
-    conf->gen->retType	|= CU_STR_ARR;  	// Candidate storage structure
+    conf->gen->retType	|= CU_POWERZ_S;		// Return type
+    conf->gen->retType	|= CU_STR_ARR;		// Candidate storage structure
 
     conf->gen->noResPerBin	= 2;		// Inter binning
     conf->gen->candRRes		= 0.5;		// 1 Candidate per 2 bins
@@ -2131,15 +2131,15 @@ confSpecs* defaultConfig()
     conf->gen->ssStepSize	= 32768;	// TODO: Check this, to small may be inefficient too large can make the IM plane to large
 
     // Default: Auto chose best!
-    conf->gen->mulSlices	= 0 ;
-    conf->gen->mulChunk		= 0 ;
-    conf->gen->ssSlices		= 0 ;
-    conf->gen->ssChunk		= 0 ;
+    conf->gen->mulSlices	= 0;
+    conf->gen->mulChunk		= 0;
+    conf->gen->ssSlices		= 0;
+    conf->gen->ssChunk		= 0;
 
     conf->opt->zScale		= 4;
     conf->opt->optResolution	= 16;
     conf->opt->optPlnScale	= 10;		// Decrease plane by an order of magnitude ie /10
-    conf->opt->blkDivisor	= 4;		// In testing 4 came out best
+    conf->opt->blkDivisor	= 4;		// In my testing 4 came out best
     conf->opt->optMinLocHarms	= 1;
     conf->opt->optMinRepHarms	= 1;
 
