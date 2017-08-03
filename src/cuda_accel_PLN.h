@@ -29,6 +29,7 @@ typedef		int16 optLocFloat_t;
 
 #endif
 
+
 ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 1);
 
 ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp);

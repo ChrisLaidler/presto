@@ -275,7 +275,7 @@ extern "C"
 #define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
 #define		FLAG_OPT_THREAD		BIT(22)		///< Use separate CPU threads for CPU component of optimisation
 
-#define		FLAG_OPT_BLK_NRM	BIT(25)
+#define		FLAG_OPT_BLK_NRM	BIT(25)		///<
 #define		FLAG_OPT_BLK_EXP	BIT(26)		///< - NB This returns complex values
 #define		FLAG_OPT_BLK_HRM	BIT(27)		///< Thread per harmonic point (blocked kernel)
 #define		FLAG_OPT_BLK_RSP	BIT(28)		///< Thread per harmonic point (blocked kernel)

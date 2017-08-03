@@ -396,6 +396,7 @@ FLAG_OPT_DYN_HW		1
 
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
+# From testing going below 16 is inefficient, powers of two are preferable
 optPlnDim 1 128			# The number of elements in the 1st optimisation plane
 optPlnDim 2 32			# The number of elements in the 2nd optimisation plane
 optPlnDim 3 16			# The number of elements in the 3rd optimisation plane

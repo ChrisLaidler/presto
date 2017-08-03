@@ -1052,11 +1052,11 @@ ACC_ERR_CODE ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps)
 template<typename T>
 ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 {
-  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
-  confSpecsOpt*	 conf		= plnGen->conf;
-  cuRespPln* 	 rpln 		= plnGen->responsePln;
-  cuRzHarmPlane* pln 		= plnGen->pln;
-  cuHarmInput*	 input		= plnGen->input;
+  ACC_ERR_CODE	 err	= ACC_ERR_NONE;
+  confSpecsOpt*	 conf	= plnGen->conf;
+  cuRespPln* 	 rpln 	= plnGen->responsePln;
+  cuRzHarmPlane* pln 	= plnGen->pln;
+  cuHarmInput*	 input	= plnGen->input;
 
   // Data structures to pass to the kernels
   optLocInt_t	rOff;			// Row offset
@@ -1625,9 +1625,15 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkWidth	= 1;
     plnGen->pln->blkDimX	= plnGen->pln->noR;
 
-    if ( conf->flags & FLAG_OPT_BLK ) // Use the block kernel  .
+    if ( !(plnGen->flags & FLAG_OPT_KER_ALL) )
     {
-      err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor);
+      // Get the kernel from the options, this probably shouldn't happen
+      err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_KER_ALL) );
+    }
+
+    if ( plnGen->flags & FLAG_OPT_BLK ) // Use the block kernel  .
+    {
+      err += ffdotPln_calcCols( plnGen->pln, plnGen->flags, conf->blkDivisor);
 
 #ifdef 	WITH_OPT_PTS_HRM
       if ( plnGen->pln->blkCnt == 1)
@@ -1640,17 +1646,15 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       }
       else
 #endif
-      {
-	err += remOptFlag(plnGen, FLAG_OPT_KER_ALL);
-	err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_BLK) );
-      }
     }
     else
     {
-      char kerName[20];
-
-      remOptFlag(plnGen, FLAG_OPT_KER_ALL);
-      setOptFlag(plnGen, (conf->flags & FLAG_OPT_PTS) );
+      if ( !(plnGen->flags&FLAG_OPT_PTS) )
+      {
+	// No points kernel in generator flags, so get the "default" from configuration
+	remOptFlag(plnGen, FLAG_OPT_KER_ALL);
+	setOptFlag(plnGen, (conf->flags & FLAG_OPT_PTS) );
+      }
 
       if ( !(plnGen->flags&FLAG_OPT_PTS) )
       {
@@ -1665,6 +1669,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	err += ACC_ERR_COMPILED;
 #endif
 
+	char kerName[20];
 	getKerName(plnGen, kerName);
 	infoMSG(6,6,"Auto select points kernel %s.\n", kerName);
       }
@@ -1676,7 +1681,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	{
 	  infoMSG(7,7,"Bad settings for expanded points kernel switching to Complex harmonics.\n" );
 
-	  // DBG put back
+	  // DBG Put message back after testing
 	  //fprintf(stderr, "WARNING: Expanded kernel requires using complex values for each harmonic.\n");
 	  plnGen->flags |= FLAG_CMPLX;
 	  plnGen->flags |= FLAG_HAMRS;
@@ -1883,20 +1888,24 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
       if      ( flags & FLAG_RES_CLOSE )
       {
+	// This method tries to create a block structure that is close to the orrigional
+	// The size will always be same or larger than that specifyed
+	// And the resolution will be the same of finer than that specifyed
+	
 	// TODO: Check noR on fermi cards, the increased registers may justify using larger blocks widths
 	do
 	{
 	  pln->blkWidth++;
-	  pln->blkDimX	= ceil( pln->blkWidth * (pln->noR-1) / pln->rSize );
+	  pln->blkDimX		= ceil( pln->blkWidth * (pln->noR-1) / pln->rSize );
 	  MINN(pln->blkDimX, pln->noR );
-	  pln->blkCnt	= ceil( ( pln->rSize + 1 / (double)pln->blkDimX ) / pln->blkWidth );
+	  pln->blkCnt		= ceil( ( pln->rSize + 1 / (double)pln->blkDimX ) / pln->blkWidth );
 	  // Can't have blocks wider than 16 - Thread block limit
 	}
 	while ( pln->blkCnt > 16 ); // TODO: Make block count a hash define
 
 	if ( pln->blkCnt == 1 )
 	{
-	  pln->blkDimX	= pln->noR;
+	  pln->blkDimX		= pln->noR;
 	}
 	else
 	{
@@ -1906,16 +1915,19 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
       }
       else if ( flags & FLAG_RES_FAST  )
       {
-	// This method generally has a same or higher resolution
+	// This method attempts to choose the parameters so as to be computationally fats
+	// This speed is obtained at the "cost" of the size and resolution of the plane section created.
+	// Generally the resolution will be higher than the original
 	// The final width may be slightly smaller (by one resolution)
-	// The block widths are set to nice divisible numbers making the kernel a bit faster
+	// The block widths are set to be nicely divisible numbers, this can make the kernel a bit faster
 
-	pln->blkWidth		= ceil(pln->rSize / 16.0 );
-	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );
-	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;
-	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );
+	// Get initial best values
+	pln->blkWidth		= ceil(pln->rSize / 16.0 );				// Max column width in Fourier bins
+	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
+	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
+	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		//
 
-	// Check if we should increase plane width
+	// Check if we should increase column width
 	if( rPerBlock < (double)colDivisor*0.80 )
 	{
 	  // NOTE: Could look for higher divisors ie 3/2
@@ -1925,9 +1937,9 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	}
 
 	pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1; // May as well get close but above
-	pln->noR		= ceil( pln->noR / (double)colDivisor ) * colDivisor ;
-	if( pln->noR > pln->blkCnt * pln->blkDimX )
-	  pln->noR		= pln->blkCnt * pln->blkDimX;
+	pln->noR		= ceil( pln->noR / (double)colDivisor ) * colDivisor ;	// Make the column width divisible (this can speed up processing)
+	if ( pln->noR > pln->blkCnt * pln->blkDimX )
+	  pln->noR		= pln->blkCnt * pln->blkDimX;				// This is the reduction that reduces the size of the final plane to one resolution point less than the "desired" width
 	pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
       }
       else
@@ -1945,7 +1957,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
     }
 
     // All kernels use the same output stride - These values can be changed later to suite a specific GPU memory alignment and data type
-    pln->zStride	= pln->noR;
+    pln->zStride		= pln->noR;
   }
 
   infoMSG(5,5,"Size (%.6f x %.6f) Points (%i x %i) %i  Resolution: %.7f r  %.7f z.\n", pln->rSize,pln->zSize, pln->noR, pln->noZ, pln->noR*pln->noZ, pln->rSize/double(pln->noR-1), pln->zSize/double(pln->noZ-1) );

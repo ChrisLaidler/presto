@@ -737,7 +737,7 @@ cleancubasics:
 	rm -f build/*/cuda_accel_SS.cu.o
 	rm -f build/*/cuda_cand_OPT.cu.o
 	rm -f build/*/cuda_accel_utils.cu.o
-	rm -f build/*/cuda_utils.cu.cu.oF
+	rm -f build/*/cuda_utils.cu.cu.o
 	rm -f build/*/accelsearch.o
 	rm -f build/*/test_GPUaccel.o
 
