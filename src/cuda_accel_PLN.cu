@@ -24,8 +24,6 @@
 
 
 
-
-
 #ifdef WITH_OPT_BLK_NRM
 
 /** Plane generation, blocked, point per ff point
@@ -1646,7 +1644,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       }
       else
 #endif
-    }
     else
     {
       if ( !(plnGen->flags&FLAG_OPT_PTS) )
