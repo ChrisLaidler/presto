@@ -1643,7 +1643,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
       }
 #endif
-    }
     else
     {
       if ( !(plnGen->flags&FLAG_OPT_PTS) )
