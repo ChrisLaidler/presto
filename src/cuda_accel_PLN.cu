@@ -24,8 +24,6 @@
 
 
 
-
-
 #ifdef WITH_OPT_BLK_NRM
 
 /** Plane generation, blocked, point per ff point
@@ -1644,7 +1642,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	err += remOptFlag(plnGen, FLAG_OPT_KER_ALL );
 	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
       }
-      else
 #endif
     }
     else
@@ -1688,6 +1685,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	}
       }
 
+      char kerName[20];
       getKerName(plnGen, kerName);
       infoMSG(6,6,"Points Kernel %s\n", kerName );
     }
