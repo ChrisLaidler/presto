@@ -662,10 +662,14 @@ bool compare(cuSearch* search, searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gS
 
 ACC_ERR_CODE remOptFlag(cuPlnGen* pln, int64_t flag);
 ACC_ERR_CODE setOptFlag(cuPlnGen* pln, int64_t flag);
+ACC_ERR_CODE setOptFlag(cuOpt* opt, int64_t flag);
+ACC_ERR_CODE remOptFlag(cuOpt* opt, int64_t flag);
 ACC_ERR_CODE remOptFlag(cuOptInfo* oInf, int64_t flag);
 ACC_ERR_CODE setOptFlag(cuOptInfo* oInf, int64_t flag);
 ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag);
 ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag);
+ACC_ERR_CODE setOptFlag(confSpecsOpt* opt, int64_t flag);
+ACC_ERR_CODE remOptFlag(confSpecsOpt* opt, int64_t flag);
 
 
 float half2float(const ushort h);

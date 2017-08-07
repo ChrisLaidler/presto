@@ -1086,9 +1086,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
   }
 
   if ( ERROR_MSG(err, "ERROR: Generating f-fdot plane section.") )
-  {
     return err;
-  }
 
   err += setPlnGenTypeFromFlags(plnGen);
 
@@ -1108,7 +1106,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
     {
       infoMSG(4,4,"Block kernel [ No threads %i  Width %i no Blocks %i]\n", (int)pln->blkDimX, pln->blkWidth, pln->blkCnt);
 
-      if      ( plnGen->flags & FLAG_OPT_BLK_NRM )		// Use block kernel
+      if      ( plnGen->flags & FLAG_OPT_BLK_NRM )		// Use basic block kernel
       {
 #ifdef WITH_OPT_BLK_NRM
 
@@ -1187,7 +1185,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	}
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_NRM.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
       else if ( plnGen->flags & FLAG_OPT_BLK_RSP )
@@ -1261,7 +1259,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	}
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_RSP.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
       else if ( plnGen->flags & FLAG_OPT_BLK_HRM )
@@ -1341,13 +1339,13 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	}
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
       else
       {
 	fprintf(stderr, "ERROR: No block optimisation specified.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_INVLD_CONFIG;
       }
     }
     else						// Use normal kernel
@@ -1360,7 +1358,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
       dimBlock.y = 16;
       dimBlock.z = 1;
 
-      if      ( plnGen->flags &  FLAG_OPT_PTS_SHR ) // Shared mem  .
+      if      ( plnGen->flags &  FLAG_OPT_PTS_SHR )	// Shared mem  .
       {
 #ifdef WITH_OPT_PTS_SHR
 #ifdef CBL
@@ -1405,10 +1403,10 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 #endif
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_SHR.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
-      else if ( plnGen->flags &  FLAG_OPT_PTS_NRM ) // Thread point  .
+      else if ( plnGen->flags &  FLAG_OPT_PTS_NRM )	// Thread point  .
       {
 #ifdef WITH_OPT_PTS_NRM
 	infoMSG(5,5,"Flat kernel 1 - Standard\n");
@@ -1422,10 +1420,10 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_NRM.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
-      else if ( plnGen->flags &  FLAG_OPT_PTS_EXP ) // Thread response pos  .
+      else if ( plnGen->flags &  FLAG_OPT_PTS_EXP )	// Thread response pos  .
       {
 #ifdef WITH_OPT_PTS_EXP
 	infoMSG(5,5,"Flat kernel 2 - Expanded\n");
@@ -1449,10 +1447,10 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_EXP.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
-      else if ( plnGen->flags &  FLAG_OPT_PTS_HRM ) // Thread point of harmonic  .
+      else if ( plnGen->flags &  FLAG_OPT_PTS_HRM )	// Thread point of harmonic  .
       {
 #ifdef WITH_OPT_PTS_HRM
 	infoMSG(5,5,"Flat kernel 3 - Harmonics\n");
@@ -1471,13 +1469,13 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_HRM.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_COMPILED;
 #endif
       }
       else
       {
 	fprintf(stderr, "ERROR: No optimisation plane kernel specified.\n");
-	exit(EXIT_FAILURE);
+	err += ACC_ERR_INVLD_CONFIG;
       }
     }
 
@@ -1625,7 +1623,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 
     if ( !(plnGen->flags & FLAG_OPT_KER_ALL) )
     {
-      // Get the kernel from the options, this probably shouldn't happen
+      // Get the kernel from the options
       err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_KER_ALL) );
     }
 
@@ -1634,7 +1632,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       err += ffdotPln_calcCols( plnGen->pln, plnGen->flags, conf->blkDivisor);
 
 #ifdef 	WITH_OPT_PTS_HRM
-      if ( plnGen->pln->blkCnt == 1)
+      if ( plnGen->pln->blkCnt == 1 )
       {
 	infoMSG(6,6,"Only one block, so going to use points kernel.\n");
 
@@ -1642,19 +1640,25 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	err += remOptFlag(plnGen, FLAG_OPT_KER_ALL );
 	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
       }
+      else
 #endif
+      {
+	// Remove points kernels as we are using block kernel
+	err += remOptFlag(plnGen, FLAG_OPT_PTS );
+
+	int cnt = __builtin_popcount (plnGen->flags & FLAG_OPT_BLK);
+	if ( cnt > 1 )
+	{
+	  fprintf(stderr, "WARNING: Invalid configuration, multiple block kernels selected.");
+	  err += ACC_ERR_INVLD_CONFIG;
+	}
+      }
+    }
     else
     {
       if ( !(plnGen->flags&FLAG_OPT_PTS) )
-      {
-	// No points kernel in generator flags, so get the "default" from configuration
-	remOptFlag(plnGen, FLAG_OPT_KER_ALL);
-	setOptFlag(plnGen, (conf->flags & FLAG_OPT_PTS) );
-      }
-
-      if ( !(plnGen->flags&FLAG_OPT_PTS) )
-      {
-#ifdef 	WITH_OPT_PTS_HRM
+      { // No points kernel so get one
+#if	defined(WITH_OPT_PTS_HRM)
 	setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
 #elif	defined(WITH_OPT_PTS_NRM)
 	setOptFlag(plnGen, FLAG_OPT_PTS_NRM );
@@ -1668,6 +1672,15 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	char kerName[20];
 	getKerName(plnGen, kerName);
 	infoMSG(6,6,"Auto select points kernel %s.\n", kerName);
+      }
+      else
+      {
+	int cnt = __builtin_popcount (plnGen->flags & FLAG_OPT_PTS);
+	if ( cnt > 1 )
+	{
+	  fprintf(stderr, "WARNING: Invalid configuration, multiple points kernels selected.");
+	  err += ACC_ERR_INVLD_CONFIG;
+	}
       }
 
       // Sanity check
@@ -1885,9 +1898,9 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
       if      ( flags & FLAG_RES_CLOSE )
       {
-	// This method tries to create a block structure that is close to the orrigional
-	// The size will always be same or larger than that specifyed
-	// And the resolution will be the same of finer than that specifyed
+	// This method tries to create a block structure that is close to the original
+	// The size will always be same or larger than that specified
+	// And the resolution will be the same of finer than that specified
 	
 	// TODO: Check noR on fermi cards, the increased registers may justify using larger blocks widths
 	do

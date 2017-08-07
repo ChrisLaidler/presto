@@ -184,7 +184,7 @@ extern "C"
 #define		FLAG_ITLV_ROW		BIT(1)		///< Multi-step Row interleaved- This seams to be best in most cases
 
 #define		FLAG_STAGES		BIT(2)		///< Return results for all stages of summing, default is only the final result
-#define		FLAG_HAMRS		BIT(3)		///< Return results for all harmonics,
+#define		FLAG_HAMRS		BIT(3)		///< Return results for all harmonics
 
 #define		FLAG_CMPLX		BIT(4)		///< Use complex values - Default is to use powers
 #define		FLAG_POW_HALF		BIT(5)		///< Use half precision when doing a INMEM search
@@ -275,10 +275,10 @@ extern "C"
 #define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
 #define		FLAG_OPT_THREAD		BIT(22)		///< Use separate CPU threads for CPU component of optimisation
 
-#define		FLAG_OPT_BLK_NRM	BIT(25)		///<
-#define		FLAG_OPT_BLK_EXP	BIT(26)		///< - NB This returns complex values
+#define		FLAG_OPT_BLK_NRM	BIT(25)		///< Basic blocked kernel - one thread per point in the plane
+#define		FLAG_OPT_BLK_EXP	BIT(26)		///< NOT USED
 #define		FLAG_OPT_BLK_HRM	BIT(27)		///< Thread per harmonic point (blocked kernel)
-#define		FLAG_OPT_BLK_RSP	BIT(28)		///< Thread per harmonic point (blocked kernel)
+#define		FLAG_OPT_BLK_RSP	BIT(28)		///< Not yet implemented
 #define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_RSP )
 
 #define		FLAG_OPT_PTS_NRM	BIT(30)

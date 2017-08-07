@@ -2680,6 +2680,36 @@ ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag)
   return ret;
 }
 
+ACC_ERR_CODE setOptFlag(confSpecsOpt* opt, int64_t flag)
+{
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
+  if ( opt )
+  {
+    opt->flags |= flag;
+  }
+  else
+  {
+    fprintf(stderr, "ERROR: Null pointer");
+    ret += ACC_ERR_NULL;
+  }
+  return ret;
+}
+
+ACC_ERR_CODE remOptFlag(confSpecsOpt* opt, int64_t flag)
+{
+  ACC_ERR_CODE ret = ACC_ERR_NONE;
+  if ( opt )
+  {
+    opt->flags &= ~flag;
+  }
+  else
+  {
+    fprintf(stderr, "ERROR: Null pointer");
+    ret += ACC_ERR_NULL;
+  }
+  return ret;
+}
+
 void freeCuSearch(cuSearch* srch)
 {
   if (srch)
