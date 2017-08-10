@@ -901,8 +901,10 @@ ACC_ERR_CODE zeroPln( cuPlnGen* plnGen )
 
   if ( plnGen && plnGen->pln && plnGen->pln->d_data )
   {
+    infoMSG(7,7,"Zero plane device memory\n");
+
     cudaMemsetAsync ( plnGen->pln->d_data, 0, plnGen->pln->resSz, plnGen->stream );
-    CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory");
+    CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory.");
   }
   else
   {
@@ -1596,6 +1598,8 @@ ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
   CUDA_SAFE_CALL(cudaMemcpyAsync(plnGen->input->d_inp, plnGen->input->h_inp, plnGen->input->stride*plnGen->input->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, plnGen->stream), "Copying optimisation input to the device");
   CUDA_SAFE_CALL(cudaEventRecord(plnGen->inpCmp, plnGen->stream),"Recording event: inpCmp");
 
+  CUDA_SAFE_CALL(cudaGetLastError(), "Copying plane input to device.");
+
   return err;
 }
 
@@ -1657,7 +1661,8 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     else
     {
       if ( !(plnGen->flags&FLAG_OPT_PTS) )
-      { // No points kernel so get one
+      {
+	// No points kernel so get one
 #if	defined(WITH_OPT_PTS_HRM)
 	setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
 #elif	defined(WITH_OPT_PTS_NRM)
@@ -2372,27 +2377,28 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
   plnGen->gInf		= gInf;
   plnGen->accu		= HIGHACC;				// Default to high accuracy
 
+  infoMSG(5,5,"Set device %i\n", plnGen->gInf->devid);
   setDevice(plnGen->gInf->devid);
 
   FOLD // Create streams  .
   {
-    infoMSG(5,6,"Create streams.\n");
+    infoMSG(5,5,"Create streams.\n");
 
     CUDA_SAFE_CALL(cudaStreamCreate(&plnGen->stream),"Creating stream for candidate optimisation.");
   }
 
   FOLD // Create events  .
   {
+    infoMSG(5,5,"Create Events.\n");
+
     if ( plnGen->flags & FLAG_PROF )
     {
-      infoMSG(5,5,"Create Events.\n");
-
-      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->inpInit),     "Creating input event inpInit." );
-      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->inpCmp),      "Creating input event inpCmp."  );
-      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->compInit),    "Creating input event compInit.");
-      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->compCmp),     "Creating input event compCmp." );
-      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outInit),     "Creating input event outInit." );
-      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outCmp),      "Creating input event outCmp."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->inpInit),		"Creating input event inpInit." );
+      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->inpCmp),		"Creating input event inpCmp."  );
+      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->compInit),	"Creating input event compInit.");
+      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->compCmp),		"Creating input event compCmp." );
+      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outInit),		"Creating input event outInit." );
+      CUDA_SAFE_CALL(cudaEventCreate(&plnGen->outCmp),		"Creating input event outCmp."  );
     }
     else
     {
@@ -2407,14 +2413,14 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
 
   FOLD // Allocate device memory  .
   {
-    infoMSG(5,6,"Allocate device memory.\n");
+    infoMSG(5,5,"Allocate device memory.\n");
 
-    int	maxDim		= 1;					///< The max plane width in points
-    int	maxWidth	= 1;					///< The max width (area) the plane can cover for all harmonics
+    int		maxDim		= 1;					///< The max plane width in points
+    int		maxWidth	= 1;					///< The max width (area) the plane can cover for all harmonics
     float	zMaxMax		= 1;					///< Max Z-Max this plane should be able to handle
 
-    int	maxNoR		= 1;					///<
-    int	maxNoZ		= 1;					///<
+    int		maxNoR		= 1;					///<
+    int		maxNoZ		= 1;					///<
 
     // Number of harmonics to check, I think this could go up to 32!
 

@@ -2501,32 +2501,32 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
     {
       for (int ii = 0; ii < srch->noHarmStages; ii++)
       {
-      if ( numz == 1 )
-      {
-	srch->numindep[ii]	= (sSpec->searchRHigh - sSpec->searchRLow) / (double)(1<<ii) ;
-      }
-      else
-      {
-	srch->numindep[ii]	= (sSpec->searchRHigh - sSpec->searchRLow) * (numz + 1) * ( conf->gen->zRes / 6.95 ) / (double)(1<<ii);
-      }
-
-      // Power cutoff
-      srch->powerCut[ii]	= power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
-
-
-      FOLD // Adjust for some lack in precision, if using half precision
-      {
-	if ( conf->gen->flags & FLAG_POW_HALF )
+	if ( numz == 1 )
 	{
-	  float noP = log10( srch->powerCut[ii] );
-	  float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
-
-	  adjust = -dp*(1<<ii);				// Subtract one significant "value" for each harmonic
-	  srch->powerCut[ii] += adjust;
+	  srch->numindep[ii]	= (sSpec->searchRHigh - sSpec->searchRLow) / (double)(1<<ii) ;
 	}
-      }
+	else
+	{
+	  srch->numindep[ii]	= (sSpec->searchRHigh - sSpec->searchRLow) * (numz + 1) * ( conf->gen->zRes / 6.95 ) / (double)(1<<ii);
+	}
 
-      infoMSG(6,6,"Stage %i numindep %12lli  threshold power %9.7f  adjusted %9.7f  \n", ii, srch->numindep[ii], srch->powerCut[ii], adjust);
+	// Power cutoff
+	srch->powerCut[ii]	= power_for_sigma(sSpec->sigma, (1<<ii), srch->numindep[ii]);
+
+
+	FOLD // Adjust for some lack in precision, if using half precision
+	{
+	  if ( conf->gen->flags & FLAG_POW_HALF )
+	  {
+	    float noP = log10( srch->powerCut[ii] );
+	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
+
+	    adjust = -dp*(1<<ii);				// Subtract one significant "value" for each harmonic
+	    srch->powerCut[ii] += adjust;
+	  }
+	}
+
+	infoMSG(6,6,"Stage %i numindep %12lli  threshold power %9.7f  adjusted %9.7f  \n", ii, srch->numindep[ii], srch->powerCut[ii], adjust);
       }
     }
   }
