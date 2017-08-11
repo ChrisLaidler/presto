@@ -356,7 +356,7 @@ typedef enum {
   FFT_BOTH  		//!< FFT_BOTH
 } presto_fft_type;
 
-typedef enum						///< ACC_ERR_CODE
+typedef enum					///< ACC_ERR_CODE
 {
   ACC_ERR_NONE		=	(0),		///< No error
   ACC_ERR_NAN		=	BIT(0),		///<

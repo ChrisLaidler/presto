@@ -901,10 +901,18 @@ ACC_ERR_CODE zeroPln( cuPlnGen* plnGen )
 
   if ( plnGen && plnGen->pln && plnGen->pln->d_data )
   {
-    infoMSG(7,7,"Zero plane device memory\n");
+    if ( plnGen->pln->resSz <= plnGen->pln->size )
+    {
+      infoMSG(7,7,"Zero plane device memory\n" );
 
-    cudaMemsetAsync ( plnGen->pln->d_data, 0, plnGen->pln->resSz, plnGen->stream );
-    CUDA_SAFE_CALL(cudaGetLastError(), "Zeroing the output memory.");
+      err += CUDA_ERR_CALL(cudaMemsetAsync ( plnGen->pln->d_data, 0, plnGen->pln->resSz, plnGen->stream ), "Zeroing memory");
+      err += CUDA_ERR_CALL(cudaGetLastError(), "Zeroing the output memory.");
+    }
+    else
+    {
+      err += ACC_ERR_SIZE;
+      ERROR_MSG(err, "ERROR: Size of results of f-fdot plane are greater than allocated memory,  %.2f MB > %.2f MB \n", plnGen->pln->resSz*1e-6, plnGen->pln->size*1e-6 );
+    }
   }
   else
   {
@@ -1123,7 +1131,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	dimGrid.x = ceil(pln->blkDimX/(float)dimBlock.x);
 	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
-	zeroPln(plnGen);
+	err += zeroPln(plnGen);
 
 	infoMSG(6,6,"Blk %i x %i", dimBlock.x, dimBlock.y);
 	infoMSG(6,6,"Grd %i x %i", dimGrid.x, dimGrid.y);
@@ -1199,7 +1207,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	dimBlock.x = 16;
 	dimBlock.y = 16;
 
-	zeroPln(plnGen);
+	err += zeroPln(plnGen);
 
 	// One block per harmonic, thus we can sort input powers in Shared memory
 	dimGrid.x = ceil(plnGen->maxHalfWidth*2*rpln->noRpnts/(float)dimBlock.x);
@@ -1275,7 +1283,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	int noX = ceil(pln->blkDimX / (float)dimBlock.x);
 	int harmWidth = noX*dimBlock.x;
 
-	zeroPln(plnGen);
+	err += zeroPln(plnGen);
 
 	// One block per harmonic, thus we can sort input powers in shared memory
 	dimGrid.x = noX * pln->noHarms ;
@@ -1436,7 +1444,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	  exit(EXIT_FAILURE);
 	}
 
-	zeroPln(plnGen);
+	err += zeroPln(plnGen);
 
 	// One block per harmonic, thus we can sort input powers in Shared memory
 	int respWidth = ceil(plnGen->maxHalfWidth*2/(float)dimBlock.x)*dimBlock.x;
@@ -1460,7 +1468,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	int noX = ceil(pln->noR / (float)dimBlock.x);
 	int harmWidth = noX*dimBlock.x;
 
-	zeroPln(plnGen);
+	err += zeroPln(plnGen);
 
 	// One block per harmonic, thus we can sort input powers in Shared memory
 	dimGrid.x = noX * pln->noHarms ;
@@ -1481,7 +1489,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
       }
     }
 
-    CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
+    err += CUDA_ERR_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
 
     if ( conf->flags & FLAG_SYNCH )
     {
@@ -1595,10 +1603,10 @@ ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
 
   infoMSG(4,4,"1D async memory copy H2D");
 
-  CUDA_SAFE_CALL(cudaMemcpyAsync(plnGen->input->d_inp, plnGen->input->h_inp, plnGen->input->stride*plnGen->input->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, plnGen->stream), "Copying optimisation input to the device");
-  CUDA_SAFE_CALL(cudaEventRecord(plnGen->inpCmp, plnGen->stream),"Recording event: inpCmp");
+  err += CUDA_ERR_CALL(cudaMemcpyAsync(plnGen->input->d_inp, plnGen->input->h_inp, plnGen->input->stride*plnGen->input->noHarms*sizeof(fcomplexcu), cudaMemcpyHostToDevice, plnGen->stream), "Copying optimisation input to the device");
+  err += CUDA_ERR_CALL(cudaEventRecord(plnGen->inpCmp, plnGen->stream),"Recording event: inpCmp");
 
-  CUDA_SAFE_CALL(cudaGetLastError(), "Copying plane input to device.");
+  err += CUDA_ERR_CALL(cudaGetLastError(), "Copying plane input to device.");
 
   return err;
 }
@@ -1805,7 +1813,7 @@ ACC_ERR_CODE ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
   infoMSG(4,4,"Generate plane ff section, Centred on (%.6f, %.6f) with %2i harmonics.\n", plnGen->pln->centR, plnGen->pln->centZ, plnGen->pln->noHarms );
 
   err += prep_Opt( plnGen,  fft );
-  if (ERROR_MSG(err, "ERROR: Preparing plane."))
+  if ( ERROR_MSG(err, "ERROR: Preparing plane.") )
     return err;
 
   err += input_plnGen( plnGen, fft, newInp );
@@ -2294,7 +2302,7 @@ cuRzHarmPlane* initPln( size_t memSize )
   }
   else
   {
-    infoMSG(6,6,"Memory size %.2f MB.\n", memSize*1e-6 );
+    infoMSG(6,6,"Memory size %.2f MB (Paired).\n", memSize*1e-6 );
 
     // Allocate device memory
     CUDA_SAFE_CALL(cudaMalloc(&pln->d_data, memSize), "Failed to allocate device memory for kernel stack.");
@@ -2355,21 +2363,25 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
   cuPlnGen* plnGen = (cuPlnGen*)malloc(sizeof(cuPlnGen));
   memset(plnGen, 0, sizeof(cuPlnGen));
 
-  if ( conf == NULL )
+  FOLD // Get the GPU info  .
   {
-    infoMSG(4,4,"No configuration specified getting default configuration.\n");
-    confSpecs* confAll = getConfig();
-    conf = confAll->opt;
-  }
-  if ( gInf == NULL )
-  {
-    infoMSG(4,4,"No GPU specified.\n");
-    gInf = getGPU(NULL);
-  }
-  if (!gInf)
-  {
-    infoMSG(4,4,"ERROR: invalid GPU.\n");
-    return NULL;
+    if ( conf == NULL )
+    {
+      infoMSG(4,4,"No configuration specified getting default configuration.\n");
+      confSpecs* confAll = getConfig();
+      conf = confAll->opt;
+    }
+    if ( gInf == NULL )
+    {
+      infoMSG(4,4,"No GPU specified.\n");
+      gInf = getGPU(NULL);
+    }
+
+    if (!gInf)
+    {
+      infoMSG(4,4,"ERROR: invalid GPU.\n");
+      return NULL;
+    }
   }
 
   plnGen->conf		= conf;					// Should this rather be a duplicate?

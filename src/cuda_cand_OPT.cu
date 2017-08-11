@@ -757,7 +757,7 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
 {
   confSpecsOpt*	conf	= sSrch->conf->opt;
 
-  infoMSG(5,5,"Initialising optimiser.\n");
+  infoMSG(3,3,"Initialising optimiser.\n");
 
   int	maxHarms	= MAX(sSrch->noSrchHarms, conf->optMinLocHarms);
   

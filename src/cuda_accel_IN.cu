@@ -870,7 +870,7 @@ cuHarmInput* initHarmInput( size_t memSize, gpuInf* gInf )
   }
   else
   {
-    infoMSG(6,6,"Memory size %.2f MB.\n", memSize*1e-6 );
+    infoMSG(6,6,"Memory size %.2f MB (Paired).\n", memSize*1e-6 );
 
     // Allocate device memory
     CUDA_SAFE_CALL(cudaMalloc(&input->d_inp, memSize), "Failed to allocate device memory for kernel stack.");

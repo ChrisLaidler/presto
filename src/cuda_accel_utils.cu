@@ -2299,6 +2299,9 @@ confSpecs* duplicate(confSpecs* conf)
 
 gpuSpecs* duplicate(gpuSpecs* gSpec)
 {
+  // Ensure the GPU context have been initialised
+  compltCudaContext(gSpec);
+
   gpuSpecs* dup = new gpuSpecs;
   memcpy(dup, gSpec, sizeof(gpuSpecs));
   return dup;
@@ -2437,6 +2440,10 @@ bool compare(fftInfo* fft1, fftInfo* fft2)
 
 bool compare(gpuSpecs* gSpec1, gpuSpecs* gSpec2)
 {
+  // Ensure the GPU context have been initialised
+  compltCudaContext(gSpec1);
+  compltCudaContext(gSpec2);
+
   if ( gSpec1 == gSpec2 )
     return true;
 
@@ -2495,6 +2502,9 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
   {
     NV_RANGE_PUSH("init Search inf");
   }
+
+  // Ensure the GPU context have been initialised
+  compltCudaContext(gSpec);
 
   srch->noHarmStages		= sSpec->noHarmStages;
   srch->noGenHarms		= ( 1<<(srch->noHarmStages-1) );

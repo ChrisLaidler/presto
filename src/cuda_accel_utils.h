@@ -728,8 +728,6 @@ void copyCUFFT_LD_CB(cuFFdotBatch* batch);
  */
 cuHarmInfo* createStacks(int numharmstages, int zmax, accelobs* obs);
 
-//int ffdot_planeCU2(cuFFdotBatch* planes, double searchRLow, double searchRHi, int search, fcomplexcu* fft, accelobs * obs, GSList** cands);
-
 /** Initialise the pointers of the stacks data structures of a batch  .
  *
  * This assumes the various memory blocks of the batch have been created
