@@ -161,100 +161,120 @@ int cnttt = 0;
 
 ///////////////////////// Function prototypes ////////////////////////////////////
 
-
-int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* errorMsg)
+int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* format, ...)
 {
   if (value)
   {
-    char msg[1024] = {0};
+    char msg1[1024*2] ; //= {0};
+    char msg2[1024*2] ; //= {0};
 
-    if ( errorMsg )
-      sprintf(msg, "\n%s", errorMsg );
+    if ( format )
+    {
+      va_list ap;
+      va_start ( ap, format );
+      vsprintf ( msg1, format, ap );
+      va_end ( ap );
+    }
     else
-      sprintf(msg, "ERROR: Unspecified. ( Someone was being lazy... )" );
-    sprintf(msg, "\n%s\n  On line: %4i in %s\n  Error codes:\n", msg, lineNo, file );
+    {
+      sprintf(msg1, "ERROR: Unspecified. ( Someone was being lazy... )" );
+    }
+
+    // Add file and line details
+    sprintf(msg2, "\n%s\n  File: %s\n  Line: %i\n  Errors:\n", msg1, file, lineNo );
 
     if (value & ACC_ERR_NAN )
     {
       value &= (~ACC_ERR_NAN);
-      sprintf(msg, "%s     NAN - Not a number\n", msg);
+      sprintf(msg1, "%s     %#08X - NAN - Not a number\n", msg2, ACC_ERR_NAN);
     }
 
     if (value & ACC_ERR_NEG )
     {
       value &= (~ACC_ERR_NEG);
-      sprintf(msg, "%s     Negative value \n", msg);
+      sprintf(msg1, "%s     %#08X - Negative value \n", msg2, ACC_ERR_NEG);
     }
 
     if (value & ACC_ERR_STRIDE )
     {
       value &= (~ACC_ERR_STRIDE);
-      sprintf(msg, "%s     Invalid stride \n", msg);
+      sprintf(msg1, "%s     %#08X - Invalid stride \n", msg2, ACC_ERR_STRIDE);
     }
 
     if (value & ACC_ERR_ALIGHN )
     {
       value &= (~ACC_ERR_ALIGHN);
-      sprintf(msg, "%s     Alignment\n", msg);
+      sprintf(msg1, "%s     %#08X - Alignment\n", msg2, ACC_ERR_ALIGHN);
     }
 
     if (value & ACC_ERR_OVERFLOW )
     {
       value &= (~ACC_ERR_OVERFLOW);
-      sprintf(msg, "%s     Overflow\n", msg );
+      sprintf(msg1, "%s     %#08X - Overflow\n", msg2, ACC_ERR_OVERFLOW );
     }
 
     if (value & ACC_ERR_OUTOFBOUNDS )
     {
       value &= (~ACC_ERR_OUTOFBOUNDS);
-      sprintf(msg, "%s     Out of bounds\n", msg );
+      sprintf(msg1, "%s     %#08X - Out of bounds\n", msg2, ACC_ERR_OUTOFBOUNDS );
     }
 
     if (value & ACC_ERR_NULL )
     {
       value &= (~ACC_ERR_NULL);
-      sprintf(msg, "%s     NULL pointer. The power and pain of c/c++, something not initialised?\n", msg );
+      sprintf(msg1, "%s     %#08X - NULL pointer. The power and pain of c/c++, something not initialised?\n", msg2, ACC_ERR_NULL );
     }
 
     if (value & ACC_ERR_INVLD_CONFIG )
     {
       value &= (~ACC_ERR_INVLD_CONFIG);
-      sprintf(msg, "%s     Invalid configuration\n", msg );
+      sprintf(msg1, "%s     %#08X - Invalid configuration\n", msg2, ACC_ERR_INVLD_CONFIG );
     }
 
     if (value & ACC_ERR_UNINIT )
     {
       value &= (~ACC_ERR_UNINIT);
-      sprintf(msg, "%s     Uninitialised\n", msg );
+      sprintf(msg1, "%s     %#08X - Uninitialised\n", msg2, ACC_ERR_UNINIT );
     }
 
     if (value & ACC_ERR_MEM )
     {
       value &= (~ACC_ERR_MEM);
-      sprintf(msg, "%s     Problem with memory.\n", msg );
+      sprintf(msg1, "%s     %#08X - Problem with memory.\n", msg2, ACC_ERR_MEM );
     }
 
     if (value & ACC_ERR_COMPILED )
     {
       value &= (~ACC_ERR_COMPILED);
-      sprintf(msg, "%s     Not compiled with feature (check the WITH_XXX hash defines in $PREST/lib/chda_accel.h, don't forget to make clean, before full recompile).\n", msg );
+      sprintf(msg1, "%s     %#08X - Not compiled with feature (check the WITH_XXX hash defines in $PREST/lib/chda_accel.h, don't forget to make clean, before full recompile).\n", msg2, ACC_ERR_COMPILED );
     }
 
     if (value & ACC_ERR_DEV )
     {
       value &= (~ACC_ERR_DEV);
-      sprintf(msg, "%s     Feature still under development.\n", msg );
+      sprintf(msg1, "%s     %#08X - Feature still under development.\n", msg2, ACC_ERR_DEV );
     }
 
+    if (value & ACC_ERR_CU_CALL )
+    {
+      value &= (~ACC_ERR_CU_CALL);
+      sprintf(msg1, "%s     %#08X - Problem with CUDA call.\n", msg2, ACC_ERR_CU_CALL );
+    }
+
+    if (value & ACC_ERR_SIZE )
+    {
+      value &= (~ACC_ERR_SIZE);
+      sprintf(msg1, "%s     %#08X - Invalid size.\n", msg2, ACC_ERR_SIZE );
+    }
 
 
 
     if (value )
     {
-      sprintf(msg, "%s     Unknown? %i \n", msg, value);
+      sprintf(msg1, "%s     %#08X - Unknown? %i \n", msg2, value);
     }
 
-    fprintf(stderr, "%s\n", msg);
+    fprintf(stderr, "%s\n", msg1);
 
     return 1;
   }

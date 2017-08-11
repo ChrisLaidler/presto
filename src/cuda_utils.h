@@ -101,9 +101,10 @@ ExternC size_t getFreeRamCU();
 
 ExternC int optList(GSList *listptr, cuSearch* cuSrch);
 
-ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
-ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);
+ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char* format, ...);
+ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char* format, ...);
 ExternC void __exit_directive(const char *file, const int line, const char *flag);
+ExternC ACC_ERR_CODE __cuErrCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...);
 
 /** Get the number of CUDA capable GPUS's
  */

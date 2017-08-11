@@ -192,17 +192,16 @@ void debugMessage ( const char* format, ... )
 #ifdef DEBUG
   if ( detect_gdb_tree() )
   {
-    //printf("in GDB\n");
+    // in GDB
+
     va_list ap;
     va_start ( ap, format );
     vprintf ( format, ap );      // Write the line
     va_end ( ap );
-
-    //std::cout.flush();
   }
   else
   {
-    //printf("NOT in GDB\n");
+    // NOT in GDB
     printf ( MAGENTA );
 
     va_list ap;
@@ -211,7 +210,6 @@ void debugMessage ( const char* format, ... )
     va_end ( ap );
 
     printf ( RESET );
-    //std::cout.flush();
   }
 #endif
 }
@@ -243,26 +241,79 @@ int detect_gdb_tree(void)
   return gdb;
 }
 
-void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg)
+void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char* format, ...)
 {
   if (cudaStat != CUFFT_SUCCESS)
   {
-    fprintf(stderr, "CUFFT ERROR: %s [ %s at line %d in file %s ]\n", errorMsg, _cudaGetErrorEnum(cudaStat), line, file);
+    fflush(stdout);
+    fflush(stderr);
+
+    fprintf(stderr, "CUFFT ERROR: ");
+
+    // Print function error message
+    va_list ap;
+    va_start ( ap, format );
+    vfprintf ( stderr, format, ap );
+    va_end ( ap );
+
+    // Print valuable details
+    fprintf(stderr, " [ %s at line %d in file %s ]\n", _cudaGetErrorEnum(cudaStat), line, file);
+
     exit(EXIT_FAILURE);
   }
 }
 
-void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const char *errorMsg)
+void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...)
 {
   if (cudaStat != cudaSuccess)
   {
-    fprintf(stderr, "CUDA ERROR: %s [ %s at line %d in file %s ]\n", errorMsg, cudaGetErrorString(cudaStat), line, file);
+    fflush(stdout);
+    fflush(stderr);
+
+    fprintf(stderr, "CUDA ERROR: ");
+
+    // Print function error message
+    va_list ap;
+    va_start ( ap, format );
+    vfprintf ( stderr, format, ap );
+    va_end ( ap );
+
+    // Print valuable details
+    fprintf(stderr, " [ %s at line %d in file %s ]\n", cudaGetErrorString(cudaStat), line, file);
+
     exit(EXIT_FAILURE);
   }
+}
+
+ACC_ERR_CODE __cuErrCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...)
+{
+  if (cudaStat != cudaSuccess)
+  {
+    fflush(stdout);
+    fflush(stderr);
+
+    fprintf(stderr, "CUDA ERROR (MSG): ");
+
+    // Print function error message
+    va_list ap;
+    va_start ( ap, format );
+    vfprintf ( stderr, format, ap );
+    va_end ( ap );
+
+    // Print valuable details
+    fprintf(stderr, " [ %s at line %d in file %s ]\n", cudaGetErrorString(cudaStat), line, file);
+
+    return ACC_ERR_CU_CALL;
+  }
+
+  return ACC_ERR_NONE;
 }
 
 void __exit_directive(const char *file, const int line, const char *flag)
 {
+  fflush(stdout);
+  fflush(stderr);
+
   fprintf(stderr, "ERROR: This code has not bee compiled with the \"%s\" preprocessor directive. Line: %d In: %s.\n\tIf you have enabled this you may need a full recompile ie. make cudaclean; make \n", flag,line, file);
   exit(EXIT_FAILURE);
 }
@@ -292,8 +343,6 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
   // If we get here we didn't find the value in the array
   return -1;
 }
-
-
 
 void listDevices()
 {

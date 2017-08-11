@@ -371,7 +371,9 @@ typedef enum						///< ACC_ERR_CODE
   ACC_ERR_MEM		=	BIT(9),		///< Problem with memory
   ACC_ERR_DATA_TYPE	= 	BIT(10),	///< Data type ...
   ACC_ERR_COMPILED	= 	BIT(11),	///< Broken because of compile
-  ACC_ERR_DEV		= 	BIT(12)		///< Under development
+  ACC_ERR_DEV		= 	BIT(12),	///< Under development
+  ACC_ERR_CU_CALL	= 	BIT(13),	///< CUDA CALL
+  ACC_ERR_SIZE		= 	BIT(13)		///< Size
 } ACC_ERR_CODE;
 
 inline ACC_ERR_CODE operator ~(ACC_ERR_CODE a)
@@ -527,10 +529,11 @@ inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 /****************************************** Macros ******************************************************/
 
 ///< Defines for safe calling usable in C
-#define CUDA_SAFE_CALL(value, errorMsg)		__cuSafeCall		(value, __FILE__, __LINE__, errorMsg )
-#define CUFFT_SAFE_CALL(value,  errorMsg)	__cufftSafeCall		(value, __FILE__, __LINE__, errorMsg )
+#define CUDA_SAFE_CALL(value, format... )	__cuSafeCall		(value, __FILE__, __LINE__, format )
+#define CUFFT_SAFE_CALL(value, format... )	__cufftSafeCall		(value, __FILE__, __LINE__, format )
 #define EXIT_DIRECTIVE(flag)			__exit_directive	(__FILE__, __LINE__, flag )
-#define ERROR_MSG(value, errorMsg)		__printErrors		(value, __FILE__, __LINE__, errorMsg )
+#define ERROR_MSG(value, format... )		__printErrors		(value, __FILE__, __LINE__, format )
+#define CUDA_ERR_CALL(value, format... )	__cuErrCall		(value, __FILE__, __LINE__, format )
 
 #ifdef	TIMING
   #define TIME if(1)			//< A macro used to encapsulate timing code, if TIMING is not defined all timing code should be omitted at compile time
