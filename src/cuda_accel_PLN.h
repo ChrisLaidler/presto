@@ -6,10 +6,6 @@
  */
 
 #include "cuda_accel.h"
-//#include "cuda_utils.h"
-//#include "cuda_math.h"
-//#include "candTree.h"
-//#include "cuda_accel_PLN.h"
 #include "cuda_accel_utils.h"
 
 
@@ -29,8 +25,36 @@ typedef		int16 optLocFloat_t;
 
 #endif
 
+/** Shared device function to get halfwidth for optimisation planes
+ *
+ * Note this could be templated for accuracy
+ *
+ * @param z	The z (acceleration) for the relevant halfwidth
+ * @param def	If a halfwidth has been supplied this is its value, multiple value could be given here
+ * @return	The half width for the given z
+ */
+template<typename T>
+__host__ __device__ static inline int getHw(float z, int val)
+{
+  int halfW;
 
-ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 1);
+  if      ( val == LOWACC  )
+  {
+    halfW	= cu_z_resp_halfwidth_low<T>(z);
+  }
+  else if ( val == HIGHACC )
+  {
+    halfW	= cu_z_resp_halfwidth_high<T>(z);
+  }
+  else
+  {
+    halfW	= val;
+  }
+
+  return halfW;
+}
+
+ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 1, int target_noCol = 16);
 
 ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp);
 
@@ -43,6 +67,8 @@ ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2);
 ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name,  const char* prams = NULL );
 
 cuRzHarmPlane* initPln( size_t memSize );
+
+cuRzHarmPlane* dupPln( cuRzHarmPlane* orrpln );
 
 ACC_ERR_CODE freePln(cuRzHarmPlane* pln);
 

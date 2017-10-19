@@ -13,7 +13,6 @@
  *
  */
 
-
 #include "cuda_accel.h"
 #include "cuda_utils.h"
 #include "cuda_math.h"
@@ -21,7 +20,6 @@
 #include "cuda_response.h"
 #include "cuda_accel_PLN.h"
 #include "cuda_accel_utils.h"
-
 
 
 #ifdef WITH_OPT_BLK_NRM
@@ -1641,7 +1639,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 
     if ( plnGen->flags & FLAG_OPT_BLK ) // Use the block kernel  .
     {
-      err += ffdotPln_calcCols( plnGen->pln, plnGen->flags, conf->blkDivisor);
+      err += ffdotPln_calcCols( plnGen->pln, plnGen->flags, conf->blkDivisor, 16);
 
 #ifdef 	WITH_OPT_PTS_HRM
       if ( plnGen->pln->blkCnt == 1 )
@@ -1668,6 +1666,8 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     }
     else
     {
+      // TODO: Make a check here for FLAG_OPT_PTS_EXP
+      
       if ( !(plnGen->flags&FLAG_OPT_PTS) )
       {
 	// No points kernel so get one
@@ -1874,7 +1874,7 @@ ACC_ERR_CODE input_plnGen( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
  * @param fft	  FFT data structure
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor)
+ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor, int target_noCol)
 {
   ACC_ERR_CODE	err		= ACC_ERR_NONE;
 
@@ -1924,7 +1924,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	  pln->blkCnt		= ceil( ( pln->rSize + 1 / (double)pln->blkDimX ) / pln->blkWidth );
 	  // Can't have blocks wider than 16 - Thread block limit
 	}
-	while ( pln->blkCnt > 16 ); // TODO: Make block count a hash define
+	while ( pln->blkCnt > (double)MIN(16,target_noCol) ); // TODO: Make block count a hash define
 
 	if ( pln->blkCnt == 1 )
 	{
@@ -1945,10 +1945,10 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	// The block widths are set to be nicely divisible numbers, this can make the kernel a bit faster
 
 	// Get initial best values
-	pln->blkWidth		= ceil(pln->rSize / 16.0 );				// Max column width in Fourier bins
+	pln->blkWidth		= ceil(pln->rSize / (double)MIN(16,target_noCol) );	// Max column width in Fourier bins TODO: This 16 can be a hash define
 	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
 	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
-	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		//
+	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns
 
 	// Check if we should increase column width
 	if( rPerBlock < (double)colDivisor*0.80 )
@@ -2364,6 +2364,50 @@ cuRzHarmPlane* initPln( size_t memSize )
     // Set default data type (complex values for all harmonics ie. most information possible)
     pln->type += CU_CMPLXF;
     pln->type += CU_STR_HARMONICS;
+  }
+
+  return pln;
+}
+
+/** Initialise a plane, allocating matched host and device memory for the plane
+ *
+ * @param memSize
+ * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+cuRzHarmPlane* dupPln( cuRzHarmPlane* orrpln )
+{
+  size_t freeMem, totalMem;
+  cuRzHarmPlane* pln = NULL;
+
+  infoMSG(4,4,"Duplicating harmonic plane\n");
+
+  CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
+#ifdef MAX_GPU_MEM
+  long  Diff = totalMem - MAX_GPU_MEM;
+  if( Diff > 0 )
+  {
+	freeMem  -= Diff;
+	totalMem -= Diff;
+  }
+#endif
+
+  if ( orrpln->size > freeMem )
+  {
+    printf("Not enough GPU memory to create any more stacks.\n");
+    return NULL;
+  }
+  else
+  {
+    pln	= (cuRzHarmPlane*)malloc(sizeof(cuRzHarmPlane));
+    memcpy(pln, orrpln, sizeof(cuRzHarmPlane));
+
+    infoMSG(6,6,"Memory size %.2f MB (Paired).\n", orrpln->size*1e-6 );
+
+    // Allocate device memory
+    CUDA_SAFE_CALL(cudaMalloc(&pln->d_data, orrpln->size), "Failed to allocate device memory for kernel stack.");
+
+    // Allocate host memory
+    CUDA_SAFE_CALL(cudaMallocHost(&pln->h_data, orrpln->size), "Failed to allocate device memory for kernel stack.");
   }
 
   return pln;
