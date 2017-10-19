@@ -109,14 +109,14 @@ extern "C"
 #include "log.h"
 #endif
 
-__device__ __constant__ int           HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
-__device__ __constant__ int           STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
-__device__ __constant__ int           WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
-__device__ __constant__ void*         KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointer in stage order
-__device__ __constant__ int           KERNEL_OFF_HARM[MAX_HARM_NO];	///< The offset of the first row of each plane in their respective kernels
-__device__ __constant__ stackInfo     STACKS[64];
-__device__ __constant__ int           STK_STRD[MAX_STACKS];		///< Stride of the stacks
-__device__ __constant__ char          STK_INP[MAX_STACKS][4069];	///< input details
+__device__ __constant__ int		HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
+__device__ __constant__ int		STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
+__device__ __constant__ int		WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
+__device__ __constant__ void*		KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointer in stage order
+__device__ __constant__ int		KERNEL_OFF_HARM[MAX_HARM_NO];		///< The offset of the first row of each plane in their respective kernels
+__device__ __constant__ stackInfo	STACKS[64];
+__device__ __constant__ int		STK_STRD[MAX_STACKS];			///< Stride of the stacks
+__device__ __constant__ char		STK_INP[MAX_STACKS][4069];		///< input details
 
 
 void setActiveIteration(cuFFdotBatch* batch, int rIdx)
@@ -148,8 +148,8 @@ void setActiveIteration(cuFFdotBatch* batch, int rIdx)
  */
 size_t calcImWidth(size_t minLen, size_t genStride, size_t searchStride)
 {
-  size_t genX		= ceil( minLen / (double)genStride)    * genStride;				// Generation size
-  size_t srchX		= ceil( minLen / (double)searchStride) * searchStride;				// Max search size
+  size_t genX		= ceil( minLen / (double)genStride )    * genStride;				// Generation size
+  size_t srchX		= ceil( minLen / (double)searchStride ) * searchStride;				// Max search size
 
   return genX;
 

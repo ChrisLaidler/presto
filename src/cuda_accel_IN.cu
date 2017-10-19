@@ -190,7 +190,7 @@ static void CPU_Norm_Spread(cuFFdotBatch* batch, fcomplexcu* fft)
 	      // Do the actual copy
 	      //memcpy(batch->h_powers, &fft[lobin], numdata * sizeof(fcomplexcu) );
 
-	      //  new-style running double-tophat local-power normalization
+	      //  new-style running double-tophat local-power normalisation
 	      float *loc_powers;
 
 	      //powers = gen_fvect(nice_numdata);

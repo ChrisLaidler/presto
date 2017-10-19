@@ -1777,7 +1777,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
         * obs->numbetween * obs->numz;
     printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
 
-    if ( /*memuse < MAXRAMUSE || */ cmd->inmemP) {  // DBG REM put this back
+    if ( /*memuse < MAXRAMUSE || */ cmd->inmemP) {  // DBG REM NB: Put this back
 #ifdef CUDA
       //size_t freeRam = getFreeRam();
       unsigned long freeRam = getFreeRam();

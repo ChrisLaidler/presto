@@ -271,7 +271,7 @@ int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char*
 
     if (value )
     {
-      sprintf(msg1, "%s     %#08X - Unknown? %i \n", msg2, value);
+      sprintf(msg1, "%s     %#08X - Unknown?\n", msg2, value);
     }
 
     fprintf(stderr, "%s\n", msg1);

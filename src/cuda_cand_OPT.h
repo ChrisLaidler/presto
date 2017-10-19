@@ -11,7 +11,7 @@
 #include "cuda_accel.h"
 
 
-ACC_ERR_CODE opt_accelcand(accelcand* cand, cuPlnGen* plnGen, int no );
+ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int no = 0 );
 
 ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
 
