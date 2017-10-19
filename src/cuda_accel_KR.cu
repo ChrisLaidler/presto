@@ -120,7 +120,7 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
     {
       if (rx != -1)
       {
-	calc_response_off<genT> (offset, z, &real, &imag);
+	calc_coefficient<genT> (offset, z, &real, &imag);
       }
     }
 

@@ -126,7 +126,7 @@ __global__ void opt_genResponse_ker(cuRespPln pln)
     double     zVal   = pln.zMax - (double)iy*pln.dZ ;
     double     offSet = -pln.halfWidth - frac  +  firstBin ;
 
-    double2 response = calc_response_off(offSet, zVal);
+    double2 response = calc_coefficient(offSet, zVal);
 
     // Write values to memory
     pln.d_pln[iy*pln.oStride + ix ].x = (float)response.x;
@@ -195,7 +195,7 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
 	  }
 	  else
 	  {
-	    kerVal = calc_response_off((float)off, (float)zh);
+	    kerVal = calc_coefficient((float)off, (float)zh);
 	  }
 
 	  int start = rhIdx - halfW - loR.val[hIdx]  ;
@@ -444,7 +444,7 @@ __global__ void ffdotPln_ker2(float2* powers, float2* data, int noHarms, int hal
 	      T resReal = 0;
 	      T resImag = 0;
 
-	      calc_response_off<T>(distD, z*harm, &resReal, &resImag);
+	      calc_coefficient<T>(distD, z*harm, &resReal, &resImag);
 
 	      FOLD 							//  Do the multiplication and sum  accumulate  .
 	      {
@@ -1141,7 +1141,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	{
 	  case 1:
 	    ffdotPlnByBlk_ker1<T,1> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
+	  break;
 	  case 2:
 	    ffdotPlnByBlk_ker1<T,2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
