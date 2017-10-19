@@ -543,7 +543,7 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
 #ifdef CBL
     if ( conf->flags & FLAG_DPG_PLT_OPT ) // Write CSV & plot output  .
     {
-      // TODO: Check if we can get the dir name and then this can be added into standard accelsearch
+      // TODO: Check if we can get the directory name and then this can be added into standard accelsearch
       char tName[1024];
       sprintf(tName,"Cand_%05i_Rep_%02i_Lv_%i_h%02i.csv", nn, plt, lv, cand->numharm );
 
@@ -1299,6 +1299,12 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
   confSpecsOpt*	conf	= opt->conf;
   cuRzHarmPlane* pln	= opt->plnGen->pln;
 
+#ifdef CBL // DBG - Thesis output
+  char tName[1024];
+  sprintf(tName,"/home/chris/accel/OPT_%03i.csv", candNo);
+  FILE *f2 = fopen(tName, "w");
+#endif
+
   FOLD // Get best candidate location using iterative GPU planes  .
   {
     int depth;
@@ -1371,11 +1377,32 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	  posR = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
 	  posZ = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
+	  // Output Text
 	  if ( posR || posZ )
 	    infoMSG(4,4,"Plane max absolute offset at %.4f %.4f of plane.\n", posR, posZ );
 	  else
 	    infoMSG(4,4,"Plane max in same position as current.\n");
 
+	  FOLD // DBG - Thesis output
+	  {
+#ifdef CBL
+	    if ( conf->flags & FLAG_DPG_PRNT_CAND ) // Write CSV & plot output  .
+	    {
+	      fprintf(f2,"Optimisation details\n");
+	      fprintf(f2,"Depth: %i\n", depth);
+	      fprintf(f2,"Level: %i\n", lvl);
+	      fprintf(f2,"Repetition: %i\n", rep);
+	      fprintf(f2,"Precision: %i\n", 1+doub);
+	      fprintf(f2,"Max_r: %.23f\n", cand->r);
+	      fprintf(f2,"Max_z: %.23f\n", cand->z);
+
+	      err += ffdotPln_writePlnToFile(pln, f2);
+	      fflush(f2);
+	    }
+#endif
+	  }
+
+	  // Determine whether to move the grid or zoom in
 	  if ( posR > moveBound || posZ > moveBound )
 	  {
 	    if ( ( (posR > outBound) || (posZ > outBound) ) && ( depth < lvl+1) )
@@ -1423,10 +1450,42 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
     }
   }
 
+#ifdef CBL // DBG - Thesis output
+  if ( conf->flags & FLAG_DPG_PRNT_CAND ) // Write CSV & plot output  .
+  {
+    fclose(f2);
+
+//    FOLD // Make image  .
+//    {
+//      infoMSG(5,5,"Image %s\n", tName);
+//
+//      PROF // Profiling  .
+//      {
+//	NV_RANGE_PUSH("Image");
+//      }
+//
+//      char cmd[1024];
+//      sprintf(cmd,"python $PRESTO/python/pltOpt.py %s > /dev/null 2>&1", tName);
+//      int ret = system(cmd);
+//      if ( ret )
+//      {
+//	fprintf(stderr,"ERROR: Problem running potting python script.");
+//      }
+//
+//      PROF // Profiling  .
+//      {
+//	NV_RANGE_POP("Image");
+//      }
+//    }
+  }
+#endif
+
   PROF // Profiling  .
   {
     NV_RANGE_POP("Plns");
   }
+
+  return err;
 }
 
 /** This is the main function called by external elements  .
@@ -1528,14 +1587,23 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 int optList(GSList *listptr, cuSearch* cuSrch)
 {
   struct timeval start, end;
-  slog.setCsvDeliminator('|'); // TMP
+
+#ifdef CBL // DBG - Thesis output
+  char cmpName[1024];
+  sprintf(cmpName,"/home/chris/accel/cand_cmp.csv");
+
+  Logger cmpLog(cmpName);
+  cmpLog.setEcho(true);
+  cmpLog.setCsvLineNums(false);
+  cmpLog.setCsvDeliminator(',');
+#endif
 
   TIME //  Timing  .
   {
-      NV_RANGE_PUSH("GPU Kernels");
+    NV_RANGE_PUSH("GPU Kernels");
   }
 
-  int numcands 	= g_slist_length(listptr);
+  int numcands	= g_slist_length(listptr);
 
   int ii	= 0;
   int comp	= 0;
@@ -1613,99 +1681,218 @@ int optList(GSList *listptr, cuSearch* cuSrch)
       {
 	infoMSG(2,2,"\nOptimising initial candidate %i/%i, Power: %.3f  Sigma %.2f  Harm %i at (%.3f %.3f)\n", ti, numcands, candGPU->power, candGPU->sigma, candGPU->numharm, candGPU->r, candGPU->z );
 
-	accelcand candCPU = *candGPU; // TMP Duplicate canidate for comparison later
+	accelcand* candINT = new accelcand;
+	accelcand* candCPU = new accelcand;
+
+	*candINT = *candGPU; // TMP Duplicate candidate for comparison later
+	*candCPU = *candGPU; // TMP Duplicate candidate for comparison later
 
 	opt_accelcand(candGPU, opt, ti);
 
 #pragma omp atomic
 	comp++;
 
-
-	  Fout // DBG - compare results
-	  {
-#ifdef CBL
-	  slog.csvWrite("idx",	"%5i",    ti);
-	  slog.csvWrite("r",	"%15.6f", candCPU.r);
-	  slog.csvWrite("z",	"%12.6f", candCPU.z);
-	  slog.csvWrite("pow",	"%12.6f", candCPU.power);
-	  slog.csvWrite("sig",	"%12.6f", candCPU.sigma);
-
-	  int *r_offset;
-	  fcomplex **data;
-	  double r, z;
-
-	  r_offset     = (int*) malloc(sizeof(int)*candCPU.numharm);
-	  data         = (fcomplex**) malloc(sizeof(fcomplex*)*candCPU.numharm);
-
-	  //optimize_accelcand(candCPU, &obs, ii+1);
-	  candCPU.pows   = gen_dvect(candCPU.numharm*2);
-	  candCPU.hirs   = gen_dvect(candCPU.numharm*2);
-	  candCPU.hizs   = gen_dvect(candCPU.numharm*2);
-	  candCPU.derivs = (rderivs *)  malloc(sizeof(rderivs) * candCPU.numharm);
-	  //norm	      = gen_dvect(candCPU.numharm);
-
-	  for( int ii=0; ii<candCPU.numharm; ii++ )
-	  {
-	    r_offset[ii]   = 0;
-	    data[ii]       = opt->cuSrch->fft->data;
-	    //norm[ii]		= 0;
-	  }
-	  max_rz_arr_harmonics(data,
-	      candCPU.numharm,
-	      r_offset,
-	      opt->cuSrch->fft->noBins,
-	      candCPU.r,
-	      candCPU.z,
-	      &r,
-	      &z,
-	      candCPU.derivs,
-	      candCPU.pows,
-	      opt->plnGen->input->norm);
-	  candCPU.r = r;
-	  candCPU.z = z;
-	  candCPU.power = 0;
-	  candCPU.sigma = 0;
-	  FOLD
-	  {
-	    pow<double>(&candCPU, opt->plnGen->input);
-	    pow<double>(candGPU, opt->plnGen->input);
-
-	    int noStages	= log2((double)candGPU->numharm);
-	    long long numindep	= cuSrch->numindep[noStages];
-	    candGPU->sigma	= candidate_sigma_cu(candGPU->power, candGPU->numharm, numindep);
-	    candCPU.sigma	= candidate_sigma_cu(candCPU.power,  candCPU.numharm,  numindep);
-	  }
-
-	  slog.csvWrite("GPU r",	"%15.6f", candGPU->r);
-	  slog.csvWrite("GPU z",	"%12.6f", candGPU->z);
-	  slog.csvWrite("GPU Pow",	"%12.6f", candGPU->power );
-	  slog.csvWrite("GPU sig",	"%12.6f", candGPU->sigma );
-
-	  slog.csvWrite("CPU r",	"%15.6f", candCPU.r );
-	  slog.csvWrite("CPU z",	"%12.6f", candCPU.z );
-	  slog.csvWrite("CPU pow",	"%12.6f", candCPU.power );
-	  slog.csvWrite("CPU sig",	"%12.6f", candCPU.sigma );
-
-	  double rDist = candCPU.r - candGPU->r ;
-	  double zDist = candCPU.z - candGPU->z ;
-
-	  slog.csvWrite("Dist",		"%12.6f", sqrt(rDist*rDist + zDist*zDist) );
-	  slog.csvWrite("Pow diff",	"%12.6f", candGPU->power - candCPU.power  );
-	  slog.csvWrite("Sig diff",	"%12.6f", candGPU->sigma - candCPU.sigma  );
-	  slog.csvWrite("Neg Sig diff",	"%12.6f", -(candGPU->sigma - candCPU.sigma) );
-
-	  slog.csvEndLine();
-#endif
-	  }
-
-	if ( msgLevel == 0 )
+	FOLD // DBG - Compare optimisation results - Thesis output
 	{
-	  printf("\rGPU optimisation %5.1f%% complete   ", comp / (float)numcands * 100.0f );
-	  fflush(stdout);
+#ifdef CBL
+
+	  //void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_width, fcomplex * ans);
+
+//	  int hw = getHw<double>(candGPU->z, HIGHACC);
+//	  fcomplex ans;
+//	  fcomplex* data = (fcomplex*)(&opt->input->h_inp[-opt->input->loR[0]]);
+//	  long noBins = 70000000;
+//	  double real, imag;
+//	  candGPU->z = 0.0000001;
+//
+//	  ans.r = 0.0;
+//	  ans.i = 0.0;
+//	  real = 0.0;
+//	  imag = 0.0;
+//
+//	  printf("\nCPU conv %.6f\n", candGPU->r);
+//	  rz_interp(data, noBins, candGPU->r, candGPU->z, hw, &ans);
+//
+//	  printf("\nGPU conv %.6f\n", candGPU->r);
+//	  rz_convolution_cu_debg<double, float2> ((float2*)data, 0, noBins, candGPU->r, candGPU->z, hw, &real, &imag);
+
+	  bool prnt = false;
+
+	  if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
+	  {
+	    cmpLog.csvWrite("idx",	"%5i",    ti);
+	    cmpLog.csvWrite("r",	"%18.9f", candCPU->r);
+	    cmpLog.csvWrite("z",	"%15.9f", candCPU->z);
+	    cmpLog.csvWrite("pow",	"%15.9f", candCPU->power);
+	    cmpLog.csvWrite("sig",	"%15.9f", candCPU->sigma);
+
+	    int *r_offset;
+	    fcomplex **data;
+	    double r, z;
+
+	    double iSig, gSig, cSig;
+
+	    r_offset     = (int*) malloc(sizeof(int)*candCPU->numharm);
+	    data         = (fcomplex**) malloc(sizeof(fcomplex*)*candCPU->numharm);
+
+	    candCPU->pows	= gen_dvect(candCPU->numharm*2);
+	    candCPU->hirs	= gen_dvect(candCPU->numharm*2);
+	    candCPU->hizs	= gen_dvect(candCPU->numharm*2);
+	    candCPU->derivs	= (rderivs *)  malloc(sizeof(rderivs) * candCPU->numharm);
+
+	    for( int ii=0; ii< candCPU->numharm; ii++ )
+	    {
+	      r_offset[ii]   = 0;
+	      data[ii]       = opt->cuSrch->fft->data;
+	    }
+
+	    FOLD // Original CPU optimisation
+	    {
+	      max_rz_arr_harmonics(data,
+		  candCPU->numharm,
+		  r_offset,
+		  opt->cuSrch->fft->noBins,
+		  candCPU->r,
+		  candCPU->z,
+		  &r,
+		  &z,
+		  candCPU->derivs,
+		  candCPU->pows,
+		  opt->input->norm);
+	      candCPU->r = r;
+	      candCPU->z = z;
+	      candCPU->power = 0;
+	      candCPU->sigma = 0;
+	    }
+	    else // My new NM optimisation  .
+	    {
+	      double sz = 15;	// This size could be a configurable parameter
+	      prepInput_cand( candCPU, opt->input, opt->cuSrch->fft, sz, sz*opt->conf->zScale, opt->flags );
+
+	      optInitCandPosSim<double>(candCPU, opt->input, 0.4,   0.4*opt->conf->zScale, LOWACC,  1000 );
+
+	      optInitCandPosSim<double>(candCPU, opt->input, 0.01, 0.01*opt->conf->zScale, HIGHACC, 100  );
+	    }
+
+	    FOLD // Calculate powers  .
+	    {
+	      pow<double>(candINT, opt->input);
+	      pow<double>(candCPU, opt->input);
+	      pow<double>(candGPU, opt->input);
+
+	      int noStages	= log2((double)candGPU->numharm);
+	      long long numindep	= cuSrch->numindep[noStages];
+
+	      //candINT->sigma	= candidate_sigma_cu(candINT->power, candINT->numharm, numindep);
+	      //candGPU->sigma	= candidate_sigma_cu(candGPU->power, candGPU->numharm, numindep);
+	      //candCPU->sigma	= candidate_sigma_cu(candCPU->power, candCPU->numharm, numindep);
+
+	      iSig	= candidate_sigma_cu(candINT->power, candINT->numharm, numindep);
+	      gSig	= candidate_sigma_cu(candGPU->power, candGPU->numharm, numindep);
+	      cSig	= candidate_sigma_cu(candCPU->power, candCPU->numharm, numindep);
+	    }
+
+	    double rDist = candCPU->r - candGPU->r ;
+	    double zDist = candCPU->z - candGPU->z ;
+	    double bDist = sqrt(rDist*rDist + zDist*zDist);			// Euclidean distance between the two point (in bins)
+	    double sDist = gSig - cSig ;
+
+	    cmpLog.csvWrite("INIT pow",		"%15.9f", candINT->power);
+	    cmpLog.csvWrite("INIT sig",		"%15.9f", iSig);
+
+	    cmpLog.csvWrite("GPU r",		"%18.9f", candGPU->r);
+	    cmpLog.csvWrite("GPU z",		"%15.9f", candGPU->z);
+	    cmpLog.csvWrite("GPU Pow",		"%15.9f", candGPU->power );
+	    cmpLog.csvWrite("GPU sig",		"%15.9f", gSig );
+
+	    cmpLog.csvWrite("CPU r",		"%18.9f", candCPU->r );
+	    cmpLog.csvWrite("CPU z",		"%15.9f", candCPU->z );
+	    cmpLog.csvWrite("CPU pow",		"%15.9f", candCPU->power );
+	    cmpLog.csvWrite("CPU sig",		"%15.9f", cSig );
+
+	    cmpLog.csvWrite("Dist",		"%15.9f", bDist                              );
+	    cmpLog.csvWrite("Pow diff",		"%15.9f",   candGPU->power - candCPU->power  );
+	    cmpLog.csvWrite("Neg Pow diff",	"%15.9f", -(candGPU->power - candCPU->power) );
+	    cmpLog.csvWrite("Dist",		"%15.9f", bDist                              );
+	    cmpLog.csvWrite("Sig diff",		"%15.9f",  sDist                             );
+	    cmpLog.csvWrite("Neg Sig diff",	"%15.9f", -sDist                             );
+
+	    cmpLog.csvEndLine();
+
+	    if ( sDist < -0.001 || sDist > 0.001 || bDist > 0.01 )
+	    {
+	      // These are interesting cases so plot them...
+	      prnt = true;
+	    }
+	  }
+
+	  char tName[1024];
+	  sprintf(tName, "/home/chris/accel/OPT_%03i.csv", ti);
+	  FILE *f2 = fopen(tName, "a");
+
+	  fprintf(f2, "init_r: %.23f\n", candINT->r);
+	  fprintf(f2, "init_z: %.23f\n", candINT->z);
+
+	  fprintf(f2, "GPU_r: %.23f\n", candGPU->r);
+	  fprintf(f2, "GPU_z: %.23f\n", candGPU->z);
+
+	  fprintf(f2, "CPU_r: %.23f\n", candCPU->r);
+	  fprintf(f2, "CPU_z: %.23f\n", candCPU->z);
+
+	  fclose(f2);
+
+	  if ( opt->conf->flags & FLAG_DPG_PLT_OPT || prnt ) // Write CSV & plot output  .
+	  {
+	    FOLD // Make image  .
+	    {
+	      infoMSG(5,5,"Image %s\n", tName);
+
+	      PROF // Profiling  .
+	      {
+		NV_RANGE_PUSH("Image");
+	      }
+
+	      char cmd[1024];
+	      sprintf(cmd,"python $PRESTO/python/plt_opt_plns.py %s > /dev/null 2>&1", tName);
+	      int ret = system(cmd);
+	      if ( ret )
+	      {
+		fprintf(stderr,"ERROR: Problem running potting python script.");
+	      }
+
+	      PROF // Profiling  .
+	      {
+		NV_RANGE_POP("Image");
+	      }
+	    }
+	  }
+
+#endif // CBL
 	}
+
+//	if ( msgLevel == 0 )
+//	{
+//	  printf("\rGPU optimisation %5.1f%% complete   ", comp / (float)numcands * 100.0f );
+//	  fflush(stdout);
+//	}
       }
     }
   }
+
+#ifdef CBL // DBG - Thesis output
+  if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
+  {
+    cmpLog.close();
+
+    char cmd[1024];
+    sprintf(cmd,"python /home/chris/workspace/thesis_plots/plt_opt_cmp.py %s > /dev/null 2>&1", cmpName);
+    int ret = system(cmd);
+    if ( ret )
+    {
+	fprintf(stderr,"ERROR: Problem running potting python script.");
+    }
+  }
+#endif
 
   printf("\rGPU optimisation %5.1f%% complete                      \n", 100.0f );
 

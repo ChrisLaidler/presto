@@ -38,9 +38,9 @@ ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf);
 
 ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2);
 
-ACC_ERR_CODE ffdotPln_writePlnToFileNew(cuRzHarmPlane* pln, FILE *f2);
+ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2);
 
-ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name );
+ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name,  const char* prams = NULL );
 
 cuRzHarmPlane* initPln( size_t memSize );
 

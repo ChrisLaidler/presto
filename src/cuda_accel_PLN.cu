@@ -2080,16 +2080,127 @@ ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf)
   return err;
 }
 
-/**  Plot a ff plane
+/** Write plane points plane text file
  *
- * This assumes the plane has already been created
+ * @param pln
+ * @param f2
+ * @return	ACC_ERR_NONE on success or a collection of error values if full or partial failure
+ */
+ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
+{
+  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Write CVS");
+  }
+
+  infoMSG(5,5,"Write CVS\n");
+
+  // Add number of harmonics summed as the first line
+  fprintf(f2,"Harm plane\n");
+  fprintf(f2,"centR: %.23f\n", pln->centR);
+  fprintf(f2,"centZ: %.23f\n", pln->centZ);
+  fprintf(f2,"rSize: %.23f\n", pln->rSize);
+  fprintf(f2,"zSize: %.23f\n", pln->zSize);
+  fprintf(f2,"noZ: %.i\n",     pln->noZ);
+  fprintf(f2,"noR: %.i\n",     pln->noR);
+  fprintf(f2,"Harms: %i\n",    pln->noHarms);
+
+  // Print type
+  if      ( pln->type == CU_CMPLXF )
+    fprintf(f2,"Type: complex\n");
+  else if ( pln->type == CU_FLOAT )
+    fprintf(f2,"Type: power\n");
+
+  infoMSG(8,8,"Harms %i sz: %i x %i \n", pln->noHarms, pln->noZ, pln->noR );
+
+  int noStrHarms;
+
+  if      ( pln->type == CU_STR_HARMONICS      )
+  {
+    fprintf(f2,"Layout: Harmonics\n");
+    noStrHarms = pln->noHarms;
+  }
+  else if ( pln->type == CU_STR_INCOHERENT_SUM )
+  {
+    fprintf(f2,"Layout: Sum\n");
+    noStrHarms = 1;
+  }
+  else
+  {
+    infoMSG(6,6,"ERROR: Plane type has not been initialised.\n" );
+    err += ACC_ERR_UNINIT;
+  }
+
+  if ( !err )
+  {
+    for ( int hIdx = 0; hIdx < noStrHarms; hIdx++)
+    {
+      FOLD // Print R values  .
+      {
+	fprintf(f2,"Harm %i", hIdx+1);
+
+	for (int indx = 0; indx < pln->noR ; indx++ )
+	{
+	  double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+	  fprintf(f2,"\t%.6f", r*(hIdx+1) );
+	}
+	fprintf(f2,"\n");
+      }
+
+      // Print column
+      for (int indy = 0; indy < pln->noZ; indy++ )
+      {
+	// Print Z value
+	double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+	if ( pln->noZ == 1 )
+	  z = pln->centZ;
+	fprintf(f2,"%.15f", z*(hIdx+1));
+
+	// Print plane values
+	for (int indx = 0; indx < pln->noR ; indx++ )
+	{
+	  if      ( pln->type == CU_CMPLXF )
+	  {
+	    //yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
+	    float2 val = ((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+
+	    fprintf(f2,"\t%.17f | %.17f", val.x, val.y);
+	  }
+	  else if ( pln->type == CU_FLOAT  )
+	  {
+	    //yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+	    float val = ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+
+	    fprintf(f2,"\t%.17f", val);
+	  }
+	}
+	fprintf(f2,"\n");
+      }
+    }
+
+    fflush(f2);
+  }
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP("Write CVS");
+  }
+
+  return err;
+}
+
+/**  Plot a ff plane using csv and python script  .
+ *
+ * NB: This assumes the plane has already been created
  *
  * @param pln
  * @param dir	Directory to place in figure in
  * @param name	File name excluding extension
- * @return
+ * @return	ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name )
+ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name,  const char* prams )
 {
   infoMSG(4,4,"Plot ffdot plane section.\n");
 
@@ -2100,75 +2211,8 @@ ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* 
 
   FOLD // Write CSV  .
   {
-    PROF // Profiling  .
-    {
-      NV_RANGE_PUSH("Write CVS");
-    }
-
-    infoMSG(5,5,"Write CVS\n");
-
-    // Add number of harmonics summed as the first line
-    fprintf(f2,"%i", pln->noHarms);
-
-    infoMSG(8,8,"Harms %i sz: %i x %i \n", pln->noHarms, pln->noZ, pln->noR );
-
-    // Print R values
-    for (int indx = 0; indx < pln->noR ; indx++ )
-    {
-      double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
-      fprintf(f2,"\t%.6f",r);
-    }
-    fprintf(f2,"\n");
-
-    for (int indy = 0; indy < pln->noZ; indy++ )
-    {
-      // Print Z value
-      double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
-      if ( pln->noZ == 1 )
-	z = pln->centZ;
-      fprintf(f2,"%.15f",z);
-
-      // Print power
-      for (int indx = 0; indx < pln->noR ; indx++ )
-      {
-	float yy2 = 0;
-	int noStrHarms;
-
-	if      ( pln->type == CU_STR_HARMONICS )
-	  noStrHarms = pln->noHarms;
-	else if ( pln->type == CU_STR_INCOHERENT_SUM )
-	  noStrHarms = 1;
-	else
-	{
-	  infoMSG(6,6,"ERROR: Plane type has not been initialised.\n" );
-	  err += ACC_ERR_UNINIT;
-	  break;
-	}
-
-	for ( int hIdx = 0; hIdx < noStrHarms; hIdx++)
-	{
-	  if      ( pln->type == CU_CMPLXF )
-	    yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
-	  else if ( pln->type == CU_FLOAT )
-	    yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
-	  else
-	  {
-	    infoMSG(6,6,"ERROR: Plane type has not been initialised.\n" );
-	    err += ACC_ERR_DATA_TYPE;
-	    break;
-	  }
-	}
-
-	fprintf(f2,"\t%.20f",yy2);
-      }
-      fprintf(f2,"\n");
-    }
+    err += ffdotPln_writePlnToFile(pln, f2);
     fclose(f2);
-
-    PROF // Profiling  .
-    {
-      NV_RANGE_POP("Write CVS");
-    }
   }
 
   if ( !err ) // Make image  .
@@ -2178,6 +2222,11 @@ ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* 
     PROF // Profiling  .
     {
       NV_RANGE_PUSH("Image");
+    }
+
+    if ( prams )
+    {
+      sprintf(tName, "%s %s", tName, prams);
     }
 
     char cmd[1024];
