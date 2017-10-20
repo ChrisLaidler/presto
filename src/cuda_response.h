@@ -7,23 +7,24 @@
 #define R_LIM_F		1e-5			// Got this through testing - this is the Z value below which inaccuracy creep in for double
 #define R_LIM_D		1e-9			// Got this through testing - this is the Z value below which inaccuracy creep in for double
 
+// Boundary constant estimate term 1 - AKA Fourier interpolation
 #define E0_LIM_F	1e-20f			//
 #define E0_LIM_D	1e-20			//
 #define E0_LIM_Q	1e-20L			//
 
-// Liner term
-#define E1R_LIM_F	0.03f			//
-#define E1R_LIM_D	0.0001			//
+// Boundary liner estimate - a2.r (2nd coefficient)
+#define E1R_LIM_F	0.009f			// Bound: ~9e-3  Error: ~3e-6
+#define E1R_LIM_D	0.00006			// Bound: ~6e-5  Error: ~1e-12
 #define E1R_LIM_Q	0.00002L		//
 
-// Quadratic term
-#define E1I_LIM_F	0.005f			// Rough error intersection
-#define E1I_LIM_D	0.0009			// This could be 0.002 but the noise error is less than the estimation error
-#define E1I_LIM_Q	0.0009L			// 0.00002L - 0.00006L
+// Boundary quadratic estimate - a2.i (2nd coefficient)
+#define E1I_LIM_F	0.035f			// Bound: ~3.5e-2  Error: ~6e-6
+#define E1I_LIM_D	0.0014			// Bound: ~1.4e-3  Error: ~1e-11
+#define E1I_LIM_Q	0.0009L			//
 
-// Both liner and quadratic terms
-#define E2_LIM_F	0.1f			//
-#define E2_LIM_D	0.01			//
+// Boundary for both liner and quadratic estimate - a2 (3rd coefficient)
+#define E2_LIM_F	0.06f			// For a2*z*z, bound: ~6e-2 error : ~4e-14 - Bounds of a2: Real bound: ~9e-2 err: ~1e-4 - Imag bound ~0.05 err: ~1e-4
+#define E2_LIM_D	0.004			// For a2*z*z, bound: ~4e-3 error : ~7e-18 - Bounds of a2: Real bound: ~7e-3 err: ~3e-9 - Imag bound ~1e-3 err: ~3e-8
 #define E2_LIM_Q	0.004L			//
 
 #define SINCLIM		1e-5			// x value below which to call sinc(x) 1
@@ -152,7 +153,9 @@ __host__            inline long double getE2lim(long double nothing)
   return E2_LIM_Q;
 }
 
-__host__ long double getZlim(long double r);
+__host__ __device__ float getZlim(float r);			// DBG
+__host__ __device__ double getZlim(double r);			// DBG
+__host__            long double getZlim(long double r);		// DBG
 
 /////////////////////////////////
 

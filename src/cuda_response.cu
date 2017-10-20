@@ -1,3 +1,24 @@
+/** @file cuda_response.cu
+ *  @brief Utility functions and kernels to calculate response filter coefficients and perfrom correlations
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *  This includes fresnel integrals
+ *
+ *  Change Log
+ *
+ *  2017-10-20
+ *    Start the change log - I know this is a bit late =/
+ *    Had a big refactor of all the functions here
+ *    Full work up of error and optimisation of speed - See my thesis for full details
+ *    In brief:
+ *       Max error in "generic" single coefficients of ~1e-5 from offset > 0.04 - Note the error can be > 2e-5 for offset > 1000
+ *       Max error in "generic" double coefficients of ~1e-12 from 0.0002 < offset < 0.04 - Error then drops to 2e-15 at offset = 10 then increases to 3e-14 at offset = 1000
+ *
+ *
+ */
+
 #include <iostream>
 #include <stdio.h>
 
@@ -65,9 +86,9 @@ __host__ __device__ inline double getRlim(double nothing)
  * @param r         The offset of the bin from the point
  * @return          The quadratic float specific boundary
  */
-__host__ __device__ inline float getZlim(float r)
+__host__ __device__ /*inline*/ float getZlim(float r)
 {
-  return 0.02f + 0.0325f * pow_t(fabs_t(r), 1.25f );
+  return 0.028f + 0.0325f * pow_t(fabs_t(r), 1.25f );
 }
 
 /** Get the limit below which, to do a Fourier Interpolation rather than calculate a the acceleration coefficient  .
@@ -80,7 +101,7 @@ __host__ __device__ inline float getZlim(float r)
  * @param r         The offset of the bin from the point
  * @return          The quadratic float specific boundary
  */
-__host__ __device__ inline double getZlim(double r)
+__host__ __device__ /*inline*/ double getZlim(double r)
 {
   return 0.00015f + 0.0002256f * pow_t(fabs_t((float)r), 1.25f );
 }
@@ -572,6 +593,7 @@ __host__ __device__ inline void calc_coefficient_a(T offset, T z, T piR, T sinPi
   T r1 = offset;
   T r2 = r1 * r1 ;
   T r3 = r2 * r1 ;
+  T term;
 
   // T0 (constant) ie: Fourier interpolation
   T a0_r	= +cosPiR*sinPiR/piR;
@@ -583,8 +605,9 @@ __host__ __device__ inline void calc_coefficient_a(T offset, T z, T piR, T sinPi
   }
   
   // T1 (linear) coefficient
-  T a1_r	= -sinPiR*(cosPiR-sinPiR/piR)/r2/(T)PI/(T)2.0 ;
-  T a1_i	= -cosPiR*(cosPiR-sinPiR/piR)/r2/(T)PI/(T)2.0 ;
+  term		= (cosPiR-sinPiR/piR)/r2/(T)PI/(T)2.0 ;
+  T a1_r	= -sinPiR * term;
+  T a1_i	= -cosPiR * term;
   if ( r1_abs < getE1rLim(r1) )
   {
     a1_r	= (T)1.64493406512755329404 * r1 ;					// Liner interpolate crossing at 0
@@ -595,8 +618,9 @@ __host__ __device__ inline void calc_coefficient_a(T offset, T z, T piR, T sinPi
   }
 
   // T2 (quadratic) coefficient
-  T a2_r	= cosPiR/(T)4.0/(T)PI/r3*((T)3.0/(T)PI/r1*(-sinPiR/piR+cosPiR)+sinPiR);
-  T a2_i	= sinPiR/(T)4.0/(T)PI/r3*((T)3.0/(T)PI/r1*(+sinPiR/piR-cosPiR)-sinPiR);
+  term		= (T)0.25/(T)PI/r3*((T)3.0/(T)PI/r1*(-sinPiR/piR+cosPiR)+sinPiR);
+  T a2_r	= +cosPiR*term;
+  T a2_i	= -sinPiR*term;
   if ( r1_abs < getE2lim(r1) )
   {
     a2_r	= -(T)0.164493406684822643659 + (T)0.927685388563495792822 * r2 ;	// Quadratic interpolate intercept at Pi^2/60
