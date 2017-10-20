@@ -1631,15 +1631,9 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkWidth	= 1;
     plnGen->pln->blkDimX	= plnGen->pln->noR;
 
-    if ( !(plnGen->flags & FLAG_OPT_KER_ALL) )
+    if ( conf->flags & FLAG_OPT_BLK ) // Use the block kernel  .
     {
-      // Get the kernel from the options
-      err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_KER_ALL) );
-    }
-
-    if ( plnGen->flags & FLAG_OPT_BLK ) // Use the block kernel  .
-    {
-      err += ffdotPln_calcCols( plnGen->pln, plnGen->flags, conf->blkDivisor, 16);
+      err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, 16);
 
 #ifdef 	WITH_OPT_PTS_HRM
       if ( plnGen->pln->blkCnt == 1 )
@@ -1653,8 +1647,11 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       else
 #endif
       {
-	// Remove points kernels as we are using block kernel
-	err += remOptFlag(plnGen, FLAG_OPT_PTS );
+	// Clear all "local" kernels
+	err += remOptFlag(plnGen, FLAG_OPT_KER_ALL );
+
+	// Set block kernel from "global" settings
+	err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_BLK) );
 
 	int cnt = __builtin_popcount (plnGen->flags & FLAG_OPT_BLK);
 	if ( cnt > 1 )
@@ -1868,7 +1865,9 @@ ACC_ERR_CODE input_plnGen( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
 
 /** Check the configuration of how the plane section is going to be generated
  *
- * Note the configuration flags are used to set the optimiser flags
+ * Note the flags passed in are the "global" configuration flags
+ * these used to set the column widths, these are dependent on the flags:
+ *   FLAG_RES_CLOSE   or   FLAG_RES_FAST
  *
  * @param pln	  optimiser
  * @param fft	  FFT data structure

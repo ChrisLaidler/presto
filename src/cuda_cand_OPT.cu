@@ -1302,7 +1302,11 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 #ifdef CBL // DBG - Thesis output
   char tName[1024];
   sprintf(tName,"/home/chris/accel/OPT_%03i.csv", candNo);
-  FILE *f2 = fopen(tName, "w");
+  FILE *f2;
+  if ( conf->flags & FLAG_DPG_PRNT_CAND ) // Write CSV & plot output  .
+  {
+    f2 = fopen(tName, "w");
+  }
 #endif
 
   FOLD // Get best candidate location using iterative GPU planes  .
@@ -1826,23 +1830,27 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	    }
 	  }
 
-	  char tName[1024];
-	  sprintf(tName, "/home/chris/accel/OPT_%03i.csv", ti);
-	  FILE *f2 = fopen(tName, "a");
-
-	  fprintf(f2, "init_r: %.23f\n", candINT->r);
-	  fprintf(f2, "init_z: %.23f\n", candINT->z);
-
-	  fprintf(f2, "GPU_r: %.23f\n", candGPU->r);
-	  fprintf(f2, "GPU_z: %.23f\n", candGPU->z);
-
-	  fprintf(f2, "CPU_r: %.23f\n", candCPU->r);
-	  fprintf(f2, "CPU_z: %.23f\n", candCPU->z);
-
-	  fclose(f2);
-
 	  if ( opt->conf->flags & FLAG_DPG_PLT_OPT || prnt ) // Write CSV & plot output  .
 	  {
+	    char tName[1024];
+	    sprintf(tName, "/home/chris/accel/OPT_%03i.csv", ti);
+
+	    FOLD // Used to mark points on the optimisation plot (plt_opt_cmp) .
+	    {
+	      FILE *f2 = fopen(tName, "a");
+
+	      fprintf(f2, "init_r: %.23f\n", candINT->r);
+	      fprintf(f2, "init_z: %.23f\n", candINT->z);
+
+	      fprintf(f2, "GPU_r: %.23f\n", candGPU->r);
+	      fprintf(f2, "GPU_z: %.23f\n", candGPU->z);
+
+	      fprintf(f2, "CPU_r: %.23f\n", candCPU->r);
+	      fprintf(f2, "CPU_z: %.23f\n", candCPU->z);
+
+	      fclose(f2);
+	    }
+
 	    FOLD // Make image  .
 	    {
 	      infoMSG(5,5,"Image %s\n", tName);
