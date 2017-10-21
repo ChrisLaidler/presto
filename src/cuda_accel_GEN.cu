@@ -2060,8 +2060,10 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	}
 	else
 	{
+#ifdef WITH_NORM_GPU
 	  infoMSG(5,5,"Auto selecting GPU input normalisation.\n");
 	  kernel->flags |= CU_NORM_GPU_SM;
+#endif
 	}
       }
 

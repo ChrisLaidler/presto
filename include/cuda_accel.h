@@ -98,8 +98,8 @@ extern "C"
 //#define 		WITH_COMPLEX_POWERS
 
 ////////	Normalisation
-#define 		WITH_NORM_GPU
-#define 		WITH_NORM_GPU_OS
+#define 		WITH_NORM_GPU			///< Allow GPU normalisation - Bitonic sort
+//#define 		WITH_NORM_GPU_OS		///< Allow GPU normalisation - using a custom novel order statistic algorithm
 
 
 ////////	Multiplication
@@ -114,11 +114,11 @@ extern "C"
 
 #define 		WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
 
-#define 		WITH_MUL_21			///< Stack multiplication kernel 1 - (fastest) 	- This is the preferred method if compute version is > 3.0 - read all input - loop over kernel - loop over planes
+#define 		WITH_MUL_21			///< Stack multiplication kernel 1 - (fastest)	- This is the preferred method if compute version is > 3.0 - read all input - loop over kernel - loop over planes
 #define 		WITH_MUL_22			///< Stack multiplication kernel 2 - (faster)	- Loop ( column, plain - Y )
 #define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
 
-#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow) - Do an entire batch in one kernel
+#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow)	- Do an entire batch in one kernel
 
 
 ////////	Powers
@@ -126,7 +126,7 @@ extern "C"
 
 
 ////////	Sum & Search
-#define			MIN_SAS_CHUNK	1	///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
+#define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
 #define			MAX_SAS_CHUNK	12
 
 #define			MIN_SAS_COLUMN	1		///< Not in use yet - min columns for sas kernels
@@ -147,15 +147,14 @@ extern "C"
 
 ////////	Optimisation
 #define 		WITH_OPT_BLK_NRM
-#define 		WITH_OPT_BLK_EXP
 #define 		WITH_OPT_BLK_HRM
-#define 		WITH_OPT_BLK_RSP
+//#define 		WITH_OPT_BLK_RSP
 
 #define 		WITH_OPT_PTS_NRM
 #define 		WITH_OPT_PTS_EXP		///< This is generally a very bad idea =/
 #define 		WITH_OPT_PTS_HRM
-#define 		WITH_OPT_PTS_SHR
-#define 		WITH_OPT_PTS_RSP
+//#define 		WITH_OPT_PTS_SHR
+//#define 		WITH_OPT_PTS_RSP
 
 
 /******************************************* Defines ****************************************************/

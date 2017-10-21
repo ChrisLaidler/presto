@@ -916,15 +916,48 @@ void readAccelDefalts(confSpecs *conf)
 	}
 	else if ( strCom("GPU_SM", str2 ) || strCom("GPU", str2 ) )
 	{
+#ifdef WITH_NORM_GPU
 	  (*genFlags) |= CU_NORM_GPU_SM;
+#else
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with GPU normalisation.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - GPU norm Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_NORM_GPU
 	}
 	else if ( strCom("GPU_SM_MIN", str2 ) || strCom("GPU_SM2", str2 ))
 	{
+#ifdef WITH_NORM_GPU
 	  (*genFlags) |= CU_NORM_GPU_SM_MIN;
+#else
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with GPU normalisation.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - GPU norm Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_NORM_GPU
 	}
 	else if ( strCom("GPU_OS", str2 ) )
 	{
+#ifdef WITH_NORM_GPU_OS
 	  (*genFlags) |= CU_NORM_GPU_OS;
+#else
+	  line[flagLen] = 0;
+	  fprintf(stderr, "WARNING: Not compiled with GPU normalisation.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+
+	  FOLD  // TMP REM - Added to mark an error for thesis timing
+	  {
+	    printf("Temporary exit - GPU norm Kernel \n");
+	    exit(EXIT_FAILURE);
+	  }
+#endif	// WITH_NORM_GPU
 	}
 	else
 	{

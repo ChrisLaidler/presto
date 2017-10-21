@@ -213,10 +213,16 @@ void normAndSpread_m(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
 
     if      ( FLAGS & CU_NORM_GPU_SM     )
     {
+#ifdef WITH_NORM_GPU
       normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+#else
+      fprintf(stderr, "ERROR: %s disabled at compile time. Function %s in %s.\n", "GPU normalisation", __FUNCTION__, __FILE__);
+      exit(EXIT_FAILURE);
+#endif
     }
     else if ( FLAGS & CU_NORM_GPU_SM_MIN )
     {
+#ifdef WITH_NORM_GPU
       if ( noEls <= 1024 )
       {
 	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
@@ -225,6 +231,10 @@ void normAndSpread_m(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
       {
 	normAndSpread_SM_MIN<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       }
+#else
+      fprintf(stderr, "ERROR: %s disabled at compile time. Function %s in %s.\n", "GPU normalisation", __FUNCTION__, __FILE__);
+      exit(EXIT_FAILURE);
+#endif
     }
     else if ( FLAGS & CU_NORM_GPU_OS     )
     {

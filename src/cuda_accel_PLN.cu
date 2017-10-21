@@ -809,7 +809,6 @@ __global__ void ffdotPlnSM_ker(float* powers, float2* data, double firstR, doubl
 }
 
 #endif
-
 #endif
 
 
