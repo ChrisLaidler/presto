@@ -824,7 +824,7 @@ __host__ __device__ void rz_coefficients(double r, T z, int kern_half_width, out
  * @param imag
  */
 template<typename T, typename dataT>
-__host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag)
+__host__ __device__ void rz_convolution_cu(const dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag)
 {
   *real = (T)0.0;
   *imag = (T)0.0;
@@ -923,7 +923,7 @@ __host__ __device__ void rz_convolution_cu(dataT* inputData, long loR, long noBi
  * @param kern_half_width     The half width of the points to use in the interpolation
  */
 template<typename T, typename dataIn, typename dataOut>
-__host__ __device__ void rz_convolution_cu(dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk)
+__host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk)
 {
   for ( int blk = 0; blk < noBlk; blk++ )
   {
@@ -1200,10 +1200,10 @@ template void calc_coefficient_r<float >(float  offset, float*  real, float*  im
 template void calc_coefficient_r<double>(double offset, double* real, double* imag);
 
 
-template void calc_coefficient_z<float,  true >(float  Qk, float  dr, float  z, float  sq2overAbsZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
-template void calc_coefficient_z<float,  false>(float  Qk, float  dr, float  z, float  sq2overAbsZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
-template void calc_coefficient_z<double, true >(double Qk, double dr, double z, double sq2overAbsZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
-template void calc_coefficient_z<double, false>(double Qk, double dr, double z, double sq2overAbsZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
+//template void calc_coefficient_z<float,  true >(float  Qk, float  dr, float  z, float  sq2overAbsZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
+//template void calc_coefficient_z<float,  false>(float  Qk, float  dr, float  z, float  sq2overAbsZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
+//template void calc_coefficient_z<double, true >(double Qk, double dr, double z, double sq2overAbsZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
+//template void calc_coefficient_z<double, false>(double Qk, double dr, double z, double sq2overAbsZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
 
 template void calc_coefficient_z<float,  true >(float  offset, float  z, float*  real, float*  imag);
 template void calc_coefficient_z<float,  false>(float  offset, float  z, float*  real, float*  imag);
@@ -1220,12 +1220,13 @@ template void rz_coefficients<float,  float2> (double r, float  z, int kern_half
 
 ////////////////////
 
-template void rz_convolution_cu<float,  float2> (float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
-//template void rz_convolution_cu<float,  double2>(double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
-template void rz_convolution_cu<double, float2> (float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
-//template void rz_convolution_cu<double, double2>(double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
+template void rz_convolution_cu<float,  float2> (const float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
+//template void rz_convolution_cu<float,  double2>(const double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
+template void rz_convolution_cu<double, float2> (const float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
+//template void rz_convolution_cu<double, double2>(const double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
 
-template void rz_convolution_cu<float,  float2, float2> (float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
-template void rz_convolution_cu<double, float2, float2> (float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
+template void rz_convolution_cu<float,  float2, float2> (const float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
+template void rz_convolution_cu<double, float2, float2> (const float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
+
 
 ////////////////////

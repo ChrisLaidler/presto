@@ -14,14 +14,16 @@
 #ifdef		OPT_LOC_32
 
 #define		OPT_MAX_LOC_HARMS	32
-typedef		int32 optLocInt_t;
-typedef		int32 optLocFloat_t;
+typedef		int32  optLocInt_t;
+typedef		long32 optLocLong_t;
+typedef		int32  optLocFloat_t;
 
 #else
 
 #define		OPT_MAX_LOC_HARMS	16
-typedef		int16 optLocInt_t;
-typedef		int16 optLocFloat_t;
+typedef		int16  optLocInt_t;
+typedef		long16 optLocLong_t;
+typedef		int16  optLocFloat_t;
 
 #endif
 

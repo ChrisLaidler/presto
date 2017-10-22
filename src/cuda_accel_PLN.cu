@@ -246,10 +246,16 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
 
   if ( bx < blkDimX && iy < noZ)
   {
-    double	r	= firstR + bx/(double)(noR-1) * rSZ ;
-    double	z	= firstZ - iy/(double)(noZ-1) * zSZ ;
+    int hrm = hIdx+1;
+
+    double	r	= (firstR + bx/(double)(noR-1) * rSZ );
+    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
     if (noZ == 1)
       z = firstZ;
+
+    r *= hrm;
+    z *= hrm;
+    blkWidth *= hrm;
 
     float2      ans[noBlk];
     int halfW;
@@ -258,23 +264,14 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
 
     FOLD
     {
-      int hrm = hIdx+1;
-
       FOLD // Determine half width
       {
-	halfW = getHw<T>(z*hrm, hw.val[hIdx]);
-      }
-
-      // Set complex values to 0 for this harmonic
-      for( int blk = 0; blk < width; blk++ )
-      {
-	ans[blk].x = 0;
-	ans[blk].y = 0;
+	halfW = getHw<T>(z, hw.val[hIdx]);
       }
 
       FOLD // Calculate complex value, using direct application of the convolution
       {
-	rz_convolution_cu<T, float2, float2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r*hrm, z*hrm, halfW, ans, blkWidth*hrm, width);
+	rz_convolution_cu<T, float2, float2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, ans, blkWidth, width);
       }
     }
 
