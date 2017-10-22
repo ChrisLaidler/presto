@@ -2197,10 +2197,12 @@ confSpecs* defaultConfig()
     conf->opt->optMinRepHarms	= 1;
 
 
-    conf->opt->flags		|= FLAG_OPT_NRM_MEDIAN1D;
-    conf->opt->flags		|= FLAG_OPT_BLK_HRM;
-    conf->opt->flags		|= FLAG_OPT_PTS_HRM;
+    conf->opt->flags		|= FLAG_OPT_NRM_MEDIAN1D;	// Optimisation normalisation type
+    //conf->opt->flags		|= FLAG_OPT_BLK_HRM;		// This will now auto select
+    //conf->opt->flags		|= FLAG_OPT_PTS_HRM;		// This will now auto select
     conf->opt->flags		|= FLAG_RES_FAST;		// Use fast blocked planes
+
+    // TODO: check defaults for: FLAG_CMPLX and FLAG_HAMRS
 
     conf->opt->NelderMeadReps	= 100;		// By default do a short NM optimisation
 

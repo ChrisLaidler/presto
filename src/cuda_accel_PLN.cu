@@ -1629,9 +1629,14 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkCnt		= 1;
     plnGen->pln->blkWidth	= 1;
     plnGen->pln->blkDimX	= plnGen->pln->noR;
+    char kerName[20];
 
-    if ( conf->flags & FLAG_OPT_BLK ) // Use the block kernel  .
+    // Clear all "local" kernels
+    err += remOptFlag(plnGen, FLAG_PLN_ALL );
+
+    if ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) // Use the block kernel  .
     {
+      // Set size and resolution
       err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, 16);
 
 #ifdef 	WITH_OPT_PTS_HRM
@@ -1640,23 +1645,54 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	infoMSG(6,6,"Only one block, so going to use points kernel.\n");
 
 	// In my testing a single block is faster with the points kernel
-	err += remOptFlag(plnGen, FLAG_OPT_KER_ALL );
 	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
+
+	getKerName(plnGen, kerName);
+	infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
+      }
+      else
+#elif	defined(WITH_OPT_PTS_NRM)
+      if ( plnGen->pln->blkCnt == 1 )
+      {
+	infoMSG(6,6,"Only one block, so going to use points kernel.\n");
+
+	// In my testing a single block is faster with the points kernel
+	err += setOptFlag(plnGen, FLAG_OPT_PTS_NRM );
+
+	getKerName(plnGen, kerName);
+	infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
       }
       else
 #endif
       {
-	// Clear all "local" kernels
-	err += remOptFlag(plnGen, FLAG_OPT_KER_ALL );
+	// Really use a block kernel
 
-	// Set block kernel from "global" settings
-	err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_BLK) );
+	// Set column section flags
+	err += setOptFlag(plnGen, (conf->flags & FLAG_RES_ALL) );
 
-	int cnt = __builtin_popcount (plnGen->flags & FLAG_OPT_BLK);
-	if ( cnt > 1 )
+	if ( !(conf->flags & FLAG_OPT_BLK) )	// Auto select block kernel
 	{
-	  fprintf(stderr, "WARNING: Invalid configuration, multiple block kernels selected.");
-	  err += ACC_ERR_INVLD_CONFIG;
+	  // No points kernel so get one
+#if	defined(WITH_OPT_BLK_HRM)
+	  err += setOptFlag(plnGen, FLAG_OPT_BLK_HRM );
+#elif	defined(WITH_OPT_BLK_NRM)
+	  err += setOptFlag(plnGen, FLAG_OPT_BLK_NRM );
+#elif	defined(WITH_OPT_BLK_RSP)
+	  err += setOptFlag(plnGen, FLAG_OPT_BLK_RSP );
+#else
+	  fprintf(stderr,"ERROR: Not compiled with any per point block creation kernels.")
+	  err += ACC_ERR_COMPILED;
+#endif
+	  getKerName(plnGen, kerName);
+	  infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
+	}
+	else
+	{
+	  // Set block kernel from "global" settings
+	  err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_BLK) );
+
+	  getKerName(plnGen, kerName);
+	  infoMSG(6,6,"Specified block Kernel %s\n", kerName );
 	}
       }
     }
@@ -1664,32 +1700,30 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     {
       // TODO: Make a check here for FLAG_OPT_PTS_EXP
       
-      if ( !(plnGen->flags&FLAG_OPT_PTS) )
+      if ( !(conf->flags&FLAG_OPT_PTS) )	// Auto select
       {
 	// No points kernel so get one
 #if	defined(WITH_OPT_PTS_HRM)
-	setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
+	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
 #elif	defined(WITH_OPT_PTS_NRM)
-	setOptFlag(plnGen, FLAG_OPT_PTS_NRM );
+	err += setOptFlag(plnGen, FLAG_OPT_PTS_NRM );
 #elif	defined(WITH_OPT_PTS_EXP)
-	setOptFlag(plnGen, FLAG_OPT_PTS_EXP );
+	err += setOptFlag(plnGen, FLAG_OPT_PTS_EXP );
 #else
 	fprintf(stderr,"ERROR: Not compiled with any per point block creation kernels.")
 	err += ACC_ERR_COMPILED;
 #endif
 
-	char kerName[20];
 	getKerName(plnGen, kerName);
 	infoMSG(6,6,"Auto select points kernel %s.\n", kerName);
       }
       else
       {
-	int cnt = __builtin_popcount (plnGen->flags & FLAG_OPT_PTS);
-	if ( cnt > 1 )
-	{
-	  fprintf(stderr, "WARNING: Invalid configuration, multiple points kernels selected.");
-	  err += ACC_ERR_INVLD_CONFIG;
-	}
+	// Set block kernel from "global" settings
+	err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_PTS) );
+
+	getKerName(plnGen, kerName);
+	infoMSG(6,6,"Specified points Kernel %s\n", kerName );
       }
 
       // Sanity check
@@ -1706,9 +1740,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	}
       }
 
-      char kerName[20];
-      getKerName(plnGen, kerName);
-      infoMSG(6,6,"Points Kernel %s\n", kerName );
     }
 
     if ( !(plnGen->flags & FLAG_HAMRS) && (plnGen->flags & FLAG_CMPLX) )
@@ -1723,6 +1754,13 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 
     // Now snap the grid to the centre
     //err += snapPlane(opt->pln); // TODO: This is bad, need to snap to the candidate
+
+    int cnt = __builtin_popcount (plnGen->flags & FLAG_OPT_KER_ALL);
+    if ( cnt > 1 )
+    {
+      fprintf(stderr, "WARNING: Invalid configuration, multiple block kernels selected.");
+      err += ACC_ERR_INVLD_CONFIG;
+    }
   }
 
   err += setHalfWidth_ffdotPln( plnGen );
@@ -1966,7 +2004,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
       else
       {
 	// This will do the convolution exactly as is
-	// NOTE: If the resolution is a "good" value there is still the possibility to do it with blocks
+	// NOTE: If the resolution is a "good" value there is still the possibility to do it with blocks - Not yet implemented
 	// That would require some form of prime factorisation of numerator and denominator (I think), this could still be implemented
 
 	pln->blkDimX		= pln->noR;

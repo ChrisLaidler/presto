@@ -54,7 +54,7 @@ __host__ __device__ static inline int getHw(float z, int val)
   return halfW;
 }
 
-ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 1, int target_noCol = 16);
+ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 4, int target_noCol = 16);
 
 ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp);
 

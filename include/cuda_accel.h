@@ -150,9 +150,9 @@ extern "C"
 #define 		WITH_OPT_BLK_HRM
 //#define 		WITH_OPT_BLK_RSP
 
-#define 		WITH_OPT_PTS_NRM
-#define 		WITH_OPT_PTS_EXP		///< This is generally a very bad idea =/
-#define 		WITH_OPT_PTS_HRM
+#define 		WITH_OPT_PTS_HRM		///< Best option
+#define 		WITH_OPT_PTS_NRM		///< I found this is generally wore than harmonics
+#define 		WITH_OPT_PTS_EXP		///< TESTING: This is generally a very bad idea =/
 //#define 		WITH_OPT_PTS_SHR
 //#define 		WITH_OPT_PTS_RSP
 
@@ -266,13 +266,14 @@ extern "C"
 #define		FLAG_OPT_NRM_MEDIAN2D	BIT(15)		///< Use local 2D Median
 #define		FLAG_OPT_NRM_ALL	( FLAG_OPT_NRM_LOCAVE | FLAG_OPT_NRM_MEDIAN1D | FLAG_OPT_NRM_MEDIAN2D )
 
-#define		FLAG_RES_CLOSE		BIT(17)		///<
-#define		FLAG_RES_FAST		BIT(18)		///<
-#define		FLAG_RES_ALL		( FLAG_RES_CLOSE | FLAG_RES_FAST )
-
 #define		FLAG_OPT_BEST		BIT(20)		///<
 #define		FLAG_OPT_DYN_HW		BIT(21)		///< Use Dynamic half-width in optimisation
 #define		FLAG_OPT_THREAD		BIT(22)		///< Use separate CPU threads for CPU component of optimisation
+
+//		NO_VALUE				///< Dimensions will be leaf exactly as they are (this implies slower points kernel)
+#define		FLAG_RES_CLOSE		BIT(17)		///< Size and resolution will match or exceed that specified but could run a bit slower than optimal
+#define		FLAG_RES_FAST		BIT(18)		///< Size may be slightly smaller but will usually run faster
+#define		FLAG_RES_ALL		( FLAG_RES_CLOSE | FLAG_RES_FAST )
 
 #define		FLAG_OPT_BLK_NRM	BIT(25)		///< Basic blocked kernel - one thread per point in the plane
 #define		FLAG_OPT_BLK_EXP	BIT(26)		///< NOT USED
@@ -288,6 +289,8 @@ extern "C"
 #define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR | FLAG_OPT_PTS_RSP)
 
 #define		FLAG_OPT_KER_ALL	( FLAG_OPT_BLK | FLAG_OPT_PTS )
+
+#define		FLAG_PLN_ALL		( FLAG_OPT_KER_ALL | FLAG_RES_ALL )
 
 // ------------ Debug -------------//	\\ 50 - 63  - COMMOM //
 
