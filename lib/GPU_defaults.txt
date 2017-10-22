@@ -382,6 +382,11 @@ OPT_NELDER_MEAD_REFINE	100
 # D	4			# In my testing 4 came out best and smaller is better
 OPT_BLK_DIVISOR		4
 
+# OPT_BLK_MAX:			When manually calculating sections of f-fdot plane using a blocked kernel, aim for this many steps
+# This is related to warp size and should be 4, 8, 16
+#	int			# Integer value greater than 1 - Suggested: 4, 8, 16
+# D	4			# In my testing 4 came out best and smaller is better
+OPT_BLK_MAX		4
 
 #### The rest are optimisation plane parameters ####
 

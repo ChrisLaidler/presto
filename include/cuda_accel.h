@@ -1030,6 +1030,7 @@ typedef struct confSpecsOpt
     int			optMinRepHarms;			///< The minimum number of harmonics report on
 
     int 		blkDivisor;			///< Make blocks of points divisible by this - this is related to warp size and should be 4, 8, 16 or 32
+    int 		blkMax;				///< The maximum number of columns to use, this can reduce register pressure
 
     int			NelderMeadReps;			///< The number of final, double precision high accuracy, Nelder-Mead refinements to do - 0 dose no additional optimisation
 

@@ -1634,7 +1634,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     if ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) // Use the block kernel  .
     {
       // Set size and resolution
-      err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, 16);
+      err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, conf->blkMax);
 
 #ifdef 	WITH_OPT_PTS_HRM
       if ( plnGen->pln->blkCnt == 1 )

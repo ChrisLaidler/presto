@@ -1732,6 +1732,29 @@ void readAccelDefalts(confSpecs *conf)
 	}
       }
 
+      else if ( strCom("OPT_BLK_MAX", str1 ) )
+      {
+	int no;
+	int read1 = sscanf(str2, "%i", &no  );
+	if ( read1 == 1 )
+	{
+	  if ( no >= 1 && no <= 16 )
+	  {
+	    conf->opt->blkMax = no;
+	  }
+	  else
+	  {
+	    fprintf(stderr,"WARNING: Invalid value, %s should range between %i and %i \n", str1, 1, 16);
+	  }
+	}
+	else
+	{
+	  line[flagLen] = 0;
+	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
+      }
+
+
       else if ( strCom("OPT_MIN_LOC_HARMS", str1 ) )
       {
 	int no;
@@ -2193,6 +2216,7 @@ confSpecs* defaultConfig()
     conf->opt->optResolution	= 16;
     conf->opt->optPlnScale	= 10;		// Decrease plane by an order of magnitude ie /10
     conf->opt->blkDivisor	= 4;		// In my testing 4 came out best
+    conf->opt->blkMax		= 4;		// The maximum block devision to combine
     conf->opt->optMinLocHarms	= 1;
     conf->opt->optMinRepHarms	= 1;
 
