@@ -146,13 +146,15 @@ extern "C"
 
 
 ////////	Optimisation
-#define 		WITH_OPT_BLK_NRM
-#define 		WITH_OPT_BLK_HRM
+#define			MAX_OPT_BLK_NO		16	///< Maximum number of coefficient "reuses" ie blocks in plan by block kernel (less than 16) I found speeds fatten off at some point about 6 or 8 so no point being much bigger
+
+#define 		WITH_OPT_BLK_HRM		///< This is usual the best block kernel
+#define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics
 //#define 		WITH_OPT_BLK_RSP
 
-#define 		WITH_OPT_PTS_HRM		///< Best option
-#define 		WITH_OPT_PTS_NRM		///< I found this is generally wore than harmonics
-#define 		WITH_OPT_PTS_EXP		///< TESTING: This is generally a very bad idea =/
+#define 		WITH_OPT_PTS_HRM		///< This is usual the best kernel
+#define 		WITH_OPT_PTS_NRM		///< I found this is generally worse than harmonics
+//#define 		WITH_OPT_PTS_EXP		///< TESTING: This is generally bad unless dimensions are extremal small
 //#define 		WITH_OPT_PTS_SHR
 //#define 		WITH_OPT_PTS_RSP
 
@@ -165,7 +167,7 @@ extern "C"
 #define		MAX_STACKS		5		///< The maximum number stacks in a family of plains
 #define		MAX_HARM_NO		16		///< The maximum number of harmonics handled by a accel search
 #define		MAX_NO_STAGES		5		///< The maximum number of harmonics handled by a accel search
-#define		MAX_YINDS		8500		///< The maximum number of y indices to store in constant memory - 8500 Works upto ~500
+#define		MAX_YINDS		8500		///< The maximum number of y indices to store in constant memory - 8500 Works up to ~500
 #define		INDS_BUFF		20		///< The buffer at the ends of each pane in the yInds array
 #define		MAX_BATCHES		5		///< The maximum number of batches on a single GPU
 #define		MAX_GPUS		32		///< The maximum number GPU's
@@ -762,7 +764,7 @@ typedef struct fftInfo
 typedef struct candOpt
 {
     float           power;
-    double          r;                  /// TODO: Should this be a double?
+    double          r;
     double          z;
 } candOpt;
 
@@ -1153,7 +1155,7 @@ typedef struct cuFFdotBatch
     rVals*          	rArr2;			///< A pointer to the first value in a full flat list of r arrays used by the batch
 
     rVals***        	rArraysPlane;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
-    rVals***        	rArraysSrch;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index - TODO: I think I can depricate this now?
+    rVals***        	rArraysSrch;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index - TODO: I think I can deprecate this now?
 
 
     ////////////////// Asynchronous CUDA information \\\\\\\\\\\\\\\\\\

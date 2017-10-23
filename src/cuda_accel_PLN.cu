@@ -1133,54 +1133,101 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	// Call the kernel to normalise and spread the input data
 	switch (pln->blkCnt)
 	{
+#if  MAX_OPT_BLK_NO >= 1
 	  case 1:
 	    ffdotPlnByBlk_ker1<T,1> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	  break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 2
 	  case 2:
 	    ffdotPlnByBlk_ker1<T,2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 3
 	  case 3:
 	    ffdotPlnByBlk_ker1<T,3> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 4
 	  case 4:
 	    ffdotPlnByBlk_ker1<T,4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 5
 	  case 5:
 	    ffdotPlnByBlk_ker1<T,5> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 6
 	  case 6:
 	    ffdotPlnByBlk_ker1<T,6> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 7
 	  case 7:
 	    ffdotPlnByBlk_ker1<T,7> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 8
 	  case 8:
 	    ffdotPlnByBlk_ker1<T,8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 9
 	  case 9:
 	    ffdotPlnByBlk_ker1<T,9> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 10
 	  case 10:
 	    ffdotPlnByBlk_ker1<T,10><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 11
 	  case 11:
 	    ffdotPlnByBlk_ker1<T,11><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 12
 	  case 12:
 	    ffdotPlnByBlk_ker1<T,12><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 13
 	  case 13:
 	    ffdotPlnByBlk_ker1<T,13><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 14
 	  case 14:
 	    ffdotPlnByBlk_ker1<T,14><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 15
 	  case 15:
 	    ffdotPlnByBlk_ker1<T,15><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 16
 	  case 16:
 	    ffdotPlnByBlk_ker1<T,16><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
 	  default:
 	  {
 	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
@@ -1210,51 +1257,95 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	// Call the kernel to normalise and spread the input data
 	switch (pln->blkCnt)
 	{
+#if  MAX_OPT_BLK_NO >= 2
 	  case 2:
 	    ffdotPlnByBlk_ker2<T, 2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 3
 	  case 3:
 	    ffdotPlnByBlk_ker2<T, 3> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 4
 	  case 4:
 	    ffdotPlnByBlk_ker2<T, 4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 5
 	  case 5:
 	    ffdotPlnByBlk_ker2<T, 5> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 6
 	  case 6:
 	    ffdotPlnByBlk_ker2<T, 6> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 7
 	  case 7:
 	    ffdotPlnByBlk_ker2<T, 7> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 8
 	  case 8:
 	    ffdotPlnByBlk_ker2<T, 8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 9
 	  case 9:
 	    ffdotPlnByBlk_ker2<T, 9> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 10
 	  case 10:
 	    ffdotPlnByBlk_ker2<T,10> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 11
 	  case 11:
 	    ffdotPlnByBlk_ker2<T,11> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 12
 	  case 12:
 	    ffdotPlnByBlk_ker2<T,12> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 13
 	  case 13:
 	    ffdotPlnByBlk_ker2<T,13> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 14
 	  case 14:
 	    ffdotPlnByBlk_ker2<T,14> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 15
 	  case 15:
 	    ffdotPlnByBlk_ker2<T,15> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 16
 	  case 16:
 	    ffdotPlnByBlk_ker2<T,16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
 	  default:
 	  {
 	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
@@ -1286,55 +1377,102 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	// Call the kernel to normalise and spread the input data
 	switch (pln->blkCnt)
 	{
+#if  MAX_OPT_BLK_NO >= 1
 	  case 1:
 	    // NOTE: in this case I find the points kernel to be a bit faster (~5%)
 	    ffdotPlnByBlk_ker3<T, 1> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 2
 	  case 2:
 	    ffdotPlnByBlk_ker3<T, 2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 3
 	  case 3:
 	    ffdotPlnByBlk_ker3<T, 3> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 4
 	  case 4:
 	    ffdotPlnByBlk_ker3<T, 4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 5
 	  case 5:
 	    ffdotPlnByBlk_ker3<T, 5> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 6
 	  case 6:
 	    ffdotPlnByBlk_ker3<T, 6> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 7
 	  case 7:
 	    ffdotPlnByBlk_ker3<T, 7> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 8
 	  case 8:
 	    ffdotPlnByBlk_ker3<T, 8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 9
 	  case 9:
 	    ffdotPlnByBlk_ker3<T, 9> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 10
 	  case 10:
 	    ffdotPlnByBlk_ker3<T,10> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 11
 	  case 11:
 	    ffdotPlnByBlk_ker3<T,11> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 12
 	  case 12:
 	    ffdotPlnByBlk_ker3<T,12> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 13
 	  case 13:
 	    ffdotPlnByBlk_ker3<T,13> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 14
 	  case 14:
 	    ffdotPlnByBlk_ker3<T,14> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 15
 	  case 15:
 	    ffdotPlnByBlk_ker3<T,15> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
+
+#if  MAX_OPT_BLK_NO >= 16
 	  case 16:
 	    ffdotPlnByBlk_ker3<T,16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
+#endif
 	  default:
 	  {
 	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
@@ -1957,7 +2095,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	  pln->blkCnt		= ceil( ( pln->rSize + 1 / (double)pln->blkDimX ) / pln->blkWidth );
 	  // Can't have blocks wider than 16 - Thread block limit
 	}
-	while ( pln->blkCnt > (double)MIN(16,target_noCol) ); // TODO: Make block count a hash define
+	while ( pln->blkCnt > (double)MIN(MAX_OPT_BLK_NO,target_noCol) );
 
 	if ( pln->blkCnt == 1 )
 	{
@@ -1978,7 +2116,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	// The block widths are set to be nicely divisible numbers, this can make the kernel a bit faster
 
 	// Get initial best values
-	pln->blkWidth		= ceil(pln->rSize / (double)MIN(16,target_noCol) );	// Max column width in Fourier bins TODO: This 16 can be a hash define
+	pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
 	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
 	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
 	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns
