@@ -227,6 +227,223 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
 
 #endif
 
+#ifdef WITH_OPT_BLK_SHF
+/** Plane generation, blocked, point per ff point
+ *
+ * @param pln
+ * @param stream
+ */
+template<int noBlk>
+__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
+{
+  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+
+//  if ( tx == 0 && ty == 0 )
+//  {
+//    printf("Shfl \n");
+//  }
+
+  const int	hIdx	= tx / harmWidth;
+  const int	bx	= tx % harmWidth;
+  const int	iy	= ty;
+  const int	ic	= bx / noBlk;
+  const int	cIdx	= bx % noBlk;			// The index in the cooperative
+  const int	cbase	= ic*noBlk;
+
+  int halfW;
+  int hrm = hIdx+1;
+
+  double	r	= (firstR + ic/(double)(noR-1) * rSZ );
+  double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
+  if (noZ == 1)
+    z = firstZ;
+
+  // Adjust for harmonic
+  r *= hrm;
+  z *= hrm;
+  blkWidth *= hrm;
+
+  FOLD // Determine half width
+  {
+    halfW = getHw<float>(z, hw.val[hIdx]);
+  }
+
+  float2  inp[2];						// The input data, this is a complex number stored as, float2
+  long    dintfreq;						// Integer part of r      - double precision
+  long    start;						// The first bin to use
+  float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+  int     numkern;						// The actual number of kernel values to use
+  float   resReal 	= 0.0f;					// Response value - real
+  float   resImag 	= 0.0f;					// Response value - imaginary
+
+  FOLD 								// Calculate the reference bin (closes integer bin to r)  .
+  {
+    dintfreq	= r;						// TODO: Check this when r is < 0 ?????
+    start	= dintfreq + 1 - halfW ;
+  }
+
+  FOLD 								// Clamp values to usable bounds  .
+  {
+    numkern	= 2 * halfW;
+    offset	= ( r - cIdx*blkWidth - start);			// This is rc-k for the first bin
+  }
+
+  FOLD 								// Adjust for FFT  .
+  {
+    // Adjust to FFT
+    start -= loR.val[hIdx];					// Adjust for accessing the input FFT
+  }
+
+  float2 point;
+  point.x = 0.0f;
+  point.y = 0.0f;
+
+  FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
+  {
+    // Calculate all the constants
+    int signZ		= (z < 0.0f) ? -1 : 1;
+    float absZ		= fabs_t(z);
+    float sqrtAbsZ	= sqrt_t(absZ);
+    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
+    float overSq2AbsZ	= 1.0f / (float)SQRT2 / sqrtAbsZ ;
+    float Qk		= offset - z / 2.0f;			// Adjust for acceleration
+
+    inp[1] = fft[iStride*hIdx + start + cIdx ];
+    //inp[1].x = iStride*hIdx + start + cIdx ; // DBG
+
+//    if ( ty == 0 && ic == 0 )
+//    {
+//      printf("%i ; %7.3f \n", cIdx, inp[1].x );
+//    }
+//    inp[1].x = __shfl(inp[1].x, cbase + (cIdx+1)%noBlk, noBlk );
+//
+//    if ( ty == 0 && ic == 0 )
+//    {
+//      printf("%i ; %7.3f \n", cIdx, inp[1].x );
+//    }
+
+    for ( int i = 0 ; i < numkern; i+=noBlk, Qk-=noBlk, offset-=noBlk)		// Loop over the kernel elements
+    {
+      FOLD 							// Read the input value  .
+      {
+	inp[0] = inp[1];					// Store "previous" input
+	inp[1] = fft[iStride*hIdx + start + cIdx + noBlk + i];	// Read the input value - This can sorta be thought of as the "next" batch of input .
+	//inp[1].x =   iStride*hIdx + start + cIdx + noBlk + i ; // DBG
+      }
+
+//      if ( ty == 0 && ic == 0 && i == 0 )
+//      {
+//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
+//      }
+
+//      if ( ty == 0 && tx ==0  )
+//      {
+//	printf("---\n");
+//      }
+//      if ( ty == 0 && tx < 5 )
+//      {
+//	int inpIdx = iStride*hIdx + start + cIdx + noBlk + i ;
+//	printf("cIdx: %2i  %.3f   inpI: %3i \n", cIdx, offset, inpIdx);
+//      }
+
+      FOLD 							// Calculate coefficients  .
+      {
+	if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
+	{
+	  //calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	  calc_coefficient_z<float, false>(offset, z, &resReal, &resImag);
+	}
+	else							// Calculate approximation coefficients  .
+	{
+	  calc_coefficient_a<float>(offset, z, &resReal, &resImag);
+	}
+      }
+
+      FOLD 							//  Do the multiplication and sum  accumulate  .
+      {
+	float inpuCx = inp[0].x;
+	float inpuCy = inp[0].y;
+
+	for( int idx = 0; idx < noBlk; idx++)
+	{
+	  // TODO: May have to do an end condition check here?
+
+	  int ext   = idx+cIdx;
+	  int aIdx  = ext/noBlk;
+
+	  float resCRea_c = __shfl(resReal, idx, noBlk );
+	  float resImag_c = __shfl(resImag, idx, noBlk );
+
+	  //float inpuCx = __shfl(inp[aIdx].x, ext, noBlk );
+	  //float inpuCy = __shfl(inp[aIdx].y, ext, noBlk );
+
+	  point.x += (resCRea_c * inpuCx - resImag_c * inpuCy);
+	  point.y += (resCRea_c * inpuCy + resImag_c * inpuCx);
+
+	  float ooset = __shfl(offset, idx, noBlk );
+
+//	  if ( tx == 0 && ty == 0 )
+//	  {
+//	    printf("%7.3f ; %7.3f ; %7.3f ; %7.3f  \n", ooset, resCRea_c, inpuCx, r );
+//	  }
+
+	  int srcLane = cbase + (cIdx+1)%noBlk;
+	  inpuCx = __shfl(inpuCx, srcLane, noBlk );
+	  inpuCy = __shfl(inpuCy, srcLane, noBlk );
+	  inp[1].x = __shfl(inp[1].x, srcLane, noBlk );
+	  inp[1].y = __shfl(inp[1].y, srcLane, noBlk );
+
+	  if ( cIdx == noBlk - 1 )
+	  {
+	    inpuCx = inp[1].x;
+	    inpuCy = inp[1].y;
+	  }
+	}
+      }
+
+//      __syncthreads() ; // DBG
+//
+//      if ( ty == 0 && ic == 0 && i == 0 )
+//      {
+//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
+//      }
+//
+//      __syncthreads() ; // DBG
+    }
+  }
+
+  FOLD // Write values back to memory
+  {
+//    if (bx ==7)
+//    {
+//      int tmp = 0;
+//      printf("I am sam\n");
+//    }
+    int ix = cIdx * blkDimX + ic ;
+    if ( ix < noR )
+    {
+      if ( flags & (uint)(FLAG_HAMRS ) )
+      {
+	// Write per harming values
+	if ( flags & (uint)(FLAG_CMPLX) )
+	{
+	  ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
+	}
+	else
+	  powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
+      }
+      else
+      {
+	// Accumulate harmonic to total sum
+	// This has a thread per harmonics so have to use atomic add
+	atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
+      }
+    }
+  }
+}
+#endif
+
 #ifdef WITH_OPT_BLK_HRM
 
 /** Plane generation, blocked, point per ff point per harmonic
@@ -827,6 +1044,8 @@ ACC_ERR_CODE getKerName(cuPlnGen* plnGen, char* name)
     sprintf(name,"%s","BLK_HRM" );
   else if ( plnGen->flags & FLAG_OPT_BLK_RSP )
       sprintf(name,"%s","BLK_RSP" );
+  else if ( plnGen->flags & FLAG_OPT_BLK_SFL )
+      sprintf(name,"%s","BLK_SHL" );
   else if ( plnGen->flags & FLAG_OPT_PTS_NRM )
     sprintf(name,"%s","PTS_NRM" );
   else if ( plnGen->flags & FLAG_OPT_PTS_EXP )
@@ -1484,6 +1703,76 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	err += ACC_ERR_COMPILED;
 #endif
       }
+      else if ( plnGen->flags & FLAG_OPT_BLK_SFL )
+      {
+#ifdef WITH_OPT_BLK_SHF
+	infoMSG(5,5,"Block kernel 3 - Harms");
+
+	dimBlock.x = MIN(32, pln->noR);
+	dimBlock.y = MIN(16, pln->noZ);
+
+	int noX = ceil(pln->noR / (float)dimBlock.x);
+	int harmWidth = noX*dimBlock.x;
+
+	err += zeroPln(plnGen);
+
+	// One block per harmonic, thus we can sort input powers in Shared memory
+	dimGrid.x = noX * pln->noHarms ;
+	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+//	int noX = ceil(pln->blkDimX / (float)dimBlock.x);
+//	int harmWidth = noX*dimBlock.x;
+//
+//	err += zeroPln(plnGen);
+//
+//	// One block per harmonic, thus we can sort input powers in shared memory
+//	dimGrid.x = noX * pln->noHarms ;
+//	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	// Call the kernel to normalise and spread the input data
+	switch (pln->blkCnt)
+	{
+//#if  MAX_OPT_BLK_NO >= 2
+	  case 2:
+	    // NOTE: in this case I find the points kernel to be a bit faster (~5%)
+	    ffdotPlnByShfl_ker<2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	    break;
+//#endif
+
+//#if  MAX_OPT_BLK_NO >= 4
+	  case 4:
+	    ffdotPlnByShfl_ker<4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	    break;
+//#endif
+
+//#if  MAX_OPT_BLK_NO >= 8
+	  case 8:
+	    ffdotPlnByShfl_ker<8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	    break;
+//#endif
+
+//#if  MAX_OPT_BLK_NO >= 16
+	  case 16:
+	    ffdotPlnByShfl_ker<16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	    break;
+//#endif
+
+//#if  MAX_OPT_BLK_NO >= 32
+	  case 32:
+	    ffdotPlnByShfl_ker<32> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	    break;
+//#endif
+	  default:
+	  {
+	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
+	    exit(EXIT_FAILURE);
+	  }
+	}
+#else
+	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
+	err += ACC_ERR_COMPILED;
+#endif
+      }
       else
       {
 	fprintf(stderr, "ERROR: No block optimisation specified.\n");
@@ -2116,7 +2405,10 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	// The block widths are set to be nicely divisible numbers, this can make the kernel a bit faster
 
 	// Get initial best values
-	pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
+	if ( flags & FLAG_OPT_BLK_SFL  )
+	  pln->blkWidth		= ceil(pln->rSize / (double)MIN(32,target_noCol) );	// Max column width in Fourier bins
+	else
+	  pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
 	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
 	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
 	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns

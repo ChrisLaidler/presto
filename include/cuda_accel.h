@@ -150,6 +150,7 @@ extern "C"
 
 #define 		WITH_OPT_BLK_HRM		///< This is usual the best block kernel
 #define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics
+#define			WITH_OPT_BLK_SHF		///< Shuffle block
 //#define 		WITH_OPT_BLK_RSP
 
 #define 		WITH_OPT_PTS_HRM		///< This is usual the best kernel
@@ -278,10 +279,11 @@ extern "C"
 #define		FLAG_RES_ALL		( FLAG_RES_CLOSE | FLAG_RES_FAST )
 
 #define		FLAG_OPT_BLK_NRM	BIT(25)		///< Basic blocked kernel - one thread per point in the plane
-#define		FLAG_OPT_BLK_EXP	BIT(26)		///< NOT USED
+#define		FLAG_OPT_BLK_EXP	BIT(26)		///< NOT USED - Deprecated
 #define		FLAG_OPT_BLK_HRM	BIT(27)		///< Thread per harmonic point (blocked kernel)
 #define		FLAG_OPT_BLK_RSP	BIT(28)		///< Not yet implemented
-#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_RSP )
+#define		FLAG_OPT_BLK_SFL	BIT(29)		///< Shuffle method
+#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_RSP | FLAG_OPT_BLK_SFL )
 
 #define		FLAG_OPT_PTS_NRM	BIT(30)
 #define		FLAG_OPT_PTS_EXP	BIT(31)		///< - NB This returns complex values
