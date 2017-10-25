@@ -790,7 +790,7 @@ __host__ __device__ void rz_coefficients(double r, T z, int kern_half_width, out
       {
 	if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
 	{
-	  calc_coefficient_z<T, true>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resp->x, &resp->y);
+	  calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resp->x, &resp->y);
 	}
 	else							// Calculate approximation coefficients  .
 	{
@@ -888,7 +888,7 @@ __host__ __device__ void rz_convolution_cu(const dataT* inputData, long loR, lon
       {
 	if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
 	{
-	  calc_coefficient_z<T, true>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	  calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
 	}
 	else							// Calculate approximation coefficients  .
 	{
@@ -974,7 +974,7 @@ __host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, lo
       {
 	if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
 	{
-	  calc_coefficient_z<T, true>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	  calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
 	}
 	else							// Calculate approximation coefficients  .
 	{
