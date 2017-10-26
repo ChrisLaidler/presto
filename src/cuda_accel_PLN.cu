@@ -269,7 +269,7 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
     halfW = getHw<float>(z, hw.val[hIdx]);
   }
 
-  float2  inp[2];						// The input data, this is a complex number stored as, float2
+  //float2  inp[2];						// The input data, this is a complex number stored as, float2
   long    dintfreq;						// Integer part of r      - double precision
   long    start;						// The first bin to use
   float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
@@ -286,7 +286,7 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   FOLD 								// Clamp values to usable bounds  .
   {
     numkern	= 2 * halfW;
-    offset	= ( r - cIdx*blkWidth - start);			// This is rc-k for the first bin
+    offset	= ( r - cIdx - start);			// This is rc-k for the first bin
   }
 
   FOLD 								// Adjust for FFT  .
@@ -302,14 +302,14 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
   {
     // Calculate all the constants
-    int signZ		= (z < 0.0f) ? -1 : 1;
+//    int signZ		= (z < 0.0f) ? -1 : 1;
     float absZ		= fabs_t(z);
-    float sqrtAbsZ	= sqrt_t(absZ);
-    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-    float overSq2AbsZ	= 1.0f / (float)SQRT2 / sqrtAbsZ ;
-    float Qk		= offset - z / 2.0f;			// Adjust for acceleration
+//    float sqrtAbsZ	= sqrt_t(absZ);
+//    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
+//    float overSq2AbsZ	= 1.0f / (float)SQRT2 / sqrtAbsZ ;
+//    float Qk		= offset - z / 2.0f;			// Adjust for acceleration
 
-    inp[1] = fft[iStride*hIdx + start + cIdx ];
+    //inp[1] = fft[iStride*hIdx + start + cIdx ];
     //inp[1].x = iStride*hIdx + start + cIdx ; // DBG
 
 //    if ( ty == 0 && ic == 0 )
@@ -323,14 +323,15 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
 //      printf("%i ; %7.3f \n", cIdx, inp[1].x );
 //    }
 
-    for ( int i = 0 ; i < numkern; i+=noBlk, Qk-=noBlk, offset-=noBlk)		// Loop over the kernel elements
+    //for ( int i = 0 ; i < numkern; i+=noBlk, Qk-=noBlk, offset-=noBlk)		// Loop over the kernel elements
+    for ( int i = 0 ; i < numkern; i+=noBlk, offset-=noBlk)	// Loop over the kernel elements
     {
-      FOLD 							// Read the input value  .
-      {
-	inp[0] = inp[1];					// Store "previous" input
-	inp[1] = fft[iStride*hIdx + start + cIdx + noBlk + i];	// Read the input value - This can sorta be thought of as the "next" batch of input .
-	//inp[1].x =   iStride*hIdx + start + cIdx + noBlk + i ; // DBG
-      }
+//      FOLD 							// Read the input value  .
+//      {
+//	inp[0] = inp[1];					// Store "previous" input
+//	inp[1] = fft[iStride*hIdx + start + cIdx + noBlk + i];	// Read the input value - This can sorta be thought of as the "next" batch of input .
+//	//inp[1].x =   iStride*hIdx + start + cIdx + noBlk + i ; // DBG
+//      }
 
 //      if ( ty == 0 && ic == 0 && i == 0 )
 //      {
@@ -362,15 +363,15 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
 
       FOLD 							//  Do the multiplication and sum  accumulate  .
       {
-	float inpuCx = inp[0].x;
-	float inpuCy = inp[0].y;
+	//float inpuCx = inp[0].x;
+	//float inpuCy = inp[0].y;
 
 	for( int idx = 0; idx < noBlk; idx++)
 	{
 	  // TODO: May have to do an end condition check here?
 
-	  int ext   = idx+cIdx;
-	  int aIdx  = ext/noBlk;
+	  //int ext   = idx+cIdx;
+	  //int aIdx  = ext/noBlk;
 
 	  float resCRea_c = __shfl(resReal, idx, noBlk );
 	  float resImag_c = __shfl(resImag, idx, noBlk );
@@ -378,27 +379,31 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
 	  //float inpuCx = __shfl(inp[aIdx].x, ext, noBlk );
 	  //float inpuCy = __shfl(inp[aIdx].y, ext, noBlk );
 
-	  point.x += (resCRea_c * inpuCx - resImag_c * inpuCy);
-	  point.y += (resCRea_c * inpuCy + resImag_c * inpuCx);
+	  float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*blkWidth];
+	  point.x += (resCRea_c * inp.x - resImag_c * inp.y);
+	  point.y += (resCRea_c * inp.y + resImag_c * inp.x);
 
-	  float ooset = __shfl(offset, idx, noBlk );
+	  //point.x += (resCRea_c * inpuCx - resImag_c * inpuCy);
+	  //point.y += (resCRea_c * inpuCy + resImag_c * inpuCx);
+
+	  //float ooset = __shfl(offset, idx, noBlk );
 
 //	  if ( tx == 0 && ty == 0 )
 //	  {
 //	    printf("%7.3f ; %7.3f ; %7.3f ; %7.3f  \n", ooset, resCRea_c, inpuCx, r );
 //	  }
 
-	  int srcLane = cbase + (cIdx+1)%noBlk;
-	  inpuCx = __shfl(inpuCx, srcLane, noBlk );
-	  inpuCy = __shfl(inpuCy, srcLane, noBlk );
-	  inp[1].x = __shfl(inp[1].x, srcLane, noBlk );
-	  inp[1].y = __shfl(inp[1].y, srcLane, noBlk );
-
-	  if ( cIdx == noBlk - 1 )
-	  {
-	    inpuCx = inp[1].x;
-	    inpuCy = inp[1].y;
-	  }
+	  //int srcLane = cbase + (cIdx+1)%noBlk;
+	  //inpuCx = __shfl(inpuCx, srcLane, noBlk );
+	  //inpuCy = __shfl(inpuCy, srcLane, noBlk );
+	  //inp[1].x = __shfl(inp[1].x, srcLane, noBlk );
+	  //inp[1].y = __shfl(inp[1].y, srcLane, noBlk );
+	  //
+	  //if ( cIdx == noBlk - 1 )
+	  //{
+	  //  inpuCx = inp[1].x;
+	  //  inpuCy = inp[1].y;
+	  //}
 	}
       }
 
