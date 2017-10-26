@@ -2412,7 +2412,25 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	if ( flags & FLAG_OPT_BLK_SFL  )
 	{
 	  // Use shuffle kernel
-	  pln->blkCnt		= MIN(32,exp2(ceil(log2(( pln->rSize )))));		// Number of columns
+
+	  FOLD // Select a good power of two number of columns  .
+	  {
+	    //pln->blkCnt		= MIN(32,exp2(ceil(log2(( pln->rSize )))));		// Number of columns
+
+	    double diff = 1.0;
+	    int sz = 32;
+	    while (sz >= 1 )
+	    {
+	      double noCol	= pln->rSize / sz;
+	      diff		= (ceil(noCol)*sz)/pln->rSize;	// Percentage of total
+	      pln->blkCnt	= sz;
+	      if (diff <= 1.2 )
+	      {
+		break;
+	      }
+	      sz/=2;
+	    }
+	  }
 	  pln->blkWidth		= ceil(pln->rSize / (double)pln->blkCnt );		// Max column width in Fourier bins
 	  double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
 	  pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
