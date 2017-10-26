@@ -11,6 +11,8 @@
  *    Moved some functions from optimisation to here
  *    Refactor a bunch of stuff to here
  *
+ *  2017-10-26
+ *    Added the plane - block with shuffle kernels (best block kernel so far)
  */
 
 #include "cuda_accel.h"
@@ -228,21 +230,27 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
 #endif
 
 #ifdef WITH_OPT_BLK_SHF
-/** Plane generation, blocked, point per ff point
+
+/** Plane generation, blocked, thread per ff point
  *
- * @param pln
- * @param stream
+ *  Calculate harmonically related ff points, potently summing values.
+ *
+ *  This kernel is designed for vales where the width (r) of the plane created is bigger than 1, allowing the sharing of common coefficients
+ *
+ *  This kernel uses shuffle operations to share common coefficients with threads in a warp
+ *  It is as fairly fast running as fast as 50 clock cycles per coefficient summed
+ *
+ *  To have common coefficients the points must have integer spacing, the number of points with a common integer spacing
+ *  are those that share coefficients, these are shared in warp so natural max of 32.
+ *
+ *  The way this is structured, the number shared 'noColumns' must be a power of two <= 32
+ *
  */
 //template<int noBlk>
 __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
 {
   const int tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int ty = blockIdx.y * blockDim.y + threadIdx.y;
-
-  //  if ( tx == 0 && ty == 0 )
-  //  {
-  //    printf("Shfl \n");
-  //  }
 
   const int	hIdx	= tx / harmWidth;
   const int	hrm	= hIdx+1;
@@ -255,19 +263,21 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   FOLD // Check for a better width  .
   {
     int width	= colWidth*noColumns;
-    //int noX	= noOffsets*noColumns;
     while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
     {
       noOffsets = noOffsets>>1;
       noColumns = noColumns<<1;
       colWidth = colWidth>>1;
     }
+//    if ( bx == 0 && iy == 0 )
+//    {
+//      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
+//    }
   }
 
   // Calculate cooperative specific values
   const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
   const int	cIdx	= bx % noColumns;			// The index in the cooperative
-  //const int	cbase	= ic*noColumns;
 
   //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
   {
@@ -318,134 +328,40 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
     FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
     {
       // Calculate all the constants
-      //    int signZ		= (z < 0.0f) ? -1 : 1;
-      float absZ		= fabs_t(z);
-      //    float sqrtAbsZ	= sqrt_t(absZ);
-      //    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-      //    float overSq2AbsZ	= 1.0f / (float)SQRT2 / sqrtAbsZ ;
-      //    float Qk		= offset - z / 2.0f;			// Adjust for acceleration
 
-      //inp[1] = fft[iStride*hIdx + start + cIdx ];
-      //inp[1].x = iStride*hIdx + start + cIdx ; // DBG
-
-      //    if ( ty == 0 && ic == 0 )
-      //    {
-      //      printf("%i ; %7.3f \n", cIdx, inp[1].x );
-      //    }
-      //    inp[1].x = __shfl(inp[1].x, cbase + (cIdx+1)%noBlk, noBlk );
-      //
-      //    if ( ty == 0 && ic == 0 )
-      //    {
-      //      printf("%i ; %7.3f \n", cIdx, inp[1].x );
-      //    }
-
-      //for ( int i = 0 ; i < numkern; i+=noBlk, Qk-=noBlk, offset-=noBlk)		// Loop over the kernel elements
       for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
       {
-	//      FOLD 							// Read the input value  .
-	//      {
-	//	inp[0] = inp[1];					// Store "previous" input
-	//	inp[1] = fft[iStride*hIdx + start + cIdx + noBlk + i];	// Read the input value - This can sorta be thought of as the "next" batch of input .
-	//	//inp[1].x =   iStride*hIdx + start + cIdx + noBlk + i ; // DBG
-	//      }
-
-	//      if ( ty == 0 && ic == 0 && i == 0 )
-	//      {
-	//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
-	//      }
-
-	//      if ( ty == 0 && tx ==0  )
-	//      {
-	//	printf("---\n");
-	//      }
-	//      if ( ty == 0 && tx < 5 )
-	//      {
-	//	int inpIdx = iStride*hIdx + start + cIdx + noBlk + i ;
-	//	printf("cIdx: %2i  %.3f   inpI: %3i \n", cIdx, offset, inpIdx);
-	//      }
-
 	FOLD 							// Calculate coefficients  .
 	{
-	  if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
-	  {
-	    //calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
-	    calc_coefficient_z<float, false>(offset, z, &resReal, &resImag);
-	  }
-	  else							// Calculate approximation coefficients  .
-	  {
-	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
-	  }
+	  calc_coefficient<float>(offset, z, &resReal, &resImag);
 	}
 
 	FOLD 							//  Do the multiplication and sum  accumulate  .
 	{
-	  //float inpuCx = inp[0].x;
-	  //float inpuCy = inp[0].y;
-
 	  for( int idx = 0; idx < noColumns; idx++)
 	  {
 	    // TODO: May have to do an end condition check here?
 
-	    //int ext   = idx+cIdx;
-	    //int aIdx  = ext/noBlk;
+	    // Read input - These reads are generally coalesced
+	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
+	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
 
 	    float resCRea_c = __shfl(resReal, idx, noColumns );
 	    float resImag_c = __shfl(resImag, idx, noColumns );
 
-	    //float inpuCx = __shfl(inp[aIdx].x, ext, noBlk );
-	    //float inpuCy = __shfl(inp[aIdx].y, ext, noBlk );
-
-	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
 	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
 	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
-
-	    //point.x += (resCRea_c * inpuCx - resImag_c * inpuCy);
-	    //point.y += (resCRea_c * inpuCy + resImag_c * inpuCx);
-
-	    //float ooset = __shfl(offset, idx, noBlk );
-
-	    //	  if ( tx == 0 && ty == 0 )
-	    //	  {
-	    //	    printf("%7.3f ; %7.3f ; %7.3f ; %7.3f  \n", ooset, resCRea_c, inpuCx, r );
-	    //	  }
-
-	    //int srcLane = cbase + (cIdx+1)%noBlk;
-	    //inpuCx = __shfl(inpuCx, srcLane, noBlk );
-	    //inpuCy = __shfl(inpuCy, srcLane, noBlk );
-	    //inp[1].x = __shfl(inp[1].x, srcLane, noBlk );
-	    //inp[1].y = __shfl(inp[1].y, srcLane, noBlk );
-	    //
-	    //if ( cIdx == noBlk - 1 )
-	    //{
-	    //  inpuCx = inp[1].x;
-	    //  inpuCy = inp[1].y;
-	    //}
 	  }
 	}
-
-	//      __syncthreads() ; // DBG
-	//
-	//      if ( ty == 0 && ic == 0 && i == 0 )
-	//      {
-	//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
-	//      }
-	//
-	//      __syncthreads() ; // DBG
       }
     }
 
-    //FOLD // Write values back to memory
-    if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
+    FOLD // Write values back to memory
     {
-      //    if (bx ==7)
-      //    {
-      //      int tmp = 0;
-      //      printf("I am sam\n");
-      //    }
-
-      int ix = cIdx * noOffsets + ic ;
-      //if ( ix < noR )
+      if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
       {
+	int ix = cIdx * noOffsets + ic ;
+
 	if ( flags & (uint)(FLAG_HAMRS ) )
 	{
 	  // Write per harming values
@@ -454,7 +370,9 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
 	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
 	  }
 	  else
+	  {
 	    powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
+	  }
 	}
 	else
 	{
@@ -1067,9 +985,9 @@ ACC_ERR_CODE getKerName(cuPlnGen* plnGen, char* name)
   else if ( plnGen->flags & FLAG_OPT_BLK_HRM )
     sprintf(name,"%s","BLK_HRM" );
   else if ( plnGen->flags & FLAG_OPT_BLK_RSP )
-      sprintf(name,"%s","BLK_RSP" );
+    sprintf(name,"%s","BLK_RSP" );
   else if ( plnGen->flags & FLAG_OPT_BLK_SFL )
-      sprintf(name,"%s","BLK_SHL" );
+    sprintf(name,"%s","BLK_SHL" );
   else if ( plnGen->flags & FLAG_OPT_PTS_NRM )
     sprintf(name,"%s","PTS_NRM" );
   else if ( plnGen->flags & FLAG_OPT_PTS_EXP )
@@ -1353,7 +1271,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
     {
       infoMSG(4,4,"Block kernel [ No threads %i  Width %i no Blocks %i]\n", (int)pln->blkDimX, pln->blkWidth, pln->blkCnt);
 
-      if      ( plnGen->flags & FLAG_OPT_BLK_NRM )		// Use basic block kernel
+      if      ( plnGen->flags & FLAG_OPT_BLK_NRM )	// Use basic block kernel
       {
 #ifdef WITH_OPT_BLK_NRM
 
@@ -1600,7 +1518,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	err += ACC_ERR_COMPILED;
 #endif
       }
-      else if ( plnGen->flags & FLAG_OPT_BLK_HRM )
+      else if ( plnGen->flags & FLAG_OPT_BLK_HRM )	// Shared coefficients by storing running summs in registers - starts to still at 8 which is a bit low
       {
 #ifdef WITH_OPT_BLK_HRM
 	infoMSG(5,5,"Block kernel 3 - Harms");
@@ -1727,12 +1645,11 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	err += ACC_ERR_COMPILED;
 #endif
       }
-      else if ( plnGen->flags & FLAG_OPT_BLK_SFL )
+      else if ( plnGen->flags & FLAG_OPT_BLK_SFL )	// Kepler shuffle commands - Nice and fast!
       {
 #ifdef WITH_OPT_BLK_SHF
-	infoMSG(5,5,"Block kernel 3 - Harms");
+	infoMSG(5,5,"Block kernel 4 - Shuffle");
 
-	//dimBlock.x = MIN(MAX(MAX_OPT_SFL_NO,16), pln->noR);
 	dimBlock.x = MAX(MAX_OPT_SFL_NO,16);				// This max ensures all values are in a single warp
 	dimBlock.y = MIN(16, pln->noZ);
 
@@ -1745,41 +1662,9 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	dimGrid.x = noX * pln->noHarms ;
 	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
-//	int noX = ceil(pln->blkDimX / (float)dimBlock.x);
-//	int harmWidth = noX*dimBlock.x;
-//
-//	err += zeroPln(plnGen);
-//
-//	// One block per harmonic, thus we can sort input powers in shared memory
-//	dimGrid.x = noX * pln->noHarms ;
-//	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
+	// Call the kernel to normalise and spread the input data
 	ffdotPlnByShfl_ker<<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
 
-//	// Call the kernel to normalise and spread the input data
-//	switch (pln->blkCnt)
-//	{
-//	  case 2:
-//	    ffdotPlnByShfl_ker<2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	    break;
-//	  case 4:
-//	    ffdotPlnByShfl_ker<4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	    break;
-//	  case 8:
-//	    ffdotPlnByShfl_ker<8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	    break;
-//	  case 16:
-//	    ffdotPlnByShfl_ker<16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	    break;
-//	  case 32:
-//	    ffdotPlnByShfl_ker<32> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	    break;
-//	  default:
-//	  {
-//	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
-//	    exit(EXIT_FAILURE);
-//	  }
-//	}
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
 	err += ACC_ERR_COMPILED;
@@ -1793,8 +1678,6 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
     }
     else						// Use normal kernel
     {
-      infoMSG(4,4,"Grid kernel");
-
       infoMSG(4,4,"Grid kernel\n");
 
       dimBlock.x = 16;
@@ -2057,7 +1940,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
   ACC_ERR_CODE	err		= ACC_ERR_NONE;
   confSpecsOpt*	conf		= plnGen->conf;
 
-  infoMSG(4,4,"Prep optimiser.\n");
+  infoMSG(4,4,"Prep plain generato.\n");
 
   FOLD // Determine optimisation kernels  .
   {
@@ -2066,70 +1949,63 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkWidth	= 1;
     plnGen->pln->blkDimX	= plnGen->pln->noR;
     char kerName[20];
+    double dup2pad_ratio;
 
     // Clear all "local" kernels
     err += remOptFlag(plnGen, FLAG_PLN_ALL );
 
-    if ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) // Use the block kernel  .
+    FOLD // Calculate ratio of redundant duplicates vs padding (points) for block kernels
+    {
+      double padSum = 0;
+      double dupSum = 0;
+
+      for ( int harm =1; harm <= plnGen->pln->noHarms ; harm++)
+      {
+	double rSz = plnGen->pln->rSize*harm;
+	double pad = (ceil(rSz)-rSz)/rSz*plnGen->pln->noR ;
+	double dup = MAX(0, rSz-1)/rSz*plnGen->pln->noR ;
+
+	padSum += pad;
+	dupSum += dup;
+      }
+      dup2pad_ratio = (dupSum) / (padSum+1) ;		// +1 just to stop devision by zero
+
+      infoMSG(7,7,"Padding to Duplicates of %.0f:%.0f (1:%.2f) .\n", padSum, dupSum, dup2pad_ratio);
+    }
+
+    if ( ( dup2pad_ratio > 2 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel  .
     {
       // Set size and resolution
       err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, conf->blkMax);
 
-#ifdef 	WITH_OPT_PTS_HRM
-      if ( plnGen->pln->blkCnt == 1 )
+      // Set column section flags
+      err += setOptFlag(plnGen, (conf->flags & FLAG_RES_ALL) );
+
+      if ( !(conf->flags & FLAG_OPT_BLK) )	// Auto select block kernel
       {
-	infoMSG(6,6,"Only one block, so going to use points kernel.\n");
-
-	// In my testing a single block is faster with the points kernel
-	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
-
-	getKerName(plnGen, kerName);
-	infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
-      }
-      else
-#elif	defined(WITH_OPT_PTS_NRM)
-      if ( plnGen->pln->blkCnt == 1 )
-      {
-	infoMSG(6,6,"Only one block, so going to use points kernel.\n");
-
-	// In my testing a single block is faster with the points kernel
-	err += setOptFlag(plnGen, FLAG_OPT_PTS_NRM );
-
-	getKerName(plnGen, kerName);
-	infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
-      }
-      else
-#endif
-      {
-	// Really use a block kernel
-
-	// Set column section flags
-	err += setOptFlag(plnGen, (conf->flags & FLAG_RES_ALL) );
-
-	if ( !(conf->flags & FLAG_OPT_BLK) )	// Auto select block kernel
-	{
-	  // No points kernel so get one
-#if	defined(WITH_OPT_BLK_HRM)
-	  err += setOptFlag(plnGen, FLAG_OPT_BLK_HRM );
+	// No points kernel so get one
+#if	defined(WITH_OPT_BLK_SHF)
+	err += setOptFlag(plnGen, FLAG_OPT_BLK_SFL );
+#elif	defined(WITH_OPT_BLK_HRM)
+	err += setOptFlag(plnGen, FLAG_OPT_BLK_HRM );
 #elif	defined(WITH_OPT_BLK_NRM)
-	  err += setOptFlag(plnGen, FLAG_OPT_BLK_NRM );
+	err += setOptFlag(plnGen, FLAG_OPT_BLK_NRM );
 #elif	defined(WITH_OPT_BLK_RSP)
-	  err += setOptFlag(plnGen, FLAG_OPT_BLK_RSP );
+	err += setOptFlag(plnGen, FLAG_OPT_BLK_RSP );
 #else
-	  fprintf(stderr,"ERROR: Not compiled with any per point block creation kernels.")
-	  err += ACC_ERR_COMPILED;
+	fprintf(stderr,"ERROR: Not compiled with any per point block creation kernels.")
+	err += ACC_ERR_COMPILED;
 #endif
-	  getKerName(plnGen, kerName);
-	  infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
-	}
-	else
-	{
-	  // Set block kernel from "global" settings
-	  err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_BLK) );
+	getKerName(plnGen, kerName);
+	infoMSG(6,6,"Auto select block kernel %s.\n", kerName);
+      }
+      else
+      {
+	// Set block kernel from "global" settings
+	err += setOptFlag(plnGen, (conf->flags & FLAG_OPT_BLK) );
 
-	  getKerName(plnGen, kerName);
-	  infoMSG(6,6,"Specified block Kernel %s\n", kerName );
-	}
+	getKerName(plnGen, kerName);
+	infoMSG(6,6,"Specified block Kernel %s\n", kerName );
       }
     }
     else
@@ -2365,128 +2241,131 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
   FOLD // Determine optimisation kernels  .
   {
-    if ( pln->rSize <= 1.0 )
+    infoMSG(6,6,"Orr  #R: %3i  Sz: %9.6f  Res: %9.6f \n", pln->noR, pln->rSize, pln->rSize/(double)(pln->noR-1) );
+
+#ifdef WITH_OPT_BLK_SHF
+    if ( flags & FLAG_OPT_BLK_SFL  )
     {
-      pln->blkWidth	= 1;
-      pln->blkCnt	= 1;
+      // Use shuffle kernel
 
-      if ( flags & FLAG_RES_FAST  )
-	pln->blkDimX	= ceil( pln->noR / (double)colDivisor ) * colDivisor ;
+      FOLD // Select a good power of two number of columns  .
+      {
+	if ( pln->rSize > 8 )	// TODO: Determine this bound
+	{
+	  double diff = 1.0;
+	  int sz = MAX_OPT_SFL_NO;
+	  while (sz >= 1 )
+	  {
+	    double noCol	= pln->rSize / sz;
+	    diff		= (ceil(noCol)*sz)/pln->rSize;	// Percentage of total
+	    pln->blkCnt	= sz;
+	    if (diff <= 1.25 )	//
+	    {
+	      // This allows the final plane to be a bit bigger at a multiple of a good power of two
+	      break;
+	    }
+	    sz/=2;
+	  }
+	}
+	else if ( pln->rSize > 1 )
+	{
+	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,exp2(ceil(log2(pln->rSize))));	// Closes power of tow greater than the plane size
+	}
+	else
+	{
+	  // Smaller than one so pretty much have to have a width of 1
+	  pln->blkCnt	= 1;
+	}
+      }
+
+      // Other settings are now set using the column width
+      // The size and dimension may change significantly but the resolution will be similar or higher (same "accuracy")
+      // NOTE: The number of points is set to fill the columns, thus ensures that potently higher harmonics can still be calculated exploiting redundant calculations
+      // TODO: Check width 1
+      pln->blkWidth	= ceil(pln->rSize / (double)pln->blkCnt );			// Max column width in Fourier bins
+      double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );		// Calculate the number of threads per column
+      pln->blkDimX	= ceil(rPerBlock/(double)colDivisor)*colDivisor;		// Make the column width divisible (this can speed up processing)
+
+      pln->noR		= pln->blkCnt * pln->blkDimX;					// This is necessary for this kernel
+      pln->rSize	= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);		//
+    }
+    else
+#endif
+    if      ( flags & FLAG_RES_CLOSE )
+    {
+      // This method tries to create a block structure that is close to the original
+      // The size will always be same or larger than that specified
+      // And the resolution will be the same of finer than that specified
+
+      // TODO: Check noR on fermi cards, the increased registers may justify using larger blocks widths
+      do
+      {
+	pln->blkWidth++;
+	pln->blkDimX		= ceil( pln->blkWidth * (pln->noR-1) / pln->rSize );
+	MINN(pln->blkDimX, pln->noR );
+	pln->blkCnt		= ceil( ( pln->rSize + 1 / (double)pln->blkDimX ) / pln->blkWidth );
+	// Can't have blocks wider than 16 - Thread block limit
+      }
+      while ( pln->blkCnt > (double)MIN(MAX_OPT_BLK_NO,target_noCol) );
+
+      if ( pln->blkCnt == 1 )
+      {
+	pln->blkDimX		= pln->noR;
+      }
       else
-	pln->blkDimX	= pln->noR;
+      {
+	pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1 ;
+	pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
+      }
+    }
+    else if ( flags & FLAG_RES_FAST  )
+    {
+      // This method attempts to choose the parameters so as to be computationally fast
+      // This speed is obtained at the "cost" of the size and resolution of the plane section created.
+      // Generally the resolution will be higher than the original
+      // The final width may be slightly smaller (by one resolution point)
+      // The block widths are set to be nicely divisible numbers, this can make the kernel a bit faster
 
-      pln->noR		= pln->blkDimX;
+      // Get initial best values
+
+      {
+	pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
+	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
+	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
+	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns
+
+	// Check if we should increase column width
+	if( rPerBlock < (double)colDivisor*0.80 )
+	{
+	  // NOTE: Could look for higher divisors ie 3/2
+	  pln->blkCnt		= ceil(pln->noR/(double)colDivisor);
+	  pln->blkDimX		= colDivisor;
+	  pln->blkWidth		= floor(pln->rSize/(double)pln->blkCnt);
+	}
+
+	pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1; // May as well get close but above
+	pln->noR		= ceil( pln->noR / (double)colDivisor ) * colDivisor ;	// Make the column width divisible (this can speed up processing)
+	if ( pln->noR > pln->blkCnt * pln->blkDimX )
+	  pln->noR		= pln->blkCnt * pln->blkDimX;				// This is the reduction that reduces the size of the final plane to one resolution point less than the "desired" width
+	pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
+      }
     }
     else
     {
-      infoMSG(6,6,"Orr  #R: %3i  Sz: %9.6f  Res: %9.6f \n", pln->noR, pln->rSize, pln->rSize/(double)(pln->noR-1) );
+      // This will do the convolution exactly as is
+      // NOTE: If the resolution is a "good" value there is still the possibility to do it with blocks - Not yet implemented
+      // That would require some form of prime factorisation of numerator and denominator (I think), this could still be implemented
 
-      if      ( flags & FLAG_RES_CLOSE )
-      {
-	// This method tries to create a block structure that is close to the original
-	// The size will always be same or larger than that specified
-	// And the resolution will be the same of finer than that specified
-	
-	// TODO: Check noR on fermi cards, the increased registers may justify using larger blocks widths
-	do
-	{
-	  pln->blkWidth++;
-	  pln->blkDimX		= ceil( pln->blkWidth * (pln->noR-1) / pln->rSize );
-	  MINN(pln->blkDimX, pln->noR );
-	  pln->blkCnt		= ceil( ( pln->rSize + 1 / (double)pln->blkDimX ) / pln->blkWidth );
-	  // Can't have blocks wider than 16 - Thread block limit
-	}
-	while ( pln->blkCnt > (double)MIN(MAX_OPT_BLK_NO,target_noCol) );
-
-	if ( pln->blkCnt == 1 )
-	{
-	  pln->blkDimX		= pln->noR;
-	}
-	else
-	{
-	  pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1 ;
-	  pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
-	}
-      }
-      else if ( flags & FLAG_RES_FAST  )
-      {
-	// This method attempts to choose the parameters so as to be computationally fats
-	// This speed is obtained at the "cost" of the size and resolution of the plane section created.
-	// Generally the resolution will be higher than the original
-	// The final width may be slightly smaller (by one resolution)
-	// The block widths are set to be nicely divisible numbers, this can make the kernel a bit faster
-
-	// Get initial best values
-	if ( flags & FLAG_OPT_BLK_SFL  )
-	{
-	  // Use shuffle kernel
-
-	  FOLD // Select a good power of two number of columns  .
-	  {
-	    //pln->blkCnt		= MIN(32,exp2(ceil(log2(( pln->rSize )))));		// Number of columns
-
-	    double diff = 1.0;
-	    int sz = MAX_OPT_SFL_NO;
-	    while (sz >= 1 )
-	    {
-	      double noCol	= pln->rSize / sz;
-	      diff		= (ceil(noCol)*sz)/pln->rSize;	// Percentage of total
-	      pln->blkCnt	= sz;
-	      //if (diff <= 1.125 )
-	      if (diff <= 1.2 )
-	      {
-		break;
-	      }
-	      sz/=2;
-	    }
-	  }
-	  pln->blkWidth		= ceil(pln->rSize / (double)pln->blkCnt );		// Max column width in Fourier bins
-	  double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
-	  pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
-
-	  pln->noR		= pln->blkCnt * pln->blkDimX;				// This is the reduction that reduces the size of the final plane to one resolution point less than the "desired" width
-	  pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
-	}
-	else
-	{
-	  pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
-	  double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
-	  pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
-	  pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns
-
-	  // Check if we should increase column width
-	  if( rPerBlock < (double)colDivisor*0.80 )
-	  {
-	    // NOTE: Could look for higher divisors ie 3/2
-	    pln->blkCnt		= ceil(pln->noR/(double)colDivisor);
-	    pln->blkDimX	= colDivisor;
-	    pln->blkWidth	= floor(pln->rSize/(double)pln->blkCnt);
-	  }
-
-	  pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1; // May as well get close but above
-	  pln->noR		= ceil( pln->noR / (double)colDivisor ) * colDivisor ;	// Make the column width divisible (this can speed up processing)
-	  if ( pln->noR > pln->blkCnt * pln->blkDimX )
-	    pln->noR		= pln->blkCnt * pln->blkDimX;				// This is the reduction that reduces the size of the final plane to one resolution point less than the "desired" width
-	  pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
-	}
-      }
-      else
-      {
-	// This will do the convolution exactly as is
-	// NOTE: If the resolution is a "good" value there is still the possibility to do it with blocks - Not yet implemented
-	// That would require some form of prime factorisation of numerator and denominator (I think), this could still be implemented
-
-	pln->blkDimX		= pln->noR;
-	pln->blkWidth		= 1;
-	pln->blkCnt		= 1;
-      }
-
-      infoMSG(6,6,"New  #R: %3i  Sz: %9.6f  Res: %9.6f  - Col Width: %2i  -  No cols: %.2f  -  col DimX: %2i \n", pln->noR, pln->rSize, pln->rSize/(double)(pln->noR-1), pln->blkWidth, pln->noR / (double)pln->blkDimX, pln->blkDimX );
+      pln->blkDimX		= pln->noR;
+      pln->blkWidth		= 1;
+      pln->blkCnt		= 1;
     }
 
-    // All kernels use the same output stride - These values can be changed later to suite a specific GPU memory alignment and data type
-    pln->zStride		= pln->noR;
+    infoMSG(6,6,"New  #R: %3i  Sz: %9.6f  Res: %9.6f  - Col Width: %2i  -  No cols: %.2f  -  col DimX: %2i \n", pln->noR, pln->rSize, pln->rSize/(double)(pln->noR-1), pln->blkWidth, pln->noR / (double)pln->blkDimX, pln->blkDimX );
   }
+
+  // All kernels use the same output stride - These values can be changed later to suite a specific GPU memory alignment and data type
+  pln->zStride		= pln->noR;
 
   infoMSG(5,5,"Size (%.6f x %.6f) Points (%i x %i) %i  Resolution: %.7f r  %.7f z.\n", pln->rSize,pln->zSize, pln->noR, pln->noZ, pln->noR*pln->noZ, pln->rSize/double(pln->noR-1), pln->zSize/double(pln->noZ-1) );
 

@@ -149,10 +149,10 @@ extern "C"
 #define			MAX_OPT_BLK_NO		16	///< Maximum number of coefficient "reuses" ie blocks in plan by block kernel (less than 16) I found speeds fatten off at some point about 6 or 8 so no point being much bigger
 #define			MAX_OPT_SFL_NO		32	///< Maximum number columns in shuffle kernel - power of 2 <= 32
 
-#define 		WITH_OPT_BLK_HRM		///< This is usual the best block kernel
-#define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics
-#define			WITH_OPT_BLK_SHF		///< Shuffle block
-//#define 		WITH_OPT_BLK_RSP
+#define			WITH_OPT_BLK_SHF		///< This is usual the best block kernel - Share common coefficients using shuffle block
+#define 		WITH_OPT_BLK_HRM		///< This is good as an alternative to Shuffle
+#define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics - This can get deprecated
+//#define 		WITH_OPT_BLK_RSP		///< Depricated
 
 #define 		WITH_OPT_PTS_HRM		///< This is usual the best kernel
 #define 		WITH_OPT_PTS_NRM		///< I found this is generally worse than harmonics
@@ -279,16 +279,18 @@ extern "C"
 #define		FLAG_RES_FAST		BIT(18)		///< Size may be slightly smaller but will usually run faster
 #define		FLAG_RES_ALL		( FLAG_RES_CLOSE | FLAG_RES_FAST )
 
+//		NO_VALUE				///< Auto determine ie. use shuffle
 #define		FLAG_OPT_BLK_NRM	BIT(25)		///< Basic blocked kernel - one thread per point in the plane
 #define		FLAG_OPT_BLK_EXP	BIT(26)		///< NOT USED - Deprecated
-#define		FLAG_OPT_BLK_HRM	BIT(27)		///< Thread per harmonic point (blocked kernel)
+#define		FLAG_OPT_BLK_HRM	BIT(27)		///< Share calc common coefficients once use running sum per location - starts to still at 8 which is a bit low
 #define		FLAG_OPT_BLK_RSP	BIT(28)		///< Not yet implemented
-#define		FLAG_OPT_BLK_SFL	BIT(29)		///< Shuffle method
+#define		FLAG_OPT_BLK_SFL	BIT(29)		///< Share coefficients using shuffle - sums held by threads - Fates - limited to power of two's  (or multiples of powers of two)
 #define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_RSP | FLAG_OPT_BLK_SFL )
 
+//		NO_VALUE				///< Auto determine
 #define		FLAG_OPT_PTS_NRM	BIT(30)
 #define		FLAG_OPT_PTS_EXP	BIT(31)		///< - NB This returns complex values
-#define		FLAG_OPT_PTS_HRM	BIT(32)		///< Thread per harmonic point
+#define		FLAG_OPT_PTS_HRM	BIT(32)		///< Standard fastest - Thread per point per harmonic point
 #define		FLAG_OPT_PTS_SHR	BIT(33)
 #define		FLAG_OPT_PTS_RSP	BIT(34)
 #define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR | FLAG_OPT_PTS_RSP)
