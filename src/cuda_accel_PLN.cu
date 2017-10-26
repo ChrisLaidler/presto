@@ -1739,7 +1739,6 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	{
 //#if  MAX_OPT_BLK_NO >= 2
 	  case 2:
-	    // NOTE: in this case I find the points kernel to be a bit faster (~5%)
 	    ffdotPlnByShfl_ker<2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
 	    break;
 //#endif
@@ -2411,27 +2410,38 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
 	// Get initial best values
 	if ( flags & FLAG_OPT_BLK_SFL  )
-	  pln->blkWidth		= ceil(pln->rSize / (double)MIN(32,target_noCol) );	// Max column width in Fourier bins
-	else
-	  pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
-	double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
-	pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
-	pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns
-
-	// Check if we should increase column width
-	if( rPerBlock < (double)colDivisor*0.80 )
 	{
-	  // NOTE: Could look for higher divisors ie 3/2
-	  pln->blkCnt		= ceil(pln->noR/(double)colDivisor);
-	  pln->blkDimX		= colDivisor;
-	  pln->blkWidth		= floor(pln->rSize/(double)pln->blkCnt);
-	}
+	  // Use shuffle kernel
+	  pln->blkCnt		= MIN(32,exp2(ceil(log2(( pln->rSize )))));		// Number of columns
+	  pln->blkWidth		= ceil(pln->rSize / (double)pln->blkCnt );		// Max column width in Fourier bins
+	  double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
+	  pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
 
-	pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1; // May as well get close but above
-	pln->noR		= ceil( pln->noR / (double)colDivisor ) * colDivisor ;	// Make the column width divisible (this can speed up processing)
-	if ( pln->noR > pln->blkCnt * pln->blkDimX )
 	  pln->noR		= pln->blkCnt * pln->blkDimX;				// This is the reduction that reduces the size of the final plane to one resolution point less than the "desired" width
-	pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
+	  pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
+	}
+	else
+	{
+	  pln->blkWidth		= ceil(pln->rSize / (double)MIN(MAX_OPT_BLK_NO,target_noCol) );	// Max column width in Fourier bins
+	  double rPerBlock	= pln->noR / ( pln->rSize / (double)pln->blkWidth );	// Calculate the number of threads per column
+	  pln->blkDimX		= ceil(rPerBlock/(double)colDivisor)*colDivisor;	// Make the column width divisible (this can speed up processing)
+	  pln->blkCnt		= ceil( ( pln->rSize ) / pln->blkWidth );		// Number of columns
+
+	  // Check if we should increase column width
+	  if( rPerBlock < (double)colDivisor*0.80 )
+	  {
+	    // NOTE: Could look for higher divisors ie 3/2
+	    pln->blkCnt		= ceil(pln->noR/(double)colDivisor);
+	    pln->blkDimX	= colDivisor;
+	    pln->blkWidth	= floor(pln->rSize/(double)pln->blkCnt);
+	  }
+
+	  pln->noR		= ceil( pln->rSize / (double)(pln->blkWidth) * (pln->blkDimX) ) + 1; // May as well get close but above
+	  pln->noR		= ceil( pln->noR / (double)colDivisor ) * colDivisor ;	// Make the column width divisible (this can speed up processing)
+	  if ( pln->noR > pln->blkCnt * pln->blkDimX )
+	    pln->noR		= pln->blkCnt * pln->blkDimX;				// This is the reduction that reduces the size of the final plane to one resolution point less than the "desired" width
+	  pln->rSize		= (pln->noR-1)*(pln->blkWidth)/double(pln->blkDimX);
+	}
       }
       else
       {
