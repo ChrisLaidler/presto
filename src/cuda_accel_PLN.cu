@@ -233,216 +233,235 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
  * @param pln
  * @param stream
  */
-template<int noBlk>
-__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
+//template<int noBlk>
+__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
 {
   const int tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int ty = blockIdx.y * blockDim.y + threadIdx.y;
 
-//  if ( tx == 0 && ty == 0 )
-//  {
-//    printf("Shfl \n");
-//  }
+  //  if ( tx == 0 && ty == 0 )
+  //  {
+  //    printf("Shfl \n");
+  //  }
 
   const int	hIdx	= tx / harmWidth;
+  const int	hrm	= hIdx+1;
   const int	bx	= tx % harmWidth;
   const int	iy	= ty;
-  const int	ic	= bx / noBlk;
-  const int	cIdx	= bx % noBlk;			// The index in the cooperative
-  const int	cbase	= ic*noBlk;
-
-  int halfW;
-  int hrm = hIdx+1;
-
-  double	r	= (firstR + ic/(double)(noR-1) * rSZ );
-  double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
-  if (noZ == 1)
-    z = firstZ;
 
   // Adjust for harmonic
-  r *= hrm;
-  z *= hrm;
-  blkWidth *= hrm;
+  colWidth *= hrm;
 
-  FOLD // Determine half width
+  FOLD // Check for a better width  .
   {
-    halfW = getHw<float>(z, hw.val[hIdx]);
-  }
-
-  //float2  inp[2];						// The input data, this is a complex number stored as, float2
-  long    dintfreq;						// Integer part of r      - double precision
-  long    start;						// The first bin to use
-  float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-  int     numkern;						// The actual number of kernel values to use
-  float   resReal 	= 0.0f;					// Response value - real
-  float   resImag 	= 0.0f;					// Response value - imaginary
-
-  FOLD 								// Calculate the reference bin (closes integer bin to r)  .
-  {
-    dintfreq	= r;						// TODO: Check this when r is < 0 ?????
-    start	= dintfreq + 1 - halfW ;
-  }
-
-  FOLD 								// Clamp values to usable bounds  .
-  {
-    numkern	= 2 * halfW;
-    offset	= ( r - cIdx - start);			// This is rc-k for the first bin
-  }
-
-  FOLD 								// Adjust for FFT  .
-  {
-    // Adjust to FFT
-    start -= loR.val[hIdx];					// Adjust for accessing the input FFT
-  }
-
-  float2 point;
-  point.x = 0.0f;
-  point.y = 0.0f;
-
-  FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
-  {
-    // Calculate all the constants
-//    int signZ		= (z < 0.0f) ? -1 : 1;
-    float absZ		= fabs_t(z);
-//    float sqrtAbsZ	= sqrt_t(absZ);
-//    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-//    float overSq2AbsZ	= 1.0f / (float)SQRT2 / sqrtAbsZ ;
-//    float Qk		= offset - z / 2.0f;			// Adjust for acceleration
-
-    //inp[1] = fft[iStride*hIdx + start + cIdx ];
-    //inp[1].x = iStride*hIdx + start + cIdx ; // DBG
-
-//    if ( ty == 0 && ic == 0 )
-//    {
-//      printf("%i ; %7.3f \n", cIdx, inp[1].x );
-//    }
-//    inp[1].x = __shfl(inp[1].x, cbase + (cIdx+1)%noBlk, noBlk );
-//
-//    if ( ty == 0 && ic == 0 )
-//    {
-//      printf("%i ; %7.3f \n", cIdx, inp[1].x );
-//    }
-
-    //for ( int i = 0 ; i < numkern; i+=noBlk, Qk-=noBlk, offset-=noBlk)		// Loop over the kernel elements
-    for ( int i = 0 ; i < numkern; i+=noBlk, offset-=noBlk)	// Loop over the kernel elements
+    int width	= colWidth*noColumns;
+    //int noX	= noOffsets*noColumns;
+    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
     {
-//      FOLD 							// Read the input value  .
-//      {
-//	inp[0] = inp[1];					// Store "previous" input
-//	inp[1] = fft[iStride*hIdx + start + cIdx + noBlk + i];	// Read the input value - This can sorta be thought of as the "next" batch of input .
-//	//inp[1].x =   iStride*hIdx + start + cIdx + noBlk + i ; // DBG
-//      }
-
-//      if ( ty == 0 && ic == 0 && i == 0 )
-//      {
-//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
-//      }
-
-//      if ( ty == 0 && tx ==0  )
-//      {
-//	printf("---\n");
-//      }
-//      if ( ty == 0 && tx < 5 )
-//      {
-//	int inpIdx = iStride*hIdx + start + cIdx + noBlk + i ;
-//	printf("cIdx: %2i  %.3f   inpI: %3i \n", cIdx, offset, inpIdx);
-//      }
-
-      FOLD 							// Calculate coefficients  .
-      {
-	if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
-	{
-	  //calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
-	  calc_coefficient_z<float, false>(offset, z, &resReal, &resImag);
-	}
-	else							// Calculate approximation coefficients  .
-	{
-	  calc_coefficient_a<float>(offset, z, &resReal, &resImag);
-	}
-      }
-
-      FOLD 							//  Do the multiplication and sum  accumulate  .
-      {
-	//float inpuCx = inp[0].x;
-	//float inpuCy = inp[0].y;
-
-	for( int idx = 0; idx < noBlk; idx++)
-	{
-	  // TODO: May have to do an end condition check here?
-
-	  //int ext   = idx+cIdx;
-	  //int aIdx  = ext/noBlk;
-
-	  float resCRea_c = __shfl(resReal, idx, noBlk );
-	  float resImag_c = __shfl(resImag, idx, noBlk );
-
-	  //float inpuCx = __shfl(inp[aIdx].x, ext, noBlk );
-	  //float inpuCy = __shfl(inp[aIdx].y, ext, noBlk );
-
-	  float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*blkWidth];
-	  point.x += (resCRea_c * inp.x - resImag_c * inp.y);
-	  point.y += (resCRea_c * inp.y + resImag_c * inp.x);
-
-	  //point.x += (resCRea_c * inpuCx - resImag_c * inpuCy);
-	  //point.y += (resCRea_c * inpuCy + resImag_c * inpuCx);
-
-	  //float ooset = __shfl(offset, idx, noBlk );
-
-//	  if ( tx == 0 && ty == 0 )
-//	  {
-//	    printf("%7.3f ; %7.3f ; %7.3f ; %7.3f  \n", ooset, resCRea_c, inpuCx, r );
-//	  }
-
-	  //int srcLane = cbase + (cIdx+1)%noBlk;
-	  //inpuCx = __shfl(inpuCx, srcLane, noBlk );
-	  //inpuCy = __shfl(inpuCy, srcLane, noBlk );
-	  //inp[1].x = __shfl(inp[1].x, srcLane, noBlk );
-	  //inp[1].y = __shfl(inp[1].y, srcLane, noBlk );
-	  //
-	  //if ( cIdx == noBlk - 1 )
-	  //{
-	  //  inpuCx = inp[1].x;
-	  //  inpuCy = inp[1].y;
-	  //}
-	}
-      }
-
-//      __syncthreads() ; // DBG
-//
-//      if ( ty == 0 && ic == 0 && i == 0 )
-//      {
-//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
-//      }
-//
-//      __syncthreads() ; // DBG
+      noOffsets = noOffsets>>1;
+      noColumns = noColumns<<1;
+      colWidth = colWidth>>1;
     }
   }
 
-  FOLD // Write values back to memory
+  // Calculate cooperative specific values
+  const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
+  const int	cIdx	= bx % noColumns;			// The index in the cooperative
+  //const int	cbase	= ic*noColumns;
+
+  //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
   {
-//    if (bx ==7)
-//    {
-//      int tmp = 0;
-//      printf("I am sam\n");
-//    }
-    int ix = cIdx * blkDimX + ic ;
-    if ( ix < noR )
+    int halfW;
+
+    double	r	= (firstR + ic/(double)(noR-1) * rSZ );
+    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
+    if (noZ == 1)
+      z = firstZ;
+    r *= hrm;
+    z *= hrm;
+
+    FOLD // Determine half width
     {
-      if ( flags & (uint)(FLAG_HAMRS ) )
+      halfW = getHw<float>(z, hw.val[hIdx]);
+    }
+
+    //float2  inp[2];						// The input data, this is a complex number stored as, float2
+    long    dintfreq;						// Integer part of r      - double precision
+    long    start;						// The first bin to use
+    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+    int     numkern;						// The actual number of kernel values to use
+    float   resReal 	= 0.0f;					// Response value - real
+    float   resImag 	= 0.0f;					// Response value - imaginary
+
+    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
+    {
+      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
+      start	= dintfreq + 1 - halfW ;
+    }
+
+    FOLD 								// Clamp values to usable bounds  .
+    {
+      numkern	= 2 * halfW;
+      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
+    }
+
+    FOLD 								// Adjust for FFT  .
+    {
+      // Adjust to FFT
+      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
+    }
+
+    float2 point;
+    point.x = 0.0f;
+    point.y = 0.0f;
+
+    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
+    {
+      // Calculate all the constants
+      //    int signZ		= (z < 0.0f) ? -1 : 1;
+      float absZ		= fabs_t(z);
+      //    float sqrtAbsZ	= sqrt_t(absZ);
+      //    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
+      //    float overSq2AbsZ	= 1.0f / (float)SQRT2 / sqrtAbsZ ;
+      //    float Qk		= offset - z / 2.0f;			// Adjust for acceleration
+
+      //inp[1] = fft[iStride*hIdx + start + cIdx ];
+      //inp[1].x = iStride*hIdx + start + cIdx ; // DBG
+
+      //    if ( ty == 0 && ic == 0 )
+      //    {
+      //      printf("%i ; %7.3f \n", cIdx, inp[1].x );
+      //    }
+      //    inp[1].x = __shfl(inp[1].x, cbase + (cIdx+1)%noBlk, noBlk );
+      //
+      //    if ( ty == 0 && ic == 0 )
+      //    {
+      //      printf("%i ; %7.3f \n", cIdx, inp[1].x );
+      //    }
+
+      //for ( int i = 0 ; i < numkern; i+=noBlk, Qk-=noBlk, offset-=noBlk)		// Loop over the kernel elements
+      for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
       {
-	// Write per harming values
-	if ( flags & (uint)(FLAG_CMPLX) )
+	//      FOLD 							// Read the input value  .
+	//      {
+	//	inp[0] = inp[1];					// Store "previous" input
+	//	inp[1] = fft[iStride*hIdx + start + cIdx + noBlk + i];	// Read the input value - This can sorta be thought of as the "next" batch of input .
+	//	//inp[1].x =   iStride*hIdx + start + cIdx + noBlk + i ; // DBG
+	//      }
+
+	//      if ( ty == 0 && ic == 0 && i == 0 )
+	//      {
+	//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
+	//      }
+
+	//      if ( ty == 0 && tx ==0  )
+	//      {
+	//	printf("---\n");
+	//      }
+	//      if ( ty == 0 && tx < 5 )
+	//      {
+	//	int inpIdx = iStride*hIdx + start + cIdx + noBlk + i ;
+	//	printf("cIdx: %2i  %.3f   inpI: %3i \n", cIdx, offset, inpIdx);
+	//      }
+
+	FOLD 							// Calculate coefficients  .
 	{
-	  ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
+	  if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
+	  {
+	    //calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	    calc_coefficient_z<float, false>(offset, z, &resReal, &resImag);
+	  }
+	  else							// Calculate approximation coefficients  .
+	  {
+	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
+	  }
+	}
+
+	FOLD 							//  Do the multiplication and sum  accumulate  .
+	{
+	  //float inpuCx = inp[0].x;
+	  //float inpuCy = inp[0].y;
+
+	  for( int idx = 0; idx < noColumns; idx++)
+	  {
+	    // TODO: May have to do an end condition check here?
+
+	    //int ext   = idx+cIdx;
+	    //int aIdx  = ext/noBlk;
+
+	    float resCRea_c = __shfl(resReal, idx, noColumns );
+	    float resImag_c = __shfl(resImag, idx, noColumns );
+
+	    //float inpuCx = __shfl(inp[aIdx].x, ext, noBlk );
+	    //float inpuCy = __shfl(inp[aIdx].y, ext, noBlk );
+
+	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
+	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
+	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
+
+	    //point.x += (resCRea_c * inpuCx - resImag_c * inpuCy);
+	    //point.y += (resCRea_c * inpuCy + resImag_c * inpuCx);
+
+	    //float ooset = __shfl(offset, idx, noBlk );
+
+	    //	  if ( tx == 0 && ty == 0 )
+	    //	  {
+	    //	    printf("%7.3f ; %7.3f ; %7.3f ; %7.3f  \n", ooset, resCRea_c, inpuCx, r );
+	    //	  }
+
+	    //int srcLane = cbase + (cIdx+1)%noBlk;
+	    //inpuCx = __shfl(inpuCx, srcLane, noBlk );
+	    //inpuCy = __shfl(inpuCy, srcLane, noBlk );
+	    //inp[1].x = __shfl(inp[1].x, srcLane, noBlk );
+	    //inp[1].y = __shfl(inp[1].y, srcLane, noBlk );
+	    //
+	    //if ( cIdx == noBlk - 1 )
+	    //{
+	    //  inpuCx = inp[1].x;
+	    //  inpuCy = inp[1].y;
+	    //}
+	  }
+	}
+
+	//      __syncthreads() ; // DBG
+	//
+	//      if ( ty == 0 && ic == 0 && i == 0 )
+	//      {
+	//        printf("%i ; %7.3f \n", cIdx, inp[0].x );
+	//      }
+	//
+	//      __syncthreads() ; // DBG
+      }
+    }
+
+    //FOLD // Write values back to memory
+    if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
+    {
+      //    if (bx ==7)
+      //    {
+      //      int tmp = 0;
+      //      printf("I am sam\n");
+      //    }
+
+      int ix = cIdx * noOffsets + ic ;
+      //if ( ix < noR )
+      {
+	if ( flags & (uint)(FLAG_HAMRS ) )
+	{
+	  // Write per harming values
+	  if ( flags & (uint)(FLAG_CMPLX) )
+	  {
+	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
+	  }
+	  else
+	    powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
 	}
 	else
-	  powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
-      }
-      else
-      {
-	// Accumulate harmonic to total sum
-	// This has a thread per harmonics so have to use atomic add
-	atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
+	{
+	  // Accumulate harmonic to total sum
+	  // This has a thread per harmonics so have to use atomic add
+	  atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
+	}
       }
     }
   }
@@ -1713,7 +1732,8 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 #ifdef WITH_OPT_BLK_SHF
 	infoMSG(5,5,"Block kernel 3 - Harms");
 
-	dimBlock.x = MIN(32, pln->noR);
+	//dimBlock.x = MIN(MAX(MAX_OPT_SFL_NO,16), pln->noR);
+	dimBlock.x = MAX(MAX_OPT_SFL_NO,16);				// This max ensures all values are in a single warp
 	dimBlock.y = MIN(16, pln->noZ);
 
 	int noX = ceil(pln->noR / (float)dimBlock.x);
@@ -1734,44 +1754,32 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 //	dimGrid.x = noX * pln->noHarms ;
 //	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
-	// Call the kernel to normalise and spread the input data
-	switch (pln->blkCnt)
-	{
-//#if  MAX_OPT_BLK_NO >= 2
-	  case 2:
-	    ffdotPlnByShfl_ker<2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-//#endif
+	ffdotPlnByShfl_ker<<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
 
-//#if  MAX_OPT_BLK_NO >= 4
-	  case 4:
-	    ffdotPlnByShfl_ker<4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-//#endif
-
-//#if  MAX_OPT_BLK_NO >= 8
-	  case 8:
-	    ffdotPlnByShfl_ker<8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-//#endif
-
-//#if  MAX_OPT_BLK_NO >= 16
-	  case 16:
-	    ffdotPlnByShfl_ker<16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-//#endif
-
-//#if  MAX_OPT_BLK_NO >= 32
-	  case 32:
-	    ffdotPlnByShfl_ker<32> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-//#endif
-	  default:
-	  {
-	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
-	    exit(EXIT_FAILURE);
-	  }
-	}
+//	// Call the kernel to normalise and spread the input data
+//	switch (pln->blkCnt)
+//	{
+//	  case 2:
+//	    ffdotPlnByShfl_ker<2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+//	    break;
+//	  case 4:
+//	    ffdotPlnByShfl_ker<4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+//	    break;
+//	  case 8:
+//	    ffdotPlnByShfl_ker<8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+//	    break;
+//	  case 16:
+//	    ffdotPlnByShfl_ker<16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+//	    break;
+//	  case 32:
+//	    ffdotPlnByShfl_ker<32> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+//	    break;
+//	  default:
+//	  {
+//	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
+//	    exit(EXIT_FAILURE);
+//	  }
+//	}
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
 	err += ACC_ERR_COMPILED;
@@ -2418,12 +2426,13 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	    //pln->blkCnt		= MIN(32,exp2(ceil(log2(( pln->rSize )))));		// Number of columns
 
 	    double diff = 1.0;
-	    int sz = 32;
+	    int sz = MAX_OPT_SFL_NO;
 	    while (sz >= 1 )
 	    {
 	      double noCol	= pln->rSize / sz;
 	      diff		= (ceil(noCol)*sz)/pln->rSize;	// Percentage of total
 	      pln->blkCnt	= sz;
+	      //if (diff <= 1.125 )
 	      if (diff <= 1.2 )
 	      {
 		break;

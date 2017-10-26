@@ -147,6 +147,7 @@ extern "C"
 
 ////////	Optimisation
 #define			MAX_OPT_BLK_NO		16	///< Maximum number of coefficient "reuses" ie blocks in plan by block kernel (less than 16) I found speeds fatten off at some point about 6 or 8 so no point being much bigger
+#define			MAX_OPT_SFL_NO		32	///< Maximum number columns in shuffle kernel - power of 2 <= 32
 
 #define 		WITH_OPT_BLK_HRM		///< This is usual the best block kernel
 #define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics
