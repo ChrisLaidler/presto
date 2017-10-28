@@ -1973,7 +1973,8 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       infoMSG(7,7,"Padding to Duplicates of %.0f:%.0f (1:%.2f) .\n", padSum, dupSum, dup2pad_ratio);
     }
 
-    if ( ( dup2pad_ratio > 2 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel  .
+    //if ( ( dup2pad_ratio > 2 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel  .
+    if ( ( plnGen->pln->rSize >= 1 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel  .  DBG - for testing
     {
       // Set size and resolution
       err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, conf->blkMax);
