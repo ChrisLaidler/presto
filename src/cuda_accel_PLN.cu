@@ -2251,6 +2251,12 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
       FOLD // Select a good power of two number of columns  .
       {
+	if ( target_noCol <= 32 )	// DBG remove this!
+	{
+	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,floattarget_noCol);
+	}
+	else
+	{
 	if ( pln->rSize > 8 )	// TODO: Determine this bound
 	{
 	  double diff = 1.0;
@@ -2276,6 +2282,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	{
 	  // Smaller than one so pretty much have to have a width of 1
 	  pln->blkCnt	= 1;
+	}
 	}
       }
 
