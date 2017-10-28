@@ -2253,7 +2253,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
       {
 	if ( target_noCol <= 32 )	// DBG remove this!
 	{
-	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,floattarget_noCol);
+	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,target_noCol);
 	}
 	else
 	{
