@@ -182,6 +182,9 @@ __host__ __device__ void calc_coefficient_r(T offset, T* real, T* imag);
 template<typename T, bool phaseCheck>
 __host__ __device__ void calc_coefficient_z(T offset, T z, T* real, T* imag);
 
+template<typename T, bool phaseCheck>
+__host__ __device__ inline void calc_coefficient_z(T Qk, T dr, T z, T sq2overAbsZ, T overSq2AbsZ, int sighnZ, T* real, T* imag);
+
 template<typename T>
 __host__ __device__ void calc_coefficient_a(T offset, T z, T* resReal, T* resImag);
 
@@ -198,7 +201,7 @@ template<typename T, typename dataIn, typename dataOut>
 __host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk);
 
 template<int noColumns>
-__host__ __device__ void rz_convolution_sfl(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
+__host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 
 /////////////////////////////////
 

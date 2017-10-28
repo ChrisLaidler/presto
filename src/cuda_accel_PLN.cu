@@ -297,68 +297,89 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
     }
 
     float2 point;
+    point.x = 0.0f;
+    point.y = 0.0f;
 
-    rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
+    //rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
 
-//    long    dintfreq;						// Integer part of r      - double precision
-//    long    start;						// The first bin to use
-//    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-//    int     numkern;						// The actual number of kernel values to use
-//    float   resReal 	= 0.0f;					// Response value - real
-//    float   resImag 	= 0.0f;					// Response value - imaginary
-//
-//    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
-//    {
-//      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
-//      start	= dintfreq + 1 - halfW ;
-//    }
-//
-//    FOLD 								// Clamp values to usable bounds  .
-//    {
-//      numkern	= 2 * halfW;
-//      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
-//    }
-//
-//    FOLD 								// Adjust for FFT  .
-//    {
-//      // Adjust to FFT
-//      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
-//    }
-//
-//    float2 point;
-//    point.x = 0.0f;
-//    point.y = 0.0f;
-//
-//    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
-//    {
-//      // Calculate all the constants
-//
-//      for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
-//      {
+    long    dintfreq;						// Integer part of r      - double precision
+    long    start;						// The first bin to use
+    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+    int     numkern;						// The actual number of kernel values to use
+    float   resReal;						// Response value - real
+    float   resImag;						// Response value - imaginary
+
+    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
+    {
+      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
+      start	= dintfreq + 1 - halfW ;
+    }
+
+    FOLD 								// Clamp values to usable bounds  .
+    {
+      numkern	= 2 * halfW;
+      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
+    }
+
+    FOLD 								// Adjust for FFT  .
+    {
+      // Adjust to FFT
+      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
+    }
+
+
+
+    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
+    {
+      // Calculate all the constants
+
+      // Calculate all the constants
+      int signZ		= (z < (float)0.0) ? -1 : 1;
+      float absZ		= fabs_t(z);
+      float sqrtAbsZ	= sqrt_t(absZ);
+      float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
+      float overSq2AbsZ	= (float)1.0 / (float)SQRT2 / sqrtAbsZ ;
+      float Qk		= offset - z / (float)2.0;		// Adjust for acceleration
+
+      for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)	// Loop over the kernel elements
+      {
 //	FOLD 							// Calculate coefficients  .
 //	{
 //	  calc_coefficient<float>(offset, z, &resReal, &resImag);
 //	}
-//
-//	FOLD 							//  Do the multiplication and sum  accumulate  .
-//	{
-//	  for( int idx = 0; idx < noColumns; idx++)
-//	  {
-//	    // TODO: May have to do an end condition check here?
-//
-//	    // Read input - These reads are generally coalesced
-//	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-//	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
-//
-//	    float resCRea_c = __shfl(resReal, idx, noColumns );
-//	    float resImag_c = __shfl(resImag, idx, noColumns );
-//
-//	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
-//	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
-//	  }
-//	}
-//      }
-//    }
+
+	FOLD 							// Calculate coefficient  .
+	{
+	  //calc_coefficient<float>(offset, z, &resReal, &resImag);
+	  if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
+	  {
+	    calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	  }
+	  else							// Calculate approximation coefficients  .
+	  {
+	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
+	  }
+	}
+
+	FOLD 							//  Do the multiplication and sum  accumulate  .
+	{
+	  for( int idx = 0; idx < noColumns; idx++)
+	  {
+	    // TODO: May have to do an end condition check here?
+
+	    // Read input - These reads are generally coalesced
+	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
+	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
+
+	    float resCRea_c = __shfl(resReal, idx, noColumns );
+	    float resImag_c = __shfl(resImag, idx, noColumns );
+
+	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
+	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
+	  }
+	}
+      }
+    }
 
     FOLD // Write values back to memory
     {

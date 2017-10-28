@@ -1028,14 +1028,14 @@ __host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, lo
  * @param kern_half_width     The half width of the points to use in the interpolation
  */
 template<int noColumns>
-__host__ __device__ void rz_convolution_sfl(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx)
+__host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx)
 {
   long    dintfreq;						// Integer part of r      - double precision
   long    start;						// The first bin to use
   float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
   int     numkern;						// The actual number of kernel values to use
-  float   resReal 	= 0.0f;					// Response value - real
-  float   resImag 	= 0.0f;					// Response value - imaginary
+  float   resReal;						// Response value - real
+  float   resImag;						// Response value - imaginary
 
   FOLD 								// Calculate the reference bin (closes integer bin to r)  .
   {
@@ -1061,6 +1061,8 @@ __host__ __device__ void rz_convolution_sfl(const float2* inputData, long loR, l
     outData->y = 0.0f;
   }
 
+  inputData = &inputData[start+(cIdx)*colWidth];
+
   FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
   {
     // Calculate all the constants
@@ -1075,6 +1077,7 @@ __host__ __device__ void rz_convolution_sfl(const float2* inputData, long loR, l
     {
       FOLD 							// Calculate coefficient  .
       {
+	//calc_coefficient<float>(offset, z, &resReal, &resImag);
 	if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
 	{
 	  calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
@@ -1093,30 +1096,34 @@ __host__ __device__ void rz_convolution_sfl(const float2* inputData, long loR, l
 
 	  // Read input - These reads are generally coalesced
 	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	  float2 inp = inputData[start + i + idx + (cIdx)*colWidth];
+	  //float2 inp = inputData[start + i + idx + (cIdx)*colWidth];
+	  float2 inp = inputData[i + idx];
 
 #ifdef  __CUDA_ARCH__
 	  float resCRea_c = __shfl(resReal, idx, noColumns );
 	  float resImag_c = __shfl(resImag, idx, noColumns );
-#else
-	  float resCRea_c;
-	  float resImag_c;
-
-	  FOLD 							// Calculate coefficient  .
-	  {
-	    int adjust = cIdx-idx; // TODO: this needs to be checked, sigh change?
-	    if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
-	    {
-	      calc_coefficient_z<float, false>(Qk+adjust, offset+adjust, z, sq2overAbsZ, overSq2AbsZ, signZ, &resCRea_c, &resImag_c);
-	    }
-	    else							// Calculate approximation coefficients  .
-	    {
-	      calc_coefficient_a<float>(offset+adjust, z, &resCRea_c, &resImag_c);
-	    }
-	  }
-#endif
 	  outData->x += (resCRea_c * inp.x - resImag_c * inp.y);
 	  outData->y += (resCRea_c * inp.y + resImag_c * inp.x);
+#else
+	  //	  float resCRea_c;
+	  //	  float resImag_c;
+	  //
+	  //	  FOLD 							// Calculate coefficient  .
+	  //	  {
+	  //	    int adjust = cIdx-idx; // TODO: this needs to be checked, sigh change?
+	  //	    if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
+	  //	    {
+	  //	      calc_coefficient_z<float, false>(Qk+adjust, offset+adjust, z, sq2overAbsZ, overSq2AbsZ, signZ, &resCRea_c, &resImag_c);
+	  //	    }
+	  //	    else							// Calculate approximation coefficients  .
+	  //	    {
+	  //	      calc_coefficient_a<float>(offset+adjust, z, &resCRea_c, &resImag_c);
+	  //	    }
+	  //	  }
+//	  outData->x += (resCRea_c * inp.x - resImag_c * inp.y);
+//	  outData->y += (resCRea_c * inp.y + resImag_c * inp.x);
+#endif
+
 	}
       }
     }
@@ -1324,6 +1331,8 @@ template void calc_coefficient_z<float,  false>(float  offset, float  z, float* 
 template void calc_coefficient_z<double, true >(double offset, double z, double* real, double* imag);
 template void calc_coefficient_z<double, false>(double offset, double z, double* real, double* imag);
 
+template inline void calc_coefficient_z<float,  false>(float Qk, float dr, float z, float sq2overAbsZ, float overSq2AbsZ, int sighnZ, float* real, float* imag);
+
 
 template void calc_coefficient_a<float >(float  offset, float  z, float*  real, float*  imag);
 template void calc_coefficient_a<double>(double offset, double z, double* real, double* imag);
@@ -1336,12 +1345,12 @@ template void rz_coefficients<float,  float2> (double r, float  z, int kern_half
 
 
 //#ifdef WITH_OPT_BLK_SHF
-template void rz_convolution_sfl<1 >(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<2 >(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<4 >(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<8 >(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<16>(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<32>(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
+template void rz_convolution_sfl<1 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+template void rz_convolution_sfl<2 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+template void rz_convolution_sfl<4 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+template void rz_convolution_sfl<8 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+template void rz_convolution_sfl<16>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+template void rz_convolution_sfl<32>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 //#endif
 
 template void rz_convolution_cu<float,  float2> (const float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
