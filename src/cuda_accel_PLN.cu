@@ -260,20 +260,21 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   // Adjust for harmonic
   colWidth *= hrm;
 
-  FOLD // Check for a better width  .
-  {
-    int width	= colWidth*noColumns;
-    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
-    {
-      noOffsets = noOffsets>>1;
-      noColumns = noColumns<<1;
-      colWidth = colWidth>>1;
-    }
-//    if ( bx == 0 && iy == 0 )
+// DBG Put back
+//  FOLD // Check for a better width  .
+//  {
+//    int width	= colWidth*noColumns;
+//    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
 //    {
-//      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
+//      noOffsets = noOffsets>>1;
+//      noColumns = noColumns<<1;
+//      colWidth = colWidth>>1;
 //    }
-  }
+////    if ( bx == 0 && iy == 0 )
+////    {
+////      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
+////    }
+//  }
 
   // Calculate cooperative specific values
   const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
