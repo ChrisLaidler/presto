@@ -11,50 +11,7 @@
 
 // This allows the possibility of creating planes with up to 32 harmonics
 
-#ifdef		OPT_LOC_32
 
-#define		OPT_MAX_LOC_HARMS	32
-typedef		int32  optLocInt_t;
-typedef		long32 optLocLong_t;
-typedef		int32  optLocFloat_t;
-
-#else
-
-#define		OPT_MAX_LOC_HARMS	16
-typedef		int16  optLocInt_t;
-typedef		long16 optLocLong_t;
-typedef		int16  optLocFloat_t;
-
-#endif
-
-/** Shared device function to get halfwidth for optimisation planes
- *
- * Note this could be templated for accuracy
- *
- * @param z	The z (acceleration) for the relevant halfwidth
- * @param def	If a halfwidth has been supplied this is its value, multiple value could be given here
- * @return	The half width for the given z
- */
-template<typename T>
-__host__ __device__ static inline int getHw(float z, int val)
-{
-  int halfW;
-
-  if      ( val == LOWACC  )
-  {
-    halfW	= cu_z_resp_halfwidth_low<T>(z);
-  }
-  else if ( val == HIGHACC )
-  {
-    halfW	= cu_z_resp_halfwidth_high<T>(z);
-  }
-  else
-  {
-    halfW	= val;
-  }
-
-  return halfW;
-}
 
 ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 4, int target_noCol = 16);
 

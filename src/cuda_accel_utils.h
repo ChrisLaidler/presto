@@ -483,6 +483,35 @@ __host__ __device__ static inline int cu_z_resp_halfwidth_high(T z)
   return m;
 }
 
+/** Shared device function to get halfwidth for optimisation planes
+ *
+ * Note this could be templated for accuracy
+ *
+ * @param z	The z (acceleration) for the relevant halfwidth
+ * @param def	If a halfwidth has been supplied this is its value, multiple value could be given here
+ * @return	The half width for the given z
+ */
+template<typename T>
+__host__ __device__ static inline int getHw(float z, int val)
+{
+  int halfW;
+
+  if      ( val == LOWACC  )
+  {
+    halfW	= cu_z_resp_halfwidth_low<T>(z);
+  }
+  else if ( val == HIGHACC )
+  {
+    halfW	= cu_z_resp_halfwidth_high<T>(z);
+  }
+  else
+  {
+    halfW	= val;
+  }
+
+  return halfW;
+}
+
 template<typename T>
 __host__ __device__ static inline int cu_z_resp_halfwidth(T z, presto_interp_acc accuracy)
 {

@@ -246,169 +246,169 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
  *  The way this is structured, the number shared 'noColumns' must be a power of two <= 32
  *
  */
-template<int noColumns>
-__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags) //, int noColumns)
-{
-  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
-  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
-
-  const int	hIdx	= tx / harmWidth;
-  const int	hrm	= hIdx+1;
-  const int	bx	= tx % harmWidth;
-  const int	iy	= ty;
-
-  // Adjust for harmonic
-  colWidth *= hrm;
-
-// DBG Put back
-//  FOLD // Check for a better width  .
-//  {
-//    int width	= colWidth*noColumns;
-//    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
-//    {
-//      noOffsets = noOffsets>>1;
-//      noColumns = noColumns<<1;
-//      colWidth = colWidth>>1;
-//    }
-////    if ( bx == 0 && iy == 0 )
+//template<int noColumns>
+//__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags) //, int noColumns)
+//{
+//  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+//  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+//
+//  const int	hIdx	= tx / harmWidth;
+//  const int	hrm	= hIdx+1;
+//  const int	bx	= tx % harmWidth;
+//  const int	iy	= ty;
+//
+//  // Adjust for harmonic
+//  colWidth *= hrm;
+//
+//// DBG Put back
+////  FOLD // Check for a better width  .
+////  {
+////    int width	= colWidth*noColumns;
+////    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
 ////    {
-////      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
+////      noOffsets = noOffsets>>1;
+////      noColumns = noColumns<<1;
+////      colWidth = colWidth>>1;
 ////    }
-//  }
-
-  // Calculate cooperative specific values
-  const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
-  const int	cIdx	= bx % noColumns;			// The index in the cooperative
-
-  //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
-  {
-    int halfW;
-
-    double	r	= (firstR + ic/(double)(noR-1) * rSZ );
-    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
-    if (noZ == 1)
-      z = firstZ;
-    r *= hrm;
-    z *= hrm;
-
-    FOLD // Determine half width
-    {
-      halfW = getHw<float>(z, hw.val[hIdx]);
-    }
-
-    float2 point;
-    point.x = 0.0f;
-    point.y = 0.0f;
-
-    //rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
-
-    long    dintfreq;						// Integer part of r      - double precision
-    long    start;						// The first bin to use
-    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-    int     numkern;						// The actual number of kernel values to use
-    float   resReal;						// Response value - real
-    float   resImag;						// Response value - imaginary
-
-    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
-    {
-      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
-      start	= dintfreq + 1 - halfW ;
-    }
-
-    FOLD 								// Clamp values to usable bounds  .
-    {
-      numkern	= 2 * halfW;
-      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
-    }
-
-    FOLD 								// Adjust for FFT  .
-    {
-      // Adjust to FFT
-      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
-    }
-
-
-
-    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
-    {
-      // Calculate all the constants
-
-      // Calculate all the constants
-      int signZ		= (z < (float)0.0) ? -1 : 1;
-      float absZ		= fabs_t(z);
-      float sqrtAbsZ	= sqrt_t(absZ);
-      float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-      float overSq2AbsZ	= (float)1.0 / (float)SQRT2 / sqrtAbsZ ;
-      float Qk		= offset - z / (float)2.0;		// Adjust for acceleration
-
-      for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)	// Loop over the kernel elements
-      {
-//	FOLD 							// Calculate coefficients  .
+//////    if ( bx == 0 && iy == 0 )
+//////    {
+//////      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
+//////    }
+////  }
+//
+//  // Calculate cooperative specific values
+//  const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
+//  const int	cIdx	= bx % noColumns;			// The index in the cooperative
+//
+//  //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
+//  {
+//    int halfW;
+//
+//    double	r	= (firstR + ic/(double)(noR-1) * rSZ );
+//    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
+//    if (noZ == 1)
+//      z = firstZ;
+//    r *= hrm;
+//    z *= hrm;
+//
+//    FOLD // Determine half width
+//    {
+//      halfW = getHw<float>(z, hw.val[hIdx]);
+//    }
+//
+//    float2 point;
+//    point.x = 0.0f;
+//    point.y = 0.0f;
+//
+//    //rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
+//
+//    long    dintfreq;						// Integer part of r      - double precision
+//    long    start;						// The first bin to use
+//    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+//    int     numkern;						// The actual number of kernel values to use
+//    float   resReal;						// Response value - real
+//    float   resImag;						// Response value - imaginary
+//
+//    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
+//    {
+//      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
+//      start	= dintfreq + 1 - halfW ;
+//    }
+//
+//    FOLD 								// Clamp values to usable bounds  .
+//    {
+//      numkern	= 2 * halfW;
+//      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
+//    }
+//
+//    FOLD 								// Adjust for FFT  .
+//    {
+//      // Adjust to FFT
+//      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
+//    }
+//
+//
+//
+//    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
+//    {
+//      // Calculate all the constants
+//
+//      // Calculate all the constants
+//      int signZ		= (z < (float)0.0) ? -1 : 1;
+//      float absZ		= fabs_t(z);
+//      float sqrtAbsZ	= sqrt_t(absZ);
+//      float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
+//      float overSq2AbsZ	= (float)1.0 / (float)SQRT2 / sqrtAbsZ ;
+//      float Qk		= offset - z / (float)2.0;		// Adjust for acceleration
+//
+//      for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)	// Loop over the kernel elements
+//      {
+////	FOLD 							// Calculate coefficients  .
+////	{
+////	  calc_coefficient<float>(offset, z, &resReal, &resImag);
+////	}
+//
+//	FOLD 							// Calculate coefficient  .
 //	{
-//	  calc_coefficient<float>(offset, z, &resReal, &resImag);
+//	  //calc_coefficient<float>(offset, z, &resReal, &resImag);
+//	  if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
+//	  {
+//	    calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+//	  }
+//	  else							// Calculate approximation coefficients  .
+//	  {
+//	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
+//	  }
 //	}
-
-	FOLD 							// Calculate coefficient  .
-	{
-	  //calc_coefficient<float>(offset, z, &resReal, &resImag);
-	  if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
-	  {
-	    calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
-	  }
-	  else							// Calculate approximation coefficients  .
-	  {
-	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
-	  }
-	}
-
-	FOLD 							//  Do the multiplication and sum  accumulate  .
-	{
-	  for( int idx = 0; idx < noColumns; idx++)
-	  {
-	    // TODO: May have to do an end condition check here?
-
-	    // Read input - These reads are generally coalesced
-	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
-
-	    float resCRea_c = __shfl(resReal, idx, noColumns );
-	    float resImag_c = __shfl(resImag, idx, noColumns );
-
-	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
-	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
-	  }
-	}
-      }
-    }
-
-    FOLD // Write values back to memory
-    {
-      if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
-      {
-	int ix = cIdx * noOffsets + ic ;
-
-	if ( flags & (uint)(FLAG_HAMRS ) )
-	{
-	  // Write per harming values
-	  if ( flags & (uint)(FLAG_CMPLX) )
-	  {
-	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
-	  }
-	  else
-	  {
-	    powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
-	  }
-	}
-	else
-	{
-	  // Accumulate harmonic to total sum
-	  // This has a thread per harmonics so have to use atomic add
-	  atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
-	}
-      }
-    }
-  }
-}
+//
+//	FOLD 							//  Do the multiplication and sum  accumulate  .
+//	{
+//	  for( int idx = 0; idx < noColumns; idx++)
+//	  {
+//	    // TODO: May have to do an end condition check here?
+//
+//	    // Read input - These reads are generally coalesced
+//	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
+//	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
+//
+//	    float resCRea_c = __shfl(resReal, idx, noColumns );
+//	    float resImag_c = __shfl(resImag, idx, noColumns );
+//
+//	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
+//	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
+//	  }
+//	}
+//      }
+//    }
+//
+//    FOLD // Write values back to memory
+//    {
+//      if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
+//      {
+//	int ix = cIdx * noOffsets + ic ;
+//
+//	if ( flags & (uint)(FLAG_HAMRS ) )
+//	{
+//	  // Write per harming values
+//	  if ( flags & (uint)(FLAG_CMPLX) )
+//	  {
+//	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
+//	  }
+//	  else
+//	  {
+//	    powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
+//	  }
+//	}
+//	else
+//	{
+//	  // Accumulate harmonic to total sum
+//	  // This has a thread per harmonics so have to use atomic add
+//	  atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
+//	}
+//      }
+//    }
+//  }
+//}
 #endif
 
 #ifdef WITH_OPT_BLK_HRM

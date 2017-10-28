@@ -1,6 +1,9 @@
 #ifndef CUTIL_CORR_H
 #define CUTIL_CORR_H
 
+#include "cuda_accel.h"
+#include "cuda_accel_utils.h"
+
 #define Z_LIM_F		1e-5			// Got this through testing - this is the Z value below which inaccuracy creep in for double
 #define Z_LIM_D		1e-6			// I have found that beyond this errors start to creep in for long data sets
 
@@ -49,6 +52,21 @@
 #define FOLD if(1)
 #endif
 
+#ifdef		OPT_LOC_32
+
+#define		OPT_MAX_LOC_HARMS	32
+typedef		int32  optLocInt_t;
+typedef		long32 optLocLong_t;
+typedef		int32  optLocFloat_t;
+
+#else
+
+#define		OPT_MAX_LOC_HARMS	16
+typedef		int16  optLocInt_t;
+typedef		long16 optLocLong_t;
+typedef		int16  optLocFloat_t;
+
+#endif
 
 //#ifdef DEBUG
 //
@@ -202,6 +220,9 @@ __host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, lo
 
 template<int noColumns>
 __host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+
+template<int noColumns>
+__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags); //, int noColumns);
 
 /////////////////////////////////
 
