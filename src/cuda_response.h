@@ -197,6 +197,9 @@ __host__ __device__ void rz_convolution_cu(const dataT* inputData, long loR, lon
 template<typename T, typename dataIn, typename dataOut>
 __host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk);
 
+template<int noColumns>
+__host__ __device__ void rz_convolution_sfl(const float2* inputData, long loR, long inStride, double r, float z, int kern_half_width, float2* outData, int colWidth, const int ic, const int cIdx);
+
 /////////////////////////////////
 
 template<typename T>

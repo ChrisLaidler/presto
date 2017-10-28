@@ -246,8 +246,8 @@ __global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, 
  *  The way this is structured, the number shared 'noColumns' must be a power of two <= 32
  *
  */
-//template<int noBlk>
-__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
+template<int noColumns>
+__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags) //, int noColumns)
 {
   const int tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int ty = blockIdx.y * blockDim.y + threadIdx.y;
@@ -296,66 +296,69 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
       halfW = getHw<float>(z, hw.val[hIdx]);
     }
 
-    //float2  inp[2];						// The input data, this is a complex number stored as, float2
-    long    dintfreq;						// Integer part of r      - double precision
-    long    start;						// The first bin to use
-    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-    int     numkern;						// The actual number of kernel values to use
-    float   resReal 	= 0.0f;					// Response value - real
-    float   resImag 	= 0.0f;					// Response value - imaginary
-
-    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
-    {
-      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
-      start	= dintfreq + 1 - halfW ;
-    }
-
-    FOLD 								// Clamp values to usable bounds  .
-    {
-      numkern	= 2 * halfW;
-      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
-    }
-
-    FOLD 								// Adjust for FFT  .
-    {
-      // Adjust to FFT
-      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
-    }
-
     float2 point;
-    point.x = 0.0f;
-    point.y = 0.0f;
 
-    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
-    {
-      // Calculate all the constants
+    rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
 
-      for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
-      {
-	FOLD 							// Calculate coefficients  .
-	{
-	  calc_coefficient<float>(offset, z, &resReal, &resImag);
-	}
-
-	FOLD 							//  Do the multiplication and sum  accumulate  .
-	{
-	  for( int idx = 0; idx < noColumns; idx++)
-	  {
-	    // TODO: May have to do an end condition check here?
-
-	    // Read input - These reads are generally coalesced
-	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
-
-	    float resCRea_c = __shfl(resReal, idx, noColumns );
-	    float resImag_c = __shfl(resImag, idx, noColumns );
-
-	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
-	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
-	  }
-	}
-      }
-    }
+//    long    dintfreq;						// Integer part of r      - double precision
+//    long    start;						// The first bin to use
+//    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+//    int     numkern;						// The actual number of kernel values to use
+//    float   resReal 	= 0.0f;					// Response value - real
+//    float   resImag 	= 0.0f;					// Response value - imaginary
+//
+//    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
+//    {
+//      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
+//      start	= dintfreq + 1 - halfW ;
+//    }
+//
+//    FOLD 								// Clamp values to usable bounds  .
+//    {
+//      numkern	= 2 * halfW;
+//      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
+//    }
+//
+//    FOLD 								// Adjust for FFT  .
+//    {
+//      // Adjust to FFT
+//      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
+//    }
+//
+//    float2 point;
+//    point.x = 0.0f;
+//    point.y = 0.0f;
+//
+//    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
+//    {
+//      // Calculate all the constants
+//
+//      for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
+//      {
+//	FOLD 							// Calculate coefficients  .
+//	{
+//	  calc_coefficient<float>(offset, z, &resReal, &resImag);
+//	}
+//
+//	FOLD 							//  Do the multiplication and sum  accumulate  .
+//	{
+//	  for( int idx = 0; idx < noColumns; idx++)
+//	  {
+//	    // TODO: May have to do an end condition check here?
+//
+//	    // Read input - These reads are generally coalesced
+//	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
+//	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
+//
+//	    float resCRea_c = __shfl(resReal, idx, noColumns );
+//	    float resImag_c = __shfl(resImag, idx, noColumns );
+//
+//	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
+//	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
+//	  }
+//	}
+//      }
+//    }
 
     FOLD // Write values back to memory
     {
@@ -1663,8 +1666,37 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	dimGrid.x = noX * pln->noHarms ;
 	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
 
-	// Call the kernel to normalise and spread the input data
-	ffdotPlnByShfl_ker<<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
+	FOLD // Call the kernel to normalise and spread the input data
+	{
+	  //ffdotPlnByShfl_ker<<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
+
+	  switch (pln->blkCnt)
+	  {
+	    case 1:
+	      ffdotPlnByShfl_ker<1><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	      break;
+	    case 2:
+	      ffdotPlnByShfl_ker<2><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	      break;
+	    case 4:
+	      ffdotPlnByShfl_ker<4><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	      break;
+	    case 8:
+	      ffdotPlnByShfl_ker<8><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	      break;
+	    case 16:
+	      ffdotPlnByShfl_ker<16><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	      break;
+	    case 32:
+	      ffdotPlnByShfl_ker<32><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
+	      break;
+	    default:
+	    {
+	      fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
+	      exit(EXIT_FAILURE);
+	    }
+	  }
+	}
 
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
@@ -2258,7 +2290,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	}
 	else
 	{
-	if ( pln->rSize > 8 )	// TODO: Determine this bound
+	if ( pln->rSize > MAX_OPT_SFL_NO )	// TODO: Determine this bound
 	{
 	  double diff = 1.0;
 	  int sz = MAX_OPT_SFL_NO;
@@ -2281,7 +2313,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	}
 	else
 	{
-	  // Smaller than one so pretty much have to have a width of 1
+	  // Smaller than one so pretty much have to have a width of 1, and log2 will give negative values
 	  pln->blkCnt	= 1;
 	}
 	}
