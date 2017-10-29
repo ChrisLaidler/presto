@@ -1140,6 +1140,7 @@ __host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, c
 }
 
 //template<int noColumns>
+template<typename T>
 __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
 {
   const int tx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1177,30 +1178,24 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   {
     int halfW;
 
-    double	r	= (firstR + ic/(double)(noR-1) * rSZ );
-    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
-    if (noZ == 1)
-      z = firstZ;
-    r *= hrm;
-    z *= hrm;
+    double	r	= (firstR + ic/(double)(noR-1) * rSZ )*hrm;
+    T		z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;
+    //if (noZ == 1)
+    //  z = firstZ;
+    //r *= hrm;
+    //z *= hrm;
 
     FOLD // Determine half width
     {
-      halfW = getHw<float>(z, hw.val[hIdx]);
+      halfW = getHw<T>(z, hw.val[hIdx]);
     }
-
-    float2 point;
-    point.x = 0.0f;
-    point.y = 0.0f;
 
     //rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
 
     long    dintfreq;						// Integer part of r      - double precision
     long    start;						// The first bin to use
-    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-    int     numkern;						// The actual number of kernel values to use
-    float   resReal;						// Response value - real
-    float   resImag;						// Response value - imaginary
+    T       offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+    volatile int     numkern;						// The actual number of kernel values to use
 
     FOLD 								// Calculate the reference bin (closes integer bin to r)  .
     {
@@ -1220,45 +1215,63 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
       start -= loR.val[hIdx];					// Adjust for accessing the input FFT
     }
 
+    //float2 point;
+    T realSum = 0.0f;
+    T imagSum = 0.0f;
+
+    fft		+= iStride*hIdx + start + (cIdx)*colWidth;
+
     FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
     {
       // Calculate all the constants
-      int signZ		= (z < (float)0.0) ? -1 : 1;
-      float absZ		= fabs_t(z);
-      float sqrtAbsZ	= sqrt_t(absZ);
-      float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-      float overSq2AbsZ	= (float)1.0 / (float)SQRT2 / sqrtAbsZ ;
-      float Qk		= offset - z / (float)2.0;		// Adjust for acceleration
+      int signZ		= (z < (T)0.0) ? -1 : 1;
+      T absZ	= fabs_t(z);
+      T sqrtAbsZ	= sqrt_t(absZ);
+      T sq2overAbsZ	= (T)SQRT2 / sqrtAbsZ;
+      T overSq2AbsZ	= (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
+      T Qk		= offset - z / (T)2.0;		// Adjust for acceleration
 
       for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)	// Loop over the kernel elements
       {
+	T resReal;						// Response value - real
+        T resImag;						// Response value - imaginary
+
 	FOLD 							// Calculate coefficient  .
 	{
-	  if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
+	  if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
 	  {
-	    calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	    calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
 	  }
 	  else							// Calculate approximation coefficients  .
 	  {
-	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
+	    calc_coefficient_a<T>(offset, z, &resReal, &resImag);
 	  }
 	}
+
+
+//       for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
+//       {
+//         float   resReal;						// Response value - real
+//         float   resImag;						// Response value - imaginary
+//
+// 	calc_coefficient<float>(offset, z, &resReal, &resImag);
 
 	FOLD 							//  Do the multiplication and sum  accumulate  .
 	{
 	  for( int idx = 0; idx < noColumns; idx++)
+	  //int idx = 0;
 	  {
 	    // TODO: May have to do an end condition check here?
 
 	    // Read input - These reads are generally coalesced
 	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
+	    float2 inp = fft[ i + idx ];
 
 	    float resCRea_c = __shfl(resReal, idx, noColumns );
 	    float resImag_c = __shfl(resImag, idx, noColumns );
 
-	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
-	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
+	    realSum += (resCRea_c * inp.x - resImag_c * inp.y);
+	    imagSum += (resCRea_c * inp.y + resImag_c * inp.x);
 	  }
 	}
       }
@@ -1269,6 +1282,7 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
       if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
       {
 	int ix = cIdx * noOffsets + ic ;
+	float2 point = {realSum, imagSum};
 
 	if ( flags & (uint)(FLAG_HAMRS ) )
 	{
@@ -1587,16 +1601,17 @@ template void rz_coefficients<float,  float2> (double r, float  z, int kern_half
 ////////////////////
 
 
-//#ifdef WITH_OPT_BLK_SHF
+#ifdef WITH_OPT_BLK_SHF
+
 template void rz_convolution_sfl<1 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 template void rz_convolution_sfl<2 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 template void rz_convolution_sfl<4 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 template void rz_convolution_sfl<8 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 template void rz_convolution_sfl<16>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 template void rz_convolution_sfl<32>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-//#endif
 
-//template void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
+template __global__ void ffdotPlnByShfl_ker<float >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
+template __global__ void ffdotPlnByShfl_ker<double>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
 
 //template void ffdotPlnByShfl_ker<1 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags); //, int noColumns)
 //template void ffdotPlnByShfl_ker<2 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
@@ -1604,8 +1619,10 @@ template void rz_convolution_sfl<32>(float2* inputData, const long loR, const lo
 //template void ffdotPlnByShfl_ker<8 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 //template void ffdotPlnByShfl_ker<16>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 //template void ffdotPlnByShfl_ker<32>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+#endif
 
 
+#ifdef WITH_OPT_BLK_HRM
 template __global__ void ffdotPlnByBlk_ker3<float, 1 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 template __global__ void ffdotPlnByBlk_ker3<float, 2 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 template __global__ void ffdotPlnByBlk_ker3<float, 3 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
@@ -1623,7 +1640,23 @@ template __global__ void ffdotPlnByBlk_ker3<float, 14>(float* powers, float2* ff
 template __global__ void ffdotPlnByBlk_ker3<float, 15>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 template __global__ void ffdotPlnByBlk_ker3<float, 16>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 
-
+template __global__ void ffdotPlnByBlk_ker3<double, 1 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 2 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 3 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 4 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 5 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 6 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 7 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 8 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 9 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 10>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 11>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 12>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 13>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 14>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 15>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 16>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+#endif
 
 template void rz_convolution_cu<float,  float2> (const float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
 //template void rz_convolution_cu<float,  double2>(const double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
