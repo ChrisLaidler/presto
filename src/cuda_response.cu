@@ -1036,15 +1036,13 @@ __host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, lo
  * @param blkWidth            The width of the blocks in bins
  * @param kern_half_width     The half width of the points to use in the interpolation
  */
-template<int noColumns>
-__host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx)
+template<typename T, int noColumns>
+__device__ inline void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, T* realSum, T* imagSum, const int colWidth, const int ic, const int cIdx)
 {
-  long    dintfreq;						// Integer part of r      - double precision
-  long    start;						// The first bin to use
-  float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-  int     numkern;						// The actual number of kernel values to use
-  float   resReal;						// Response value - real
-  float   resImag;						// Response value - imaginary
+  long	dintfreq;						// Integer part of r      - double precision
+  long	start;							// The first bin to use
+  T	offset;							// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
+  int	numkern;						// The actual number of kernel values to use
 
   FOLD 								// Calculate the reference bin (closes integer bin to r)  .
   {
@@ -1054,46 +1052,79 @@ __host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, c
 
   FOLD 								// Clamp values to usable bounds  .
   {
-    numkern	= 2 * kern_half_width;
-    offset	= ( r - cIdx - start);				// This is rc-k for the first bin
+    numkern	= 2 * kern_half_width ;
+    offset	= ( r - cIdx - start) ;				// This is rc-k for the first bin
   }
 
   FOLD 								// Adjust for FFT  .
   {
     // Adjust to FFT
-    start -= loR;						// Adjust for accessing the input FFT
+    start	-= loR;						// Adjust for accessing the input FFT
   }
 
-  FOLD // Zero the output
+  FOLD								// Zero running sum
   {
-    outData->x = 0.0f;
-    outData->y = 0.0f;
+    *realSum = (T)0.0;
+    *imagSum = (T)0.0;
   }
 
+  // Shift the input pointer to the thread specific location
   inputData = &inputData[start+(cIdx)*colWidth];
 
   FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
   {
-    // Calculate all the constants
-    int signZ		= (z < (float)0.0) ? -1 : 1;
-    float absZ		= fabs_t(z);
-    float sqrtAbsZ	= sqrt_t(absZ);
-    float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-    float overSq2AbsZ	= (float)1.0 / (float)SQRT2 / sqrtAbsZ ;
-    float Qk		= offset - z / (float)2.0;		// Adjust for acceleration
+//     // Calculate all the constants
+//     int signZ		= (z < (T)0.0) ? -1 : 1;
+//     T absZ		= fabs_t(z);
+//     T sqrtAbsZ		= sqrt_t(absZ);
+//     T sq2overAbsZ	= (T)SQRT2 / sqrtAbsZ;
+//     T overSq2AbsZ	= (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
+//     T Qk		= offset - z / (T)2.0;		// Adjust for acceleration
+//
+//     for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)		// Loop over the kernel elements
+//     {
+//       T   resReal;						// Response value - real
+//       T   resImag;						// Response value - imaginary
+//
+//       FOLD 							// Calculate coefficient  .
+//       {
+// 	if (i + cIdx < numkern )
+// 	{
+// 	  if ( absZ > getZlim(offset) )			// Calculate raw coefficients .
+// 	  {
+// 	    calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+// 	  }
+// 	  else							// Calculate approximation coefficients  .
+// 	  {
+// 	    calc_coefficient_a<T>(offset, z, &resReal, &resImag);
+// 	  }
+// 	}
+// 	else
+// 	{
+// 	  // This catches potently "overflow" beyond the length of the filter, rather here than in the inner loop below
+// 	  resReal = (T)0.0;
+// 	  resImag = (T)0.0;
+// 	}
+//       }
 
-    for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)		// Loop over the kernel elements
+    for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)		// Loop over the kernel elements
     {
+      T   resReal;						// Response value - real
+      T   resImag;						// Response value - imaginary
+
       FOLD 							// Calculate coefficient  .
       {
-	//calc_coefficient<float>(offset, z, &resReal, &resImag);
-	if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
+	if (i + cIdx < numkern )
 	{
-	  calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
+	  // NOTE: I found it faster to calculate the coefficient like this
+	  // This duplicates some calculations such as "sqrt_t(absZ)" but it is faster, presumably because of lower register pressure
+	  calc_coefficient<T>(offset, z, &resReal, &resImag);
 	}
-	else							// Calculate approximation coefficients  .
+	else
 	{
-	  calc_coefficient_a<float>(offset, z, &resReal, &resImag);
+	  // This catches potently "overflow" beyond the length of the filter, rather here than in the inner loop below
+	  resReal = (T)0.0;
+	  resImag = (T)0.0;
 	}
       }
 
@@ -1101,38 +1132,14 @@ __host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, c
       {
 	for( int idx = 0; idx < noColumns; idx++)
 	{
-	  // TODO: May have to do an end condition check here?
-
 	  // Read input - These reads are generally coalesced
 	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	  //float2 inp = inputData[start + i + idx + (cIdx)*colWidth];
 	  float2 inp = inputData[i + idx];
 
-#ifdef  __CUDA_ARCH__
-	  float resCRea_c = __shfl(resReal, idx, noColumns );
-	  float resImag_c = __shfl(resImag, idx, noColumns );
-	  outData->x += (resCRea_c * inp.x - resImag_c * inp.y);
-	  outData->y += (resCRea_c * inp.y + resImag_c * inp.x);
-#else
-	  //	  float resCRea_c;
-	  //	  float resImag_c;
-	  //
-	  //	  FOLD 							// Calculate coefficient  .
-	  //	  {
-	  //	    int adjust = cIdx-idx; // TODO: this needs to be checked, sigh change?
-	  //	    if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
-	  //	    {
-	  //	      calc_coefficient_z<float, false>(Qk+adjust, offset+adjust, z, sq2overAbsZ, overSq2AbsZ, signZ, &resCRea_c, &resImag_c);
-	  //	    }
-	  //	    else							// Calculate approximation coefficients  .
-	  //	    {
-	  //	      calc_coefficient_a<float>(offset+adjust, z, &resCRea_c, &resImag_c);
-	  //	    }
-	  //	  }
-//	  outData->x += (resCRea_c * inp.x - resImag_c * inp.y);
-//	  outData->y += (resCRea_c * inp.y + resImag_c * inp.x);
-#endif
-
+	  T resCRea_c = __shfl(resReal, idx, noColumns );
+	  T resImag_c = __shfl(resImag, idx, noColumns );
+	  *realSum += (resCRea_c * inp.x - resImag_c * inp.y);
+	  *realSum += (resCRea_c * inp.y + resImag_c * inp.x);
 	}
       }
     }
@@ -1173,108 +1180,40 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   // Calculate cooperative specific values
   const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
   const int	cIdx	= bx % noColumns;			// The index in the cooperative
+  T realSum;
+  T imagSum;
 
   //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
   {
     int halfW;
 
-    double	r	= (firstR + ic/(double)(noR-1) * rSZ )*hrm;
-    T		z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;
-    //if (noZ == 1)
-    //  z = firstZ;
-    //r *= hrm;
-    //z *= hrm;
+    double	r	= (firstR + ic/(double)(noR-1) * rSZ )*hrm;	// NOTE: This will fail if noR == 1
+    T		z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;	// NOTE: This will fail if noZ == 1
 
     FOLD // Determine half width
     {
       halfW = getHw<T>(z, hw.val[hIdx]);
     }
 
-    //rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
-
-    long    dintfreq;						// Integer part of r      - double precision
-    long    start;						// The first bin to use
-    T       offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-    volatile int     numkern;						// The actual number of kernel values to use
-
-    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
+    FOLD // Do the convolution  .
     {
-      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
-      start	= dintfreq + 1 - halfW ;
-    }
+      // Note, these calculations could be don strait in this function but I found it significantly faster to use a function, even more so when templated for noColumns
 
-    FOLD 								// Clamp values to usable bounds  .
-    {
-      numkern	= 2 * halfW;
-      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
-    }
+      // TESTING: Un-templated version - I found this a bit slower
+      //rz_convolution_sfl<T, noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
 
-    FOLD 								// Adjust for FFT  .
-    {
-      // Adjust to FFT
-      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
-    }
-
-    //float2 point;
-    T realSum = 0.0f;
-    T imagSum = 0.0f;
-
-    fft		+= iStride*hIdx + start + (cIdx)*colWidth;
-
-    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
-    {
-      // Calculate all the constants
-      int signZ		= (z < (T)0.0) ? -1 : 1;
-      T absZ	= fabs_t(z);
-      T sqrtAbsZ	= sqrt_t(absZ);
-      T sq2overAbsZ	= (T)SQRT2 / sqrtAbsZ;
-      T overSq2AbsZ	= (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
-      T Qk		= offset - z / (T)2.0;		// Adjust for acceleration
-
-      for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)	// Loop over the kernel elements
-      {
-	T resReal;						// Response value - real
-        T resImag;						// Response value - imaginary
-
-	FOLD 							// Calculate coefficient  .
-	{
-	  if ( absZ > getZlim(offset) )				// Calculate raw coefficients .
-	  {
-	    calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
-	  }
-	  else							// Calculate approximation coefficients  .
-	  {
-	    calc_coefficient_a<T>(offset, z, &resReal, &resImag);
-	  }
-	}
-
-
-//       for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)	// Loop over the kernel elements
-//       {
-//         float   resReal;						// Response value - real
-//         float   resImag;						// Response value - imaginary
-//
-// 	calc_coefficient<float>(offset, z, &resReal, &resImag);
-
-	FOLD 							//  Do the multiplication and sum  accumulate  .
-	{
-	  for( int idx = 0; idx < noColumns; idx++)
-	  //int idx = 0;
-	  {
-	    // TODO: May have to do an end condition check here?
-
-	    // Read input - These reads are generally coalesced
-	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	    float2 inp = fft[ i + idx ];
-
-	    float resCRea_c = __shfl(resReal, idx, noColumns );
-	    float resImag_c = __shfl(resImag, idx, noColumns );
-
-	    realSum += (resCRea_c * inp.x - resImag_c * inp.y);
-	    imagSum += (resCRea_c * inp.y + resImag_c * inp.x);
-	  }
-	}
-      }
+      if      ( noColumns ==1)
+	rz_convolution_sfl<T, 1>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 2)
+	rz_convolution_sfl<T, 2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 4)
+	rz_convolution_sfl<T, 4>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 8)
+	rz_convolution_sfl<T, 8>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 16)
+	rz_convolution_sfl<T, 16>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 32)
+	rz_convolution_sfl<T, 32>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
     }
 
     FOLD // Write values back to memory
@@ -1330,22 +1269,17 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
   {
     int hrm = hIdx+1;
 
-    double	r	= (firstR + bx/(double)(noR-1) * rSZ );
-    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
-    if (noZ == 1)
-      z = firstZ;
-
-    r *= hrm;
-    z *= hrm;
+    double	r	= (firstR + bx/(double)(noR-1) * rSZ )*hrm;
+    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;
     blkWidth *= hrm;
 
     float2      ans[noBlk];
-    int halfW;
-
     int width = (noR - 1 - bx)/blkDimX+1;
 
-    FOLD
+    FOLD // Do the convolution  .
     {
+      int halfW;
+
       FOLD // Determine half width
       {
 	halfW = getHw<T>(z, hw.val[hIdx]);
@@ -1357,7 +1291,7 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
       }
     }
 
-    FOLD // Write values back to memory
+    FOLD // Write values back to memory  .
     {
       for( int blk = 0; blk < width; blk++ )
       {
@@ -1385,6 +1319,7 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
     }
   }
 }
+
 #endif
 
 ////////////////////  DBG
@@ -1603,12 +1538,12 @@ template void rz_coefficients<float,  float2> (double r, float  z, int kern_half
 
 #ifdef WITH_OPT_BLK_SHF
 
-template void rz_convolution_sfl<1 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<2 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<4 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<8 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<16>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-template void rz_convolution_sfl<32>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+//template void rz_convolution_sfl<1 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+//template void rz_convolution_sfl<2 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+//template void rz_convolution_sfl<4 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+//template void rz_convolution_sfl<8 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+//template void rz_convolution_sfl<16>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+//template void rz_convolution_sfl<32>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 
 template __global__ void ffdotPlnByShfl_ker<float >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
 template __global__ void ffdotPlnByShfl_ker<double>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
