@@ -108,6 +108,7 @@ extern "C"
 #include "cuda_accel_IN.h"
 #include "cuda_accel_PLN.h"
 #include "cuda_cand_OPT.h"
+#include "cuda_response.h"
 
 #ifdef CBL
 #include <unistd.h>
@@ -1744,7 +1745,7 @@ void readAccelDefalts(confSpecs *conf)
 	  }
 	  else
 	  {
-	    fprintf(stderr,"WARNING: Invalid value, %s should range between %i and %i - %i. Max can be changed with compile time value MAX_OPT_BLK_NO.\n", str1, 1, MAX_OPT_BLK_NO);
+	    fprintf(stderr,"WARNING: Invalid value, %s should range between %i and %i. Max can be changed with compile time value MAX_OPT_BLK_NO.\n", str1, 1, MAX_OPT_BLK_NO);
 	  }
 	}
 	else

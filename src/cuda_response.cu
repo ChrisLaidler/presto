@@ -1146,7 +1146,6 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
   }
 }
 
-//template<int noColumns>
 template<typename T>
 __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
 {
@@ -1199,7 +1198,7 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
     {
       // Note, these calculations could be don strait in this function but I found it significantly faster to use a function, even more so when templated for noColumns
 
-      // TESTING: Un-templated version - I found this a bit slower
+      // TESTING: Untemplated version - I found this a bit slower
       //rz_convolution_sfl<T, noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
 
       if      ( noColumns ==1)
@@ -1523,7 +1522,7 @@ template void calc_coefficient_z<float,  false>(float  offset, float  z, float* 
 template void calc_coefficient_z<double, true >(double offset, double z, double* real, double* imag);
 template void calc_coefficient_z<double, false>(double offset, double z, double* real, double* imag);
 
-template inline void calc_coefficient_z<float,  false>(float Qk, float dr, float z, float sq2overAbsZ, float overSq2AbsZ, int sighnZ, float* real, float* imag);
+template void calc_coefficient_z<float,  false>(float Qk, float dr, float z, float sq2overAbsZ, float overSq2AbsZ, int sighnZ, float* real, float* imag);
 
 
 template void calc_coefficient_a<float >(float  offset, float  z, float*  real, float*  imag);
