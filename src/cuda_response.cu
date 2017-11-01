@@ -825,7 +825,7 @@ __host__ __device__ void rz_coefficients(double r, T z, int kern_half_width, out
  * @param imag
  */
 template<typename T, typename dataT>
-__host__ __device__ void rz_convolution_cu(const dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag)
+__host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag)
 {
   dataT   inp;							// The input data, this is a complex number stored as, float2 or double2
   long    dintfreq;						// Integer part of r      - double precision
@@ -932,7 +932,7 @@ __host__ __device__ void rz_convolution_cu(const dataT* inputData, long loR, lon
  * @param kern_half_width     The half width of the points to use in the interpolation
  */
 template<typename T, typename dataIn, typename dataOut>
-__host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk)
+__host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk)
 {
   for ( int blk = 0; blk < noBlk; blk++ )
   {
@@ -1107,6 +1107,8 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
 // 	}
 //       }
 
+    int bc_ajust = noColumns - cIdx*colWidth + cIdx ;		// This is a per thread offset that helps minamise bank conflicst
+
     for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)		// Loop over the kernel elements
     {
       T   resReal;						// Response value - real
@@ -1132,12 +1134,14 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
       {
 	for( int idx = 0; idx < noColumns; idx++)
 	{
+	  int bank = ( idx + bc_ajust ) & (noColumns-1);
 	  // Read input - These reads are generally coalesced
-	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-	  float2 inp = inputData[i + idx];
+	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is not needed!
+	  // However evidently, there can be bank conflicts in cache so I adjust the per thread offset with "bank" - Differing cooperatives will access the same bank, but most lightly the same value so no conflict
+	  float2 inp = inputData[i + bank ];
 
-	  T resCRea_c = __shfl(resReal, idx, noColumns );
-	  T resImag_c = __shfl(resImag, idx, noColumns );
+	  T resCRea_c = __shfl(resReal, bank, noColumns );
+	  T resImag_c = __shfl(resImag, bank, noColumns );
 	  *realSum += (resCRea_c * inp.x - resImag_c * inp.y);
 	  *realSum += (resCRea_c * inp.y + resImag_c * inp.x);
 	}
@@ -1160,31 +1164,27 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
   // Adjust for harmonic
   colWidth *= hrm;
 
-//  // DBG Put back
-//  FOLD // Check for a better width  .
-//  {
-//    int width	= colWidth*noColumns;
-//    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
-//    {
-//      noOffsets = noOffsets>>1;
-//      noColumns = noColumns<<1;
-//      colWidth = colWidth>>1;
-//    }
-// //    if ( bx == 0 && iy == 0 )
-// //    {
-// //      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
-// //    }
-//  }
+  FOLD // Check for a better width  .
+  {
+    // This can speed up higher harmonics by up to 25% for small plane widths (1-4)
+    int width	= colWidth*noColumns;
+    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
+    {
+      noOffsets = noOffsets>>1;
+      noColumns = noColumns<<1;
+      colWidth = colWidth>>1;
+    }
+  }
 
   // Calculate cooperative specific values
-  const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
-  const int	cIdx	= bx % noColumns;			// The index in the cooperative
-  T realSum;
-  T imagSum;
+  const int	ic	= bx / noColumns;				// The cooperative number (ie similar offset)
+  const int	cIdx	= bx % noColumns;				// The index in the cooperative
 
   //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
   {
     int halfW;
+    T realSum;
+    T imagSum;
 
     double	r	= (firstR + ic/(double)(noR-1) * rSZ )*hrm;	// NOTE: This will fail if noR == 1
     T		z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;	// NOTE: This will fail if noZ == 1
@@ -1201,17 +1201,17 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
       // TESTING: Untemplated version - I found this a bit slower
       //rz_convolution_sfl<T, noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
 
-      if      ( noColumns ==1)
-	rz_convolution_sfl<T, 1>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
-      else if ( noColumns == 2)
-	rz_convolution_sfl<T, 2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
-      else if ( noColumns == 4)
-	rz_convolution_sfl<T, 4>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
-      else if ( noColumns == 8)
-	rz_convolution_sfl<T, 8>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
-      else if ( noColumns == 16)
+      if      ( noColumns == 1  )
+	rz_convolution_sfl<T, 1 >(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 2  )
+	rz_convolution_sfl<T, 2 >(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 4  )
+	rz_convolution_sfl<T, 4 >(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 8  )
+	rz_convolution_sfl<T, 8 >(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
+      else if ( noColumns == 16 )
 	rz_convolution_sfl<T, 16>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
-      else if ( noColumns == 32)
+      else if ( noColumns == 32 )
 	rz_convolution_sfl<T, 32>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
     }
 
