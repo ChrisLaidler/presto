@@ -74,7 +74,7 @@
 #endif
 
 __device__ __forceinline__ unsigned int    __lidd() { unsigned int laneid; asm volatile ("mov.u32 %0, %laneid;" : "=r"(laneid)); return laneid; }
-//__device__ __forceinline__ unsigned int __warpid() { unsigned int warpid; asm volatile ("mov.u32 %0, %warpid;" : "=r"(warpid)); return warpid; }
+__device__ __forceinline__ unsigned int  __warpid() { unsigned int warpid; asm volatile ("mov.u32 %0, %warpid;" : "=r"(warpid)); return warpid; }
 //__device__ __forceinline__ unsigned int   __smid() { unsigned int smid;   asm volatile ("mov.u32 %0, %smid;"   : "=r"(smid));   return smid;   }
 //__device__ __forceinline__ unsigned int __gridid() { unsigned int gridid; asm volatile ("mov.u32 %0, %gridid;" : "=r"(gridid)); return gridid; }
 //__device__ __forceinline__ unsigned int __tIdBlock() { unsigned int tid; asm volatile ("mad.lo.u32 %ntid.x, %tid.y, %tid.x, %0;" : "=r"(tid)); return tid; }

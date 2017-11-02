@@ -836,8 +836,8 @@ __host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long l
   //*real = (T)0.0;
   //*imag = (T)0.0;
 
-  T 	resReal 	= 0;					// Response value - real
-  T 	resImag 	= 0;					// Response value - imaginary
+  T 	resReal;						// Response value - real
+  T 	resImag;						// Response value - imaginary
 
   FOLD // Calculate the reference bin (closes integer bin to r)  .
   {
@@ -902,17 +902,16 @@ __host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long l
 
       FOLD 							//  Do the multiplication and sum  accumulate  .
       {
-//	*real += (resReal * inp.x - resImag * inp.y);
-//	*imag += (resReal * inp.y + resImag * inp.x);
-
 	realSum += (resReal * inp.x - resImag * inp.y);
 	imagSum += (resReal * inp.y + resImag * inp.x);
       }
     }
 
-    // Writ back to output
-    *real = realSum;
-    *imag = imagSum;
+    FOLD    // Writ back to output
+    {
+      *real = realSum;
+      *imag = imagSum;
+    }
   }
 }
 
@@ -992,7 +991,6 @@ __host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long 
       }
 
       // Use the coefficient on each input value with the same fractional part
-
       for ( int blk = 0; blk < noBlk; blk++ )
       {
 	FOLD // Clamp values to usable bounds  .
@@ -1073,42 +1071,6 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
 
   FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
   {
-//     // Calculate all the constants
-//     int signZ		= (z < (T)0.0) ? -1 : 1;
-//     T absZ		= fabs_t(z);
-//     T sqrtAbsZ		= sqrt_t(absZ);
-//     T sq2overAbsZ	= (T)SQRT2 / sqrtAbsZ;
-//     T overSq2AbsZ	= (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
-//     T Qk		= offset - z / (T)2.0;		// Adjust for acceleration
-//
-//     for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)		// Loop over the kernel elements
-//     {
-//       T   resReal;						// Response value - real
-//       T   resImag;						// Response value - imaginary
-//
-//       FOLD 							// Calculate coefficient  .
-//       {
-// 	if (i + cIdx < numkern )
-// 	{
-// 	  if ( absZ > getZlim(offset) )			// Calculate raw coefficients .
-// 	  {
-// 	    calc_coefficient_z<T, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
-// 	  }
-// 	  else							// Calculate approximation coefficients  .
-// 	  {
-// 	    calc_coefficient_a<T>(offset, z, &resReal, &resImag);
-// 	  }
-// 	}
-// 	else
-// 	{
-// 	  // This catches potently "overflow" beyond the length of the filter, rather here than in the inner loop below
-// 	  resReal = (T)0.0;
-// 	  resImag = (T)0.0;
-// 	}
-//       }
-
-    int bc_ajust = noColumns - cIdx*colWidth + cIdx ;		// This is a per thread offset that helps minamise bank conflicst
-
     for ( int i = 0 ; i < numkern; i+=noColumns, offset-=noColumns)		// Loop over the kernel elements
     {
       T   resReal;						// Response value - real
@@ -1132,18 +1094,17 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
 
       FOLD 							//  Do the multiplication and sum  accumulate  .
       {
-	for( int idx = 0; idx < noColumns; idx++)
+	for( int idx = 0; idx < noColumns; idx++ )
 	{
-	  int bank = ( idx + bc_ajust ) & (noColumns-1);
 	  // Read input - These reads are generally coalesced
 	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is not needed!
 	  // However evidently, there can be bank conflicts in cache so I adjust the per thread offset with "bank" - Differing cooperatives will access the same bank, but most lightly the same value so no conflict
-	  float2 inp = inputData[i + bank ];
+	  float2 inp = inputData[i + idx ];
 
-	  T resCRea_c = __shfl(resReal, bank, noColumns );
-	  T resImag_c = __shfl(resImag, bank, noColumns );
+	  T resCRea_c = __shfl(resReal, idx, noColumns );
+	  T resImag_c = __shfl(resImag, idx, noColumns );
 	  *realSum += (resCRea_c * inp.x - resImag_c * inp.y);
-	  *realSum += (resCRea_c * inp.y + resImag_c * inp.x);
+	  *imagSum += (resCRea_c * inp.y + resImag_c * inp.x);
 	}
       }
     }

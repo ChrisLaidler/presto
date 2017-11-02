@@ -152,7 +152,7 @@ extern "C"
 #define			WITH_OPT_BLK_SHF		///< This is usual the best block kernel - Share common coefficients using shuffle block
 #define 		WITH_OPT_BLK_HRM		///< This is good as an alternative to Shuffle
 #define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics - This can get deprecated
-//#define 		WITH_OPT_BLK_RSP		///< Depricated
+//#define 		WITH_OPT_BLK_RSP		///< Deprecated
 
 #define 		WITH_OPT_PTS_HRM		///< This is usual the best kernel
 #define 		WITH_OPT_PTS_NRM		///< I found this is generally worse than harmonics

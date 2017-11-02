@@ -1599,49 +1599,82 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 #ifdef WITH_OPT_BLK_SHF
 	infoMSG(5,5,"Block kernel 4 - Shuffle");
 
-	dimBlock.x = MAX(MAX_OPT_SFL_NO,16);				// This max ensures all values are in a single warp
-	dimBlock.y = MIN(16, pln->noZ);
-
-	int noX = ceil(pln->noR / (float)dimBlock.x);
-	int harmWidth = noX*dimBlock.x;
-
+	// Zero the plane memory
 	err += zeroPln(plnGen);
 
-	// One block per harmonic, thus we can sort input powers in Shared memory
-	dimGrid.x = noX * pln->noHarms ;
-	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-	FOLD // Call the kernel to normalise and spread the input data
+	int noB = pln->blkCnt * pln->blkWidth ;
+	int mnW = 1 ;
+	while ( (noB % mnW) || (pln->noR % (noB/mnW)) )
 	{
-	  ffdotPlnByShfl_ker<T><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
-
-//	  switch (pln->blkCnt)
-//	  {
-//	    case 1:
-//	      ffdotPlnByShfl_ker<1><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	      break;
-//	    case 2:
-//	      ffdotPlnByShfl_ker<2><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	      break;
-//	    case 4:
-//	      ffdotPlnByShfl_ker<4><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	      break;
-//	    case 8:
-//	      ffdotPlnByShfl_ker<8><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	      break;
-//	    case 16:
-//	      ffdotPlnByShfl_ker<16><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	      break;
-//	    case 32:
-//	      ffdotPlnByShfl_ker<32><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-//	      break;
-//	    default:
-//	    {
-//	      fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
-//	      exit(EXIT_FAILURE);
-//	    }
-//	  }
+	  mnW++;
 	}
+	noB /= mnW;
+	int dim1 = pln->noR / noB ;			// This is basically blockX
+
+	float2 *inp = (float2*)input->d_inp;
+	float *out  = (float*)pln->d_data;
+
+	while ( noB )
+	{
+	  int widh = MAX_OPT_SFL_NO;
+
+	  while ( widh*mnW > noB )
+	  {
+	    widh /= 2;
+	  }
+
+	  int rSize = widh*mnW;
+	  int rDim  = widh*dim1;
+
+	  FOLD // Create a kernel for the slice being handled
+	  {
+	    dimBlock.x = MAX(MAX_OPT_SFL_NO,16);				// This max ensures all values are in a single warp
+	    dimBlock.y = MIN(16, pln->noZ);
+
+	    int noX = ceil(rDim / (float)dimBlock.x);
+	    int harmWidth = noX*dimBlock.x;
+
+	    // One block per harmonic, thus we can sort input powers in Shared memory
+	    dimGrid.x = noX * pln->noHarms ;
+	    dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+
+	    FOLD // Call the kernel to normalise and spread the input data
+	    {
+	      double rSizeSl	= (rDim-1)*(mnW)/double(dim1);
+
+	      infoMSG(6,6,"Partial kernel - Width:%2i  Dim: %4i\n", rSize, rDim);
+
+	      ffdotPlnByShfl_ker<T><<<dimGrid, dimBlock, 0, plnGen->stream >>>(out, inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, rSizeSl, dim1, rDim, pln->noZ, mnW, input->stride, pln->zStride, rOff, norm, hw, flags, widh);
+	    }
+	  }
+
+	  FOLD	// Prepare for next slice
+	  {
+	    noB  -= rSize;		// Decrease the remaining section of the plane to create
+	    out  += rDim;		// Stride the output
+	    minR += rSize;		// Shift location of next section of the plane
+	  }
+	}
+
+//      // Old Methoud
+//	int threadsPerOne = pln->noR / ( pln->blkCnt * pln->blkWidth ) ;
+//
+//	dimBlock.x = MAX(MAX_OPT_SFL_NO,16);				// This max ensures all values are in a single warp
+//	dimBlock.y = MIN(16, pln->noZ);
+//
+//	int noX = ceil(pln->noR / (float)dimBlock.x);
+//	int harmWidth = noX*dimBlock.x;
+//
+//	err += zeroPln(plnGen);
+//
+//	// One block per harmonic, thus we can sort input powers in Shared memory
+//	dimGrid.x = noX * pln->noHarms ;
+//	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
+//
+//	FOLD // Call the kernel to normalise and spread the input data
+//	{
+//	  ffdotPlnByShfl_ker<T><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
+//	}
 
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
@@ -2039,6 +2072,8 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       plnGen->flags &= ~(FLAG_CMPLX);
     }
 
+    infoMSG(5,5,"Size (%.6f x %.6f) Points (%i x %i) %i  Resolution: %.7f r  %.7f z.\n", plnGen->pln->rSize,plnGen->pln->zSize, plnGen->pln->noR, plnGen->pln->noZ, plnGen->pln->noR*plnGen->pln->noZ, plnGen->pln->rSize/double(plnGen->pln->noR-1), plnGen->pln->zSize/double(plnGen->pln->noZ-1) );
+
     err += setPlnGenTypeFromFlags(plnGen);
 
     err += stridePln(plnGen->pln, plnGen->gInf);
@@ -2262,6 +2297,10 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	  pln->blkCnt	= 1;
 	}
 	}
+	
+	// New methoud works to any integer size
+	pln->blkCnt = ceil(pln->rSize);
+
       }
 
       // Other settings are now set using the column width
@@ -2352,9 +2391,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
   // All kernels use the same output stride - These values can be changed later to suite a specific GPU memory alignment and data type
   pln->zStride		= pln->noR;
-
-  infoMSG(5,5,"Size (%.6f x %.6f) Points (%i x %i) %i  Resolution: %.7f r  %.7f z.\n", pln->rSize,pln->zSize, pln->noR, pln->noZ, pln->noR*pln->noZ, pln->rSize/double(pln->noR-1), pln->zSize/double(pln->noZ-1) );
-
+  
   return err;
 }
 
