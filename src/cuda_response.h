@@ -111,6 +111,13 @@ struct kerStruct
 
 /////////////////////////////////
 
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#else
+__device__ double atomicAdd(double* address, double val);
+#endif
+
+/////////////////////////////////
+
 __host__ __device__ inline float getE0lim(float nothing)
 {
   return E0_LIM_F;
@@ -208,25 +215,17 @@ __host__ __device__ void calc_coefficient_a(T offset, T z, T* resReal, T* resIma
 
 /////////////////////////////////
 
-template<typename T, typename outT>
-__host__ __device__ void gen_response_cu(double r, T z, int kern_half_width, outT* out);
-
-
 template<typename T, typename dataT>
 __host__ __device__ void rz_convolution_cu(const dataT* inputData, long loR, long noBins, double r, T z, int kern_half_width, T* real, T* imag);
-
-template<typename T, typename dataIn, typename dataOut>
-__host__ __device__ void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk);
 
 template<int noColumns>
 __host__ __device__ void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
 
-//template<int noColumns>
 template<typename T>
-__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
+__global__ void ffdotPlnByShfl_ker(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
 
 template<typename T, int noBlk>
-__global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+__global__ void ffdotPlnByBlk_ker3(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 
 /////////////////////////////////
 

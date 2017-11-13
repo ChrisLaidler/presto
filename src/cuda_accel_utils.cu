@@ -760,6 +760,8 @@ void readAccelDefalts(confSpecs *conf)
 
     char str1[1024];
     char str2[1024];
+    char str3[1024];
+    char str4[1024];
 
     char *rest;
 
@@ -1706,6 +1708,34 @@ void readAccelDefalts(confSpecs *conf)
 	}
       }
 
+      else if ( strCom("PLN_COL", str1 ) )
+      {
+	if      ( strCom("HRM", str2 ) )
+	{
+#ifdef WITH_OPT_BLK_HRM
+	  (*optFlags) &= ~FLAG_OPT_BLK;
+	  (*optFlags) |=  FLAG_OPT_BLK_HRM;
+#else
+	  fprintf(stderr, "ERROR: Found %s on line %i of %s, this has been disabled at compile time. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
+	  exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
+#endif
+	}
+	else if ( strCom("SFL", str2 ) )
+	{
+#ifdef WITH_OPT_BLK_SHF
+	  (*optFlags) &= ~FLAG_OPT_BLK;
+	  (*optFlags) |=  FLAG_OPT_BLK_SFL;
+#else
+	  fprintf(stderr, "ERROR: Found %s on line %i of %s, this has been disabled at compile time. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
+	  exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
+#endif
+	}
+	else
+	{
+	  fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
+	}
+      }
+
       else if ( strCom("FLAG_OPT_BEST", str1 ) )
       {
 	singleFlag ( optFlags, str1, str2, FLAG_OPT_BEST, "", "0", lineno, fName );
@@ -1754,7 +1784,6 @@ void readAccelDefalts(confSpecs *conf)
 	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
 	}
       }
-
 
       else if ( strCom("OPT_MIN_LOC_HARMS", str1 ) )
       {
@@ -1818,11 +1847,25 @@ void readAccelDefalts(confSpecs *conf)
 	int read1 = sscanf(str2, "%i", &no  );
 	if ( read1 == 1 )
 	{
-	  conf->opt->NelderMeadReps = no;
+	  conf->opt->nelderMeadReps = no;
 	}
 	else
 	{
 	  line[flagLen] = 0;
+	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	}
+      }
+
+      else if ( strCom("OPT_NELDER_MEAD_DELTA", str1 ) )
+      {
+	float no;
+	int read1 = sscanf(str2, "%f", &no  );
+	if ( read1 == 1 )
+	{
+	  conf->opt->nelderMeadDelta = no;
+	}
+	else
+	{
 	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
 	}
       }
@@ -1874,12 +1917,47 @@ void readAccelDefalts(confSpecs *conf)
       {
 	int no1;
 	int no2;
-	int read1 = sscanf(line, "%s %i %i", str1, &no1, &no2 );
-	if ( read1 == 3 )
+	int read1 = sscanf(line, "%s %i %i %s %s", str1, &no1, &no2, str2, str3 );
+	if ( read1 == 5 )
 	{
 	  if ( no1 >= 1 && no1 <= NO_OPT_LEVS )
 	  {
-	    conf->opt->optPlnDim[no1-1] = no2;
+	    FOLD // Dimension
+	    {
+	      conf->opt->optPlnDim[no1-1] = no2;
+	    }
+
+	    FOLD // Accuracy
+	    {
+	      if      ( strCom("HIGH", str2 ) || strCom("High", str2 ) ||  strCom("high", str2 ) )
+	      {
+		conf->opt->optPlnAccu[no1-1] = HIGHACC;
+	      }
+	      else if ( strCom("LOW", str2 ) || strCom("STD", str2 ) || strCom("std", str2 ) || strCom("Std", str2 ) )
+	      {
+		conf->opt->optPlnAccu[no1-1] = LOWACC;
+	      }
+	      else
+	      {
+		fprintf(stderr,"WARNING: Invalid option for %s, valid options are: HIGH or LOW\n", str1);
+	      }
+	    }
+
+	    FOLD // Precision
+	    {
+	      if      ( strCom("SINGLE", str3 ) || strCom("Single", str3 ) ||  strCom("single", str3 ) )
+	      {
+		conf->opt->optPlnPrec[no1-1] = CU_FLOAT;
+	      }
+	      else if ( strCom("DOUBLE", str3 ) || strCom("Double", str3 ) || strCom("double", str3 ) )
+	      {
+		conf->opt->optPlnPrec[no1-1] = CU_DOUBLE;
+	      }
+	      else
+	      {
+		fprintf(stderr,"WARNING: Invalid option for %s, valid options are: SINGLE or DOUBLE\n", str1);
+	      }
+	    }
 	  }
 	  else
 	  {
@@ -1888,41 +1966,7 @@ void readAccelDefalts(confSpecs *conf)
 	}
 	else
 	{
-	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
-	}
-      }
-
-      else if ( strCom("optPlnAcc", str1 ) )
-      {
-	int no1;
-	int no2;
-	int read1 = sscanf(line, "%s %i %s", str1, &no1, str2 );
-	if ( read1 == 3 )
-	{
-	  if ( no1 >= 1 && no1 <= NO_OPT_LEVS )
-	  {
-	    if      ( strCom("HIGH", str2 ) || strCom("High", str2 ) ||  strCom("high", str2 ) )
-	    {
-	      conf->opt->accu[no1-1] = HIGHACC;
-	    }
-	    else if ( strCom("LOW", str2 ) || strCom("STD", str2 ) || strCom("std", str2 ) || strCom("Std", str2 ) )
-	    {
-	      conf->opt->accu[no1-1] = LOWACC;
-	    }
-	    else
-	    {
-	      fprintf(stderr,"WARNING: Invalid option for %s, valid options are: HIGH or LOW\n", str1);
-	    }
-
-	  }
-	  else
-	  {
-	    fprintf(stderr,"WARNING: Invalid optimisation plane number %i numbers should range between 1 and %i \n", no1, NO_OPT_LEVS);
-	  }
-	}
-	else
-	{
-	  fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	  fprintf(stderr, "ERROR: %s expects 4 parameters: LVL DIM ACCURACY PRECISION \n", str1, lineno, fName);
 	}
       }
 
@@ -1930,6 +1974,8 @@ void readAccelDefalts(confSpecs *conf)
       {
 	singleFlag ( optFlags, str1, str2, FLAG_OPT_DYN_HW, "", "0", lineno, fName );
       }
+
+      //////////////  Debug  \\\\\\\\\\\\\\\\\\\\\\\\
 
       else if ( strCom("FLAG_DBG_SYNCH", str1 ) )
       {
@@ -2220,16 +2266,15 @@ confSpecs* defaultConfig()
     conf->opt->blkMax		= 8;		// The maximum block devision to combine
     conf->opt->optMinLocHarms	= 1;
     conf->opt->optMinRepHarms	= 1;
-
-
+    conf->opt->nelderMeadDelta	= 1e-8;		// The distance between min and max NP points at which to stop the search
+    conf->opt->nelderMeadReps	= 100;		// By default do a short NM optimisation
+    
     conf->opt->flags		|= FLAG_OPT_NRM_MEDIAN1D;	// Optimisation normalisation type
     //conf->opt->flags		|= FLAG_OPT_BLK_HRM;		// This will now auto select
     //conf->opt->flags		|= FLAG_OPT_PTS_HRM;		// This will now auto select
     conf->opt->flags		|= FLAG_RES_FAST;		// Use fast blocked planes
 
     // TODO: check defaults for: FLAG_CMPLX and FLAG_HAMRS
-
-    conf->opt->NelderMeadReps	= 100;		// By default do a short NM optimisation
 
     conf->opt->optPlnDim[0]	= 128;
     conf->opt->optPlnDim[1]	= 32;
@@ -2239,13 +2284,21 @@ confSpecs* defaultConfig()
     conf->opt->optPlnDim[5]	= 0;
     conf->opt->optPlnDim[6]	= 0;
 
-    conf->opt->accu[0]		= LOWACC;
-    conf->opt->accu[1]		= LOWACC;
-    conf->opt->accu[2]		= HIGHACC;
-    conf->opt->accu[3]		= HIGHACC;
-    conf->opt->accu[4]		= HIGHACC;
-    conf->opt->accu[5]		= HIGHACC;
-    conf->opt->accu[6]		= HIGHACC;
+    conf->opt->optPlnAccu[0]	= LOWACC;
+    conf->opt->optPlnAccu[1]	= LOWACC;
+    conf->opt->optPlnAccu[2]	= HIGHACC;
+    conf->opt->optPlnAccu[3]	= HIGHACC;
+    conf->opt->optPlnAccu[4]	= HIGHACC;
+    conf->opt->optPlnAccu[5]	= HIGHACC;
+    conf->opt->optPlnAccu[6]	= HIGHACC;
+
+    conf->opt->optPlnPrec[0]	= CU_FLOAT ;
+    conf->opt->optPlnPrec[1]	= CU_FLOAT ;
+    conf->opt->optPlnPrec[2]	= CU_FLOAT ;
+    conf->opt->optPlnPrec[3]	= CU_FLOAT ;
+    conf->opt->optPlnPrec[4]	= CU_FLOAT ;
+    conf->opt->optPlnPrec[5]	= CU_FLOAT ;
+    conf->opt->optPlnPrec[6]	= CU_DOUBLE ;
 
     conf->opt->optPlnSiz[0]	= 16;
     conf->opt->optPlnSiz[1]	= 14;

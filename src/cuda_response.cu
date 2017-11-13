@@ -27,6 +27,22 @@
 
 
 
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#else
+__device__ double atomicAdd(double* address, double val)
+{
+    unsigned long long int* address_as_ull = (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val +
+                        __longlong_as_double(assumed)));
+    } while (assumed != old);
+    return __longlong_as_double(old);
+}
+#endif
+
 /** Point beyond which to return 0.5, the asymptotic value  .
  *
  *  At some point the Fresnel amplitude is smaller than the error
@@ -833,9 +849,6 @@ __host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long l
   T       offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
   int     numkern;						// The actual number of kernel values to use
 
-  //*real = (T)0.0;
-  //*imag = (T)0.0;
-
   T 	resReal;						// Response value - real
   T 	resImag;						// Response value - imaginary
 
@@ -878,8 +891,9 @@ __host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long l
     T sq2overAbsZ   = (T)SQRT2 / sqrtAbsZ;
     T overSq2AbsZ   = (T)1.0 / (T)SQRT2 / sqrtAbsZ ;
     T Qk            = offset - z / (T)2.0;			// Adjust for acceleration
-    T realSum       = (T)0.0;
-    T imagSum       = (T)0.0;
+
+    T realSum    = (T)0.0;
+    T imagSum    = (T)0.0;
 
     for ( int i = 0 ; i < numkern; i++ , Qk--, offset-- )	// Loop over the kernel elements
     {
@@ -930,13 +944,13 @@ __host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long l
  * @param blkWidth            The width of the blocks in bins
  * @param kern_half_width     The half width of the points to use in the interpolation
  */
-template<typename T, typename dataIn, typename dataOut>
-__host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, dataOut* outData, int blkWidth, int noBlk)
+template<typename T, typename dataIn>
+__host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, T* outReal, T* outImag, int blkWidth, int noBlk)
 {
   for ( int blk = 0; blk < noBlk; blk++ )
   {
-    outData[blk].x = 0;
-    outData[blk].y = 0;
+    outReal[blk] = 0;
+    outImag[blk] = 0;
   }
 
   dataIn  inp;							// The input data, this is a complex number stored as, float2 or double2
@@ -1006,8 +1020,8 @@ __host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long 
 
 	    FOLD //  Do the multiplication  .
 	    {
-	      outData[blk].x += (resReal * inp.x - resImag * inp.y);
-	      outData[blk].y += (resReal * inp.y + resImag * inp.x);
+	      outReal[blk] += (resReal * inp.x - resImag * inp.y);
+	      outImag[blk] += (resReal * inp.y + resImag * inp.x);
 	    }
 	  }
 	}
@@ -1112,7 +1126,7 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
 }
 
 template<typename T>
-__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
+__global__ void ffdotPlnByShfl_ker(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns)
 {
   const int tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int ty = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1176,30 +1190,55 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
 	rz_convolution_sfl<T, 32>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &realSum, &imagSum, colWidth, ic, cIdx);
     }
 
-    FOLD // Write values back to memory
+    FOLD // Write values back to memory  .
     {
       if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
       {
 	int ix = cIdx * noOffsets + ic ;
-	float2 point = {realSum, imagSum};
 
 	if ( flags & (uint)(FLAG_HAMRS ) )
 	{
 	  // Write per harming values
 	  if ( flags & (uint)(FLAG_CMPLX) )
 	  {
-	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
+	    if ( flags & (uint)(FLAG_DOUBLE) )
+	    {
+	      double2 val;
+	      val.x = realSum;
+	      val.y = imagSum;
+	      ((double2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
+	    }
+	    else
+	    {
+	      float2 val;
+	      val.x = realSum;
+	      val.y = imagSum;
+	      ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
+	    }
 	  }
 	  else
 	  {
-	    powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
+	    if ( flags & (uint)(FLAG_DOUBLE) )
+	    {
+	      ((double*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(realSum, imagSum);
+	    }
+	    else
+	    {
+	      ((float*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(realSum, imagSum);
+	    }
 	  }
 	}
 	else
 	{
 	  // Accumulate harmonic to total sum
-	  // This has a thread per harmonics so have to use atomic add
-	  atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
+	  if ( flags & (uint)(FLAG_DOUBLE) )
+	  {
+	    atomicAdd(&(((double*)powers)[iy*oStride + ix]), POWERCU(realSum, imagSum) );
+	  }
+	  else
+	  {
+	    atomicAdd(&(((float*)powers)[iy*oStride + ix]), POWERCU(realSum, imagSum) );
+	  }
 	}
       }
     }
@@ -1216,7 +1255,7 @@ __global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int 
  * @param stream
  */
 template<typename T, int noBlk>
-__global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
+__global__ void ffdotPlnByBlk_ker3(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
 {
   const int tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int ty = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1233,7 +1272,9 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
     double	z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;
     blkWidth *= hrm;
 
-    float2      ans[noBlk];
+    T      ans_real[noBlk];
+    T      ans_imag[noBlk];
+
     int width = (noR - 1 - bx)/blkDimX+1;
 
     FOLD // Do the convolution  .
@@ -1247,7 +1288,7 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
 
       FOLD // Calculate complex value, using direct application of the convolution
       {
-	rz_convolution_cu<T, float2, float2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, ans, blkWidth, width);
+	rz_convolution_cu<T, float2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, ans_real, ans_imag, blkWidth, width);
       }
     }
 
@@ -1263,16 +1304,51 @@ __global__ void ffdotPlnByBlk_ker3(float* powers, float2* fft, int noHarms, int 
 	    // Write per harming values
 	    if ( flags & (uint)(FLAG_CMPLX) )
 	    {
-	      ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = ans[blk];
+	      //((outT*)powers)[iy*oStride + ix*noHarms + hIdx ] = ans[blk];
+	      if ( flags & (uint)(FLAG_DOUBLE) )
+	      {
+		double2 val;
+		val.x = ans_real[blk];
+		val.y = ans_imag[blk];
+		((double2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
+	      }
+	      else
+	      {
+		float2 val;
+		val.x = ans_real[blk];
+		val.y = ans_imag[blk];
+		((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
+	      }
 	    }
 	    else
-	      powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(ans[blk]);
+	    {
+	      //powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(ans[blk]);
+	      if ( flags & (uint)(FLAG_DOUBLE) )
+	      {
+		((double*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(ans_real[blk], ans_imag[blk]);
+	      }
+	      else
+	      {
+		((float*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(ans_real[blk], ans_imag[blk]);
+	      }
+	    }
+
+
+
 	  }
 	  else
 	  {
 	    // Accumulate harmonic to total sum
 	    // This has a thread per harmonics so have to use atomic add
-	    atomicAdd(&(powers[iy*oStride + ix]), POWERF(ans[blk]));
+	    if ( flags & (uint)(FLAG_DOUBLE) )
+	    {
+	      atomicAdd(&(((double*)powers)[iy*oStride + ix]), POWERCU(ans_real[blk], ans_imag[blk]) );
+	    }
+	    else
+	    {
+	      atomicAdd(&(((float*)powers)[iy*oStride + ix]), POWERCU(ans_real[blk], ans_imag[blk]) );
+	    }
+
 	  }
 	}
       }
@@ -1445,7 +1521,6 @@ template __global__ void k_responsein<double>(kerStruct inf);
 template __global__ void k_fresnEval<float , float2 >(float* input,  float2* output  );
 template __global__ void k_fresnEval<double, double2>(double* input, double2* output );
 
-
 template __global__ void k_finterpEval<float , float2 >(float*  input, float2*  output );
 template __global__ void k_finterpEval<double, double2>(double* input, double2* output );
 template __global__ void k_finterpin<float >(kerStruct inf);
@@ -1465,18 +1540,11 @@ template void calc_coefficient<double>(double offset, double z,  double* real, d
 template void calc_coefficient_bin<float> (long bin, double r, float  z,  float*  real, float*  imag);
 template void calc_coefficient_bin<double>(long bin, double r, double z,  double* real, double* imag);
 
-
 template void calc_coefficient_r<float >(float  dist, float  sinsinPI, float  sincosPI, float*  real, float*  imag);
 template void calc_coefficient_r<double>(double dist, double sinsinPI, double sincosPI, double* real, double* imag);
 
 template void calc_coefficient_r<float >(float  offset, float*  real, float*  imag);
 template void calc_coefficient_r<double>(double offset, double* real, double* imag);
-
-
-//template void calc_coefficient_z<float,  true >(float  Qk, float  dr, float  z, float  sq2overAbsZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
-//template void calc_coefficient_z<float,  false>(float  Qk, float  dr, float  z, float  sq2overAbsZ, float  overSq2AbsZ, int sighnZ, float*  real, float*  imag);
-//template void calc_coefficient_z<double, true >(double Qk, double dr, double z, double sq2overAbsZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
-//template void calc_coefficient_z<double, false>(double Qk, double dr, double z, double sq2overAbsZ, double overSq2AbsZ, int sighnZ, double* real, double* imag);
 
 template void calc_coefficient_z<float,  true >(float  offset, float  z, float*  real, float*  imag);
 template void calc_coefficient_z<float,  false>(float  offset, float  z, float*  real, float*  imag);
@@ -1485,83 +1553,67 @@ template void calc_coefficient_z<double, false>(double offset, double z, double*
 
 template void calc_coefficient_z<float,  false>(float Qk, float dr, float z, float sq2overAbsZ, float overSq2AbsZ, int sighnZ, float* real, float* imag);
 
-
 template void calc_coefficient_a<float >(float  offset, float  z, float*  real, float*  imag);
 template void calc_coefficient_a<double>(double offset, double z, double* real, double* imag);
-
 
 template void rz_coefficients<double, double2>(double r, double z, int kern_half_width, double2* out);
 template void rz_coefficients<float,  float2> (double r, float  z, int kern_half_width, float2*  out);
 
 ////////////////////
 
+template void rz_convolution_cu<float,  float2 > (const float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
+//template void rz_convolution_cu<float,  double2>(const double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
+template void rz_convolution_cu<double, float2 > (const float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
+//template void rz_convolution_cu<double, double2>(const double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
+
+//template void rz_convolution_cu<float,  float2> (const float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float*  real, float*  imag, int blkWidth, int noBlk);
+//template void rz_convolution_cu<double, float2> (const float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, double* real, double* imag, int blkWidth, int noBlk);
+
+////////////////////
 
 #ifdef WITH_OPT_BLK_SHF
 
-//template void rz_convolution_sfl<1 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-//template void rz_convolution_sfl<2 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-//template void rz_convolution_sfl<4 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-//template void rz_convolution_sfl<8 >(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-//template void rz_convolution_sfl<16>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
-//template void rz_convolution_sfl<32>(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, float2* outData, const int colWidth, const int ic, const int cIdx);
+template __global__ void ffdotPlnByShfl_ker<float >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
+template __global__ void ffdotPlnByShfl_ker<double>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
 
-template __global__ void ffdotPlnByShfl_ker<float >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
-template __global__ void ffdotPlnByShfl_ker<double>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags, int noColumns);
-
-//template void ffdotPlnByShfl_ker<1 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags); //, int noColumns)
-//template void ffdotPlnByShfl_ker<2 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-//template void ffdotPlnByShfl_ker<4 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-//template void ffdotPlnByShfl_ker<8 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-//template void ffdotPlnByShfl_ker<16>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-//template void ffdotPlnByShfl_ker<32>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 #endif
-
 
 #ifdef WITH_OPT_BLK_HRM
-template __global__ void ffdotPlnByBlk_ker3<float, 1 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 2 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 3 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 4 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 5 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 6 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 7 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 8 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 9 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 10>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 11>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 12>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 13>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 14>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 15>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<float, 16>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
 
-template __global__ void ffdotPlnByBlk_ker3<double, 1 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 2 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 3 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 4 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 5 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 6 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 7 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 8 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 9 >(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 10>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 11>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 12>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 13>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 14>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 15>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
-template __global__ void ffdotPlnByBlk_ker3<double, 16>(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 1 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 2 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 3 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 4 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 5 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 6 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 7 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 8 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 9 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 10>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 11>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 12>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 13>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 14>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 15>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<float, 16>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+
+template __global__ void ffdotPlnByBlk_ker3<double, 1 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 2 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 3 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 4 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 5 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 6 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 7 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 8 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 9 >(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 10>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 11>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 12>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 13>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 14>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 15>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+template __global__ void ffdotPlnByBlk_ker3<double, 16>(void* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags);
+
 #endif
-
-template void rz_convolution_cu<float,  float2> (const float2*  inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
-//template void rz_convolution_cu<float,  double2>(const double2* inputData, long loR, long noBins, double r, float  z, int kern_half_width, float*  real, float*  imag);
-template void rz_convolution_cu<double, float2> (const float2*  inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
-//template void rz_convolution_cu<double, double2>(const double2* inputData, long loR, long noBins, double r, double z, int kern_half_width, double* real, double* imag);
-
-
-
-template void rz_convolution_cu<float,  float2, float2> (const float2* inputData, long loR, long inStride, double r, float  z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
-template void rz_convolution_cu<double, float2, float2> (const float2* inputData, long loR, long inStride, double r, double z, int kern_half_width, float2* outData, int blkWidth, int noBlk);
-
 
 ////////////////////

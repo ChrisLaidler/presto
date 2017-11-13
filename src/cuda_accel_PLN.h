@@ -9,17 +9,11 @@
 #include "cuda_accel_utils.h"
 
 
-// This allows the possibility of creating planes with up to 32 harmonics
-
-
-
 ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor = 4, int target_noCol = 16);
 
 ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp);
 
 ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf);
-
-ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2);
 
 ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2);
 
@@ -54,7 +48,8 @@ ACC_ERR_CODE prepInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft );
 
 ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft );
 
-ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft );
+template<typename T>
+ACC_ERR_CODE prep_plnGenerator( cuPlnGen* plnGen, fftInfo* fft );
 
 ACC_ERR_CODE ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps);
 

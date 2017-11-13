@@ -19,4 +19,8 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf );
 
 ACC_ERR_CODE freeOptimiser(cuOpt* opt);
 
+ACC_ERR_CODE pln_max_pnt( cuRzHarmPlane* pln, initCand* cand );
+
+ACC_ERR_CODE pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound );
+
 #endif

@@ -369,6 +369,8 @@ OPT_MIN_REP_HARMS	1
 # D	100			# 100 repetitions is the default
 OPT_NELDER_MEAD_REFINE	100
 
+OPT_NELDER_MEAD_DELTA	1e-8
+
 
 # Use separate CPU threads to process results
 # OPT_PROCESS:
@@ -376,11 +378,17 @@ OPT_NELDER_MEAD_REFINE	100
 #	SEQ			# Do CPU component of optimisation in a the same CPU thread - Not a good idea
 #OPT_PROCESS		SEQ
 
+
+
+
+#### The rest are optimisation plane parameters ####
+
 # OPT_BLK_DIVISOR:		When manually calculating sections of f-fdot plane using a blocked kernel, make the blocks divisible by this number
 # This is related to warp size and should be 4, 8, 16 or 32
 #	int			# Integer value greater than 1 - Suggested: 4, 8, 16 or 32
 # D	4			# In my testing 4 came out best and smaller is better
 OPT_BLK_DIVISOR		4
+
 
 # OPT_BLK_MAX:			When manually calculating sections of f-fdot plane using a blocked kernel, aim for this many steps
 # This is related to warp size and should be 4, 8, 16
@@ -388,27 +396,51 @@ OPT_BLK_DIVISOR		4
 # D	4			# In my testing 4 came out best and smaller is better
 OPT_BLK_MAX		4
 
-#### The rest are optimisation plane parameters ####
+
+# This can  get removed
+# HRM NRM EXP RSP SFL
+PLN_COL SFL
+
 
 # Optimisation location finding step down
 # Each successive iteration of the incremental planes will be X times smaller
 # D	10			# Each plane reduces the template size by one order of magnitude  ( /10 )
-optPlnScale		10
+optPlnScale		8
+
 
 # Use dynamic half-width in the optimisation planes, this is on by default
 FLAG_OPT_DYN_HW		1
 
 
+
 # The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
 # Lager numbers will take longer to run but have a finer resolution
-# From testing going below 16 is inefficient, powers of two are preferable
-optPlnDim 1 1280			# The number of elements in the 1st optimisation plane
-optPlnDim 2 32			# The number of elements in the 2nd optimisation plane
-optPlnDim 3 16			# The number of elements in the 3rd optimisation plane
-optPlnDim 4 16			# The number of elements in the 4th optimisation plane
-optPlnDim 5 0			# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
-optPlnDim 6 0			# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
-optPlnDim 7 0			# The number of elements in the 7th optimisation plane - This is always a double precision plane
+# Generally sizes below below 16 run in similar time so anything below 16 is inefficient - Above that speed should decrease quadratically with dimension
+# Powers of two are preferable
+#		Lvl	DIM	ACCU	PRECISION
+optPlnDim	1	128	STD	SINGLE		# The 1st optimisation plane
+optPlnDim	2	64	STD	SINGLE		# The 2nd optimisation plane
+optPlnDim	3	32	HIGH	SINGLE		# The 3rd optimisation plane
+optPlnDim	4	32	HIGH	SINGLE		# The 4th optimisation plane
+optPlnDim	5	0	HIGH	SINGLE		# The 5th optimisation plane
+optPlnDim	6	0	HIGH	DOUBLE		# The 6th optimisation plane
+optPlnDim	7	0	HIGH	DOUBLE		# The 7th optimisation plane
+
+
+
+
+
+# The Numbers below dictate how may points and thus the size of the incremental planes used to refine the location of the maximum f-f value
+# Lager numbers will take longer to run but have a finer resolution
+# Generally sizes below below 32 run in similar time so anything below 32 is inefficient - Above that speed should decrease quadratically with dimension
+# Powers of two are preferable
+#optPlnDim 1 128			# The number of elements in the 1st optimisation plane
+#optPlnDim 2 64			# The number of elements in the 2nd optimisation plane
+#optPlnDim 3 32			# The number of elements in the 3rd optimisation plane
+#optPlnDim 4 32			# The number of elements in the 4th optimisation plane
+#optPlnDim 5 32			# The number of elements in the 5th optimisation plane - These may be double depending on the size of optPlnSiz and optPlnScale
+#optPlnDim 6 0			# The number of elements in the 6th optimisation plane - These will probably be double depending on the size of optPlnSiz and optPlnScale
+#optPlnDim 7 16			# The number of elements in the 7th optimisation plane - This is always a double precision plane
 
 
 # optPlnAcc:
@@ -417,13 +449,13 @@ optPlnDim 7 0			# The number of elements in the 7th optimisation plane - This is
 # LVL int 1-7  Specifies the level of the plane, 1 is the first largest and 7 the smallest
 # ACC is one of [ STD or HIGH ] STD are standard, lower accuracy half-widths, while HIGH are longer higher precision half-widths, HIGH is about twice STD and will thus take twice as long.
 # The first planes can be calculated at STD accuracy only switching over to HIGH for the final planes
-optPlnAcc 1 STD
-optPlnAcc 2 STD
-optPlnAcc 3 HIGH
-optPlnAcc 4 HIGH
-optPlnAcc 5 HIGH
-optPlnAcc 6 HIGH
-optPlnAcc 7 HIGH
+#optPlnAcc 1 STD
+#optPlnAcc 2 STD
+#optPlnAcc 3 HIGH
+#optPlnAcc 4 HIGH
+#optPlnAcc 5 HIGH
+#optPlnAcc 6 HIGH
+#optPlnAcc 7 HIGH
 
 
 # optPlnSiz:

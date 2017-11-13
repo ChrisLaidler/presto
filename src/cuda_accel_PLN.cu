@@ -24,556 +24,6 @@
 #include "cuda_accel_utils.h"
 
 
-#ifdef WITH_OPT_BLK_NRM
-
-/** Plane generation, blocked, point per ff point
- *
- * @param pln
- * @param stream
- */
-template<typename T, int noBlk>
-__global__ void ffdotPlnByBlk_ker1(float* powers, float2* data, int noHarms, double firstR, double firstZ, double zSZ, double rSZ, int blkDimX, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
-{
-  const int bx = blockIdx.x * blockDim.x + threadIdx.x;
-  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-
-  if ( bx < blkDimX && iy < noZ )
-  {
-    double	r	= firstR + bx/(double)(noR-1) * rSZ ;
-    double	z	= firstZ - iy/(double)(noZ-1) * zSZ ;
-    if (noZ == 1)
-      z = firstZ;
-
-    float2      ans[noBlk];
-    int halfW;
-
-    int width = (noR - 1 - bx)/blkDimX+1;
-
-    FOLD
-    {
-      for( int hamr = 1; hamr <= noHarms; hamr++ )		// Loop over harmonics
-      {
-	int	hIdx	= hamr-1;
-
-	FOLD // Determine half width
-	{
-	  halfW = getHw<T>(z*hamr, hw.val[hIdx]);
-	}
-
-	// Set complex values to 0 for this harmonic
-	for( int blk = 0; blk < noBlk; blk++ )
-	{
-	  ans[blk].x = 0;
-	  ans[blk].y = 0;
-	}
-
-	FOLD // Calculate complex value, using direct application of the convolution
-	{
-	  rz_convolution_cu<T, float2, float2>(&data[iStride*(hIdx)], loR.val[hIdx], iStride, r*hamr, z*hamr, halfW, ans, blkWidth*hamr, width);
-	}
-
-	// Calculate power for the harmonic
-	for( int blk = 0; blk < noBlk; blk++ )
-	{
-	  int ix = blk*blkDimX + bx;
-	  if ( ix < noR )
-	  {
-	    if ( flags & (uint)(FLAG_HAMRS ) )
-	    {
-	      // Write per harming values
-	      if ( flags & (uint)(FLAG_CMPLX) )
-	      {
-		((float2*)powers)[iy*oStride + (ix)*noHarms + hIdx ] = ans[blk];
-	      }
-	      else
-		((float*)powers)[iy*oStride + (ix)*noHarms + hIdx ] = POWERF(ans[blk]);
-	    }
-	    else
-	    {
-	      // Accumulate harmonic to total sum
-	      powers[iy*oStride + ix] += POWERF(ans[blk]);
-	    }
-	  }
-	}
-      }
-    }
-  }
-}
-
-#endif
-
-#ifdef WITH_OPT_BLK_RSP
-
-/** Generate response values
- *
- *  TODO: Fix this
- *
- * @param pln
- * @param stream
- */
-__global__ void opt_genResponse_ker(cuRespPln pln)
-{
-  const int ix  = blockIdx.x * blockDim.x + threadIdx.x;
-  const int iy  = blockIdx.y * blockDim.y + threadIdx.y;
-
-  const int firstBin = ix / pln.noRpnts;
-  const int is  = ix % pln.noRpnts;
-
-  if ( iy < pln.noZ && ix < pln.noR )
-  {
-    const double frac =  is / (double)pln.noRpnts ;
-
-    double     zVal   = pln.zMax - (double)iy*pln.dZ ;
-    double     offSet = -pln.halfWidth - frac  +  firstBin ;
-
-    double2 response = calc_coefficient(offSet, zVal);
-
-    // Write values to memory
-    pln.d_pln[iy*pln.oStride + ix ].x = (float)response.x;
-    pln.d_pln[iy*pln.oStride + ix ].y = (float)response.y;
-  }
-}
-
-/** Not yet implemented
- *
- * @param pln
- * @param stream
- */
-template<typename T, int noBlk>
-__global__ void ffdotPlnByBlk_ker2(float2* powers, float2* data, cuRespPln pln, int noHarms, int zIdxTop, int rIdxLft, double zSZ, int noR, int noZ, int blkWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
-{
-  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
-  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
-
-  const int is = tx % pln.noRpnts ;		///< Block Number
-  const int ix = tx / pln.noRpnts ;
-  const int iy = ty;
-
-  if ( iy < noZ )
-  {
-    int plnCent = (pln.noZ)/2 ;
-
-    int zIdx = plnCent - zIdxTop - iy ;
-
-    float2	kerVal;
-    float2	outVal;
-    int 	halfW;
-
-    FOLD
-    {
-      for( int hIdx = 0; hIdx < noHarms; hIdx++ )           // Loop over harmonics
-      {
-	int 	hrm 	= hIdx+1;
-
-	int	zhIdx;		///< The harmonic specific Z index in the response
-	int	shIdx;		///< The harmonic specific response step index
-	int 	rhIdx;		///< The harmonic specific
-
-	zhIdx 	= plnCent - zIdx * hrm;
-	shIdx 	= is * hrm;					// Multiply we need the
-	rhIdx 	= rIdxLft * hrm + shIdx / pln.noRpnts;		// Need the int part
-	shIdx 	= shIdx % pln.noRpnts ;				// Adjust the remainder
-
-	double 	zh = -1;
-
-	FOLD // Determine half width
-	{
-	  halfW = getHw<T>(zIdx * hrm * pln.dZ, hw.val[hIdx]);
-	}
-
-	if ( ix < halfW*2 )
-	{
-	  double off	= (ix - halfW);
-
-	  int	hRidx 	= pln.halfWidth + (ix - halfW);
-
-	  int khIdx = (hRidx) * pln.noRpnts + shIdx ;
-
-	  if ( zhIdx  >= 0 && zhIdx < pln.noZ && hRidx >= 0 && hRidx < pln.halfWidth*2 )
-	  {
-	    kerVal = pln.d_pln[zhIdx*pln.oStride + khIdx ];
-	  }
-	  else
-	  {
-	    kerVal = calc_coefficient((float)off, (float)zh);
-	  }
-
-	  int start = rhIdx - halfW - loR.val[hIdx]  ;
-
-	  // Calculate power for the harmonic
-	  for( int blk = 0; blk < noBlk; blk++ )
-	  {
-	    float2 inp = data[iStride*hIdx + start + blk*hrm + ix ];
-
-#if CORRECT_MULT
-	    // This is the "correct" version
-	    outVal.x = (kerVal.x * inp.x - kerVal.y * inp.y);
-	    outVal.y = (kerVal.x * inp.y + kerVal.y * inp.x);
-#else
-	    // This is the version accelsearch uses, ( added for comparison )
-	    outVal.x = (kerVal.x * inp.x + kerVal.y * inp.y);
-	    outVal.y = (kerVal.y * inp.x - kerVal.x * inp.y);
-#endif
-
-	    // if ( ix == 0 )
-	    {
-	      atomicAdd(&(powers[iy*oStride + (is + blk*pln.noRpnts)*noHarms + hIdx].x), (float)(outVal.x));
-	      atomicAdd(&(powers[iy*oStride + (is + blk*pln.noRpnts)*noHarms + hIdx].y), (float)(outVal.y));
-	    }
-	  }
-	}
-      }
-    }
-  }
-}
-
-#endif
-
-#ifdef WITH_OPT_BLK_SHF
-
-/** Plane generation, blocked, thread per ff point
- *
- *  Calculate harmonically related ff points, potently summing values.
- *
- *  This kernel is designed for vales where the width (r) of the plane created is bigger than 1, allowing the sharing of common coefficients
- *
- *  This kernel uses shuffle operations to share common coefficients with threads in a warp
- *  It is as fairly fast running as fast as 50 clock cycles per coefficient summed
- *
- *  To have common coefficients the points must have integer spacing, the number of points with a common integer spacing
- *  are those that share coefficients, these are shared in warp so natural max of 32.
- *
- *  The way this is structured, the number shared 'noColumns' must be a power of two <= 32
- *
- */
-//template<int noColumns>
-//__global__ void ffdotPlnByShfl_ker(float* powers, float2* fft, int noHarms, int harmWidth, double firstR, double firstZ, double zSZ, double rSZ, int noOffsets, int noR, int noZ, int colWidth, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags) //, int noColumns)
-//{
-//  const int tx = blockIdx.x * blockDim.x + threadIdx.x;
-//  const int ty = blockIdx.y * blockDim.y + threadIdx.y;
-//
-//  const int	hIdx	= tx / harmWidth;
-//  const int	hrm	= hIdx+1;
-//  const int	bx	= tx % harmWidth;
-//  const int	iy	= ty;
-//
-//  // Adjust for harmonic
-//  colWidth *= hrm;
-//
-//// DBG Put back
-////  FOLD // Check for a better width  .
-////  {
-////    int width	= colWidth*noColumns;
-////    while ( noColumns < MAX_OPT_SFL_NO && !(width&(noColumns*2-1)) && !(noOffsets&1) )
-////    {
-////      noOffsets = noOffsets>>1;
-////      noColumns = noColumns<<1;
-////      colWidth = colWidth>>1;
-////    }
-//////    if ( bx == 0 && iy == 0 )
-//////    {
-//////      printf("Harm: %2i  noCol: %2i colWdth: %3i  noX: %4i  noX: %4i \n", hrm, noColumns, colWidth, noOffsets, noOffsets*noColumns);
-//////    }
-////  }
-//
-//  // Calculate cooperative specific values
-//  const int	ic	= bx / noColumns;			// The cooperative number (ie similar offset)
-//  const int	cIdx	= bx % noColumns;			// The index in the cooperative
-//
-//  //if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
-//  {
-//    int halfW;
-//
-//    double	r	= (firstR + ic/(double)(noR-1) * rSZ );
-//    double	z	= (firstZ - iy/(double)(noZ-1) * zSZ );
-//    if (noZ == 1)
-//      z = firstZ;
-//    r *= hrm;
-//    z *= hrm;
-//
-//    FOLD // Determine half width
-//    {
-//      halfW = getHw<float>(z, hw.val[hIdx]);
-//    }
-//
-//    float2 point;
-//    point.x = 0.0f;
-//    point.y = 0.0f;
-//
-//    //rz_convolution_sfl<noColumns>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r, z, halfW, &point, colWidth, ic, cIdx);
-//
-//    long    dintfreq;						// Integer part of r      - double precision
-//    long    start;						// The first bin to use
-//    float   offset;						// The distance from the centre frequency (r) - NOTE: This could be double, float can get ~5 decimal places for lengths of < 999
-//    int     numkern;						// The actual number of kernel values to use
-//    float   resReal;						// Response value - real
-//    float   resImag;						// Response value - imaginary
-//
-//    FOLD 								// Calculate the reference bin (closes integer bin to r)  .
-//    {
-//      dintfreq	= r;						// TODO: Check this when r is < 0 ?????
-//      start	= dintfreq + 1 - halfW ;
-//    }
-//
-//    FOLD 								// Clamp values to usable bounds  .
-//    {
-//      numkern	= 2 * halfW;
-//      offset	= ( r - cIdx - start);				// This is rc-k for the first bin
-//    }
-//
-//    FOLD 								// Adjust for FFT  .
-//    {
-//      // Adjust to FFT
-//      start -= loR.val[hIdx];					// Adjust for accessing the input FFT
-//    }
-//
-//
-//
-//    FOLD // Main loop - Read input, calculate coefficients, multiply and sum results  .
-//    {
-//      // Calculate all the constants
-//
-//      // Calculate all the constants
-//      int signZ		= (z < (float)0.0) ? -1 : 1;
-//      float absZ		= fabs_t(z);
-//      float sqrtAbsZ	= sqrt_t(absZ);
-//      float sq2overAbsZ	= (float)SQRT2 / sqrtAbsZ;
-//      float overSq2AbsZ	= (float)1.0 / (float)SQRT2 / sqrtAbsZ ;
-//      float Qk		= offset - z / (float)2.0;		// Adjust for acceleration
-//
-//      for ( int i = 0 ; i < numkern; i+=noColumns, Qk-=noColumns, offset-=noColumns)	// Loop over the kernel elements
-//      {
-////	FOLD 							// Calculate coefficients  .
-////	{
-////	  calc_coefficient<float>(offset, z, &resReal, &resImag);
-////	}
-//
-//	FOLD 							// Calculate coefficient  .
-//	{
-//	  //calc_coefficient<float>(offset, z, &resReal, &resImag);
-//	  if ( fabs_t(z) > getZlim(offset) )			// Calculate raw coefficients .
-//	  {
-//	    calc_coefficient_z<float, false>(Qk, offset, z, sq2overAbsZ, overSq2AbsZ, signZ, &resReal, &resImag);
-//	  }
-//	  else							// Calculate approximation coefficients  .
-//	  {
-//	    calc_coefficient_a<float>(offset, z, &resReal, &resImag);
-//	  }
-//	}
-//
-//	FOLD 							//  Do the multiplication and sum  accumulate  .
-//	{
-//	  for( int idx = 0; idx < noColumns; idx++)
-//	  {
-//	    // TODO: May have to do an end condition check here?
-//
-//	    // Read input - These reads are generally coalesced
-//	    // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is needed!
-//	    float2 inp = fft[iStride*hIdx + start + i + idx + (cIdx)*colWidth];
-//
-//	    float resCRea_c = __shfl(resReal, idx, noColumns );
-//	    float resImag_c = __shfl(resImag, idx, noColumns );
-//
-//	    point.x += (resCRea_c * inp.x - resImag_c * inp.y);
-//	    point.y += (resCRea_c * inp.y + resImag_c * inp.x);
-//	  }
-//	}
-//      }
-//    }
-//
-//    FOLD // Write values back to memory
-//    {
-//      if ( ic < noOffsets )						// Threads are padded to ensure harmonics are in a single block, this check excludes these "extra" threads
-//      {
-//	int ix = cIdx * noOffsets + ic ;
-//
-//	if ( flags & (uint)(FLAG_HAMRS ) )
-//	{
-//	  // Write per harming values
-//	  if ( flags & (uint)(FLAG_CMPLX) )
-//	  {
-//	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = point;
-//	  }
-//	  else
-//	  {
-//	    powers[iy*oStride + ix*noHarms + hIdx ] = POWERF(point);
-//	  }
-//	}
-//	else
-//	{
-//	  // Accumulate harmonic to total sum
-//	  // This has a thread per harmonics so have to use atomic add
-//	  atomicAdd(&(powers[iy*oStride + ix]), POWERF(point));
-//	}
-//      }
-//    }
-//  }
-//}
-#endif
-
-
-
-#ifdef WITH_OPT_PTS_NRM
-
-/** Plane generation, points, thread per ff point
- *
- * @param pln
- * @param stream
- */
-template<typename T>
-__global__ void ffdotPln_ker1(float* powers, float2* data, int noHarms, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
-{
-  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
-  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-
-  if ( ix < noR && iy < noZ)
-  {
-    int halfW;
-    double r            = firstR + ix/(double)(noR-1) * rSZ ;
-    double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
-    if (noZ == 1)
-      z = firstZ;
-
-    T total_power  = 0;
-    //T h_power  = 0;
-
-    for( int hIdx = 0; hIdx < noHarms; hIdx++ )
-    {
-      T real = 0;
-      T imag = 0;
-
-      int hrm = hIdx+1;
-
-      FOLD // Determine half width
-      {
-	halfW = getHw<T>(z*hrm, hw.val[hIdx]);
-      }
-
-      rz_convolution_cu<T, float2>(&data[iStride*hIdx], loR.val[hIdx], iStride, r*hrm, z*hrm, halfW, &real, &imag);
-
-      if ( flags & (uint)(FLAG_HAMRS ) )
-      {
-	// Write per harming values
-	if ( flags & (uint)(FLAG_CMPLX) )
-	{
-	  float2 val;
-	  val.x = real;
-	  val.y = imag;
-	  ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
-	}
-	else
-	{
-	  powers[iy*oStride + ix*noHarms + hIdx ] = POWERCU(real, imag);
-	}
-      }
-      else
-      {
-	// Accumulate harmonic to total sum
-	total_power	+= POWERCU(real, imag);
-      }
-    }
-
-    if ( total_power )
-    {
-      // Write incoherent sum of powers
-      powers[iy*oStride + ix] = total_power;
-    }
-  }
-}
-#endif
-
-#ifdef WITH_OPT_PTS_EXP
-
-/** Plane generation, points, thread per convolution operation
- *
- * This is slow and should probably not be used
- *
- * @param pln
- * @param stream
- */
-template<typename T>
-__global__ void ffdotPln_ker2(float2* powers, float2* data, int noHarms, int halfwidth, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, optLocInt_t loR, optLocFloat_t norm, optLocInt_t hw, uint flags)
-{
-  const int 	tIdx	= threadIdx.y * blockDim.x + threadIdx.x;
-  //const int 	wIdx	= tIdx / 32;
-  //const int 	lIdx	= tIdx % 32;
-
-  //const int	noStps	= halfwidth / blockDim.x * blockDim.y ;
-  const int 	off	= blockIdx.x * (blockDim.x * blockDim.y) + tIdx;
-
-  const int	ix	= blockIdx.y ;
-
-  if ( ( ix < noR ) && ( off < halfwidth*2 ) )
-  {
-    double	r	= firstR + ix/(double)(noR-1) * rSZ ;
-
-    for( int harm = 1; harm <= noHarms; harm++ )
-    {
-      int hIdx = harm-1;
-
-      long	idx	= (int)(r*harm) - halfwidth / 2 + off ;
-      double	distD	= (r*harm) - idx ;
-      long	distI	= (int)distD;
-      int 	inpR	= idx - loR.val[hIdx];
-      float2	inp;
-
-      if ( inpR >= 0 && inpR < iStride )
-      {
-	for ( int iy = 0; iy < noZ; iy++ )
-	{
-	  int halfW;
-	  double	z	= firstZ - iy/(double)(noZ-1) * zSZ ;
-	  if (noZ == 1)
-	    z = firstZ;
-
-	  FOLD // Determine half width
-	  {
-	    halfW = getHw<T>(z*harm, hw.val[hIdx]);
-	  }
-
-	  T real = 0;
-	  T imag = 0;
-
-	  if ( distI < halfW && distI > -halfW )
-	  {
-	    if ( inpR >= 0)
-	    {
-	      inp = data[iStride*hIdx + (int)(inpR)];
-	      inpR = -1;	// Mark it as read
-	    }
-
-	    FOLD // Do the convolution  .
-	    {
-	      T resReal = 0;
-	      T resImag = 0;
-
-	      calc_coefficient<T>(distD, z*harm, &resReal, &resImag);
-
-	      FOLD 							//  Do the multiplication and sum  accumulate  .
-	      {
-		real = (resReal * inp.x - resImag * inp.y);
-		imag = (resReal * inp.y + resImag * inp.x);
-	      }
-	    }
-
-	    FOLD // Write results back to memory  .
-	    {
-	      /*
-	       * I know using global atomics seams like a bad idea but in my testing it worked best, still bad but better than SM
-	       * or even warp reduction first, crazy I know
-	       */
-
-	      atomicAdd(&(powers[iy*oStride + ix*noHarms + hIdx].x), (float)(real));
-	      atomicAdd(&(powers[iy*oStride + ix*noHarms + hIdx].y), (float)(imag));
-	    }
-	  }
-	}
-      }
-    }
-  }
-}
-#endif
-
 #ifdef WITH_OPT_PTS_HRM
 
 /** Plane generation, points, thread per ff point per harmonic
@@ -613,309 +63,147 @@ __global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmW
 
     rz_convolution_cu<T, float2>(&fft[iStride*hIdx], loR.val[hIdx], iStride, r*hrm, z*hrm, halfW, &real, &imag);
 
-    if ( flags & (uint)(FLAG_HAMRS ) )
+    FOLD // Write values back to memory  .
     {
-      // Write per harming values
-      if ( flags & (uint)(FLAG_CMPLX) )
+      if ( flags & (uint)(FLAG_HAMRS ) )
       {
-	float2 val;
-	val.x = real;
-	val.y = imag;
-	((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
-      }
-      else
-      {
-	powers[iy*oStride + ix*noHarms + hIdx ] = POWERCU(real, imag);
-      }
-    }
-    else
-    {
-      // Accumulate harmonic to total sum
-      atomicAdd(&(powers[iy*oStride + ix]), POWERCU(real, imag) );
-    }
-  }
-}
-#endif
-
-#ifdef WITH_OPT_PTS_SHR
-#ifdef CBL
-
-/** This function is under development
- *
- * @param pln
- * @param stream
- */
-template<typename T, int noHarms>
-__global__ void ffdotPlnSM_ker(float* powers, float2* data, double firstR, double firstZ, double rSZ, double zSZ, int noR, int noZ, int iStride, int oStride, int smLen, optLocInt_t loR, optLocInt_t hw, uint flags)
-{
-  const int ix = blockIdx.x * blockDim.x + threadIdx.x;
-  const int iy = blockIdx.y * blockDim.y + threadIdx.y;
-
-  const int	blkSz	= blockDim.x * blockDim.y;
-  const int	tid	= blockDim.x * threadIdx.y + threadIdx.x;
-  //const int	bid 	= blockIdx.y * gridDim.x + blockIdx.x;
-
-  extern __shared__ float2 smmm[];
-
-  //__shared__ unsigned int sSum;
-
-  __syncthreads();
-
-  //  if ( tid == 0 )
-  //    sSum = 0;
-
-  __syncthreads();
-
-  float2* sm = smmm;
-
-  int halfW;
-  double r            = firstR + ix/(double)(noR-1) * rSZ ;
-  double z            = firstZ - iy/(double)(noZ-1) * zSZ ;
-  if (noZ == 1)
-    z = firstZ;
-
-  T total_power  = 0;
-  T real = (T)0;
-  T imag = (T)0;
-
-  //T real_O = (T)0;
-  //T imag_O = (T)0;
-
-  int 	width;
-  long	first;
-  long	last;
-  int	noStp;
-  int	bOff;
-
-  //double bwidth = (blockDim.x) / (double)(noR-1) * rSZ ;
-
-  int buff = 1;
-
-  double fP = firstR + (blockIdx.x * blockDim.x) /(double)(noR-1) * rSZ ;
-  double lP = firstR + MIN(noR, ((blockIdx.x+1) * blockDim.x - 1 ) ) /(double)(noR-1) * rSZ ;
-
-  //  if ( ix < noR && iy < noZ)
-  //    //if( total_power != 0 )
-  //  {
-  //    //      if ( blockIdx.y == 0 )
-  //    powers[iy*oStride + ix] = 0;
-  //    //      else
-  //    //	powers[iy*oStride + ix] = 172 ;
-  //  }
-
-  //int nno = 0;
-
-  int bIdx = 0;
-  for( int i = 1; i <= noHarms; i++ )
-  {
-    sm = &smmm[bIdx];
-
-    FOLD // Calc vlas
-    {
-      halfW	= hw.val[i-1];
-      //first	= MAX(loR.val[i-1], floor_t( (firstR + blockIdx.x * bwidth )*i ));
-      //double fR = (fP)*i;
-      //first	= MAX(loR.val[i-1], floor_t(fR) - halfW - buff );
-      //first	= MAX(loR.val[i-1], floor_t(fP*i) - halfW - buff );
-      first	= floor(fP*i) - halfW - buff ;
-      last	= ceil(lP*i)  + halfW + buff ;
-      //first	= floor(fR) - halfW ;
-      //width	= halfW*2 + ceil_t(bwidth*i) + buff*2 ;
-      //width	= halfW*2 + rSZ*i + 5;
-      width 	= last - first;
-      bOff	= first - loR.val[i-1];
-      noStp	= ceilf( width / (float)blkSz );
-      //nno	+= width;
-      bIdx	+= width;
-    }
-
-    FOLD // // Load input into SM  .
-    {
-      //      if ( width > smLen )
-      //      {
-      //	printf(" width > smLen  %i > %i   tid %i  \n", width, smLen, tid );
-      //      }
-
-      //      if ( ix == 16 && iy == 16 )
-      //      {
-      //	printf("h: %2i  smLen: %4i  width: %4i  halfW: %4i  bwidth: %8.4f  first: %7i  loR: %7i  bOff: %3i  len: %3i r: %10.4f fr: %10.4f\n", i, smLen, width, halfW, bwidth*i, first, loR.val[i-1], bOff, bOff + width, r*i, fR );
-      //      }
-
-      __syncthreads();
-
-      for ( int stp = 0; stp < noStp ; stp++)
-      {
-	int odd = stp*blkSz + tid;
-	if ( odd < width /* && odd < smLen */ )
+	// Write per harming values
+	if ( flags & (uint)(FLAG_CMPLX) )
 	{
-	  int o2 = bOff + odd;
-	  //if ( o2 < iStride )
+	  if ( flags & (uint)(FLAG_DOUBLE) )
 	  {
-	    //	      int tmp = 0;
-	    //	    }
-	    //	    else
-	    //	    {
-	    //	    if ( bid == 0 && i == 16 )
-	    //	    {
-	    //	      printf("tid: %i odd: %i \n",tid,odd);
-	    //	    }
-
-	    sm[odd] = data[(i-1)*iStride + o2 ];
-
-	    //atomicInc(&sSum, 1000000 );
+	    double2 val;
+	    val.x = real;
+	    val.y = imag;
+	    ((double2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
+	  }
+	  else
+	  {
+	    float2 val;
+	    val.x = real;
+	    val.y = imag;
+	    ((float2*)powers)[iy*oStride + ix*noHarms + hIdx ] = val ;
+	  }
+	}
+	else
+	{
+	  if ( flags & (uint)(FLAG_DOUBLE) )
+	  {
+	    ((double*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(real, imag);
+	  }
+	  else
+	  {
+	    ((float*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(real, imag);
 	  }
 	}
       }
-
-      //	noStp	= ceil_t(iStride / (float)blkSz);
-      //	for ( int stp = 0; stp < noStp ; stp++)
-      //	{
-      //	  int odd = stp*blkSz + tid;
-      //
-      //	  if ( odd < iStride )
-      //	    sm[odd] = fft[(i-1)*iStride + odd ];
-      //	}
-
-      //      if ( ix == 20 )
-      //      {
-      //	printf(" %03i %2i %8li %4i %4i \n", iy, i, first, width, halfW );
-      //      }
-
-      __syncthreads(); // Make sure data is written before doing the convolutions
-
-      //      if ( ix < noR && iy < noZ)
-      //      {
-      //	__syncthreads(); // Make sure data is written before doing the convolutions
-      //	rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
-      //	total_power     += POWERCU(real, imag);
-      //      }
-      //
-      //      __syncthreads(); // Make sure data is written before doing the convolutions
-
-    }
-  }
-
-  __syncthreads(); // Make sure data is written before doing the convolutions
-
-
-  if ( ix < noR && iy < noZ)
-  {
-
-    bIdx = 0;
-    //#pragma unroll
-    for( int i = 1; i <= noHarms; i++ )
-    {
-      sm = &smmm[bIdx];
-
-      FOLD // Calc vlas
+      else
       {
-	halfW	= hw.val[i-1];
-	//first	= MAX(loR.val[i-1], floor_t( (firstR + blockIdx.x * bwidth )*i ));
-	//double fR = (fP)*i;
-	//first	= MAX(loR.val[i-1], floor_t(fR) - halfW - buff );
-	//first	= MAX(loR.val[i-1], floor_t(fP*i) - halfW - buff );
-	first	= floor(fP*i) - halfW - buff ;
-	last	= ceil(lP*i)  + halfW + buff ;
-	//first	= floor(fR) - halfW ;
-	//width	= halfW*2 + ceil_t(bwidth*i) + buff*2 ;
-	//width	= halfW*2 + rSZ*i + 5;
-	width 	= last - first;
-	bOff	= first - loR.val[i-1];
-	noStp	= ceilf( width / (float)blkSz );
-	//nno	+= width;
-	bIdx	+= width;
+	// Accumulate harmonic to total sum
+	if ( flags & (uint)(FLAG_DOUBLE) )
+	{
+	  atomicAdd(&(((double*)powers)[iy*oStride + ix]), (double)POWERCU(real, imag) );
+	}
+	else
+	{
+	  atomicAdd(&(((float*)powers)[iy*oStride + ix]), (float)POWERCU(real, imag) );
+	}
       }
-
-      //    if ( i != 8 )
-      //      continue;
-
-      //sm = &smmm[(i-1)*smLen];
-
-      //      __syncthreads(); // Make sure data is written before doing the convolutions
-      //
-      //      FOLD // Zero
-      //      {
-      //	noStp	= ceil_t( smLen / (float)blkSz );
-      //	float2 zz;
-      //	zz.x = 0;
-      //	zz.y = 0;
-      //
-      //	for ( int stp = 0; stp < noStp ; stp++)
-      //	{
-      //	  int odd = stp*blkSz + tid;
-      //	  if ( odd < smLen /* && odd < smLen */ )
-      //	  {
-      //	    sm[odd] = zz;
-      //	  }
-      //	}
-      //      }
-      //
-      //__syncthreads(); // Make sure data is written before doing the convolutions
-      //__threadfence_block();
-      //__threadfence();
-
-      //    if ( ix >= noR || iy >= noZ)
-      //      continue;
-
-      //    real = (T)0.0;
-      //    imag = (T)0.0;
-
-      //__syncblocks_atomic();
-
-      //    if ( sSum != nno )
-      //    {
-      //      printf("Bad2 h: %2i  tid: %3i  %5i %5i\n", i, tid, sSum, nno);
-      //    }
-
-      //halfW	= cu_z_resp_halfwidth_high<float>(z*i);
-
-      rz_convolution_cu<T, float2>(sm, first, width, r*i, z*i, halfW, &real, &imag);
-
-      //rz_convolution_cu<T, float2>(&fft[iStride*(i-1)], loR.val[i-1], iStride, r*i, z*i, halfW, &real, &imag);
-      //rz_convolution_cu<T, float2>(&fft[iStride*(i-1)+bOff], first, width, r*i, z*i, halfW, &real, &imag);
-
-      //      for ( int ic = 0; ic < width; ic++)
-      //      {
-      //	real += sm[ic].x;
-      //	imag += sm[ic].y;
-      //      }
-
-      //      rz_convolution_cu<T, float2>(&fft[iStride*(i-1)+bOff], first, width, r*i, z*i, halfW, &real_O, &imag_O);
-      //      if ( real != real_O || imag != imag_O )
-      //      {
-      //	int tmp = 0;
-      //      }
-
-      __syncthreads(); // Make sure data is written before doing the convolutions
-
-      total_power     += POWERCU(real, imag);
     }
-
-    //    if ( ix < noR && iy < noZ)
-    //    {}
-    //    else
-    //    {
-    //      real = (T)0.0;
-    //      imag = (T)0.0;
-    //    }
-
-    //__syncthreads(); // Make sure has all been read before writing
-
-    //__syncthreads(); // Make sure has all been read before writing
-
-    //if ( ix < noR && iy < noZ)
-    //if( total_power != 0 )
-    //{
-    //      if ( blockIdx.y == 0 )
-    powers[iy*oStride + ix] = total_power;
-    //      else
-    //	powers[iy*oStride + ix] = 172 ;
   }
 }
 
 #endif
-#endif
 
+template<typename T>
+ACC_ERR_CODE ffdotPln_CPU(cuPlnGen* plnGen, cuRzHarmPlane* pln)
+{
+  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Write CVS");
+  }
+
+  cuHarmInput*	input = plnGen->input;
+  
+  infoMSG(8,8,"Harms %i sz: %i x %i \n", pln->noHarms, pln->noZ, pln->noR );
+
+  int noStrHarms;
+
+  if      ( pln->type == CU_STR_HARMONICS      )
+  {
+    noStrHarms = pln->noHarms;
+  }
+  else if ( pln->type == CU_STR_INCOHERENT_SUM )
+  {
+    noStrHarms = 1;
+  }
+  else
+  {
+    err += ACC_ERR_UNINIT;
+  }
+
+  if ( !err )
+  {
+    // Print column
+    for (int indy = 0; indy < pln->noZ; indy++ )
+    {
+      // Print Z value
+      double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+      if ( pln->noZ == 1 )
+	z = pln->centZ;
+
+      // Print plane values
+      for (int indx = 0; indx < pln->noR ; indx++ )
+      {
+	double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+
+	if ( pln->type == CU_STR_INCOHERENT_SUM )
+	{
+	  double power = 0;
+	  for ( int hIdx = 0; hIdx < pln->noHarms; hIdx++)
+	  {
+	    int halfW = cu_z_resp_halfwidth<double>( z*(hIdx+1), (presto_interp_acc)plnGen->hw[hIdx] );
+
+	    T real, imag;
+	    rz_convolution_cu<T, float2>((float2*)&input->h_inp[hIdx*input->stride], input->loR[hIdx], input->stride, r*(hIdx+1), z*(hIdx+1), halfW, &real, &imag);
+	    power += POWERCU(real,imag);
+	  }
+	  if ( pln->type == CU_FLOAT  )
+	  {
+	    ((float*)pln->h_data)[indy*pln->zStride + indx] = power;
+	  }
+	  if ( pln->type == CU_DOUBLE  )
+	  {
+	    ((double*)pln->h_data)[indy*pln->zStride + indx] = power;
+	  }
+	}
+//	else
+//	{
+//	  if      ( pln->type == CU_CMPLXF )
+//	  {
+//	    float2 val = {real, imag};
+//	    ((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx] = val;
+//	  }
+//	  else if ( pln->type == CU_FLOAT  )
+//	  {
+//	    //yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+//	    //float val = ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+//	    ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx] = power;
+//	  }
+//	}
+      }
+    }
+  }
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP("Write CVS");
+  }
+
+  return err;
+}
 
 /** Get a nice text representation of the current plane kernel name
  *
@@ -927,26 +215,12 @@ ACC_ERR_CODE getKerName(cuPlnGen* plnGen, char* name)
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
-  if      ( plnGen->flags & FLAG_OPT_BLK_NRM )
-    sprintf(name,"%s","BLK_NRM" );
-  else if ( plnGen->flags & FLAG_OPT_BLK_EXP )
-    sprintf(name,"%s","BLK_EXP" );
-  else if ( plnGen->flags & FLAG_OPT_BLK_HRM )
+  if      ( plnGen->flags & FLAG_OPT_BLK_HRM )
     sprintf(name,"%s","BLK_HRM" );
-  else if ( plnGen->flags & FLAG_OPT_BLK_RSP )
-    sprintf(name,"%s","BLK_RSP" );
   else if ( plnGen->flags & FLAG_OPT_BLK_SFL )
     sprintf(name,"%s","BLK_SHL" );
-  else if ( plnGen->flags & FLAG_OPT_PTS_NRM )
-    sprintf(name,"%s","PTS_NRM" );
-  else if ( plnGen->flags & FLAG_OPT_PTS_EXP )
-    sprintf(name,"%s","PTS_EXP" );
   else if ( plnGen->flags & FLAG_OPT_PTS_HRM )
     sprintf(name,"%s","PTS_HRM" );
-  else if ( plnGen->flags & FLAG_OPT_PTS_SHR)
-    sprintf(name,"%s","PTS_SHR" );
-  else if ( plnGen->flags & FLAG_OPT_PTS_RSP)
-      sprintf(name,"%s","PTS_RSP" );
   else
     sprintf(name,"%s","UNKNOWN" );
 
@@ -966,9 +240,17 @@ ACC_ERR_CODE setPlnGenTypeFromFlags( cuPlnGen* plnGen )
   {
     plnGen->pln->type = CU_NONE;
 
-    if ( plnGen->flags & FLAG_CMPLX )
+    if     ( (plnGen->flags & FLAG_CMPLX) && (plnGen->flags & FLAG_DOUBLE) )
+    {
+      plnGen->pln->type += CU_CMPLXD;
+    }
+    else if ( plnGen->flags & FLAG_CMPLX )
     {
       plnGen->pln->type += CU_CMPLXF;
+    }
+    else if ( plnGen->flags & FLAG_DOUBLE )
+    {
+      plnGen->pln->type += CU_DOUBLE;
     }
     else
     {
@@ -1024,42 +306,6 @@ ACC_ERR_CODE zeroPln( cuPlnGen* plnGen )
   }
 
   return err;
-}
-
-/** Create the pre-calculated response plane
- *
- * @param pln
- * @param stream
- */
-void opt_genResponse(cuRespPln* pln, cudaStream_t stream)
-{
-#ifdef WITH_OPT_BLK_RSP
-  infoMSG(5, 5, "Generating optimisation response function values.\n" );
-
-  dim3 dimBlock, dimGrid;
-
-  dimBlock.x = 16;
-  dimBlock.y = 16;
-  dimBlock.z = 1;
-
-  cudaDeviceSynchronize();
-  CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
-
-  infoMSG(6, 6, "1 Synch.\n" );
-
-  // One block per harmonic, thus we can sort input powers in Shared memory
-  dimGrid.x = ceil(pln->noR / (float)dimBlock.x);
-  dimGrid.y = ceil(pln->noZ / (float)dimBlock.y);
-
-  opt_genResponse_ker<<<dimGrid, dimBlock, 0, stream >>>(*pln);
-
-  cudaDeviceSynchronize();
-  CUDA_SAFE_CALL(cudaGetLastError(), "Calling the ffdot_ker kernel.");
-
-#else
-  fprintf(stderr, "ERROR: Not compiled with response using block optimising kernel.\n");
-  exit(EXIT_FAILURE);
-#endif
 }
 
 /** Calculate the number of convolution operations needed to generate the plane
@@ -1214,260 +460,17 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
     }
 
     // These are the only flags specific to the kernel
-    uint flags =  plnGen->flags & ( FLAG_HAMRS | FLAG_CMPLX );
+    uint flags =  plnGen->flags & ( FLAG_HAMRS | FLAG_CMPLX | FLAG_DOUBLE );
 
-    if ( plnGen->flags &  FLAG_OPT_BLK )			// Use block kernel
+    if      ( plnGen->flags & FLAG_OPT_CPU_PLN )	// Use basic block kernel
+    {
+      err += ffdotPln_CPU<T>(plnGen, plnGen->pln);
+    }
+    else if ( plnGen->flags & FLAG_OPT_BLK )		// Use block kernel
     {
       infoMSG(4,4,"Block kernel [ No threads %i  Width %i no Blocks %i]\n", (int)pln->blkDimX, pln->blkWidth, pln->blkCnt);
 
-      if      ( plnGen->flags & FLAG_OPT_BLK_NRM )	// Use basic block kernel
-      {
-#ifdef WITH_OPT_BLK_NRM
-
-	infoMSG(5,5,"Block kernel 1 - Standard");
-
-	// Thread blocks
-	dimBlock.x = MIN(16, pln->blkDimX);
-	dimBlock.y = MIN(16, pln->noZ);
-	dimBlock.z = 1;
-
-	// One block per harmonic, thus we can sort input powers in Shared memory
-	dimGrid.x = ceil(pln->blkDimX/(float)dimBlock.x);
-	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-	err += zeroPln(plnGen);
-
-	infoMSG(6,6,"Blk %i x %i", dimBlock.x, dimBlock.y);
-	infoMSG(6,6,"Grd %i x %i", dimGrid.x, dimGrid.y);
-
-	// Call the kernel to normalise and spread the input data
-	switch (pln->blkCnt)
-	{
-#if  MAX_OPT_BLK_NO >= 1
-	  case 1:
-	    ffdotPlnByBlk_ker1<T,1> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	  break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 2
-	  case 2:
-	    ffdotPlnByBlk_ker1<T,2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 3
-	  case 3:
-	    ffdotPlnByBlk_ker1<T,3> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 4
-	  case 4:
-	    ffdotPlnByBlk_ker1<T,4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 5
-	  case 5:
-	    ffdotPlnByBlk_ker1<T,5> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 6
-	  case 6:
-	    ffdotPlnByBlk_ker1<T,6> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 7
-	  case 7:
-	    ffdotPlnByBlk_ker1<T,7> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 8
-	  case 8:
-	    ffdotPlnByBlk_ker1<T,8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 9
-	  case 9:
-	    ffdotPlnByBlk_ker1<T,9> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 10
-	  case 10:
-	    ffdotPlnByBlk_ker1<T,10><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 11
-	  case 11:
-	    ffdotPlnByBlk_ker1<T,11><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 12
-	  case 12:
-	    ffdotPlnByBlk_ker1<T,12><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 13
-	  case 13:
-	    ffdotPlnByBlk_ker1<T,13><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 14
-	  case 14:
-	    ffdotPlnByBlk_ker1<T,14><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 15
-	  case 15:
-	    ffdotPlnByBlk_ker1<T,15><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 16
-	  case 16:
-	    ffdotPlnByBlk_ker1<T,16><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-	  default:
-	  {
-	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
-	    exit(EXIT_FAILURE);
-	  }
-	}
-#else
-	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_NRM.\n");
-	err += ACC_ERR_COMPILED;
-#endif
-      }
-      else if ( plnGen->flags & FLAG_OPT_BLK_RSP )
-      {
-#ifdef WITH_OPT_BLK_RSP
-
-	infoMSG(5,5,"Block kernel 2 - Expanded");
-
-	dimBlock.x = 16;
-	dimBlock.y = 16;
-
-	err += zeroPln(plnGen);
-
-	// One block per harmonic, thus we can sort input powers in Shared memory
-	dimGrid.x = ceil(plnGen->maxHalfWidth*2*rpln->noRpnts/(float)dimBlock.x);
-	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-	// Call the kernel to normalise and spread the input data
-	switch (pln->blkCnt)
-	{
-#if  MAX_OPT_BLK_NO >= 2
-	  case 2:
-	    ffdotPlnByBlk_ker2<T, 2> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 3
-	  case 3:
-	    ffdotPlnByBlk_ker2<T, 3> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 4
-	  case 4:
-	    ffdotPlnByBlk_ker2<T, 4> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 5
-	  case 5:
-	    ffdotPlnByBlk_ker2<T, 5> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 6
-	  case 6:
-	    ffdotPlnByBlk_ker2<T, 6> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 7
-	  case 7:
-	    ffdotPlnByBlk_ker2<T, 7> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 8
-	  case 8:
-	    ffdotPlnByBlk_ker2<T, 8> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 9
-	  case 9:
-	    ffdotPlnByBlk_ker2<T, 9> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 10
-	  case 10:
-	    ffdotPlnByBlk_ker2<T,10> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 11
-	  case 11:
-	    ffdotPlnByBlk_ker2<T,11> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 12
-	  case 12:
-	    ffdotPlnByBlk_ker2<T,12> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 13
-	  case 13:
-	    ffdotPlnByBlk_ker2<T,13> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 14
-	  case 14:
-	    ffdotPlnByBlk_ker2<T,14> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 15
-	  case 15:
-	    ffdotPlnByBlk_ker2<T,15> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-
-#if  MAX_OPT_BLK_NO >= 16
-	  case 16:
-	    ffdotPlnByBlk_ker2<T,16> <<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, *rpln, pln->noHarms, plnGen->topZidx, plnGen->lftIdx, pln->zSize, pln->blkDimX, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags);
-	    break;
-#endif
-	  default:
-	  {
-	    fprintf(stderr, "ERROR: %s has not been templated for %i blocks.\n", __FUNCTION__, pln->blkCnt );
-	    exit(EXIT_FAILURE);
-	  }
-	}
-#else
-	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_RSP.\n");
-	err += ACC_ERR_COMPILED;
-#endif
-      }
-      else if ( plnGen->flags & FLAG_OPT_BLK_HRM )	// Shared coefficients by storing running summs in registers - starts to still at 8 which is a bit low
+      if      ( plnGen->flags & FLAG_OPT_BLK_HRM )	// Shared coefficients by storing running sums in registers - starts to still at 8 which is a bit low
       {
 #ifdef WITH_OPT_BLK_HRM
 	infoMSG(5,5,"Block kernel 3 - Harms");
@@ -1612,7 +615,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	int dim1 = pln->noR / noB ;			// This is basically blockX
 
 	float2 *inp = (float2*)input->d_inp;
-	float *out  = (float*)pln->d_data;
+	void* out   = (void*)pln->d_data;
 
 	while ( noB )
 	{
@@ -1651,31 +654,27 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	  FOLD	// Prepare for next slice
 	  {
 	    noB  -= rSize;		// Decrease the remaining section of the plane to create
-	    out  += rDim;		// Stride the output
 	    minR += rSize;		// Shift location of next section of the plane
+
+	    // Stride the output
+	    if     ( (flags & FLAG_CMPLX) && (flags & FLAG_DOUBLE) )
+	    {
+	      out = &(((double2*)out)[rDim*pln->noHarms]);
+	    }
+	    else if ( flags & FLAG_CMPLX )
+	    {
+	      out = &(((float2*)out)[rDim*pln->noHarms]);
+	    }
+	    else if (flags & FLAG_DOUBLE )
+	    {
+	      out = &(((double*)out)[rDim]);
+	    }
+	    else
+	    {
+	      out = &(((float*)out)[rDim]);
+	    }
 	  }
 	}
-
-//      // Old Methoud
-//	int threadsPerOne = pln->noR / ( pln->blkCnt * pln->blkWidth ) ;
-//
-//	dimBlock.x = MAX(MAX_OPT_SFL_NO,16);				// This max ensures all values are in a single warp
-//	dimBlock.y = MIN(16, pln->noZ);
-//
-//	int noX = ceil(pln->noR / (float)dimBlock.x);
-//	int harmWidth = noX*dimBlock.x;
-//
-//	err += zeroPln(plnGen);
-//
-//	// One block per harmonic, thus we can sort input powers in Shared memory
-//	dimGrid.x = noX * pln->noHarms ;
-//	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-//
-//	FOLD // Call the kernel to normalise and spread the input data
-//	{
-//	  ffdotPlnByShfl_ker<T><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, harmWidth, minR, maxZ, pln->zSize, pln->rSize, pln->blkDimX, pln->noR, pln->noZ, pln->blkWidth, input->stride, pln->zStride, rOff, norm, hw, flags, pln->blkCnt);
-//	}
-
 #else
 	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_BLK_HRM.\n");
 	err += ACC_ERR_COMPILED;
@@ -1687,7 +686,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 	err += ACC_ERR_INVLD_CONFIG;
       }
     }
-    else						// Use normal kernel
+    else						// Use point kernel
     {
       infoMSG(4,4,"Grid kernel\n");
 
@@ -1695,99 +694,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
       dimBlock.y = 16;
       dimBlock.z = 1;
 
-      if      ( plnGen->flags &  FLAG_OPT_PTS_SHR )	// Shared mem  .
-      {
-#ifdef WITH_OPT_PTS_SHR
-#ifdef CBL
-	float smSz = 0 ;
-
-	for( int h = 0; h < pln->noHarms; h++)
-	{
-	  smSz += ceil(hw.val[h]*2 + pln->rSize*(h+1) + 4 );
-	}
-
-	if ( smSz < 6144*0.9 ) // ~% of SM	10: 4915
-	{
-
-	  infoMSG(5,5,"Flat kernel 5 - SM \n");
-
-	  // One block per harmonic, thus we can sort input powers in Shared memory
-	  dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
-	  dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-	  //int noTB = dimGrid.x * dimGrid.y ;
-
-	  // Call the kernel to normalise and spread the input data
-	  switch (pln->noHarms)
-	  {
-	    case 1:
-	      ffdotPlnSM_ker<T,1 ><<<dimGrid, dimBlock, smSz*sizeof(float2), plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, smSz, rOff, hw, flags);
-	      break;
-	    case 2:
-	      ffdotPlnSM_ker<T,2 ><<<dimGrid, dimBlock, smSz*sizeof(float2), plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, smSz, rOff, hw, flags);
-	      break;
-	    case 4:
-	      ffdotPlnSM_ker<T,4 ><<<dimGrid, dimBlock, smSz*sizeof(float2), plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, smSz, rOff, hw, flags);
-	      break;
-	    case 8:
-	      ffdotPlnSM_ker<T,8 ><<<dimGrid, dimBlock, smSz*sizeof(float2), plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, smSz, rOff, hw, flags);
-	      break;
-	    case 16:
-	      ffdotPlnSM_ker<T,16><<<dimGrid, dimBlock, smSz*sizeof(float2), plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, smSz, rOff, hw, flags);
-	      break;
-	  }
-	}
-#endif
-#else
-	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_SHR.\n");
-	err += ACC_ERR_COMPILED;
-#endif
-      }
-      else if ( plnGen->flags &  FLAG_OPT_PTS_NRM )	// Thread point  .
-      {
-#ifdef WITH_OPT_PTS_NRM
-	infoMSG(5,5,"Flat kernel 1 - Standard\n");
-
-	// One block per harmonic, thus we can sort input powers in Shared memory
-	dimGrid.x = ceil(pln->noR/(float)dimBlock.x);
-	dimGrid.y = ceil(pln->noZ/(float)dimBlock.y);
-
-	// Call the kernel create a section of the f-fdot plane
-	ffdotPln_ker1<T><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float*)pln->d_data, (float2*)input->d_inp, pln->noHarms, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, rOff, norm, hw, flags );
-
-#else
-	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_NRM.\n");
-	err += ACC_ERR_COMPILED;
-#endif
-      }
-      else if ( plnGen->flags &  FLAG_OPT_PTS_EXP )	// Thread response pos  .
-      {
-#ifdef WITH_OPT_PTS_EXP
-	infoMSG(5,5,"Flat kernel 2 - Expanded\n");
-
-	if ( !(plnGen->flags&FLAG_CMPLX) )
-	{
-	  fprintf(stderr, "ERROR: Per point plane kernel can not sum powers.");
-	  exit(EXIT_FAILURE);
-	}
-
-	err += zeroPln(plnGen);
-
-	// One block per harmonic, thus we can sort input powers in Shared memory
-	int respWidth = ceil(plnGen->maxHalfWidth*2/(float)dimBlock.x)*dimBlock.x;
-	dimGrid.x = ceil(respWidth/((float)dimBlock.x*dimBlock.y) );
-	dimGrid.y = ceil(pln->noZ /* * pln->noR */ ); // REM - super seeded
-	dimGrid.y = pln->noR ;
-
-	// Call the kernel create a section of the f-fdot plane
-	ffdotPln_ker2<T><<<dimGrid, dimBlock, 0, plnGen->stream >>>((float2*)pln->d_data, (float2*)input->d_inp, pln->noHarms, respWidth, minR, maxZ, pln->rSize, pln->zSize, pln->noR, pln->noZ, input->stride, pln->zStride, rOff, norm, hw, flags);
-
-#else
-	fprintf(stderr, "ERROR: Not compiled with WITH_OPT_PTS_EXP.\n");
-	err += ACC_ERR_COMPILED;
-#endif
-      }
-      else if ( plnGen->flags &  FLAG_OPT_PTS_HRM )	// Thread point of harmonic  .
+      if      ( plnGen->flags &  FLAG_OPT_PTS_HRM )	// Thread point of harmonic  .
       {
 #ifdef WITH_OPT_PTS_HRM
 	infoMSG(5,5,"Flat kernel 3 - Harmonics\n");
@@ -1938,6 +845,18 @@ ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
   return err;
 }
 
+ACC_ERR_CODE setTypeFlag( cuPlnGen* plnGen, float nothing )
+{
+  plnGen->flags &= ~FLAG_DOUBLE;
+  return ACC_ERR_NONE;
+}
+
+ACC_ERR_CODE setTypeFlag( cuPlnGen* plnGen, double nothing )
+{
+  plnGen->flags |= FLAG_DOUBLE;
+  return ACC_ERR_NONE;
+}
+
 /** Check the configuration of how the plane section is going to be generated
  *
  * Note the configuration flags are used to set the optimiser flags
@@ -1946,12 +865,13 @@ ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
  * @param fft	  FFT data structure
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
+template<typename T>
 ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 {
   ACC_ERR_CODE	err		= ACC_ERR_NONE;
   confSpecsOpt*	conf		= plnGen->conf;
 
-  infoMSG(4,4,"Prep plain generato.\n");
+  infoMSG(4,4,"Prep plain generator.\n");
 
   FOLD // Determine optimisation kernels  .
   {
@@ -1961,9 +881,12 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkDimX	= plnGen->pln->noR;
     char kerName[20];
     double dup2pad_ratio;
+    T Nothing;
 
     // Clear all "local" kernels
     err += remOptFlag(plnGen, FLAG_PLN_ALL );
+
+    err += setTypeFlag(plnGen, Nothing);
 
     FOLD // Calculate ratio of redundant duplicates vs padding (points) for block kernels
     {
@@ -1984,14 +907,8 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       infoMSG(7,7,"Padding to Duplicates of %.0f:%.0f (1:%.2f) .\n", padSum, dupSum, dup2pad_ratio);
     }
 
-    //if ( ( dup2pad_ratio > 2 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel  .
-    if ( ( plnGen->pln->rSize >= 1 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel  .  DBG - for testing
+    if ( ( plnGen->pln->rSize >= 1 ) && ( (conf->flags & FLAG_OPT_BLK) || !(conf->flags & FLAG_OPT_PTS) ) ) // Use the block kernel
     {
-      // Set size and resolution
-      err += ffdotPln_calcCols( plnGen->pln, conf->flags, conf->blkDivisor, conf->blkMax);
-
-      // Set column section flags
-      err += setOptFlag(plnGen, (conf->flags & FLAG_RES_ALL) );
 
       if ( !(conf->flags & FLAG_OPT_BLK) )	// Auto select block kernel
       {
@@ -2002,8 +919,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	err += setOptFlag(plnGen, FLAG_OPT_BLK_HRM );
 #elif	defined(WITH_OPT_BLK_NRM)
 	err += setOptFlag(plnGen, FLAG_OPT_BLK_NRM );
-#elif	defined(WITH_OPT_BLK_RSP)
-	err += setOptFlag(plnGen, FLAG_OPT_BLK_RSP );
 #else
 	fprintf(stderr,"ERROR: Not compiled with any per point block creation kernels.")
 	err += ACC_ERR_COMPILED;
@@ -2019,22 +934,22 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	getKerName(plnGen, kerName);
 	infoMSG(6,6,"Specified block Kernel %s\n", kerName );
       }
+
+      // Set size and resolution
+      err += ffdotPln_calcCols( plnGen->pln, plnGen->flags, conf->blkDivisor, conf->blkMax);
+
+      // Set column section flags
+      err += setOptFlag(plnGen, (conf->flags & FLAG_RES_ALL) );
     }
     else
     {
-      // TODO: Make a check here for FLAG_OPT_PTS_EXP
-      
       if ( !(conf->flags&FLAG_OPT_PTS) )	// Auto select
       {
 	// No points kernel so get one
 #if	defined(WITH_OPT_PTS_HRM)
 	err += setOptFlag(plnGen, FLAG_OPT_PTS_HRM );
-#elif	defined(WITH_OPT_PTS_NRM)
-	err += setOptFlag(plnGen, FLAG_OPT_PTS_NRM );
-#elif	defined(WITH_OPT_PTS_EXP)
-	err += setOptFlag(plnGen, FLAG_OPT_PTS_EXP );
 #else
-	fprintf(stderr,"ERROR: Not compiled with any per point block creation kernels.")
+	fprintf(stderr,"ERROR: Not compiled with any thread per point plane creation kernels.")
 	err += ACC_ERR_COMPILED;
 #endif
 
@@ -2049,21 +964,6 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 	getKerName(plnGen, kerName);
 	infoMSG(6,6,"Specified points Kernel %s\n", kerName );
       }
-
-      // Sanity check
-      if ( plnGen->flags & FLAG_OPT_PTS_EXP )
-      {
-	if ( !(plnGen->flags&FLAG_CMPLX) || !(plnGen->flags&FLAG_HAMRS) )
-	{
-	  infoMSG(7,7,"Bad settings for expanded points kernel switching to Complex harmonics.\n" );
-
-	  // DBG Put message back after testing
-	  //fprintf(stderr, "WARNING: Expanded kernel requires using complex values for each harmonic.\n");
-	  plnGen->flags |= FLAG_CMPLX;
-	  plnGen->flags |= FLAG_HAMRS;
-	}
-      }
-
     }
 
     if ( !(plnGen->flags & FLAG_HAMRS) && (plnGen->flags & FLAG_CMPLX) )
@@ -2072,7 +972,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
       plnGen->flags &= ~(FLAG_CMPLX);
     }
 
-    infoMSG(5,5,"Size (%.6f x %.6f) Points (%i x %i) %i  Resolution: %.7f r  %.7f z.\n", plnGen->pln->rSize,plnGen->pln->zSize, plnGen->pln->noR, plnGen->pln->noZ, plnGen->pln->noR*plnGen->pln->noZ, plnGen->pln->rSize/double(plnGen->pln->noR-1), plnGen->pln->zSize/double(plnGen->pln->noZ-1) );
+    infoMSG(4,4,"Size (%.6f x %.6f) Points (%i x %i) %i  Resolution: %.7f r  %.7f z.\n", plnGen->pln->rSize,plnGen->pln->zSize, plnGen->pln->noR, plnGen->pln->noZ, plnGen->pln->noR*plnGen->pln->noZ, plnGen->pln->rSize/double(plnGen->pln->noR-1), plnGen->pln->zSize/double(plnGen->pln->noZ-1) );
 
     err += setPlnGenTypeFromFlags(plnGen);
 
@@ -2172,7 +1072,7 @@ ACC_ERR_CODE ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
 
   infoMSG(4,4,"Generate plane ff section, Centred on (%.6f, %.6f) with %2i harmonics.\n", plnGen->pln->centR, plnGen->pln->centZ, plnGen->pln->noHarms );
 
-  err += prep_Opt( plnGen,  fft );
+  err += prep_Opt<T>( plnGen,  fft );
   if ( ERROR_MSG(err, "ERROR: Preparing plane.") )
     return err;
 
@@ -2270,37 +1170,24 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 //	}
 //	else
 	{
-	if ( pln->rSize > MAX_OPT_SFL_NO )	// TODO: Determine this bound
+	int divs = 2;
+
+	if ( pln->rSize > 8 )
 	{
-	  double diff = 1.0;
-	  int sz = MAX_OPT_SFL_NO;
-	  while (sz >= 1 )
-	  {
-	    double noCol	= pln->rSize / sz;
-	    diff		= (ceil(noCol)*sz)/pln->rSize;	// Percentage of total
-	    pln->blkCnt	= sz;
-	    if (diff <= 1.25 )	//
-	    {
-	      // This allows the final plane to be a bit bigger at a multiple of a good power of two
-	      break;
-	    }
-	    sz/=2;
-	  }
+	  divs = 4;
 	}
 	else if ( pln->rSize > 1 )
 	{
-	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,exp2(ceil(log2(pln->rSize))));	// Closes power of tow greater than the plane size
+	  divs = MIN(MAX_OPT_SFL_NO,exp2(floor(log2(pln->rSize))));
 	}
 	else
 	{
 	  // Smaller than one so pretty much have to have a width of 1, and log2 will give negative values
-	  pln->blkCnt	= 1;
-	}
+	  divs = 1;
 	}
 	
-	// New methoud works to any integer size
-	pln->blkCnt = ceil(pln->rSize);
-
+	pln->blkCnt	= ceil(pln->rSize/(double)divs)*divs;
+	}
       }
 
       // Other settings are now set using the column width
@@ -2429,13 +1316,23 @@ ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf)
 
   if      ( pln->type == CU_CMPLXF )
   {
-    infoMSG(7,7,"Output: complex\n" );
+    infoMSG(7,7,"Output: complex - single precision \n" );
     elSz = sizeof(float2);
+  }
+  else if ( pln->type == CU_CMPLXD  )
+  {
+    infoMSG(7,7,"Output: complex - double precision \n" );
+    elSz = sizeof(double2);
   }
   else if ( pln->type == CU_FLOAT  )
   {
-    infoMSG(7,7,"Output: powers\n" );
+    infoMSG(7,7,"Output: powers - single precision \n" );
     elSz = sizeof(float);
+  }
+  else if ( pln->type == CU_DOUBLE  )
+  {
+    infoMSG(7,7,"Output: powers - double precision \n" );
+    elSz = sizeof(double);
   }
   else
   {
@@ -2515,9 +1412,9 @@ ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
   fprintf(f2,"Harms: %i\n",    pln->noHarms);
 
   // Print type
-  if      ( pln->type == CU_CMPLXF )
+  if      ( pln->type == CU_CMPLXF || pln->type == CU_CMPLXD )
     fprintf(f2,"Type: complex\n");
-  else if ( pln->type == CU_FLOAT )
+  else if ( pln->type == CU_FLOAT || pln->type == CU_DOUBLE )
     fprintf(f2,"Type: power\n");
 
   infoMSG(8,8,"Harms %i sz: %i x %i \n", pln->noHarms, pln->noZ, pln->noR );
@@ -2551,7 +1448,7 @@ ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
 	for (int indx = 0; indx < pln->noR ; indx++ )
 	{
 	  double r = pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
-	  fprintf(f2,"\t%.6f", r*(hIdx+1) );
+	  fprintf(f2,"\t%.17e", r*(hIdx+1) );
 	}
 	fprintf(f2,"\n");
       }
@@ -2563,24 +1460,34 @@ ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
 	double z = pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
 	if ( pln->noZ == 1 )
 	  z = pln->centZ;
-	fprintf(f2,"%.15f", z*(hIdx+1));
+	fprintf(f2,"%.17e", z*(hIdx+1));
 
 	// Print plane values
 	for (int indx = 0; indx < pln->noR ; indx++ )
 	{
 	  if      ( pln->type == CU_CMPLXF )
 	  {
-	    //yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
 	    float2 val = ((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
 
-	    fprintf(f2,"\t%.17f | %.17f", val.x, val.y);
+	    fprintf(f2,"\t%.17e | %.17e", val.x, val.y);
+	  }
+	  else if ( pln->type == CU_CMPLXD )
+	  {
+	    double2 val = ((double2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+
+	    fprintf(f2,"\t%.17e | %.17e", val.x, val.y);
 	  }
 	  else if ( pln->type == CU_FLOAT  )
 	  {
-	    //yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
 	    float val = ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
 
-	    fprintf(f2,"\t%.17f", val);
+	    fprintf(f2,"\t%.17e", val);
+	  }
+	  else if ( pln->type == CU_DOUBLE  )
+	  {
+	    double val = ((double*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+
+	    fprintf(f2,"\t%.17e", val);
 	  }
 	}
 	fprintf(f2,"\n");
@@ -2638,6 +1545,7 @@ ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* 
 
     char cmd[1024];
     sprintf(cmd,"python $PRESTO/python/plt_ffd.py %s > /dev/null 2>&1", tName);
+    infoMSG(6,6,"%s", cmd);
     int ret = system(cmd);
     if ( ret )
     {
@@ -2670,7 +1578,7 @@ ACC_ERR_CODE addPlnToTree(candTree* tree, cuRzHarmPlane* pln)
     {
       for (int indx = 0; indx < pln->noR ; indx++ )
       {
-	float yy2 = 0;
+	double yy2 = 0;
 	int noStrHarms;
 	if      ( pln->type == CU_STR_HARMONICS )
 	  noStrHarms = pln->noHarms;
@@ -2687,8 +1595,12 @@ ACC_ERR_CODE addPlnToTree(candTree* tree, cuRzHarmPlane* pln)
 	{
 	  if      ( pln->type == CU_CMPLXF )
 	    yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
+	  else if ( pln->type == CU_CMPLXD )
+	    yy2 +=  POWERF(((double2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
 	  else if ( pln->type == CU_FLOAT )
 	    yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+	  else if ( pln->type == CU_DOUBLE )
+	    yy2 +=  ((double*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
 	  else
 	  {
 	    infoMSG(6,6,"ERROR: Plane type has not been initialised.\n" );
@@ -2746,8 +1658,8 @@ cuRzHarmPlane* initPln( size_t memSize )
   long  Diff = totalMem - MAX_GPU_MEM;
   if( Diff > 0 )
   {
-	freeMem  -= Diff;
-	totalMem -= Diff;
+    freeMem  -= Diff;
+    totalMem -= Diff;
   }
 #endif
 
@@ -2947,10 +1859,6 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
       {
 	MAXX(maxDim, conf->optPlnDim[i]);
       }
-
-      //#ifdef WITH_OPT_BLK_RSP // TODO: Check if this needs to go back if WITH_OPT_BLK_RSP is used
-      //      MAXX(maxSz, maxWidth * conf->optResolution);
-      //#endif
 
       FOLD // Determine the largest zMaxMax  .
       {

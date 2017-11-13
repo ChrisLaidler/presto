@@ -150,15 +150,10 @@ extern "C"
 #define			MAX_OPT_SFL_NO		32	///< Maximum number columns in shuffle kernel - power of 2 <= 32
 
 #define			WITH_OPT_BLK_SHF		///< This is usual the best block kernel - Share common coefficients using shuffle block
-#define 		WITH_OPT_BLK_HRM		///< This is good as an alternative to Shuffle
-#define 		WITH_OPT_BLK_NRM		///< I found this is generally worse than harmonics - This can get deprecated
-//#define 		WITH_OPT_BLK_RSP		///< Deprecated
+#define 		WITH_OPT_BLK_HRM		///< This is good as an alternative to the shuffle kernel (can be used on older hardware)
 
 #define 		WITH_OPT_PTS_HRM		///< This is usual the best kernel
 #define 		WITH_OPT_PTS_NRM		///< I found this is generally worse than harmonics
-//#define 		WITH_OPT_PTS_EXP		///< TESTING: This is generally bad unless dimensions are extremal small
-//#define 		WITH_OPT_PTS_SHR
-//#define 		WITH_OPT_PTS_RSP
 
 
 /******************************************* Defines ****************************************************/
@@ -279,21 +274,16 @@ extern "C"
 #define		FLAG_RES_FAST		BIT(18)		///< Size may be slightly smaller but will usually run faster
 #define		FLAG_RES_ALL		( FLAG_RES_CLOSE | FLAG_RES_FAST )
 
+#define		FLAG_OPT_CPU_PLN	BIT(24)		///< Use CPU calculation - Testing only
+
 //		NO_VALUE				///< Auto determine ie. use shuffle
-#define		FLAG_OPT_BLK_NRM	BIT(25)		///< Basic blocked kernel - one thread per point in the plane
-#define		FLAG_OPT_BLK_EXP	BIT(26)		///< NOT USED - Deprecated
 #define		FLAG_OPT_BLK_HRM	BIT(27)		///< Share calc common coefficients once use running sum per location - starts to still at 8 which is a bit low
-#define		FLAG_OPT_BLK_RSP	BIT(28)		///< Not yet implemented
 #define		FLAG_OPT_BLK_SFL	BIT(29)		///< Share coefficients using shuffle - sums held by threads - Fates - limited to power of two's  (or multiples of powers of two)
-#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_NRM | FLAG_OPT_BLK_EXP | FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_RSP | FLAG_OPT_BLK_SFL )
+#define		FLAG_OPT_BLK		( FLAG_OPT_BLK_HRM | FLAG_OPT_BLK_SFL )
 
 //		NO_VALUE				///< Auto determine
-#define		FLAG_OPT_PTS_NRM	BIT(30)
-#define		FLAG_OPT_PTS_EXP	BIT(31)		///< - NB This returns complex values
 #define		FLAG_OPT_PTS_HRM	BIT(32)		///< Standard fastest - Thread per point per harmonic point
-#define		FLAG_OPT_PTS_SHR	BIT(33)
-#define		FLAG_OPT_PTS_RSP	BIT(34)
-#define		FLAG_OPT_PTS		( FLAG_OPT_PTS_NRM | FLAG_OPT_PTS_EXP | FLAG_OPT_PTS_HRM | FLAG_OPT_PTS_SHR | FLAG_OPT_PTS_RSP)
+#define		FLAG_OPT_PTS		( FLAG_OPT_PTS_HRM )
 
 #define		FLAG_OPT_KER_ALL	( FLAG_OPT_BLK | FLAG_OPT_PTS )
 
@@ -307,6 +297,8 @@ extern "C"
 #define		FLAG_DPG_SKP_OPT	BIT(58)		///< Skip optimisation stage
 #define		FLAG_DPG_PLT_OPT	BIT(59)		///< Plot optimisation stages
 #define		FLAG_DPG_PLT_POWERS	BIT(60)		///< Plot powers
+
+#define		FLAG_DPG_CAND_PLN	( FLAG_DPG_PRNT_CAND | FLAG_DPG_PLT_OPT )
 
 #define		FLAG_DBG_TEST_1		BIT(61)		///< Test 1
 #define		FLAG_DBG_TEST_2		BIT(62)		///< Test 2
@@ -338,7 +330,7 @@ typedef enum	///< CU_TYPE
   CU_INT		=	BIT(2),		///< INT
   CU_HALF		=	BIT(3),		///< 2 byte float
   CU_FLOAT		=	BIT(4),		///< Float
-  CU_DOUBLE		=	BIT(5),		///< Float
+  CU_DOUBLE		=	BIT(5),		///< Double
   CU_POWERZ_S		=	BIT(6),		///< A value and a z bin         candPZs
   CU_POWERZ_I		=	BIT(7),		///< A value and a z bin         candPZi
   CU_CANDMIN		=	BIT(8),		///< A compressed candidate      candMin
@@ -346,6 +338,7 @@ typedef enum	///< CU_TYPE
   CU_CANDBASC		=	BIT(10),	///< A compressed candidate      accelcandBasic
   CU_CANDFULL		=	BIT(11),	///< Full detailed candidate     cand
   CU_POWERH_S		=	BIT(12),	///< A value and a z bin         candHs
+  CU_CMPLXD		=	BIT(13),	///< Complex double
 
   CU_STR_ARR		=	BIT(20),	///< Candidates are stored in an array (requires more memory)
   CU_STR_PLN		=	BIT(21),	///< Plane 2D?
@@ -355,7 +348,7 @@ typedef enum	///< CU_TYPE
   CU_STR_INCOHERENT_SUM	=	BIT(25)
 } CU_TYPE;
 
-#define		CU_TYPE_ALLL	(CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_POWERZ_S | CU_POWERZ_I | CU_POWERH_S | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL )
+#define		CU_TYPE_ALLL	(CU_CMPLXF | CU_INT | CU_HALF | CU_FLOAT | CU_DOUBLE |CU_POWERZ_S | CU_POWERZ_I | CU_POWERH_S | CU_CANDMIN | CU_CANDSMAL | CU_CANDBASC | CU_CANDFULL | CU_POWERH_S | CU_CMPLXD )
 #define		CU_SRT_ALL	(CU_STR_ARR | CU_STR_PLN | CU_STR_LST | CU_STR_QUAD )
 
 
@@ -1039,12 +1032,15 @@ typedef struct confSpecsOpt
     int 		blkDivisor;			///< Make blocks of points divisible by this - this is related to warp size and should be 4, 8, 16 or 32
     int 		blkMax;				///< The maximum number of columns to use, this can reduce register pressure
 
-    int			NelderMeadReps;			///< The number of final, double precision high accuracy, Nelder-Mead refinements to do - 0 dose no additional optimisation
+    int			nelderMeadReps;			///< The number of final, double precision high accuracy, Nelder-Mead refinements to do - 0 dose no additional optimisation
+    double		nelderMeadDelta;		///< The delta to stop the NM search at
 
     int			optPlnSiz[MAX_NO_STAGES];	///< The size of optimisation planes
-    int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
-    presto_interp_acc	accu[NO_OPT_LEVS];		///< The size of optimisation planes
     float		optPlnScale;			///< The ratio by which to decrease the optimisation planes (I like 10)
+
+    int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
+    CU_TYPE		optPlnPrec[NO_OPT_LEVS];	///< The precision of the levles
+    presto_interp_acc	optPlnAccu[NO_OPT_LEVS];	///< The accuracy precision
 
     int64_t		flags;				///< The search bit flags specified by the user, the actual bit flag used in the search will be different
 } confSpecsOpt;
@@ -1243,6 +1239,10 @@ typedef struct cuRzHarmPlane
     double		rSize;			///< The width of the r plane
     double		zSize;			///< The width of the z plane
 
+    double 		maxPower;		///< The min summed power of the plane
+    double 		minPower;		///< The max summed power of the plane
+    double 		maxBound;		///< The maximum summed power along the edge of the plane
+
     int			noZ;			///< The number of z - The "rows"     of the plane(s)
     int			noR;			///< The number or r - The "columns"  of the plane(s)
 
@@ -1435,9 +1435,8 @@ typedef struct candSrch
     cuSearch*		cuSrch;			///< Details of the search
     cuHarmInput*	input;			///< Input data for the harmonics
     accelcand*		cand;			///< The candidate to optimise
-    cuPlnGen*		optPln;			///< The plane data used for optimisation
     int			candNo;			///< The 0 based index of this candidate
-    double*		norms;			///< Normalisation values for each harmonic
+    double		resolution;		///< The size to start the final optemisation at
 } candSrch;
 
 

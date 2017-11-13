@@ -52,6 +52,9 @@ extern "C"
 
 #define SWAP_PTR(p1, p2) do { initCand* tmp = p1; p1 = p2; p2 = tmp; } while (0)
 
+#ifdef CBL // DBG - Thesis output
+Logger nmLog;
+#endif
 
 template<typename T>
 T pow(double r, double z, int numharm, cuHarmInput* inp, int hw = HIGHACC)
@@ -94,7 +97,6 @@ T pow(accelcand* cand, cuHarmInput* inp, int hw = HIGHACC)
 
   return total_power;
 }
-
 
 /** Check if the plane, with current settings, requires new input
  *
@@ -419,6 +421,170 @@ candTree* opt_cont(candTree* oTree, cuPlnGen* pln, container* cont, fftInfo* fft
   return NULL;
 }
 
+ACC_ERR_CODE pln_max_pnt( cuRzHarmPlane* pln, initCand* cand )
+{
+  ACC_ERR_CODE err = ACC_ERR_NONE;
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Get Max");
+  }
+
+  int noStrHarms = 0;
+  if      ( pln->type == CU_STR_HARMONICS )
+    noStrHarms = pln->noHarms;
+  else if ( pln->type == CU_STR_INCOHERENT_SUM )
+    noStrHarms = 1;
+  else
+  {
+    infoMSG(6,6,"Plane type has not been initialised.\n" );
+    err += ACC_ERR_UNINIT;
+  }
+
+  pln->maxBound = 0;
+
+  for (int indy = 0; indy < pln->noZ; indy++ )
+  {
+    for (int indx = 0; indx < pln->noR ; indx++ )
+    {
+      double yy2 = 0;
+
+      for ( int hIdx = 0; hIdx < noStrHarms; hIdx++)
+      {
+	if      ( pln->type == CU_CMPLXF )
+	  yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
+	else if ( pln->type == CU_CMPLXD )
+	  yy2 +=  POWERF(((double2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
+	else if ( pln->type == CU_FLOAT )
+	  yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+	else if ( pln->type == CU_DOUBLE )
+	  yy2 +=  ((double*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+	else
+	{
+	  infoMSG(6,6,"ERROR: Plane type has not been initialised.\n" );
+	  err += ACC_ERR_DATA_TYPE;
+	  break;
+	}
+
+      }
+
+      FOLD // Track max and min of plane for
+      {
+	if ( indy == 0 && indx == 0 )
+	{
+	  pln->maxPower = yy2;
+	  pln->minPower = yy2;
+	}
+	MINN(pln->minPower, yy2);
+	MAXX(pln->maxPower, yy2);
+      }
+
+      if ( (indx == 0 || indx == pln->noR-1 || indy == 0 || indy == pln->noZ-1 ) && ( yy2 > pln->maxBound) )
+      {
+	pln->maxBound = yy2 ;
+      }
+
+      if ( yy2 > cand->power )
+      {
+	cand->power	= yy2;
+	cand->r	= pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+	cand->z	= pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+	if ( pln->noZ	== 1 )
+	  cand->z = pln->centZ;
+	if ( pln->noR	== 1 )
+	  cand->r = pln->centR;
+      }
+    }
+  }
+
+  infoMSG(4,4,"Max Power %8.5f at (%.6f %.6f) - Min power: %8.5f  Range: %4e \n", cand->power, cand->r, cand->z, pln->minPower, pln->maxPower-pln->minPower);
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP("Get Max");
+  }
+
+  return err;
+}
+
+ACC_ERR_CODE pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound )
+{
+  ACC_ERR_CODE err = ACC_ERR_NONE;
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_PUSH("Get Max");
+  }
+
+  int noStrHarms = 0;
+  if      ( pln->type == CU_STR_HARMONICS )
+    noStrHarms = pln->noHarms;
+  else if ( pln->type == CU_STR_INCOHERENT_SUM )
+    noStrHarms = 1;
+  else
+  {
+    infoMSG(6,6,"Plane type has not been initialised.\n" );
+    err += ACC_ERR_UNINIT;
+  }
+
+  double zSum = 0;
+  double rSum = 0;
+
+  double weight = 0;
+
+  for (int indy = 0; indy < pln->noZ; indy++ )
+  {
+    double z	= pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
+
+    for (int indx = 0; indx < pln->noR ; indx++ )
+    {
+      double r	= pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
+      double yy2 = 0;
+
+      for ( int hIdx = 0; hIdx < noStrHarms; hIdx++)
+      {
+	if      ( pln->type == CU_CMPLXF )
+	  yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
+	else if ( pln->type == CU_CMPLXD )
+	  yy2 +=  POWERF(((double2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
+	else if ( pln->type == CU_FLOAT )
+	  yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+	else if ( pln->type == CU_DOUBLE )
+	  yy2 +=  ((double*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
+	else
+	{
+	  infoMSG(6,6,"ERROR: Plane type has not been initialised.\n" );
+	  err += ACC_ERR_DATA_TYPE;
+	  break;
+	}
+      }
+
+      if ( yy2 >= bound )
+      {
+	weight += yy2;
+
+	zSum += z*yy2;
+	rSum += r*yy2;
+      }
+    }
+  }
+
+  if ( weight > 0 )
+  {
+    cand->z = zSum/weight;
+    cand->r = rSum/weight;
+  }
+
+  infoMSG(4,4,"Max Power %8.5f at (%.6f %.6f) - Min power: %8.5f  Range: %4e \n", cand->power, cand->r, cand->z, pln->minPower, pln->maxPower-pln->minPower);
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP("Get Max");
+  }
+
+  return err;
+}
+
 /** Refine candidate location using repetitive planes  .
  *
  * @param cand
@@ -479,63 +645,24 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
     }
   }
 
+  double r1, z1, r2, z2;
+
   FOLD // Get new max  .
   {
-    PROF // Profiling  .
+    err += pln_max_pnt( pln, cand );
+
+    r1 = cand->r;
+    z1 = cand->z;
+
+    if ( scale < 0.7 )
     {
-      NV_RANGE_PUSH("Get Max");
+      double bound = pln->minPower + ( pln->maxPower - pln->minPower )*0.9 ;
+      MAXX(bound, pln->maxBound);	// Clamp to max edge value to avoid unjustly weighting
+      err += pln_max_wAve( pln, cand, bound );
     }
 
-    int noStrHarms = 0;
-    if      ( pln->type == CU_STR_HARMONICS )
-      noStrHarms = pln->noHarms;
-    else if ( pln->type == CU_STR_INCOHERENT_SUM )
-      noStrHarms = 1;
-    else
-    {
-      infoMSG(6,6,"Plane type has not been initialised.\n" );
-      err += ACC_ERR_UNINIT;
-    }
-
-    for (int indy = 0; indy < pln->noZ; indy++ )
-    {
-      for (int indx = 0; indx < pln->noR ; indx++ )
-      {
-	float yy2 = 0;
-
-	for ( int hIdx = 0; hIdx < noStrHarms; hIdx++)
-	{
-	  if      ( pln->type == CU_CMPLXF )
-	    yy2 +=  POWERF(((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx]);
-	  else if ( pln->type == CU_FLOAT )
-	    yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
-	  else
-	  {
-	    infoMSG(6,6,"Plane type has not been initialised.\n" );
-	    err += ACC_ERR_DATA_TYPE;
-	    break;
-	  }
-	}
-
-	if ( yy2 > cand->power )
-	{
-	  cand->power	= yy2;
-	  cand->r	= pln->centR - pln->rSize/2.0 + indx/(double)(pln->noR-1) * (pln->rSize) ;
-	  cand->z	= pln->centZ + pln->zSize/2.0 - indy/(double)(pln->noZ-1) * (pln->zSize) ;
-	  if ( pln->noZ	== 1 )
-	    cand->z = pln->centZ;
-	  if ( pln->noR	== 1 )
-	    cand->r = pln->centR;
-	}
-      }
-    }
-
-    infoMSG(4,4,"Max Power %8.5f at (%.6f %.6f)\n", cand->power, cand->r, cand->z);
-
-    PROF // Profiling  .
-    {
-      NV_RANGE_POP("Get Max");
-    }
+    r2 = cand->r;
+    z2 = cand->z;
   }
 
   FOLD // Write CSV & plot output  .
@@ -545,9 +672,12 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
     {
       // TODO: Check if we can get the directory name and then this can be added into standard accelsearch
       char tName[1024];
-      sprintf(tName,"Cand_%05i_Rep_%02i_Lv_%i_h%02i.csv", nn, plt, lv, cand->numharm );
+      sprintf(tName,"Cand_%05i_Rep_%02i_Lv_%i_h%02i", nn, plt, lv, cand->numharm );
 
-      ffdotPln_plotPln( pln, "/home/chris/accel/", tName );
+      char pName[1024];
+      sprintf(pName," --max1 %.17f %.17f --max2 %.17f %.17f ", r1, z1, r2, z2 );
+
+      ffdotPln_plotPln( pln, "/home/chris/accel/", tName, pName );
     }
 #endif
   }
@@ -567,15 +697,29 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, int plt = 0, int nn = 0, int lv = 0 )
+ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
-  infoMSG(3,3,"Simplex refine position - lvl %i  size %f by %f \n", lv+1, rSize, zSize);
+  infoMSG(3,3,"Simplex refine position - lvl %i  size %.4e by %.4e \n", lv+1, rSize, zSize);
+
+#ifdef CBL // DBG - Thesis output
+  Logger nmPathLog;
+  if ( plt)
+  {
+    char cmpName[1024];
+    sprintf(cmpName, "/home/chris/accel/nm_path_%03i.csv", nn );
+
+    nmPathLog.setFile(cmpName);
+    nmPathLog.setEcho(false);
+    nmPathLog.setCsvLineNums(true);
+    nmPathLog.setCsvDeliminator(';');
+  }
+#endif
 
   // These are the Nelder–Mead parameter values
   double reflect	= 1.0;
-  double expand		= 2.0;
+  double expand		= 2.5;
   double contract	= 0.4;
   double shrink		= 0.3;
 
@@ -621,7 +765,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
 	SWAP_PTR(olst[NM_MIDL], olst[NM_BEST]);
 
 	if (olst[NM_WRST]->power > olst[NM_MIDL]->power )
-	SWAP_PTR(olst[NM_WRST], olst[NM_MIDL]);
+	  SWAP_PTR(olst[NM_WRST], olst[NM_MIDL]);
       }
     }
 
@@ -636,7 +780,28 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
 
     rtol = 2.0 * fabs(olst[NM_BEST]->power - olst[NM_WRST]->power) / (fabs(olst[NM_BEST]->power) + fabs(olst[NM_MIDL]->power) + 1.0e-15) ;
 
-    if (rtol < 1.0e-7 )  // Within error so leave  .
+#ifdef CBL
+    if ( plt)
+    {
+      nmPathLog.csvWrite("r0",      "%18.15e", olst[NM_BEST]->r);
+      nmPathLog.csvWrite("z0",      "%18.15e", olst[NM_BEST]->z);
+      nmPathLog.csvWrite("power0",  "%18.15e", olst[NM_BEST]->power);
+
+      nmPathLog.csvWrite("r1",      "%18.15e", olst[NM_MIDL]->r);
+      nmPathLog.csvWrite("z1",      "%18.15e", olst[NM_MIDL]->z);
+      nmPathLog.csvWrite("power1",  "%18.15e", olst[NM_MIDL]->power);
+
+      nmPathLog.csvWrite("r2",      "%18.15e", olst[NM_WRST]->r);
+      nmPathLog.csvWrite("z2",      "%18.15e", olst[NM_WRST]->z);
+      nmPathLog.csvWrite("power2",  "%18.15e", olst[NM_WRST]->power);
+
+      nmPathLog.csvWrite("rtol",   "%18.15e", rtol);
+
+      nmPathLog.csvEndLine();
+    }
+#endif
+
+    if (rtol < bound )  // Within error so leave  .
     {
       break;
     }
@@ -711,8 +876,20 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
   cand->z = olst[NM_BEST]->z;
   cand->power = olst[NM_BEST]->power;
 
-  infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) %3i iterations moved %9.7f  power inc: %9.7f", cand->power, cand->r, cand->z, ite, dist, powInc);
+  infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) %3i iterations moved %9.7e  power inc: %9.7e", cand->power, cand->r, cand->z, ite, dist, powInc);
 
+#ifdef CBL
+  if ( plt)
+  {
+    nmLog.csvWrite("ite",   "%i",      ite);
+    nmLog.csvWrite("dst",   "%9.7e",   dist);
+    nmLog.csvWrite("inc",   "%9.7e",   powInc);
+    nmLog.csvWrite("power", "%18.15e", cand->power);
+    nmLog.csvEndLine();
+
+    nmPathLog.close();
+  }
+#endif
   return err;
 }
 
@@ -728,7 +905,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, int plt = 0, int nn = 0, int lv = 0 )
+ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
@@ -738,7 +915,7 @@ ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize =
   tCand.z	= cand->z;
   //tCand.sig	= cand->numharm;
 
-  err += optInitCandPosSim<T>(&tCand, inp, rSize, zSize, hw, maxReps, plt, nn, lv );
+  err += optInitCandPosSim<T>(&tCand, inp, rSize, zSize, hw, maxReps, bound, nn, lv, plt );
 
   cand->numharm	= tCand.numharm;
   cand->r	= tCand.r;
@@ -1155,7 +1332,7 @@ void* cpuProcess(void* ptr)
   iCand.r		= cand->r;
   iCand.z		= cand->z;
 
-  if ( conf->NelderMeadReps )
+  if ( conf->nelderMeadReps )
   {
     FOLD // Prep input
     {
@@ -1179,8 +1356,14 @@ void* cpuProcess(void* ptr)
       }
 
       // Run the NM
-      float nmScale = 0.002; // This is 0.01 in original accelsearch - NOTE: this could be configurable or based on the final resolution of the previous optimisation
-      optInitCandPosSim<double>(&iCand,  res->input, nmScale, nmScale*conf->zScale, HIGHACC, conf->NelderMeadReps );
+      if ( conf->flags & FLAG_DPG_CAND_PLN )// DBG REM for testing
+      {
+	optInitCandPosSim<double>(&iCand,  res->input, res->resolution, res->resolution*conf->zScale, HIGHACC, conf->nelderMeadReps, conf->nelderMeadDelta, res->candNo, 0, 1  );
+      }
+      else
+      {
+	optInitCandPosSim<double>(&iCand,  res->input, res->resolution, res->resolution*conf->zScale, HIGHACC, conf->nelderMeadReps, conf->nelderMeadDelta, res->candNo, 0, 0  );
+      }
 
       cand->r		= iCand.r;
       cand->z		= iCand.z;
@@ -1224,7 +1407,7 @@ void* cpuProcess(void* ptr)
 /** Optimise derivatives of a candidate Using the CPU  .
  * This usually spawns a separate CPU thread to do the sigma calculations
  */
-ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, int candNo = -1)
+ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, double res = 0.001, int candNo = -1)
 {
   ACC_ERR_CODE	err		= ACC_ERR_NONE;
 
@@ -1238,8 +1421,9 @@ ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp
   thrdDat->cand		= cand;
   thrdDat->cuSrch	= srch;
   thrdDat->candNo	= candNo;
+  thrdDat->resolution	= res;
 
-  if ( conf->NelderMeadReps )
+  if ( conf->nelderMeadReps )
   {
     // Make a copy of the input data for the thread to use
     thrdDat->input = duplicateHostInput(inp);
@@ -1303,7 +1487,7 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
   char tName[1024];
   sprintf(tName,"/home/chris/accel/OPT_%03i.csv", candNo);
   FILE *f2;
-  if ( conf->flags & FLAG_DPG_PRNT_CAND ) // Write CSV & plot output  .
+  if ( conf->flags & FLAG_DPG_CAND_PLN ) // Write CSV & plot output  .
   {
     f2 = fopen(tName, "w");
   }
@@ -1315,12 +1499,12 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
     int noP;
     int rep	= 0;
     int lrep	= 0;
-    bool doub	= false;
     const int	mxRep		= 10;
     const float moveBound	= 0.67;
     const float outBound	= 0.9;
     double sz;
     float posR, posZ;
+    double rRes;
 
     if      ( cand->numharm == 1  )
       sz = conf->optPlnSiz[0];
@@ -1335,27 +1519,27 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 
     cand->power		= 0;				// Set initial power to zero
 
+    CU_TYPE precision	= CU_NONE;
+
     for ( int lvl = 0; lvl < NO_OPT_LEVS; lvl++ )
     {
       noP		= conf->optPlnDim[lvl];		// Set in the defaults text file
-
-      if ( opt->plnGen->accu != conf->accu[lvl])
-      {
-	opt->plnGen->accu	= conf->accu[lvl];
-	cand->power		= 0;			// Reset cand power as we are now using a different half-width
-      }
-
       lrep		= 0;
       depth		= 1;
 
-      if ( ( lvl == NO_OPT_LEVS-1 ) || (sz < 0.002) || ( (sz < 0.03) && (abs(pln->centZ) < 0.05) ) )	// Potently force double precision
+      if ( opt->plnGen->accu != conf->optPlnAccu[lvl])
       {
-	// If last plane is not 0, it will be done with double precision
-	if (!doub)
-	  cand->power = 0;
-
-	doub = true;
+	opt->plnGen->accu	= conf->optPlnAccu[lvl];
+	cand->power		= 0;			// Reset cand power as we are now using a different half-width
       }
+
+      if ( precision != conf->optPlnPrec[lvl])
+      {
+	precision		= conf->optPlnPrec[lvl];
+	cand->power		= 0;			// Reset cand power as we are now using a different half-width
+      }
+
+      double rRes = pln->rSize/(double)(pln->noR-1) ;
 
       if ( noP )					// Check if there are points in this plane ie. are we optimising position at this level  .
       {
@@ -1363,40 +1547,46 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	{
 	  infoMSG(3,3,"-----------------------------------------------------\n");
 
-	  if ( doub )
+	  if      ( precision == CU_DOUBLE )
 	  {
 	    infoMSG(3,3,"Generate double precision plane - lvl %i  depth: %i  iteration %2i  size: %6.4f  dimension: %4i\n", lvl+1, depth, lrep, sz, noP );
 
 	    // Double precision
 	    optRefinePosPln<double>(cand, opt, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
-	  else
+	  else if ( precision == CU_FLOAT  )
 	  {
 	    infoMSG(3,3,"Generate single precision plane - lvl %i  depth: %i  iteration %2i  size: %6.4f  dimension: %4i\n", lvl+1, depth, lrep, sz, noP );
 
 	    // Standard single precision
 	    optRefinePosPln<float>(cand, opt, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
+	  else
+	  {
+	    fprintf(stderr, "ERROR: Invalid plane precision\n.");
+	    err = ACC_ERR_INVLD_CONFIG;
+	  }
 
+	  rRes = pln->rSize/(double)(pln->noR-1) ;				// Resolution of current plane
 	  posR = fabs(( pln->centR - cand->r )/(pln->rSize/2.0));
 	  posZ = fabs(( pln->centZ - cand->z )/(pln->zSize/2.0));
 
 	  // Output Text
 	  if ( posR || posZ )
-	    infoMSG(4,4,"Plane max absolute offset at %.4f %.4f of plane.\n", posR, posZ );
+	    infoMSG(4,4,"Plane max at relative offset: %.4f %.4f from centre of plane.\n", posR, posZ );
 	  else
 	    infoMSG(4,4,"Plane max in same position as current.\n");
 
 	  FOLD // DBG - Thesis output
 	  {
 #ifdef CBL
-	    if ( conf->flags & FLAG_DPG_PRNT_CAND ) // Write CSV & plot output  .
+	    if ( conf->flags & FLAG_DPG_CAND_PLN ) // Write CSV & plot output  .
 	    {
 	      fprintf(f2,"Optimisation details\n");
 	      fprintf(f2,"Depth: %i\n", depth);
 	      fprintf(f2,"Level: %i\n", lvl);
 	      fprintf(f2,"Repetition: %i\n", rep);
-	      fprintf(f2,"Precision: %i\n", 1+doub);
+	      fprintf(f2,"Precision: %i\n", 1);
 	      fprintf(f2,"Max_r: %.23f\n", cand->r);
 	      fprintf(f2,"Max_z: %.23f\n", cand->z);
 
@@ -1424,29 +1614,39 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	  }
 	  else
 	  {
-	    double rRes = pln->rSize/(double)(pln->noR-1) ;
-
-	    // Break condition
-	    if ( rRes < 1e-5 )
-	    {
-	      infoMSG(5,5,"Break size is small enough\n");
-	      break;
-	    }
-
 	    // Zoom in
 	    sz /= conf->optPlnScale;
 	    depth--;
 	    infoMSG(5,5,"Zoom in\n");
-	    if ( sz < 2.0*rRes )
-	      sz = rRes*2.0;
+//	    if ( sz < 2.0*rRes )
+//	      sz = rRes*2.0;
+	  }
+
+	  double plnRng = pln->maxPower - pln->minPower ;
+	  double pre = pln->maxPower / plnRng ;			// 5000 -
+	  if ( plnRng > 0 && plnRng < 0.2 )	// Potently force double precision
+	  {
+	    if ( precision != CU_DOUBLE )
+	    {
+	      infoMSG(5,5,"Set to double, range %3e.\n", plnRng);
+	      cand->power = 0;	// Reset plane maximum value
+	      precision = CU_DOUBLE;
+	    }
 	  }
 
 	  ++lrep;
 	}
+
+	// Break condition
+	if ( rRes < 1e-5 )
+	{
+	  infoMSG(5,5,"Stop iterations - resolution is fine enough.\n");
+	  break;
+	}
       }
       else
       {
-	if ( doub )
+	if ( precision == CU_DOUBLE )
 	  infoMSG(3,3,"Skip plane lvl %i (double precision)", lvl+1);
 	else
 	  infoMSG(3,3,"Skip plane lvl %i (single precision)", lvl+1);
@@ -1455,7 +1655,7 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
   }
 
 #ifdef CBL // DBG - Thesis output
-  if ( conf->flags & FLAG_DPG_PRNT_CAND ) // Write CSV & plot output  .
+  if ( conf->flags & FLAG_DPG_CAND_PLN ) // Write CSV & plot output  .
   {
     fclose(f2);
 
@@ -1492,6 +1692,17 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
   return err;
 }
 
+initCand dupCand(accelcand* cand)
+{
+  initCand iCand;				// plane refining uses an initial candidate data structure
+  iCand.r 		= cand->r;
+  iCand.z 		= cand->z;
+  iCand.power		= cand->power;
+  iCand.numharm 	= cand->numharm;
+
+  return iCand;
+}
+
 /** This is the main function called by external elements  .
  *
  * @param cand
@@ -1511,11 +1722,15 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
     NV_RANGE_PUSH(Txt);
   }
 
-  initCand iCand;				// plane refining uses an initial candidate data structure
-  iCand.r 		= cand->r;
-  iCand.z 		= cand->z;
-  iCand.power		= cand->power;
-  iCand.numharm 	= cand->numharm;
+  initCand iCand = dupCand(cand);		// plane refining uses an initial candidate data structure
+
+//  initCand iCand;				// plane refining uses an initial candidate data structure
+//  iCand.r 		= cand->r;
+//  iCand.z 		= cand->z;
+//  iCand.power		= cand->power;
+//  iCand.numharm 	= cand->numharm;
+
+  double resolved	= 0;
 
   FOLD // Refine position in ff space  .
   {
@@ -1535,7 +1750,9 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
     {
       double sz = 15;	// This size could be a configurable parameter
       prepInput_cand( &iCand, opt->input, opt->cuSrch->fft, sz, sz*conf->zScale, NULL, opt->flags );
-      optInitCandPosSim<double>(&iCand, opt->input, 0.5, 0.5*conf->zScale, LOWACC, 1000 );
+      optInitCandPosSim<double>(&iCand, opt->input, 0.5, 0.5*conf->zScale, LOWACC, 1000, 1e-7 );
+
+      resolved  = 1e-5 ;
     }
     else if ( conf->flags & FLAG_OPT_SWARM )
     {
@@ -1545,6 +1762,16 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
     else // Default use planes
     {
       err += optInitCandLocPlns(&iCand, opt, candNo);
+
+      resolved = opt->plnGen->pln->rSize / (opt->plnGen->pln->noR-1) * 0.1;
+
+#ifdef CBL
+      if ( opt->flags & FLAG_DPG_CAND_PLN )
+      {
+	nmLog.csvWrite("res", "%5e",  opt->plnGen->pln->rSize/(opt->plnGen->pln->noR-1));
+      }
+#endif
+
     }
 
     PROF // Profiling  .
@@ -1571,7 +1798,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
   FOLD // Optimise derivatives  .
   {
-    err += processCandDerivs(cand, opt->cuSrch, opt->input, candNo);
+    err += processCandDerivs(cand, opt->cuSrch, opt->input, resolved, candNo);
   }
 
   PROF // Profiling  .
@@ -1594,12 +1821,20 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
 #ifdef CBL // DBG - Thesis output
   char cmpName[1024];
-  sprintf(cmpName,"/home/chris/accel/cand_cmp.csv");
+  Logger cmpLog;
+  if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN )
+  {
+    sprintf(cmpName,"/home/chris/accel/cand_cmp.csv");
+    cmpLog.setFile(cmpName);
+    cmpLog.setEcho(true);
+    cmpLog.setCsvLineNums(false);
+    cmpLog.setCsvDeliminator(',');
 
-  Logger cmpLog(cmpName);
-  cmpLog.setEcho(true);
-  cmpLog.setCsvLineNums(false);
-  cmpLog.setCsvDeliminator(',');
+    nmLog.setFile("/home/chris/accel/NM_2.csv");
+    nmLog.setEcho(false);
+    nmLog.setCsvLineNums(false);
+    nmLog.setCsvDeliminator(';');
+  }
 #endif
 
   TIME //  Timing  .
@@ -1664,7 +1899,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	    ii++;
 	    ti = ii;
 #ifdef CBL
-	    FOLD // TMP: This can get removed
+	    if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN ) // TMP: This can get removed
 	    {
 	      candGPU->init_power    = candGPU->power;
 	      candGPU->init_sigma    = candGPU->sigma;
@@ -1699,6 +1934,8 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	FOLD // DBG - Compare optimisation results - Thesis output
 	{
 #ifdef CBL
+
+	  ACC_ERR_CODE	err		= ACC_ERR_NONE;
 
 	  //void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_width, fcomplex * ans);
 
@@ -1752,6 +1989,8 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
 	    FOLD // Original CPU optimisation
 	    {
+	      NV_RANGE_PUSH("CPU refine");
+
 	      max_rz_arr_harmonics(data,
 		  candCPU->numharm,
 		  r_offset,
@@ -1767,15 +2006,17 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	      candCPU->z = z;
 	      candCPU->power = 0;
 	      candCPU->sigma = 0;
+
+	      NV_RANGE_POP("CPU refine");
 	    }
 	    else // My new NM optimisation  .
 	    {
 	      double sz = 15;	// This size could be a configurable parameter
 	      prepInput_cand( candCPU, opt->input, opt->cuSrch->fft, sz, sz*opt->conf->zScale, opt->flags );
 
-	      optInitCandPosSim<double>(candCPU, opt->input, 0.4,   0.4*opt->conf->zScale, LOWACC,  1000 );
+	      optInitCandPosSim<double>(candCPU, opt->input, 0.4,   0.4*opt->conf->zScale, LOWACC,  1000, 1e-7 );
 
-	      optInitCandPosSim<double>(candCPU, opt->input, 0.01, 0.01*opt->conf->zScale, HIGHACC, 100  );
+	      optInitCandPosSim<double>(candCPU, opt->input, 0.01, 0.01*opt->conf->zScale, HIGHACC, 100, 1e-10  );
 	    }
 
 	    FOLD // Calculate powers  .
@@ -1826,11 +2067,95 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	    if ( sDist < -0.001 || sDist > 0.001 || bDist > 0.01 )
 	    {
 	      // These are interesting cases so plot them...
-	      prnt = true;
+	      //prnt = true; // DBG removed for profiling
 	    }
+
+	    FOLD
+	    {
+
+	      confSpecsOpt*conf		= opt->conf;
+	      cuRzHarmPlane* pln	= opt->plnGen->pln;
+
+	      initCand iCand = dupCand(candGPU);
+
+	      char pltNm[1024];
+	      char pthNm[1024];
+	      sprintf(pltNm, "CND_close_%03i", ti);
+	      sprintf(pthNm, "-p /home/chris/accel/nm_path_%03i.csv", ti);
+	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm);
+
+
+	      double scale = pln->rSize / (pln->noR-1);
+
+//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale, 1, ti, 0 );
+//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
+//
+//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 1 );
+//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
+//
+//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 2 );
+//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
+//
+//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 3 );
+//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
+//
+//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 4 );
+//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
+//
+//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 5 );
+//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
+
+
+	      pln->centR = candGPU->r;
+	      pln->centZ = candGPU->z;
+
+	      //pln->rSize / (pln->noR-1) * 0.5;
+	      pln->rSize = pln->rSize / (pln->noR-1) * 1.5 ;
+	      pln->zSize = pln->rSize*conf->zScale;
+
+	      pln->noZ		= 128;
+	      pln->noR		= 128;
+
+	      //opt->plnGen->flags |= FLAG_OPT_CPU_PLN;
+
+	      ffdotPln<double>(opt->plnGen, opt->cuSrch->fft);
+	      ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm );
+
+	      //opt->plnGen->flags &= ~FLAG_OPT_CPU_PLN;
+
+
+	    }
+
+//	    FOLD
+//	    {
+//	      confSpecsOpt*conf		= opt->conf;
+//	      cuRzHarmPlane* pln	= opt->plnGen->pln;
+//
+//	      pln->centR = candGPU->r;
+//	      pln->centZ = candGPU->z;
+//
+//	      //pln->rSize / (pln->noR-1) * 0.5;
+//	      pln->rSize = pln->rSize / (pln->noR-1) * 2.0;
+//	      pln->zSize = pln->rSize*conf->zScale;
+//
+//	      pln->noZ		= 128;
+//	      pln->noR		= 128;
+//
+//	      //opt->plnGen->flags |= FLAG_OPT_CPU_PLN;
+//
+//	      ffdotPln<double>(opt->plnGen, opt->cuSrch->fft);
+//
+//	      //opt->plnGen->flags &= ~FLAG_OPT_CPU_PLN;
+//
+//	      char pltNm[1024];
+//	      char pthNm[1024];
+//	      sprintf(pltNm, "CND_close_%03i", ti);
+//	      sprintf(pthNm, "-p /home/chris/accel/nm_path_%03i.csv", ti);
+//	      ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm);
+//	    }
 	  }
 
-	  if ( opt->conf->flags & FLAG_DPG_PLT_OPT || prnt ) // Write CSV & plot output  .
+	  if ( (opt->conf->flags & FLAG_DPG_CAND_PLN) ) // Write CSV & plot output  .
 	  {
 	    char tName[1024];
 	    sprintf(tName, "/home/chris/accel/OPT_%03i.csv", ti);
@@ -1851,7 +2176,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	      fclose(f2);
 	    }
 
-	    FOLD // Make image  .
+	    if ( prnt || (opt->conf->flags & FLAG_DPG_PLT_OPT) ) // Make image  .
 	    {
 	      infoMSG(5,5,"Image %s\n", tName);
 
@@ -1893,7 +2218,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     cmpLog.close();
 
     char cmd[1024];
-    sprintf(cmd,"python /home/chris/workspace/thesis_plots/plt_opt_cmp.py %s > /dev/null 2>&1", cmpName);
+    sprintf(cmd,"python /home/chris/projects/thesis-plots/plt_opt_cmp.py %s > /dev/null 2>&1", cmpName);
     int ret = system(cmd);
     if ( ret )
     {
@@ -1918,6 +2243,13 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_OPT_WAIT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
   }
+
+#ifdef CBL // DBG - Thesis output
+  if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
+  {
+  nmLog.close();
+  }
+#endif
 
   return 0;
 }
