@@ -861,8 +861,6 @@ int main(int argc, char *argv[])
 	  for ( int i = 0; i < COMP_GEN_END; i++)
 	    sums[i] = 0;
 
-	  cuFFdotBatch*   batches = &cuSrch->pInf->batches[0];
-
 	  printf("\n*************************************************************************************************\n                           Profiling\n*************************************************************************************************\n");
 
 	  printf("\nAll times are in seconds\n\n");
@@ -883,108 +881,113 @@ int main(int argc, char *argv[])
 	    printf("\n\n");
 	  }
 
-	  printf("\n --== Batches ==-- \n");
-
-	  FOLD // Heading  .
+	  if ( !useUnopt )
 	  {
-	    char heads[COMP_GEN_END][15];
+	    cuFFdotBatch*   batches = &cuSrch->pInf->batches[0];
 
-	    sprintf(heads[COMP_GEN_H2D],		"Copy H2D");
+	    printf("\n --== Batches ==-- \n");
 
-	    if      ( batches->flags & CU_NORM_GPU_SM )
-	      sprintf(heads[COMP_GEN_NRM],		"Norm GPU SM");
-	    else if ( batches->flags & CU_NORM_GPU_OS )
-	      sprintf(heads[COMP_GEN_NRM],		"Norm GPU RDIX");
-	    else
-	      sprintf(heads[COMP_GEN_NRM],		"Norm CPU");
+	    FOLD // Heading  .
+	    {
+	      char heads[COMP_GEN_END][15];
 
-	    sprintf(heads[COMP_GEN_GINP],		"GPU Input");
+	      sprintf(heads[COMP_GEN_H2D],		"Copy H2D");
 
-	    sprintf(heads[COMP_GEN_CINP],		"CPU Input");
+	      if      ( batches->flags & CU_NORM_GPU_SM )
+		sprintf(heads[COMP_GEN_NRM],		"Norm GPU SM");
+	      else if ( batches->flags & CU_NORM_GPU_OS )
+		sprintf(heads[COMP_GEN_NRM],		"Norm GPU RDIX");
+	      else
+		sprintf(heads[COMP_GEN_NRM],		"Norm CPU");
 
-	    sprintf(heads[COMP_GEN_MEM],		"Input Mem");
+	      sprintf(heads[COMP_GEN_GINP],		"GPU Input");
 
-	    if ( batches->flags & CU_INPT_FFT_CPU )
-	      sprintf(heads[COMP_GEN_FFT],		"Inp FFT CPU");
-	    else
-	      sprintf(heads[COMP_GEN_FFT],		"Inp FFT GPU");
+	      sprintf(heads[COMP_GEN_CINP],		"CPU Input");
 
-	    sprintf(heads[COMP_GEN_MULT],		"Multiplication");
+	      sprintf(heads[COMP_GEN_MEM],		"Input Mem");
 
-	    sprintf(heads[COMP_GEN_IFFT],		"Inverse FFT");
+	      if ( batches->flags & CU_INPT_FFT_CPU )
+		sprintf(heads[COMP_GEN_FFT],		"Inp FFT CPU");
+	      else
+		sprintf(heads[COMP_GEN_FFT],		"Inp FFT GPU");
 
-	    sprintf(heads[COMP_GEN_D2D],		"Copy D2D");
+	      sprintf(heads[COMP_GEN_MULT],		"Multiplication");
 
-	    sprintf(heads[COMP_GEN_SS],			"Sum & Search");
+	      sprintf(heads[COMP_GEN_IFFT],		"Inverse FFT");
 
-	    sprintf(heads[COMP_GEN_D2H],		"Copy D2H");
+	      sprintf(heads[COMP_GEN_D2D],		"Copy D2D");
 
-	    sprintf(heads[COMP_GEN_STR],		"iCand storage");
+	      sprintf(heads[COMP_GEN_SS],			"Sum & Search");
 
+	      sprintf(heads[COMP_GEN_D2H],		"Copy D2H");
+
+	      sprintf(heads[COMP_GEN_STR],		"iCand storage");
+
+	      printf("\t\t");
+	      for ( int i = 0; i < COMP_GEN_END; i++)
+		printf("%15s\t", heads[i] );
+
+	      printf("\n");
+	    }
+
+	    for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
+	    {
+	      printf("Batch\t%02i\n",batch);
+
+	      batches = &cuSrch->pInf->batches[batch];
+
+	      float	bsums[COMP_GEN_END];
+	      for ( int i = 0; i < COMP_GEN_END; i++)
+		bsums[i] = 0;
+
+	      for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
+	      {
+
+		printf("Stack\t%02i\t", stack);
+
+		for ( int i = 0; i < COMP_GEN_END; i++)
+		{
+		  float val = batches->compTime[i*batches->noStacks+stack];
+		  val *= 1e-6; // Convert to us
+		  printf("%15.06f\t", val );
+		  bsums[i] += val;
+		}
+		printf("\n");
+	      }
+
+	      if ( cuSrch->pInf->noBatches > 1 )
+	      {
+		printf("\t\t");
+		for ( int i = 0; i < COMP_GEN_END; i++)
+		  printf("%15s\t", "---------" );
+		printf("\n");
+
+		printf("\t\t");
+		for ( int i = 0; i < COMP_GEN_END; i++)
+		{
+		  printf("%15.06f\t", bsums[i] );
+		}
+		printf("\n");
+	      }
+
+	      for ( int i = 0; i < COMP_GEN_END; i++)
+	      {
+		sums[i] += bsums[i];
+	      }
+
+	    }
 	    printf("\t\t");
 	    for ( int i = 0; i < COMP_GEN_END; i++)
-	      printf("%15s\t", heads[i] );
+	      printf("%15s\t", "---------" );
+	    printf("\n");
 
+	    printf("TotalT\t\t");
+	    for ( int i = 0; i < COMP_GEN_END; i++)
+	    {
+	      printf("%15.06f\t", sums[i] );
+	    }
 	    printf("\n");
 	  }
-
-	  for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
-	  {
-	    printf("Batch\t%02i\n",batch);
-
-	    batches = &cuSrch->pInf->batches[batch];
-
-	    float	bsums[COMP_GEN_END];
-	    for ( int i = 0; i < COMP_GEN_END; i++)
-	      bsums[i] = 0;
-
-	    for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
-	    {
-
-	      printf("Stack\t%02i\t", stack);
-
-	      for ( int i = 0; i < COMP_GEN_END; i++)
-	      {
-		float val = batches->compTime[i*batches->noStacks+stack];
-		val *= 1e-6; // Convert to us
-		printf("%15.06f\t", val );
-		bsums[i] += val;
-	      }
-	      printf("\n");
-	    }
-
-	    if ( cuSrch->pInf->noBatches > 1 )
-	    {
-	      printf("\t\t");
-	      for ( int i = 0; i < COMP_GEN_END; i++)
-		printf("%15s\t", "---------" );
-	      printf("\n");
-
-	      printf("\t\t");
-	      for ( int i = 0; i < COMP_GEN_END; i++)
-	      {
-		printf("%15.06f\t", bsums[i] );
-	      }
-	      printf("\n");
-	    }
-
-	    for ( int i = 0; i < COMP_GEN_END; i++)
-	    {
-	      sums[i] += bsums[i];
-	    }
-
-	  }
-	  printf("\t\t");
-	  for ( int i = 0; i < COMP_GEN_END; i++)
-	    printf("%15s\t", "---------" );
-	  printf("\n");
-
-	  printf("TotalT\t\t");
-	  for ( int i = 0; i < COMP_GEN_END; i++)
-	  {
-	    printf("%15.06f\t", sums[i] );
-	  }
-	  printf("\n");
 
 	  printf("\n*************************************************************************************************\n\n");
 	}
