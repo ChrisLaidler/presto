@@ -24,7 +24,7 @@
  * Reads the input and multiplies it with the kernel and writes result to plane
  */
 template<int64_t FLAGS, int noSteps, int noPlns>
-__global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, const int firstPlane )
+__global__ void mult21_k(const float2* __restrict__ kernels, const float2* __restrict__ inpData, float2* __restrict__ ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;		/// Block ID - flat index
   const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;		/// Global thread ID - flat index ie column index of stack
@@ -32,7 +32,7 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
   if ( tid < width )  // Valid thread  .
   {
     const int   kerHeight = HEIGHT_HARM[firstPlane];			// The size of the kernel
-    fcomplexcu  inpDat[noPlns][noSteps];				// Set of input data for this thread/column
+    float2  inpDat[noPlns][noSteps];				// Set of input data for this thread/column
 
     int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
     int     y0      = lDepth*blockIdx.y;
@@ -51,9 +51,9 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
       {
         for ( int pln = 0; pln < noPlns; pln++ )			// Loop through the planes  .
         {
-          fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-          ipd.r                 /= (float) width;
-          ipd.i                 /= (float) width;
+          float2 ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+          ipd.x                 /= (float) width;
+          ipd.y                 /= (float) width;
           inpDat[pln][step]     = ipd;
         }
       }
@@ -61,7 +61,7 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
 
     for ( int kerY = y0; kerY < y1; kerY++ )				// Loop through the kernel  .
     {
-      fcomplexcu ker;							// kernel data
+      float2 ker;							// kernel data
       int pHeight = 0;							// Height of previous data in the stack
 
       FOLD // Read the kernel value  .
@@ -116,17 +116,17 @@ __global__ void mult21_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
 
             FOLD // Multiply  .
             {
-              fcomplexcu ipd = inpDat[pln][step];
-              fcomplexcu out;
+              float2 ipd = inpDat[pln][step];
+              float2 out;
 
 #if CORRECT_MULT
               // This is the "correct" version
-              out.r = (ipd.r * ker.r - ipd.i * ker.i);
-              out.i = (ipd.r * ker.i + ipd.i * ker.r);
+              out.x = (ipd.x * ker.x - ipd.y * ker.y);
+              out.y = (ipd.x * ker.y + ipd.y * ker.x);
 #else
               // This is the version accelsearch uses, ( added for comparison )
-              out.r = (ipd.r * ker.r + ipd.i * ker.i);
-              out.i = (ipd.i * ker.r - ipd.r * ker.i);
+              out.x = (ipd.x * ker.x + ipd.y * ker.y);
+              out.y = (ipd.y * ker.x - ipd.x * ker.y);
 #endif
               ffdot[idx] = out;
             }
@@ -148,47 +148,47 @@ __host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2:
     {
-      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3:
     {
-      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4:
     {
-      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5:
     {
-      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6:
     {
-      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7:
     {
-      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8:
     {
-      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9:
     {
-      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default:
