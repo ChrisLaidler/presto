@@ -459,7 +459,7 @@ int main(int argc, char *argv[])
     struct tm* ptm;
 
 #ifdef CBL
-    //if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
+    if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN )
     {
       time ( &rawtime );
       ptm = localtime ( &rawtime );
@@ -772,7 +772,7 @@ int main(int argc, char *argv[])
     }
 
 #ifdef CBL
-    //if ( cuSrch->conf->opt->flags & FLAG_DPG_PLT_OPT )
+    if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN )
     {
       sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pst", timeMsg );
       mkdir(dirname, 0755);
