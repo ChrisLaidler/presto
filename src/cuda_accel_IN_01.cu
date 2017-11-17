@@ -41,7 +41,7 @@ __device__ void scaleAndSpread(float2* data, int stride, int noRespPerBin, const
       {
 	val.y = 0;
 	val.x = 0;
-	data[expIdx+i] = val;
+	data[expIdx+i]   = val;
       }
     }
   }
