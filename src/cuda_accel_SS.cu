@@ -125,13 +125,6 @@ __device__ inline int getY(int planeY, const int noSteps,  const int step, const
   return planeY * noSteps + step;
 }
 
-//template<int64_t FLAGS>
-//__device__ inline float getPower(const int ix, const int iy, cudaTextureObject_t tex, fcomplexcu* base, const int stride)
-//{
-//  const fcomplexcu cmpc  = base[iy*stride+ix];
-//  return (cmpc.r * cmpc.r + cmpc.i * cmpc.i);
-//}
-
 /** Main loop down call
  *
  * This will asses and call the correct templated kernel

@@ -24,7 +24,7 @@ __global__ void cpyPowers_ker( T* dst, size_t  dpitch, T*  src, size_t  spitch, 
  * One thread per column
  */
 template<typename T>
-__global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height)
+__global__ void cpyCmplx_ker( T* dst, size_t  dpitch, float2* src, size_t  spitch, size_t  width, size_t  height)
 {
   int ix = blockIdx.x * CPY_WIDTH + threadIdx.x ;
 
@@ -102,7 +102,7 @@ void cpyPowers( T* dst, size_t  dpitch, T* src, size_t  spitch, size_t  width, s
 /** Function to call the kernel to copy powers from powers plane to in-mem plane  .
  */
 template<typename T>
-void cpyCmplx( T* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
+void cpyCmplx( T* dst, size_t  dpitch, float2* src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
 {
   dim3 dimBlock, dimGrid;
 
@@ -204,7 +204,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
  */
 void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  fcomplexcu*   src;
+  float2*       src;
 
   size_t        dpitch;
   size_t        spitch;
@@ -240,13 +240,13 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 	// Source data location
 	if ( batch->flags & FLAG_ITLV_ROW )
 	{
-	  src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
+	  src     = ((float2*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
 	  spitch  = cStack->strideCmplx*batch->noSteps;
 	}
 #ifdef WITH_ITLV_PLN
 	else
 	{
-	  src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
+	  src     = ((float2*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
 	}
 #else
 	else

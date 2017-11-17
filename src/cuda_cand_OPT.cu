@@ -633,7 +633,7 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
 
     PROF // Profiling - Time components  .
     {
-      if ( (opt->flags & FLAG_PROF) )
+      if ( (conf->flags & FLAG_PROF) )
       {
   	infoMSG(5,5,"Time components");
 
@@ -950,6 +950,7 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
     opt->cuSrch		= sSrch;					// Set the pointer t the search specifications
     opt->conf		= conf;						// Should this rather be a duplicate?
     opt->gInf 		= gInf;
+    opt->flags		= conf->flags;					// Copy the global optimisation flags to this instance
 
     if      ( conf->flags & FLAG_OPT_NM )
     {
@@ -1746,7 +1747,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
       }
     }
 
-    if      ( conf->flags & FLAG_OPT_NM    )
+    if      ( opt->flags & FLAG_OPT_NM    )
     {
       double sz = 15;	// This size could be a configurable parameter
       prepInput_cand( &iCand, opt->input, opt->cuSrch->fft, sz, sz*conf->zScale, NULL, opt->flags );
@@ -1754,7 +1755,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
       resolved  = 1e-5 ;
     }
-    else if ( conf->flags & FLAG_OPT_SWARM )
+    else if ( opt->flags & FLAG_OPT_SWARM )
     {
       fprintf(stderr,"ERROR: Particle swarm optimisation has been removed.\n");
       exit(EXIT_FAILURE);
@@ -1766,10 +1767,10 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
       resolved = opt->plnGen->pln->rSize / (opt->plnGen->pln->noR-1) * 0.1;
 
 #ifdef CBL
-      if ( opt->flags & FLAG_DPG_CAND_PLN )
-      {
-	nmLog.csvWrite("res", "%5e",  opt->plnGen->pln->rSize/(opt->plnGen->pln->noR-1));
-      }
+//      if ( conf->flags & FLAG_DPG_CAND_PLN )
+//      {
+//	nmLog.csvWrite("res", "%5e",  opt->plnGen->pln->rSize/(opt->plnGen->pln->noR-1));
+//      }
 #endif
 
     }
@@ -2070,9 +2071,8 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	      //prnt = true; // DBG removed for profiling
 	    }
 
-	    FOLD
+	    Fout // Do a high accuracy plane  to find the true maximum
 	    {
-
 	      confSpecsOpt*conf		= opt->conf;
 	      cuRzHarmPlane* pln	= opt->plnGen->pln;
 
@@ -2081,9 +2081,10 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	      char pltNm[1024];
 	      char pthNm[1024];
 	      sprintf(pltNm, "CND_close_%03i", ti);
-	      sprintf(pthNm, "-p /home/chris/accel/nm_path_%03i.csv", ti);
+	      if ( conf->nelderMeadReps )
+		sprintf(pthNm, "-p /home/chris/accel/nm_path_%03i.csv ", ti);
+	      sprintf(pthNm, "%s --max1  %.17f %.17f  --max2  %.17f %.17f ", pthNm, candCPU->r, candCPU->z, candGPU->r, candGPU->z);
 	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm);
-
 
 	      double scale = pln->rSize / (pln->noR-1);
 
@@ -2203,11 +2204,11 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 #endif // CBL
 	}
 
-//	if ( msgLevel == 0 )
-//	{
-//	  printf("\rGPU optimisation %5.1f%% complete   ", comp / (float)numcands * 100.0f );
-//	  fflush(stdout);
-//	}
+	if ( msgLevel == 0 && !(opt->conf->flags & FLAG_DPG_CAND_PLN) )
+	{
+	  printf("\rGPU optimisation %5.1f%% complete   ", comp / (float)numcands * 100.0f );
+	  fflush(stdout);
+	}
       }
     }
   }

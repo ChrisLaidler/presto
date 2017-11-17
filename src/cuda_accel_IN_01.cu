@@ -5,7 +5,7 @@
 
 
 template<int batches>
-__device__ void scaleAndSpread(fcomplexcu* data, int stride, int noRespPerBin, const float factor, const int noEls)
+__device__ void scaleAndSpread(float2* data, int stride, int noRespPerBin, const float factor, const int noEls)
 {
   //const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
@@ -17,7 +17,7 @@ __device__ void scaleAndSpread(fcomplexcu* data, int stride, int noRespPerBin, c
     int expIdx	= idx * noRespPerBin;
 
     // Read all values into registers
-    fcomplexcu val = data[idx];
+    float2 val = data[idx];
 
     __syncthreads(); // Needed to ensure all values are in registers before writing data
 
@@ -26,22 +26,22 @@ __device__ void scaleAndSpread(fcomplexcu* data, int stride, int noRespPerBin, c
       // Set the value to normalised complex number spread by 2
       if ( idx < noEls )
       {
-	val.i *= factor;
-	val.r *= factor;
+	val.y *= factor;
+	val.x *= factor;
       }
       else
       {
-	val.i = 0;
-	val.r = 0;
+	val.y = 0;
+	val.x = 0;
       }
-      data[expIdx]     = val;
+      data[expIdx] = val;
 
       // Set every second value to 0
       for (int i = 1; i < noRespPerBin; i++ )
       {
-	val.i = 0;
-	val.r = 0;
-	data[expIdx+i]   = val;
+	val.y = 0;
+	val.x = 0;
+	data[expIdx+i] = val;
       }
     }
   }
@@ -53,7 +53,7 @@ __device__ void scaleAndSpread(fcomplexcu* data, int stride, int noRespPerBin, c
  * @param lens    The lengths of the individual input sections
  */
 template<int noEls>
-__global__ void normAndSpread_SM(fcomplexcu* data, int stride, int noRespPerBin)
+__global__ void normAndSpread_SM(float2* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
@@ -81,8 +81,8 @@ __global__ void normAndSpread_SM(fcomplexcu* data, int stride, int noRespPerBin)
 
 	if ( idx < noEls )
 	{
-	  fcomplexcu val  = data[idx];
-	  smData[idx]     = val.r*val.r+val.i*val.i;
+	  float2 val      = data[idx];
+	  smData[idx]     = val.x*val.x+val.y*val.y;
 	}
       }
       __syncthreads();	// Writing values to SM
@@ -105,7 +105,7 @@ __global__ void normAndSpread_SM(fcomplexcu* data, int stride, int noRespPerBin)
  * @param lens    The lengths of the individual input sections
  */
 template<int noEls>
-__global__ void normAndSpread_SM_MIN(fcomplexcu* data, int stride, int noRespPerBin)
+__global__ void normAndSpread_SM_MIN(float2* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
@@ -131,8 +131,8 @@ __global__ void normAndSpread_SM_MIN(fcomplexcu* data, int stride, int noRespPer
 
 	if ( idx < noEls )
 	{
-	  fcomplexcu val  = data[idx];
-	  powers[batch]   = val.r*val.r+val.i*val.i;
+	  float2 val      = data[idx];
+	  powers[batch]   = val.x*val.x+val.y*val.y;
 	}
       }
     }
@@ -155,7 +155,7 @@ __global__ void normAndSpread_SM_MIN(fcomplexcu* data, int stride, int noRespPer
  */
 #ifdef WITH_NORM_GPU_OS
 template<int noEls>
-__global__ void normAndSpread_OS(fcomplexcu* data, int stride, int noRespPerBin)
+__global__ void normAndSpread_OS(float2* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
@@ -181,8 +181,8 @@ __global__ void normAndSpread_OS(fcomplexcu* data, int stride, int noRespPerBin)
 
 	if ( idx < noEls )
 	{
-	  fcomplexcu val  = data[idx];
-	  powers[batch]   = val.r*val.r+val.i*val.i;
+	  float2 val      = data[idx];
+	  powers[batch]   = val.x*val.x+val.y*val.y;
 	}
       }
     }
@@ -214,7 +214,7 @@ void normAndSpread_m(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
     if      ( FLAGS & CU_NORM_GPU_SM     )
     {
 #ifdef WITH_NORM_GPU
-      normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+      normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>((float2*)cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
 #else
       fprintf(stderr, "ERROR: %s disabled at compile time. Function %s in %s.\n", "GPU normalisation", __FUNCTION__, __FILE__);
       exit(EXIT_FAILURE);
@@ -225,11 +225,11 @@ void normAndSpread_m(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
 #ifdef WITH_NORM_GPU
       if ( noEls <= 1024 )
       {
-	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>((float2*)cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       }
       else
       {
-	normAndSpread_SM_MIN<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+	normAndSpread_SM_MIN<noEls><<< dimGrid,  dimBlock, 0, stream >>>((float2*)cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       }
 #else
       fprintf(stderr, "ERROR: %s disabled at compile time. Function %s in %s.\n", "GPU normalisation", __FUNCTION__, __FILE__);
@@ -241,11 +241,11 @@ void normAndSpread_m(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
 #ifdef WITH_NORM_GPU_OS
       if ( noEls <= 1024 )
       {
-	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+	normAndSpread_SM<noEls><<< dimGrid,  dimBlock, 0, stream >>>((float2*)cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       }
       else
       {
-	normAndSpread_OS<noEls><<< dimGrid,  dimBlock, 0, stream >>>(cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
+	normAndSpread_OS<noEls><<< dimGrid,  dimBlock, 0, stream >>>((float2*)cStack->d_iData, cStack->width, cStack->harmInf->noResPerBin );
       }
 #else
       fprintf(stderr, "ERROR: %s disabled at compile time. Function %s in %s.\n", "GPU normalisation by radix", __FUNCTION__, __FILE__);

@@ -649,7 +649,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
     //      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     //      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_iData ),"Error assigning CUFFT load callback.");
     //      //size_t siz = cStack->height * cStack->width * batch->noSteps;
-    //      //fcomplexcu* ennd = cStack->d_planeMult + siz ;
+    //      //float2* ennd = cStack->d_planeMult + siz ;
     //      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&ennd ),"Error assigning CUFFT load callback.");
     //
     //      if      ( cStack->stkIdx == 0 )

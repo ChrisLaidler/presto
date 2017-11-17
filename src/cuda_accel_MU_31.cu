@@ -23,11 +23,11 @@
  * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
 template<int64_t FLAGS, int noSteps>
-__global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* datas, __restrict__ fcomplexcu* ffdot, int noPlanes)
+__global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ float2* datas, __restrict__ float2* ffdot, int noPlanes)
 {
   const int ix = blockIdx.x * CNV_DIMX * CNV_DIMY + CNV_DIMX * threadIdx.y + threadIdx.x;
 
-  fcomplexcu input[noSteps];
+  float2 input[noSteps];
 
   // Stride
   ffdot   += ix;
@@ -35,7 +35,7 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
 
   int pHeight = 0;
 
-  for (int n = 0; n < noPlanes; n++)                  // Loop over planes  .
+  for (int n = 0; n < noPlanes; n++)					// Loop over planes  .
   {
     const int stride      = STRIDE_HARM[n];
 
@@ -45,26 +45,26 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
       const short lDepth  = ceilf(plnHeight/(float)gridDim.y);
       const short y0      = lDepth*blockIdx.y;
       const short y1      = MIN(y0+lDepth, plnHeight);
-      fcomplexcu* ker     = (fcomplexcu*)KERNEL_HARM[n] + y0 * stride + ix;
+      float2* ker         = (float2*)KERNEL_HARM[n] + y0 * stride + ix;
 
 #ifdef WITH_ITLV_PLN
       const int plnStride = plnHeight*stride;
 #endif
 
       // read input for each step into registers
-      for (int step = 0; step < noSteps; step++)		// Loop over planes  .
+      for (int step = 0; step < noSteps; step++)			// Loop over planes  .
       {
         input[step]       = datas[step*stride];
 
         // Normalise
-        input[step].r    /= (float) stride ;
-        input[step].i    /= (float) stride ;
+        input[step].x    /= (float) stride ;
+        input[step].y    /= (float) stride ;
       }
 
       // Stride input data
       datas              += stride*noSteps;
 
-      for (int planeY = y0; planeY < y1; planeY++)		// Loop over individual plane  .
+      for (int planeY = y0; planeY < y1; planeY++)			// Loop over individual plane  .
       {
         int off1;
         FOLD // Calculate partial offset  .
@@ -82,11 +82,11 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
         }
 
         // Multiply and write data
-        for (int step = 0; step < noSteps; step++)		// Loop over steps  .
+        for (int step = 0; step < noSteps; step++)			// Loop over steps  .
         {
           //
-          fcomplexcu out;
-          fcomplexcu ipd = input[step];
+          float2 out;
+          float2 ipd = input[step];
 
           // Calculate index
           int idx = 0;
@@ -107,12 +107,12 @@ __global__ void mult31_k(const __restrict__ fcomplexcu* kernels, const __restric
 	  // Multiply
 #if CORRECT_MULT
           // This is the "correct" version
-          out.r = (ipd.r * ker->r - ipd.i * ker->i);
-          out.i = (ipd.r * ker->i + ipd.i * ker->r);
+          out.x = (ipd.x * ker->x - ipd.y * ker->y);
+          out.y = (ipd.x * ker->y + ipd.y * ker->x);
 #else
           // This is the version accelsearch uses, ( added for comparison )
-          out.r = (ipd.r * ker->r + ipd.i * ker->i);
-          out.i = (ipd.i * ker->r - ipd.r * ker->i);
+          out.x = (ipd.x * ker->x + ipd.y * ker->y);
+          out.y = (ipd.y * ker->x - ipd.x * ker->y);
 #endif
 
           // Write the actual value
@@ -137,7 +137,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 1  and MAX_STEPS >= 1
     case 1:
     {
-      mult31_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -145,7 +145,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 2  and MAX_STEPS >= 2
     case 2:
     {
-      mult31_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -153,7 +153,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 3  and MAX_STEPS >= 3
     case 3:
     {
-      mult31_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -161,7 +161,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 4  and MAX_STEPS >= 4
     case 4:
     {
-      mult31_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -169,7 +169,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 5  and MAX_STEPS >= 5
     case 5:
     {
-      mult31_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -177,7 +177,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 6  and MAX_STEPS >= 6
     case 6:
     {
-      mult31_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -185,7 +185,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 7  and MAX_STEPS >= 7
     case 7:
     {
-      mult31_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -193,7 +193,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 8  and MAX_STEPS >= 8
     case 8:
     {
-      mult31_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -201,7 +201,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 9  and MAX_STEPS >= 9
     case 9:
     {
-      mult31_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -209,7 +209,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 10 and MAX_STEPS >= 10
     case 10:
     {
-      mult31_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -217,7 +217,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 11 and MAX_STEPS >= 11
     case 11:
     {
-      mult31_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif
@@ -225,7 +225,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 12 and MAX_STEPS >= 12
     case 12:
     {
-      mult31_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)batch->d_kerData , batch->d_iData, (fcomplexcu*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
       break;
     }
 #endif

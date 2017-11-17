@@ -609,7 +609,6 @@ __device__ inline float getPowerAsFloat(float* adress, uint offset)
   return adress[offset];
 }
 
-
 __device__ inline fcomplexcu get(fcomplexcu* __restrict__ adress, int offset)
 {
   return adress[offset];
@@ -625,6 +624,11 @@ __device__ inline void set(fcomplexcu* adress, uint offset, fcomplexcu value)
   adress[offset] = value;
 }
 
+__device__ inline float getFloat(float2 value)
+{
+  return POWERF(value);
+}
+
 __device__ inline float getFloat(fcomplexcu value)
 {
   return POWERC(value);
@@ -633,6 +637,11 @@ __device__ inline float getFloat(fcomplexcu value)
 __device__ inline float getPowerAsFloat(fcomplexcu* adress, uint offset)
 {
   return POWERC(adress[offset]);
+}
+
+__device__ inline float getPowerAsFloat(float2* adress, uint offset)
+{
+  return POWERF(adress[offset]);
 }
 
 #if CUDA_VERSION >= 7050   // Half precision getter and setter  .

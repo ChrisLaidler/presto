@@ -17,7 +17,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 {
   infoMSG(2,2,"Sum & Search CPU\n");
 
-#ifdef WITH_SAS_CPU
+#ifdef	WITH_SAS_CPU
 
   // Profiling  variables
   struct timeval start, end;
@@ -29,7 +29,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
   const int zeroHeight  = batch->hInfos->noZ;
 
   float*      pwerPlnF[noHarms];
-  fcomplexcu* pwerPlnC[noHarms];
+  float2*     pwerPlnC[noHarms];
 
   candPZs     candLists [noStages][noSteps];
   float       pow[noHarms][noSteps];
@@ -58,7 +58,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 	// TODO: Convert this cos host data has been moved to the r-array
 	//int stgIDX = batch->cuSrch->sIdx[harm];
 	//pwerPlnF[stgIDX] = &((float*)batch->h_outData1)[bace];
-	//pwerPlnC[stgIDX] = &((fcomplexcu*)batch->h_outData1)[bace];
+	//pwerPlnC[stgIDX] = &((float2*)batch->h_outData1)[bace];
 
 	bace += batch->hInfos[harm].noZ * batch->stacks[batch->hInfos[harm].stackNo].stridePower * noSteps;
       }
@@ -158,8 +158,8 @@ void add_and_search_CPU(cuFFdotBatch* batch )
 		    }
 		    else
 		    {
-		      fcomplexcu cmpc         = pwerPlnC[harm][ iy2 + ix2 ];
-		      pow[harm][step]         = cmpc.r * cmpc.r + cmpc.i * cmpc.i;
+		      float2 cmpc             = pwerPlnC[harm][ iy2 + ix2 ];
+		      pow[harm][step]         = cmpc.x * cmpc.x + cmpc.y * cmpc.y;
 		    }
 		  }
 
@@ -256,7 +256,7 @@ void add_and_search_CPU(cuFFdotBatch* batch )
     for ( int c = 0; c < noCands; c++ )
     {
       int stage = log2((float)cnd[c].numharm);
-      //procesCanidate(batch, cnd[c].r, cnd[c].z, cnd[c].power, 0, stage, cnd[c].numharm );
+      //procesCanidate(batch, cnd[c].x, cnd[c].z, cnd[c].power, 0, stage, cnd[c].numharm );
     }
 
     PROF // Profiling  .

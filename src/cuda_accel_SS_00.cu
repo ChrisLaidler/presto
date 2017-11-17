@@ -127,7 +127,7 @@ __host__ void add_and_searchCU00_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   else
   {
 #ifdef	WITH_COMPLEX_POWERS
-    add_and_searchCU00_k< fcomplexcu>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
+    add_and_searchCU00_k< float2>  <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
 #else	// WITH_COMPLEX_POWERS
     EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
 #endif	// WITH_COMPLEX_POWERS
