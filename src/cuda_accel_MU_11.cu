@@ -23,18 +23,18 @@
 /** Convolution kernel - One thread per r location (input FFT)
  * Each thread reads one input value and loops down over the kernels
  */
-__global__ void mult11(fcomplexcu *ffdot, uint width, uint kerStride, uint plnStride, uint height, const fcomplexcu *data, const fcomplexcu *kernels)
+__global__ void mult11(float2 *ffdot, uint width, uint kerStride, uint plnStride, uint height, const float2 *data, const float2 *kernels)
 {
   const int bidx  = threadIdx.y * CNV_DIMX + threadIdx.x;
   const int tid   = blockIdx.x  * CNV_DIMX * CNV_DIMY     + bidx;
 
-  if (tid < width)	// Clip
+  if (tid < width)						// Clip
   {
-    fcomplexcu ker;	// item from kernel
-    int idx = 0;	// flat index
+    float2 ker;							// item from kernel
+    int idx = 0;						// flat index
 
-    const float inpReal = data[tid].r / (float) width;
-    const float inpImag = data[tid].i / (float) width;
+    const float inpReal = data[tid].x / (float) width;
+    const float inpImag = data[tid].y / (float) width;
 
     // Stride the input and output
     kernels += tid;
@@ -47,11 +47,11 @@ __global__ void mult11(fcomplexcu *ffdot, uint width, uint kerStride, uint plnSt
 
       idx = y * plnStride;
 #if CORRECT_MULT
-      ffdot[idx].r = (inpReal * ker.r - inpImag * ker.i);
-      ffdot[idx].i = (inpImag * ker.r + inpReal * ker.i);
+      ffdot[idx].x = (inpReal * ker.x - inpImag * ker.y);
+      ffdot[idx].y = (inpImag * ker.x + inpReal * ker.y);
 #else
-      ffdot[idx].r = (inpReal * ker.r + inpImag * ker.i);
-      ffdot[idx].i = (inpImag * ker.r - inpReal * ker.i);
+      ffdot[idx].x = (inpReal * ker.x + inpImag * ker.y);
+      ffdot[idx].y = (inpImag * ker.x - inpReal * ker.y);
 #endif
     }
   }
@@ -67,22 +67,22 @@ __host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  void*       d_planeData;    // The complex f-∂f plane data
-  fcomplexcu* d_iData;        // The complex input array
+  void*		d_planeData;					// The complex f-∂f plane data
+  float2*	d_iData;					// The complex input array
 
-  for (int plane = 0; plane < cStack->noInStack; plane++)         // Loop through planes in stack
+  for (int plane = 0; plane < cStack->noInStack; plane++)	// Loop through planes in stack
   {
-    cuHarmInfo* cHInfo    = &cStack->harmInf[plane];              // The current harmonic we are working on
-    cuFFdot*    cPlane    = &cStack->planes[plane];               // The current f-∂f plane
+    cuHarmInfo* cHInfo    = &cStack->harmInf[plane];		// The current harmonic we are working on
+    cuFFdot*    cPlane    = &cStack->planes[plane];		// The current f-∂f plane
 
     dimGrid.x = ceil(cHInfo->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = 1;
 
     uint plnStride = 0;
 
-    for (int step = 0; step < batch->noSteps; step++)             // Loop through Steps
+    for (int step = 0; step < batch->noSteps; step++)		// Loop through Steps
     {
-      d_iData         = cPlane->d_iData + cStack->strideCmplx * step;
+      d_iData = (float2*)cPlane->d_iData + cStack->strideCmplx * step;
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
@@ -113,7 +113,7 @@ __host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
       }
 #endif
 
-      mult11<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)d_planeData, cHInfo->width, cStack->strideCmplx, plnStride, cHInfo->noZ, d_iData, (fcomplexcu*)cPlane->kernel->d_kerData);
+      mult11<<<dimGrid, dimBlock, 0, multStream>>>((float2*)d_planeData, cHInfo->width, cStack->strideCmplx, plnStride, cHInfo->noZ, (float2*)d_iData, (float2*)cPlane->kernel->d_kerData);
 
       // Run message
       CUDA_SAFE_CALL(cudaGetLastError(), "At multiplication kernel launch");

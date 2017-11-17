@@ -46,7 +46,6 @@
 int    cuMedianBuffSz = -1;             ///< The size of the sub sections to use in the CUDA median selection algorithm - If <= 0 an automatic value is used
 
 
-
 /** Normalise input using median normalisation
  *
  * This s done using a temporary host buffer
@@ -646,7 +645,6 @@ ACC_ERR_CODE chkInput( cuHarmInput* input, double r, double z, double rSize, dou
   return err;
 }
 
-
  /** Copy relevant input from FFT to data structure normalising as needed
  *
  *  Note this contains a blocking synchronisation to make sure the pinned host memory is free.
@@ -831,7 +829,6 @@ ACC_ERR_CODE loadHostHarmInput( cuHarmInput* input, fftInfo* fft, double r, doub
 
   return err;
 }
-
 
 cuHarmInput* initHarmInput( int maxWidth, float zMax, int maxHarms, gpuInf* gInf )
 {

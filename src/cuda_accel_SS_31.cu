@@ -667,7 +667,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   else							// NO CUFFT callbacks so use complex values  .
   {
 #ifdef	WITH_COMPLEX_POWERS
-    add_and_searchCU31_f<fcomplexcu>  (dimGrid, dimBlock, stream, batch );
+    add_and_searchCU31_f<float2>  (dimGrid, dimBlock, stream, batch );
 #else	// WITH_COMPLEX_POWERS
     EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
 #endif	// WITH_COMPLEX_POWERS

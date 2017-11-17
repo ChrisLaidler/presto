@@ -32,7 +32,7 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
   if ( tid < width )  // Valid thread  .
   {
     const int   kerHeight = HEIGHT_HARM[firstPlane];			// The size of the kernel
-    float2  inpDat[noPlns][noSteps];				// Set of input data for this thread/column
+    float2      inpDat[noPlns][noSteps];				// Set of input data for this thread/column
 
     int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
     int     y0      = lDepth*blockIdx.y;
@@ -51,7 +51,7 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
       {
         for ( int pln = 0; pln < noPlns; pln++ )			// Loop through the planes  .
         {
-          float2 ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+          float2 ipd             = inpData[ (int)(pln*noSteps*stride + step*stride) ];
           ipd.x                 /= (float) width;
           ipd.y                 /= (float) width;
           inpDat[pln][step]     = ipd;

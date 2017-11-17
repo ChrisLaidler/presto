@@ -30,16 +30,16 @@
  * @param noSteps
  * @param kerHeight
  */
-__global__ void mult00_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu*  inpData, __restrict__ fcomplexcu* ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
+__global__ void mult00_k(const __restrict__ float2* kernels, const __restrict__ float2*  inpData, __restrict__ float2* ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
 {
   const int ix = blockIdx.x * CNV_DIMX + threadIdx.x;
   const int iy = blockIdx.y * CNV_DIMY + threadIdx.y;
 
-  fcomplexcu ker;                                 /// kernel data
+  float2 ker;							/// kernel data
   uint nHeight = height * noSteps;
 
-  ker.i = 0;
-  ker.r = 0;
+  ker.y = 0;
+  ker.x = 0;
 
   if (ix < width && iy < nHeight)
   {
@@ -57,16 +57,16 @@ __global__ void mult00_k(const __restrict__ fcomplexcu* kernels, const __restric
 /** Kernel for testing best possible performance - Read input, read kernel, write to ffdot plane - 1 thread per column  .
  *
  */
-__global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restrict__ fcomplexcu* inpData, __restrict__ fcomplexcu* ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
+__global__ void mult01_k(const __restrict__ float2* kernels, const __restrict__ float2* inpData, __restrict__ float2* ffdot, const int width, const int height, const int stride, const int noSteps, const int noPlns, int kerHeight )
 {
-  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
+  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;	/// Block ID - flat index
+  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;	/// Global thread ID - flat index ie column index of stack
 
-  fcomplexcu ker;                                                 /// kernel data
+  float2 ker;							/// kernel data
 
   if ( tid < width )  // Valid thread  .
   {
-    int idx;                                                      /// flat index of output plane
+    int idx;							/// flat index of output plane
 
     FOLD  // Stride, kernel, input data & output data  .
     {
@@ -79,13 +79,13 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
     {
       for (int step = 0; step < noSteps; step++)
       {
-        for (int pln = 0; pln < noPlns; pln++)                    // Loop through the planes  .
+        for (int pln = 0; pln < noPlns; pln++)			// Loop through the planes  .
         {
-          fcomplexcu ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
+          float2 ipd        = inpData[ (int)(pln*noSteps*stride + step*stride) ];
 
-          if ( ipd.r < 0 && ipd.r > 0 ) 	                        // Required so as to not optimise out  .
+          if ( ipd.x < 0 && ipd.x > 0 )				// Required so as to not optimise out  .
           {
-            printf("mult01_k ipd < 0????   tid: %04i  %9.5f %9.5f\n", tid, ipd.r, ipd.i );
+            printf("mult01_k ipd < 0????   tid: %04i  %9.5f %9.5f\n", tid, ipd.x, ipd.y );
           }
         }
       }
@@ -102,9 +102,9 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
         idx   = kerY * stride;
         ker   = kernels[idx];
 
-        if ( ker.r < 0 && ker.r > 0 )                             // Required so as to not optimise out  .
+        if ( ker.x < 0 && ker.x > 0 )				// Required so as to not optimise out  .
         {
-          printf("mult01_k ker < 0????   tid: %04i  %9.5f %9.5f\n", tid, ker.r, ker.i );
+          printf("mult01_k ker < 0????   tid: %04i  %9.5f %9.5f\n", tid, ker.x, ker.y );
         }
       }
     }
@@ -116,8 +116,8 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
       int   y0      = lDepth*blockIdx.y;
       int   y1      = MIN(y0+lDepth, nHeight);
 
-      ker.i         = 0;
-      ker.r         = 0;
+      ker.y         = 0;
+      ker.x         = 0;
 
       for (int y = y0; y < y1; y++ )
       {
@@ -140,16 +140,16 @@ __global__ void mult01_k(const __restrict__ fcomplexcu* kernels, const __restric
  * Reads the input and multiplies it with the kernel and writes result to plane
  */
 template<int64_t FLAGS, int noSteps>
-__global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexcu* __restrict__ inpData, fcomplexcu* __restrict__ ffdot, const int width, const int stride, int noPlns, const int firstPlane )
+__global__ void mult02_k(const float2* __restrict__ kernels, const float2* __restrict__ inpData, float2* __restrict__ ffdot, const int width, const int stride, int noPlns, const int firstPlane )
 {
-  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;          /// Block ID - flat index
-  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;      /// Global thread ID - flat index ie column index of stack
+  const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;	/// Block ID - flat index
+  const int tid  = blockIdx.x  * CNV_DIMX * CNV_DIMY + bidx;	/// Global thread ID - flat index ie column index of stack
 
   if ( tid < width )  // Valid thread  .
   {
-    int idx;                                      /// flat index of output plane
-    int pHeight = 0;                              /// Height of previous data in the stack
-    fcomplexcu ker;                               /// kernel data
+    int idx;							/// flat index of output plane
+    int pHeight = 0;						/// Height of previous data in the stack
+    float2 ker;							/// kernel data
 
     FOLD  // Stride, kernel, input data & output data  .
     {
@@ -158,9 +158,9 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
       inpData += tid;
     }
 
-    __restrict__ fcomplexcu inpDat[noSteps];                  // Set of input data for this thread/column
+    __restrict__ float2 inpDat[noSteps];			// Set of input data for this thread/column
 
-    for (int pln = 0; pln < noPlns; pln++)                    // Loop through the planes  .
+    for (int pln = 0; pln < noPlns; pln++)			// Loop through the planes  .
     {
       const int plnStrd       = pln*stride*noSteps;
       const int plnHeight     = HEIGHT_HARM[firstPlane + pln];
@@ -173,14 +173,14 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
       {
         for (int step = 0; step < noSteps; step++)
         {
-          fcomplexcu inp    = inpData[ (int)(plnStrd + step*stride) ];
-          inp.r             /= (float) width;
-          inp.i             /= (float) width;
+          float2 inp    = inpData[ (int)(plnStrd + step*stride) ];
+          inp.x             /= (float) width;
+          inp.y             /= (float) width;
           inpDat[step]      = inp;
         }
       }
 
-      for (int planeY = 0; planeY < plnHeight; planeY++)      // Loop over the individual plane  .
+      for (int planeY = 0; planeY < plnHeight; planeY++)	// Loop over the individual plane  .
       {
         FOLD // Read the kernel value  .
         {
@@ -203,7 +203,7 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
 #endif
         }
 
-        for ( int step = 0; step < noSteps; ++step )          // Loop over steps .
+        for ( int step = 0; step < noSteps; ++step )		// Loop over steps .
         {
           FOLD // Calculate indices  .
           {
@@ -219,18 +219,18 @@ __global__ void mult02_k(const fcomplexcu* __restrict__ kernels, const fcomplexc
 #endif
           }
 
-          fcomplexcu kv;
+          float2 kv;
           FOLD // Multiply  .
           {
-            kv.r = (inpDat[step].r * ker.r + inpDat[step].i * ker.i);
-            kv.i = (inpDat[step].i * ker.r - inpDat[step].r * ker.i);
+            kv.x = (inpDat[step].x * ker.x + inpDat[step].y * ker.y);
+            kv.y = (inpDat[step].y * ker.x - inpDat[step].x * ker.y);
           }
 
-          //ker.r       = tid;
-          //ker.i       = planeY;
+          //ker.x       = tid;
+          //ker.y       = planeY;
           //ffdot[idx]  = ker;
           //ffdot[idx]  = inpDat[step];
-          //kv.r = width;
+          //kv.x = width;
           ffdot[idx]  = kv;
         }
       }
@@ -250,7 +250,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 1  and MAX_STEPS >= 1
     case 1:
     {
-      mult02_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -258,7 +258,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 2  and MAX_STEPS >= 2
     case 2:
     {
-      mult02_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -266,7 +266,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 3  and MAX_STEPS >= 3
     case 3:
     {
-      mult02_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -274,7 +274,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 4  and MAX_STEPS >= 4
     case 4:
     {
-      mult02_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -282,7 +282,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 5  and MAX_STEPS >= 5
     case 5:
     {
-      mult02_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -290,7 +290,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 6  and MAX_STEPS >= 6
     case 6:
     {
-      mult02_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -298,7 +298,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 7  and MAX_STEPS >= 7
     case 7:
     {
-      mult02_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -306,7 +306,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 8  and MAX_STEPS >= 8
     case 8:
     {
-      mult02_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -314,7 +314,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 9  and MAX_STEPS >= 9
     case 9:
     {
-      mult02_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -322,7 +322,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 10 and MAX_STEPS >= 10
     case 10:
     {
-      mult02_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -330,7 +330,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 11 and MAX_STEPS >= 11
     case 11:
     {
-      mult02_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -338,7 +338,7 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 #if MIN_STEPS <= 12 and MAX_STEPS >= 12
     case 12:
     {
-      mult02_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult02_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
@@ -410,7 +410,7 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
     dimGrid.x = ceil(cStack->width                    / (float) ( CNV_DIMX ));
     dimGrid.y = ceil(cStack->height*batch->noSteps    / (float) ( CNV_DIMX ));
 
-    mult00_k<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+    mult00_k<<<dimGrid, dimBlock, 0, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }
 #endif
 #ifdef WITH_MUL_01
@@ -419,7 +419,7 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = cStack->mulSlices;
 
-    mult01_k<<<dimGrid, dimBlock, 0, multStream>>>((fcomplexcu*)cStack->kernels->d_kerData , cStack->d_iData, (fcomplexcu*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+    mult01_k<<<dimGrid, dimBlock, 0, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
   }
 #endif
   else
