@@ -3904,25 +3904,25 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
       FOLD // Input FFT streams  .
       {
-	if ( !(kernel->flags & CU_INPT_FFT_CPU)  )	// Using CUFFT for input  .
+	if ( !(kernel->flags & CU_INPT_FFT_CPU)  )		// Using CUFFT for input  .
 	{
 	  for (int i = 0; i < kernel->noStacks; i++)
 	  {
 	    cuFfdotStack* cStack = &batch->stacks[i];
 
-	    if ( kernel->flags & CU_FFT_SEP_INP )       	// Create stream  .
+	    if ( kernel->flags & CU_FFT_SEP_INP )		// Create stream  .
 	    {
 	      infoMSG(5,5,"Create stream for input FFT, stack %i.\n", i);
 
 	      CUDA_SAFE_CALL(cudaStreamCreate(&cStack->fftIStream),"Creating CUDA stream for input fft's");
 
-	      PROF 					// Profiling name streams  .
+	      PROF 						// Profiling name streams  .
 	      {
 		sprintf(strBuff,"%i.%i.2.%i Inp FFT", batch->gInf->devid, no, i);
 		NV_NAME_STREAM(cStack->fftIStream, strBuff);
 	      }
 	    }
-	    else					// Copy stream of the kernel  .
+	    else						// Copy stream of the kernel  .
 	    {
 	      infoMSG(5,5,"Using global input FFT stream for stack %i.\n", i);
 
@@ -3932,6 +3932,8 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	  }
 	}
       }
+
+
 
       FOLD // Multiply streams  .
       {

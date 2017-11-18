@@ -771,7 +771,7 @@ void processBatchResults(cuFFdotBatch* batch)
 
   if ( rVal->numrs )
   {
-    struct timeval start, end;          // Profiling variables
+    struct timeval start, end;		// Profiling variables
     resultData* thrdDat;		// Structure to pass to the thread
 
     infoMSG(2,2,"Process results - Iteration %3i.", rVal->iteration);
@@ -790,7 +790,7 @@ void processBatchResults(cuFFdotBatch* batch)
     {
       infoMSG(4,4,"Allocate thread memory");
 
-      thrdDat = new resultData;     // A data structure to hold info for the thread processing the results
+      thrdDat = new resultData;		// A data structure to hold info for the thread processing the results
       memset(thrdDat, 0, sizeof(resultData) );
     }
 
@@ -827,6 +827,8 @@ void processBatchResults(cuFFdotBatch* batch)
       thrdDat->retData		= rVal->h_outData;
       thrdDat->outBusy		= &rVal->outBusy;
 
+      thrdDat->rVal		= *rVal;
+
       infoMSG(7,7,"Reading data from %p", thrdDat->retData );
 
       if ( !(batch->flags & FLAG_SS_INMEM) )
@@ -838,7 +840,7 @@ void processBatchResults(cuFFdotBatch* batch)
 	for ( int step = 0; step < batch->noSteps; step++) 	// Loop over steps  .
 	{
 	  rVals* rVal		= &(*batch->rAraays)[batch->rActive][step][0];
-	  thrdDat->x1		+= rVal->numrs;                 // These should all be acelllen but there may be the case of the last step!
+	  thrdDat->x1		+= rVal->numrs;			// These should all be acelllen but there may be the case of the last step!
 	}
       }
       else
