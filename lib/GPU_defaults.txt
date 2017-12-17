@@ -405,7 +405,7 @@ PLN_COL SFL
 # Optimisation location finding step down
 # Each successive iteration of the incremental planes will be X times smaller
 # D	10			# Each plane reduces the template size by one order of magnitude  ( /10 )
-optPlnScale		8
+optPlnScale		10
 
 
 # Use dynamic half-width in the optimisation planes, this is on by default
