@@ -409,7 +409,7 @@ optPlnScale		10
 
 
 # Use dynamic half-width in the optimisation planes, this is on by default
-FLAG_OPT_DYN_HW		1
+FLAG_OPT_DYN_HW		0
 
 
 
