@@ -1621,17 +1621,16 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	    infoMSG(5,5,"Zoom in\n");
 //	    if ( sz < 2.0*rRes )
 //	      sz = rRes*2.0;
-	  }
 
-	  double plnRng = pln->maxPower - pln->minPower ;
-	  double pre = pln->maxPower / plnRng ;			// 5000 -
-	  if ( plnRng > 0 && plnRng < 0.2 )	// Potently force double precision
-	  {
-	    if ( precision != CU_DOUBLE )
+	    double plnRng = pln->maxPower - pln->minPower ;
+	    if ( plnRng > 0 && plnRng < 0.2 )	// Potently force double precision
 	    {
-	      infoMSG(5,5,"Set to double, range %3e.\n", plnRng);
-	      cand->power = 0;	// Reset plane maximum value
-	      precision = CU_DOUBLE;
+	      if ( precision != CU_DOUBLE )
+	      {
+		infoMSG(5,5,"Set to double, range %3e.\n", plnRng);
+		cand->power = 0;	// Reset plane maximum value
+		precision = CU_DOUBLE;
+	      }
 	    }
 	  }
 
