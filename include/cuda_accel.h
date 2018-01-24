@@ -142,7 +142,9 @@ extern "C"
 //#define 		WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
 
 ////////	Candidate
-#define  		WITH_SAS_COUNT			///< Allow counting of candidates in sum & search kernel
+#if __CUDA_ARCH__ >= 500
+#define  		WITH_SAS_COUNT			///< Allow counting of candidates in sum & search kernel - Not advisable on older ( CC < 5 ) cards
+#endif
 
 
 ////////	Optimisation
