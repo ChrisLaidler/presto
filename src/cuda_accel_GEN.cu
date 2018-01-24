@@ -3542,12 +3542,11 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       {
 	if ( batch->flags & FLAG_SS_INMEM )
 	{
-	  // With the inmem search only only one big "step" in the search phase
-	  // Tested with a GTX 770 and GTX 970
-
-	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
+	  // With the inmem search only one big "step" in the search phase
+	  if ( batch->gInf->capability < 5.0 )	// Kepler and older .
 	  {
-	    int lookup[5] = { 8, 7, 5, 8, 4};
+	    // NOTE: These values were computed from testing with a GTX 770 - These could be made an auto tune
+	    int lookup[5] = { 5, 5, 5, 6, 6 };
 	    batch->ssChunk = lookup[batch->noHarmStages-1];
 
 #ifdef WITH_SAS_COUNT
@@ -3555,8 +3554,9 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	    batch->ssChunk = MIN(12, MAX_SAS_CHUNK);
 #endif
 	  }
-	  else					// Maxwell  .
+	  else					// Maxwell and newer .
 	  {
+	    // NOTE: These values were computed from testing with a GTX 970 - These could be made an auto tune
 	    int lookup[5] = { 7, 10, 8, 8, 6 };
 	    batch->ssChunk = lookup[batch->noHarmStages-1];
 	  }
@@ -3565,9 +3565,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	{
 	  // Using standard sum and search kernel
 
-	  if ( batch->gInf->capability <= 3.2 )	// Kepler  .
+	  if ( batch->gInf->capability < 5.0 )	// Kepler and older .
 	  {
 	    // Kepler cards have fewer registers so this limit chunk size
+	    // NOTE: These values were computed from testing with a GTX 770 - These could be made an auto tune
 	    int lookup[5][12] = {	{12, 8,  4,  5, 4, 3, 2, 2, 1, 1, 1, 1},
 					{11, 12, 8,  5, 3, 2, 1, 1, 4, 3, 3, 4},
 					{12, 12, 10, 8, 7, 6, 5, 4, 4, 3, 3, 3},
@@ -3575,9 +3576,10 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 					{12, 11, 9,  8, 6, 6, 4, 3, 3, 2, 2, 2} };
 	    batch->ssChunk = lookup[batch->noHarmStages-1][batch->noSteps-1];
 	  }
-	  else					// Maxwell  .
+	  else					// Maxwell and newer .
 	  {
 	    // More register
+	    // NOTE: These values were computed from testing with a GTX 970 - These could be made an auto tune
 	    int lookup[5][12] = {	{12, 8,  6, 7, 5, 6, 4, 3, 2, 2, 1, 1},
 					{12, 10, 8, 7, 5, 4, 1, 1, 6, 6, 5, 5},
 					{10, 12, 6, 9, 6, 6, 5, 4, 6, 3, 5, 5},
