@@ -85,52 +85,52 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
       int   y1            = MIN(y0+lDepth, zeroHeight);
       int   yIndsChnksz   = zeroHeight+INDS_BUFF;
 
-      for( int y = y0; y < y1 ; y += cunkSize )                       // loop over chunks  .
+      for( int y = y0; y < y1 ; y += cunkSize )				// loop over chunks  .
       {
 	FOLD // Initialise chunk of powers to zero .
 	{
-	  for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )            // Loop over powers  .
+	  for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )		// Loop over powers  .
 	    powers[yPlus] = 0;
 	}
 
 	FOLD // Loop over other stages, sum and search  .
 	{
-	  for ( int stage = 0 ; stage < noStages; stage++)            // Loop over stages  .
+	  for ( int stage = 0 ; stage < noStages; stage++)		// Loop over stages  .
 	  {
 	    int start = STAGE[stage][0] ;
 	    int end   = STAGE[stage][1] ;
 
-	    FOLD	// Create a section of summed powers one for each step  .
+	    FOLD // Create a section of summed powers one for each step  .
 	    {
-	      for ( int harm = start; harm <= end; harm++ )         // Loop over harmonics (batch) in this stage  .
+	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (batch) in this stage  .
 	      {
 		int     ix1   = inds[harm] ;
 
-		if ( ix1 >= 0 ) // Valid stage
+		int   iyP       = -1;					// The previous y-index used
+		float pow       = 0 ;
+		const int   yIndsStride = yIndsChnksz*harm;
+
+		for( int yPlus = 0; yPlus < cunkSize; yPlus++ )		// Loop over the chunk  .
 		{
-		  int   iyP       = -1;                             // The previous y-index used
-		  float pow       = 0 ;
-		  const int   yIndsStride = yIndsChnksz*harm;
+		  int yPln     = y + yPlus ;				///< True Y index in plane
 
-		  for( int yPlus = 0; yPlus < cunkSize; yPlus++ )   // Loop over the chunk  .
+		  // Don't check yPln against zeroHeight, YINDS contains a buffer at the end, only do the check later
+		  int iy1     = YINDS[ yIndsStride + yPln ];
+
+		  if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
 		  {
-		    int yPln     = y + yPlus ;                      ///< True Y index in plane
-
-		    // Don't check yPln against zeroHeight, YINDS contains a buffer at the end, only do the check later
-		    int iy1     = YINDS[ yIndsStride + yPln ];
-
-		    if ( iyP != iy1 ) // Only read power if it is not the same as the previous  .
+		    if ( ix1 >= 0 ) // Valid harmonic - NOTE: I this test could be done higher, although I have found the best speeds putting it here ( CUDA 8 card with CC 3.0 )
 		    {
 		      unsigned long long izz = iy1*iStride + ix1 ;
 		      pow = getLong(read, izz );
-
-		      iyP = iy1;
 		    }
 
-		    FOLD // // Accumulate powers  .
-		    {
-		      powers[yPlus] += pow;
-		    }
+		    iyP = iy1;
+		  }
+
+		  FOLD // // Accumulate powers  .
+		  {
+		    powers[yPlus] += pow;
 		  }
 		}
 	      }
@@ -142,7 +142,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 	      float maxP = POWERCUT_STAGE[stage];
 	      int maxI;
 
-	      for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )    // Loop over section  .
+	      for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )		// Loop over section  .
 	      {
 		pow = powers[yPlus];
 		if  ( pow > maxP )
@@ -173,7 +173,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
     FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
-      for ( int stage = 0 ; stage < noStages; stage++)      // Loop over stages  .
+      for ( int stage = 0 ; stage < noStages; stage++)			// Loop over stages  .
       {
 	if  ( candLists[stage].value > POWERCUT_STAGE[stage] )
 	{
