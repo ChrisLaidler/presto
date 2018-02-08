@@ -142,9 +142,7 @@ extern "C"
 //#define 		WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
 
 ////////	Candidate
-#if __CUDA_ARCH__ >= 500
 #define  		WITH_SAS_COUNT			///< Allow counting of candidates in sum & search kernel - Not advisable on older ( CC < 5 ) cards
-#endif
 
 
 ////////	Optimisation
@@ -471,9 +469,9 @@ inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 #define  TIME_CPU_SRCH		4			/// CPU - Initialisation & Generation stage
 #define  TIME_CPU_CND_GEN	5			/// CPU - Candidate generation stage
 #define  TIME_GPU_CND_GEN	6			/// GPU - Candidate generation stage - Includes the time to copy initial candidates [TIME_CND]
-#define  TIME_CPU_OPT		7			/// CPU - Candidate generation stage
-#define  TIME_GPU_OPT		8			/// GPU - Candidate generation stage - Includes the time to copy initial candidates [TIME_CND]
-#define  TIME_ALL_OPT		9			///     - All Optimisation (duplicates, CPU and GPU refine, writing results to file
+#define  TIME_CPU_OPT		7			/// CPU - Candidate optimisation stage
+#define  TIME_GPU_OPT		8			/// GPU - Candidate optimisation stage
+#define  TIME_ALL_OPT		9			///     - All Optimisation (duplicates, CPU and GPU refine, writing results to file)
 
 #define  TIME_CONTEXT		10			/// Time for CUDA context initialisation
 #define  TIME_PREP		11			/// CPU preparation - parse command line, read, (FFT), and normalise input
@@ -483,8 +481,9 @@ inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 #define  TIME_CPU_REFINE	15			/// CPU - Candidate refine and properties
 #define  TIME_CND		16			/// GPU - Time to copy candidates from GPU data structure to list for optimisation
 #define  TIME_GEN_WAIT		17			/// Time waited for CPU threads to complete in generation stage
-#define  TIME_OPT_FILE_WRITE	18			///     - Write candidates to file
+#define  TIME_OPT_ASYNCH	18			/// Time to run the asynchronous GPU optimisation
 #define  TIME_OPT_WAIT		19			/// Time waited for CPU threads to complete in optimisation stage
+#define  TIME_OPT_FILE_WRITE	20			///     - Write candidates to file
 
 #define  COMP_RESP		21			/// Initialisation - response function calculations
 #define  COMP_KERFFT		22			/// Convolution kernel FFT's
@@ -501,7 +500,7 @@ inline CU_TYPE& operator -=(CU_TYPE& a, CU_TYPE b)
 #define  COMP_GEN_CINP		1			/// GPU input stuff - Mem copies, Normalisation and FFT
 #define  COMP_GEN_GINP		2			/// GPU input stuff - The time for the CPU thread to call all the GPU input stuff this potently included: Normalisation, FFTs, Mem copies
 #define  COMP_GEN_NRM		3			///
-#define  COMP_GEN_MEM		4			/// Stack0: Zeroing host buffer, Stack1: Copy input FFT to buffer, Stack2: Copy buffer over pinned
+#define  COMP_GEN_MEM		4			/// Input preparation: Stack0: Zeroing host buffer, Stack1: Copy input FFT to buffer, Stack2: Copy buffer over pinned
 #define  COMP_GEN_FFT		5			/// Input FFT
 #define  COMP_GEN_MULT		6			///
 #define  COMP_GEN_IFFT		7			///
