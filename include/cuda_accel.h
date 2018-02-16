@@ -106,6 +106,7 @@ extern "C"
 #define			MIN_MUL_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time, generally multiplication chunks are higher so this value can be high
 #define			MAX_MUL_CHUNK	12		///< I generally find lager multiplication chunks (12) do better
 
+// Only one of the mul 0 kernels will get used
 //#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - DEBUG ONLY: Just write to ffdot plane - 1 thread per complex value  .
 #define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  .
 //#define 		WITH_MUL_02			///< Compile with test Multiplication kernel - Version 2 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .

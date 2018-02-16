@@ -366,7 +366,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 
 /** A simple function to call the plane CUFFT plan  .
  *
- * This is a seperate function so one can be called by a omp critical and another not
+ * This is a separate function so one can be called by a omp critical and another not
  */
 static void callPlaneCUFTT(cuFFdotBatch* batch, cuFfdotStack* cStack)
 {

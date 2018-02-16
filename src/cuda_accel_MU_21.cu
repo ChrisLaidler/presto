@@ -54,7 +54,7 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
           float2 ipd             = inpData[ (int)(pln*noSteps*stride + step*stride) ];
           ipd.x                 /= (float) width;
           ipd.y                 /= (float) width;
-          inpDat[pln][step]     = ipd;
+          inpDat[pln][step]      = ipd;
         }
       }
     }

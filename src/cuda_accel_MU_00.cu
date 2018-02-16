@@ -77,17 +77,21 @@ __global__ void mult01_k(const __restrict__ float2* kernels, const __restrict__ 
 
     FOLD // Read input data  .
     {
+      float ss      = 0;
+
       for (int step = 0; step < noSteps; step++)
       {
         for (int pln = 0; pln < noPlns; pln++)			// Loop through the planes  .
         {
           float2 ipd = inpData[ (int)(pln*noSteps*stride + step*stride) ];
 
-          if ( ipd.x < 0 && ipd.x > 0 )				// Required so as to not optimise out  .
-          {
-            printf("mult01_k ipd < 0????   tid: %04i  %9.5f %9.5f\n", tid, ipd.x, ipd.y );
-          }
+          ss   += ipd.x + ipd.y;
         }
+      }
+
+      if ( tid >= 1e5  )
+      {
+	printf("mult01_k   tid: %04i  %9.5f \n", tid, ss );
       }
     }
 
@@ -96,16 +100,21 @@ __global__ void mult01_k(const __restrict__ float2* kernels, const __restrict__ 
       int   lDepth  = ceilf(kerHeight/(float)gridDim.y);
       int   y0      = lDepth*blockIdx.y;
       int   y1      = MIN(y0+lDepth, kerHeight);
+      float ss      = 0;
 
       for (int kerY = y0; kerY < y1; kerY++ )
       {
         idx   = kerY * stride;
         ker   = kernels[idx];
+        //Read through (no caching)
+        //const float2* myinput = kernels+idx;
+        //asm("ld.global.cv.v2.f32 {%0, %1}, [%2];" : "=f"(ker.x), "=f"(ker.y) : "l"(myinput));
+        ss   += ker.x + ker.y;
+      }
 
-        if ( ker.x < 0 && ker.x > 0 )				// Required so as to not optimise out  .
-        {
-          printf("mult01_k ker < 0????   tid: %04i  %9.5f %9.5f\n", tid, ker.x, ker.y );
-        }
+      if ( tid >= 1e5  )
+      {
+	printf("mult01_k   tid: %04i  %9.5f \n", tid, ss );
       }
     }
 
@@ -398,7 +407,7 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 
   if ( 0 )
   {
-    // Dummy
+    // Dummy for hash defines to play nicely
   }
 #ifdef WITH_MUL_00
   else if ( 1 )
@@ -415,6 +424,12 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
     dimGrid.y = cStack->mulSlices;
 
     mult01_k<<<dimGrid, dimBlock, 0, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->height, cStack->strideCmplx, batch->noSteps, cStack->noInStack, cStack->kerHeigth);
+  }
+#endif
+#ifdef WITH_MUL_02
+  else if ( 1 )
+  {
+    mult02_f(multStream, batch, cStack)
   }
 #endif
   else

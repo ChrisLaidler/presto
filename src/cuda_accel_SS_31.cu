@@ -84,7 +84,7 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
       // Calculate the x indices or create a pointer offset by the correct amount
       for ( int harm = 0; harm < noHarms; harm++ )			// loop over harmonic  .
       {
-	//// NB NOTE: the indexing below assume each plane starts on a integer thus the fndemental must start on a multiple of noHarms
+	//// NB NOTE: the indexing below assume each plane starts on a integer thus the fundamental must start on a multiple of noHarms
 	int   ix		= lround_t( sid*FRAC_STAGE[harm] ) + PSTART_STAGE[harm] ;
 
 	// Stride plane pointers
