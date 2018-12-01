@@ -442,9 +442,14 @@ int main(int argc, char *argv[])
 
     if ( cmd->cpuP && cmd->cpuP ) // Duplicate the CPU candidates  .
     {
-      // We did a CPU search we may as well use the CPU candidates
-      // TODO: Think about this and put a output message
-      cands = candsCPU;
+      if ( useUnopt)
+      {
+	//cands = candsGPU;
+      }
+      else
+	// We did a CPU search we may as well use the CPU candidates
+	// TODO: Think about this and put a output message
+	cands = candsCPU;
     }
 
     int numcands;
@@ -843,6 +848,7 @@ int main(int argc, char *argv[])
 	slog.csvWrite("      Opt All",  pres, cuSrch->timings[TIME_ALL_OPT]		* 1e-6 );
 	slog.csvWrite("     CPU Rfne",  pres, cuSrch->timings[TIME_CPU_REFINE]		* 1e-6 );
 	slog.csvWrite("     GPU Rfne",  pres, cuSrch->timings[TIME_GPU_REFINE]		* 1e-6 );
+	slog.csvWrite("   GPU Asynch",  pres, cuSrch->timings[TIME_OPT_ASYNCH]		* 1e-6 );
 	slog.csvWrite("     Opt Wait",  pres, cuSrch->timings[TIME_OPT_WAIT]		* 1e-6 );
 	slog.csvWrite("       Output",  pres, cuSrch->timings[TIME_OPT_FILE_WRITE]	* 1e-6 );
 	slog.csvEndLine();
@@ -917,7 +923,7 @@ int main(int argc, char *argv[])
 
 	      sprintf(heads[COMP_GEN_D2D],		"Copy D2D");
 
-	      sprintf(heads[COMP_GEN_SS],			"Sum & Search");
+	      sprintf(heads[COMP_GEN_SS],		"Sum & Search");
 
 	      sprintf(heads[COMP_GEN_D2H],		"Copy D2H");
 
@@ -948,7 +954,7 @@ int main(int argc, char *argv[])
 		for ( int i = 0; i < COMP_GEN_END; i++)
 		{
 		  float val = batches->compTime[i*batches->noStacks+stack];
-		  val *= 1e-6; // Convert to us
+		  val *= 1e-6; // Convert to s
 		  printf("%15.06f\t", val );
 		  bsums[i] += val;
 		}

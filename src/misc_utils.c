@@ -593,7 +593,7 @@ void davg_dvar(double *x, int n, double *mean, double *var)
 }
 
 
-void update_stats(int N, double x, double *min, double *max,
+inline void update_stats(int N, double x, double *min, double *max,
                          double *avg, double *var)
 /* Update time series statistics using one-pass technique */
 {

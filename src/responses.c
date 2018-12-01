@@ -199,7 +199,7 @@ fcomplex *gen_r_response(double roffset, int numbetween, int numkern)
    /* Prep the recursion */
 
    response = gen_cvect(numkern);
-   startr = PI * (numkern / (double) (2 * numbetween) + roffset);
+   startr = PI * (numkern / (double) (2 * numbetween) + roffset - 1 ); // Fixed by Chris Laidler
    delta = -PI / numbetween;
    tmp = sin(0.5 * delta);
    alpha = -2.0 * tmp * tmp;
@@ -288,7 +288,7 @@ fcomplex *gen_z_response(double roffset, int numbetween, double z, int numkern)
    zd                 = signz * SQRT2 / sqrt(absz);
    cons               = zd / 2.0;
    pibyz              = PI / z;
-   startr             += numkern / (double) (2 * numbetween);
+   startr             += numkern / (double) (2 * numbetween) - 1; // Fixed by Chris Laidler
    delta              = -1.0 / numbetween;
 
    for ( ii = 0, q_r = startr; ii < numkern; ii++, q_r += delta )

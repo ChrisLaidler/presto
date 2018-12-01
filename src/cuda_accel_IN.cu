@@ -1014,7 +1014,7 @@ void prepInputCPU(cuFFdotBatch* batch )
 	  }
 	}
 
-	for ( int stack = 0; stack< batch->noStacks; stack++)  // Loop over stack  .
+	for ( int stack = 0; stack< batch->noStacks; stack++)  // Zero and copy input data to pinned host memory  .
 	{
 	  cuFfdotStack* cStack = &batch->stacks[stack];
 

@@ -155,6 +155,7 @@ int main(int argc, char *argv[])
    for (ii = 0; ii < numfiles; ii++)
       printf("   %d:  '%s'\n", ii + 1, datfile->filenames[ii]);
    numdata = datfile->length / sizeof(float);
+   numdata = numdata - numdata % 2 ;	// Adjust to be divisable by 2
    if (isign == -1) {
       if (datfile->length % sizeof(float)) {
          printf("\nInput file does not contain the correct number of\n");

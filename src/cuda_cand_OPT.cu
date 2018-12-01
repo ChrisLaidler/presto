@@ -1537,7 +1537,7 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
       if ( precision != conf->optPlnPrec[lvl])
       {
 	precision		= conf->optPlnPrec[lvl];
-	cand->power		= 0;			// Reset cand power as we are now using a different half-width
+	cand->power		= 0;			// Reset cand power as we are now using a different precision
       }
 
       double rRes = pln->rSize/(double)(pln->noR-1) ;
@@ -1840,6 +1840,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
   TIME //  Timing  .
   {
     NV_RANGE_PUSH("GPU Kernels");
+    gettimeofday(&start, NULL);
   }
 
   int numcands	= g_slist_length(listptr);
@@ -2232,7 +2233,9 @@ int optList(GSList *listptr, cuSearch* cuSrch)
   TIME //  Timing  .
   {
     NV_RANGE_POP("GPU Kernels");
-    gettimeofday(&start, NULL);
+    gettimeofday(&end, NULL);
+    cuSrch->timings[TIME_OPT_ASYNCH] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
+    start = end;
   }
 
   // Wait for CPU derivative threads to finish

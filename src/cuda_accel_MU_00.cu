@@ -84,7 +84,6 @@ __global__ void mult01_k(const __restrict__ float2* kernels, const __restrict__ 
         for (int pln = 0; pln < noPlns; pln++)			// Loop through the planes  .
         {
           float2 ipd = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-
           ss   += ipd.x + ipd.y;
         }
       }
@@ -101,7 +100,6 @@ __global__ void mult01_k(const __restrict__ float2* kernels, const __restrict__ 
       int   y0      = lDepth*blockIdx.y;
       int   y1      = MIN(y0+lDepth, kerHeight);
       float ss      = 0;
-
       for (int kerY = y0; kerY < y1; kerY++ )
       {
         idx   = kerY * stride;
@@ -120,22 +118,18 @@ __global__ void mult01_k(const __restrict__ float2* kernels, const __restrict__ 
 
     FOLD // Write data to planes  .
     {
+      ker.y         = 0;
+      ker.x         = 0;
+
       int   nHeight = height * noSteps;
       int   lDepth  = ceilf(nHeight/(float)gridDim.y);
       int   y0      = lDepth*blockIdx.y;
       int   y1      = MIN(y0+lDepth, nHeight);
-
-      ker.y         = 0;
-      ker.x         = 0;
-
       for (int y = y0; y < y1; y++ )
       {
         idx         = y * stride;
 
-        FOLD // Write  .
-        {
-          ffdot[idx] = ker;
-        }
+        ffdot[idx] = ker;
       }
     }
   }
@@ -420,6 +414,7 @@ __host__  void mult00(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 #ifdef WITH_MUL_01
   else if ( 1 )
   {
+    // Use slicing
     dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
     dimGrid.y = cStack->mulSlices;
 

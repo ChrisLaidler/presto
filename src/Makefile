@@ -143,6 +143,7 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
+
   ifeq ($(CUDA_ARCH),)
   	$(info )
   	$(info Please specify CUDA_ARCH in the makefile if compiling with CUDA  )
@@ -284,11 +285,11 @@ ifeq ($(WITHCBL),yes)
   FTCFLG     	 = $(shell freetype-config --cflags)
   FTLINK     	 = $(shell freetype-config --libs)
 
-  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
+  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
   INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)
 
   NVCCFLAGS  	+= -DCBL $(INDARR)
-  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
+  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
 
   CFLAGS     	+= -DCBL
   CXXFLAGS   	+= -DCBL $(INDARR) -Wno-unknown-pragmas
@@ -655,7 +656,7 @@ $(OBJDIR)%.o: %.c
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
-	$(CPP) $(CXXFLAGS) -std=c++0x -o $@ -c $< $(INDARR)
+	$(CPP) $(CXXFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)
@@ -684,9 +685,9 @@ $(OBJDIR)getAccelLen.o: getAccelLen.cpp
 
 cleanALEN:
 	# Debug
-	rm -f build/*/accel_utils.o
-	rm -f build/*/accelsearch.o
-	rm -f build/*/test_GPUaccel.o
+	rm -rf build/*/accel_utils.o
+	rm -rf build/*/accelsearch.o
+	rm -rf build/*/test_GPUaccel.o
 
 cleanPROFILE:
 	rm -rf build/*/accelsearch*.o
@@ -699,6 +700,7 @@ cleanPROFILE:
 	rm -rf build/*/cuda_accel_SS_INMEM.cu.o
 	rm -rf build/*/cuda_accel_SS.cu.o
 	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
 	rm -rf build/*/cuda_cand_OPT.cu.o
 	rm -rf build/*/cuda_utils.cu.o
 
@@ -706,12 +708,14 @@ cleanMULT:
 	rm -rf build/*/accelsearch*.o
 	rm -rf build/*/test_GPUaccel*.o
 	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
 	rm -rf build/*/cuda_accel_MU*.o
 
 cleanSAS:
 	rm -rf build/*/accelsearch*.o
 	rm -rf build/*/test_GPUaccel*.o
 	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
 	rm -rf build/*/cuda_accel_SS*.o
 	
 cleanOPT:
@@ -723,34 +727,34 @@ cleanOPT:
 	
 
 cleanGPU: cudaclean
-	rm -f ../lib/libpresto*
-	rm -f ../lib/libcuaccel*
-	rm -f ../bin/test_GPUaccel*
-	rm -f ../bin/accelsearch*
-	rm -f ../bin/getAccelLen*
+	rm -rf ../lib/libpresto*
+	rm -rf ../lib/libcuaccel*
+	rm -rf ../bin/test_GPUaccel*
+	rm -rf ../bin/accelsearch*
+	rm -rf ../bin/getAccelLen*
 
 cleancubasics:
-	rm -f build/*/cuda_accel_GEN.cu.o
-	rm -f build/*/cuda_accel_IN.cu.o
-	rm -f build/*/cuda_accel_KR.cu.o
-	rm -f build/*/cuda_accel_SS.cu.o
-	rm -f build/*/cuda_cand_OPT.cu.o
-	rm -f build/*/cuda_accel_utils.cu.o
-	rm -f build/*/cuda_utils.cu.cu.o
-	rm -f build/*/accelsearch.o
-	rm -f build/*/test_GPUaccel.o
+	rm -rf build/*/cuda_accel_IN.cu.o
+	rm -rf build/*/cuda_accel_KR.cu.o
+	rm -rf build/*/cuda_accel_SS.cu.o
+	rm -rf build/*/cuda_cand_OPT.cu.o
+	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
+	rm -rf build/*/cuda_utils.cu.cu.o
+	rm -rf build/*/accelsearch.o
+	rm -rf build/*/test_GPUaccel.o
 
 cudaclean:
-	rm -f build/*/*cu.o
-	rm -f build/*/cuda*.o
-	rm -f build/*/accelsearch.o
-	rm -f build/*/accel_utils.o
-	rm -f build/*/test_GPUaccel.o
+	rm -rf build/*/*cu.o
+	rm -rf build/*/cuda*.o
+	rm -rf build/*/accelsearch.o
+	rm -rf build/*/accel_utils.o
+	rm -rf build/*/test_GPUaccel.o
 
 clean:
 	rm -rf build/
-	rm -f *.o *~ *#
-	rm -f slalib/*.o slalib/sla_test
+	rm -rf *.o *~ *#
+	rm -rf slalib/*.o slalib/sla_test
 
 cleaner: clean
 	cd ../bin ; rm -f $(BINARIES)
