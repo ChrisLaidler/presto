@@ -62,6 +62,12 @@ typedef struct MAKEDATA {
   int numonoff;                 /* The number of onoff pairs in the data */
   double *onoff;                /* Bin number pairs where obs is "on"    */
 
+  int chN;			/* The number of channels		 */
+  double chWidth;		/* The width of each channels in Hz      */
+  double badWidth;		/* bandwidth                             */
+  double chLow;			/* The Low frequency of the channel      */
+  double DM;			/* Dispersion measure                     */
+
   ulong noiseRand1;             /* First random seed                     */
   ulong noiseRand2;             /* Second random seed                    */
 

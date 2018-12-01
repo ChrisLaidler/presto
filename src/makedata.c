@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
   double (*ptype_ptr) (double val) = modsin;
 
   /* Looping and temp variables */
-  long ct, len, i;
+  long ch, ct, len, i;
 
   /* Writing to files and status */
   int buffloc, oldper = 0, newper;
@@ -134,42 +134,45 @@ int main(int argc, char *argv[])
   double SS2    = 0;
 
   // Write noise to file
-
-  for (ct = 0, buffloc = 1; ct < mdata.N; ct++, buffloc++)
+  for (ch = 0; ch < mdata.chN; ch+=1 )
   {
-
-    /* Calculate percentage complete */
-
-    tb = ct * mdata.dt;
-
-    newper = (int) (tb / mdata.T * 100.0) + 1;
-    if (newper > oldper)
+    for (ct = 0, buffloc = 1; ct < mdata.N; ct++, buffloc++)
     {
-      printf("\rAmount Complete = %3d%%", newper);
-      fflush(stdout);
-      oldper = newper;
-    }
 
-    if (mdata.noise == 1)                         // Add Poissonian noise
-    {
-      // This is the more efficient method
-      long vv = ignpoi(mdata.dc);
-      signal = (float)vv;
-    }
-    else if (mdata.noisesig != 0.0)               // Add Gaussian noise or no noise
-    {
-      signal = gennor(mdata.dc, mdata.noisesig);
-    }
+      /* Calculate percentage complete */
 
-    /*  Save data in buffer */
+      tb = ct * mdata.dt;
 
-    tempsig[buffloc - 1] = (float) signal;
+      //newper = (int) ( tb / ( mdata.T * ch ) * 100.0) + 1;
+      newper = (int) ( ( ch * mdata.N + ct + 1 )  / (double)( mdata.N * mdata.chN ) * 100.0 ) ;
+      if (newper > oldper)
+      {
+	printf("\rAmount Complete = %3d%%", newper);
+	fflush(stdout);
+	oldper = newper;
+      }
 
-    /*  Write the data when needed */
+      if (mdata.noise == 1)                         // Add Poissonian noise
+      {
+	// This is the more efficient method
+	long vv = ignpoi(mdata.dc);
+	signal = (float)vv;
+      }
+      else if (mdata.noisesig != 0.0)               // Add Gaussian noise or no noise
+      {
+	signal = gennor(mdata.dc, mdata.noisesig);
+      }
 
-    if ((buffloc == BUFFSIZE) || (ct == mdata.N - 1)) {
-      chkfwrite(&tempsig, sizeof(float), (unsigned long) buffloc, datfile);
-      buffloc = 0;
+      /*  Save data in buffer */
+
+      tempsig[buffloc - 1] = (float) signal;
+
+      /*  Write the data when needed */
+
+      if ((buffloc == BUFFSIZE) || (ct == mdata.N - 1)) {
+	chkfwrite(&tempsig, sizeof(float), (unsigned long) buffloc, datfile);
+	buffloc = 0;
+      }
     }
   }
 
@@ -189,107 +192,122 @@ int main(int argc, char *argv[])
 
   /* Main data loop */
 
-  for (ct = 0; ct < mdata.N; ct += BUFFSIZE )
+  for (ch = 0; ch < mdata.chN; ch+=1 )
   {
+    double freqDelta = ch * mdata.chWidth ;
+    //double freq1Sq = (mdata.chLow+freqDelta*(mdata.chN-1))*(mdata.chLow+freqDelta*(mdata.chN-1));
+    double freq1Sq = (mdata.chLow)*(mdata.chLow);
+    double freq2Sq = (mdata.chLow+freqDelta)*(mdata.chLow+freqDelta);
+    double timeDelta = 4.15e6*(1/freq1Sq-1/freq2Sq)*mdata.DM*1e-3;
 
-    if ( ct+BUFFSIZE >= mdata.N )
-      len = mdata.N - ct ;
-    else
-      len = BUFFSIZE ;
-
-    // Read noise
-    chkfread(&tempsig, sizeof(float), (unsigned long) len, datfile);
-
-    for ( buffloc = 0; buffloc < len; buffloc++ )
+    for (ct = 0; ct < mdata.N; ct += BUFFSIZE )
     {
 
-      // Calculate percentage complete
+      if ( ct+BUFFSIZE >= mdata.N )
+	len = mdata.N - ct ;
+      else
+	len = BUFFSIZE ;
 
-      tb = (ct + buffloc) * mdata.dt;
+      // Read noise
+      chkfread(&tempsig, sizeof(float), (unsigned long) len, datfile);
 
-      newper = (int) (tb / mdata.T * 100.0) + 1;
-      if (newper > oldper)
-      {
-        printf("\rAmount Complete = %3d%%", newper);
-        fflush(stdout);
-        oldper = newper;
-      }
-
-      /*  Advance onoff pointers when signal turns off */
-
-      if (tb >= offt)
-      {
-        do
-        {
-          ont   = (*onoffpt++) * mdata.T;
-          offt  = (*onoffpt++) * mdata.T;
-        }
-        while (tb >= offt);
-      }
-
-      /*  Signal is on */
-
-      if ((tb >= ont) && (tb < offt))
+      // Loop over chunk
+      for ( buffloc = 0; buffloc < len; buffloc++ )
       {
 
-        T = tb;
+	// Calculate percentage complete
 
-        /*  Get additional time due to binary orbit */
+	tb = (ct + buffloc) * mdata.dt ;
 
-        if (mdata.binary)
-          T -= lin_interp_E(phib, tb, 0.0, orbdt, orbmaxt);
+	//newper = (int) (tb / mdata.T * 100.0) + 1;
+	newper = (int) ( ( ch * mdata.N + ct + 1 )  / (double)( mdata.N * mdata.chN ) * 100.0 ) ;
+	if (newper > oldper)
+	{
+	  printf("\rAmount Complete = %3d%%", newper);
+	  fflush(stdout);
+	  oldper = newper;
+	}
 
-        /*  Get current pulsar phase (cyclic) */
+	/*  Advance onoff pointers when signal turns off */
 
-        phase = T * (T * (T * mdata.fdd + mdata.fd) + mdata.f) + mdata.phs;
+//	if (tb >= offt)
+//	{
+//	  do
+//	  {
+//	    ont   = (*onoffpt++) * mdata.T;
+//	    offt  = (*onoffpt++) * mdata.T;
+//	  }
+//	  while (tb >= offt);
+//	}
 
-        /*  Get current pulsation amplitude */
-        /*     Question:  Should this use time T or tb? */
+	/*  Signal is on */
 
-        if (mdata.ampmod)
-          amp = mdata.ampmoda * cos(mdata.ampmodf * tb + mdata.ampmodp);
+	//if ((tb >= ont) && (tb < offt))
+	{
 
-        /*  Calculate the signal */
+	  T = tb + timeDelta;
 
-        signal = amp * (*ptype_ptr) (phase) ;
+	  /*  Get additional time due to binary orbit */
 
-        // Check added by Chris Laidler
-        if ( signal < 0 )
-          signal = 0.0;
+	  if (mdata.binary)
+	    T -= lin_interp_E(phib, tb, 0.0, orbdt, orbmaxt);
 
+	  /*  Get current pulsar phase (cyclic) */
+
+	  phase = T * (T * (T * mdata.fdd + mdata.fd) + mdata.f) + mdata.phs;
+
+	  if ( phase < 0 || phase > 360 )
+	  {
+	    int t = 0;
+	  }
+
+	  /*  Get current pulsation amplitude */
+	  /*     Question:  Should this use time T or tb? */
+
+	  if (mdata.ampmod)
+	    amp = mdata.ampmoda * cos(mdata.ampmodf * tb + mdata.ampmodp);
+
+	  /*  Calculate the signal */
+
+	  signal = amp * (*ptype_ptr) (phase) ;
+
+	  // Check added by Chris Laidler
+	  if ( signal < 0 )
+	    signal = 0.0;
+
+	}
+//	else                                        //  Signal is off
+//	{
+//	  signal = 0.0;
+//	}
+
+	if (mdata.noise == 1)                       //  Add Poissonian noise
+	{
+	  long vv = ignpoi(signal);
+	  tempsig[buffloc] += (float)vv ;
+	}
+	else if (mdata.noisesig != 0.0)             //  Add Gaussian noise or no noise
+	{
+	  tempsig[buffloc] += gennor(signal, mdata.noisesig);
+	}
+
+	/*  Rounds if needed */
+
+	if (mdata.roundnum)
+	{
+	  tempsig[buffloc] = floor( tempsig[buffloc] + 0.5);
+	}
       }
-      else                                        //  Signal is off
-      {
-        signal = 0.0;
-      }
 
-      if (mdata.noise == 1)                       //  Add Poissonian noise
-      {
-        long vv = ignpoi(signal);
-        tempsig[buffloc] += (float)vv ;
-      }
-      else if (mdata.noisesig != 0.0)             //  Add Gaussian noise or no noise
-      {
-        tempsig[buffloc] += gennor(signal, mdata.noisesig);
-      }
+      // Set the file pointer to the beginning of this section
+      chkfileseek(datfile, sizeof(float), (unsigned long) ( ct + ch * mdata.N ), 0);
 
-      /*  Rounds if needed */
+      /*  Write the data when needed */
 
-      if (mdata.roundnum)
-      {
-        tempsig[buffloc] = floor( tempsig[buffloc] + 0.5);
-      }
+      chkfwrite(&tempsig, sizeof(float), (unsigned long) len, datfile);
+
     }
-
-    // Set the file pointer to the beginning of this section
-    chkfileseek(datfile, sizeof(float), (unsigned long) ct, 0);
-
-    /*  Write the data when needed */
-
-    chkfwrite(&tempsig, sizeof(float), (unsigned long) len, datfile);
-
   }
-
   /*  Add dc padding if necessary  */
 
   /*   if (mdata.next2_to_n != mdata.N) { */
@@ -342,6 +360,11 @@ int main(int argc, char *argv[])
 
   if (fclose(datfile) != 0)
     printf("Cannot close datafile.\n");
+
+  idata.num_chan = mdata.chN;
+  idata.chan_wid = mdata.chWidth;
+  idata.freq = mdata.chLow;
+  idata.freqband = mdata.badWidth;
 
   /* Write infofile data */
 

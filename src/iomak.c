@@ -31,13 +31,24 @@ void read_mak_input(makedata * mdata)
       mdata->next2_to_n <<= 1;
    }
 
+   printf("\nEnter the number of channels (ie. 1024): ");
+   scanf("%d", &mdata->chN);
+   printf("\nEnter total bandwidth Mhz (ie. 800): ");
+   scanf("%lf", &mdata->badWidth);
+   mdata->chWidth = mdata->badWidth / (double)( mdata->chN -1 );
+   printf("\nChannel bandwidth is %.5f Mhz\n", mdata->chWidth );
+   printf("\nEnter Central freq of low channel (Mhz) (ie. 1450): ");
+   scanf("%lf", &mdata->chLow);
+   printf("\nEnter Dispersion measure (cm-3 pc) (ie. 230.2): ");
+   scanf("%lf", &mdata->DM);
+
    printf("\nWhat type of Pulse shape?\n");
-   printf("  1=Sine, 2=Crab-like, 3=Spike, 4=Gauss:\n");
+   printf("  1=Sine, 2=Crab-like, 3=Spike, 4=Gauss, 5=mvmd:\n");
    scanf("%d", &mdata->pnum);
-   while (mdata->pnum < 1 || mdata->pnum > 4) {
+   while (mdata->pnum < 1 || mdata->pnum > 5) {
       printf("\nNot a proper pulse shape choice in read_mak_input()\n");
       printf("\nWhat type of Pulse shape?\n");
-      printf("  1=Sine, 2=Crab-like, 3=Spike, 4=Gauss:\n");
+      printf("  1=Sine, 2=Crab-like, 3=Spike, 4=Gauss, 5=mvmd:\n");
       scanf("%d", &mdata->pnum);
    }
    switch (mdata->pnum) {
@@ -67,6 +78,16 @@ void read_mak_input(makedata * mdata)
          scanf("%lf", &mdata->fwhm);
       }
       break;
+   case 5:
+     strcpy(mdata->ptype, "mvmd");
+     printf("\nEnter the phase width (0.0-0.5) FWHM of the pulse.\n");
+     scanf("%lf", &mdata->fwhm);
+     while (mdata->fwhm < 0 || mdata->fwhm > 0.5) {
+        printf("\nNot a proper FWHM in read_mak_input()\n");
+        printf("\nEnter the phase width (0.0-0.5) FWHM of the pulse.\n");
+        scanf("%lf", &mdata->fwhm);
+     }
+     break;
    }
 
    printf("\nDo you want the binned data rounded to ");
@@ -205,6 +226,8 @@ void read_mak_input(makedata * mdata)
       mdata->onoff[0] = 0.0;
       mdata->onoff[1] = 1.0;
    }
+
+
 
    srand(time(NULL));
 
@@ -384,6 +407,8 @@ void read_mak_file(char basefilenm[], makedata * mdata)
       mdata->noise = 2;
    fscanf(makefile, "%*[^=]= %lf", &mdata->noisesig);
 
+
+
    i = 0;
    do {
       fscanf(makefile, "%*[^=]= %lf %lf", &tmponoff[i], &tmponoff[i + 1]);
@@ -419,6 +444,32 @@ void read_mak_file(char basefilenm[], makedata * mdata)
    fscanf(makefile, "%*[^=]= %lu", &mdata->signalRand2);
    if(!mdata->signalRand2)
      mdata->signalRand2 = rand();
+
+   mdata->chN = 1;
+   fscanf(makefile, "%*[^=]= %u",  &mdata->chN);
+   if(!mdata->chN)
+     mdata->chN = 1;
+
+   fscanf(makefile, "%*[^=]= %lf", &mdata->badWidth);
+   if (mdata->badWidth < 0.0) {
+      printf("\nmdata->badWidth must be >= 0.0 in read_mak_file()\n");
+      exit(1);
+   }
+
+   mdata->chWidth = mdata->badWidth / (double)( mdata->chN -1 );
+//   fscanf(makefile, "%*[^=]= %lf", &mdata->chWidth);
+//   if (mdata->chWidth < 0.0) {
+//      printf("\nmdata->chWidth must be >= 0.0 in read_mak_file()\n");
+//      exit(1);
+//   }
+
+   fscanf(makefile, "%*[^=]= %lf", &mdata->chLow);
+   if (mdata->chLow < 0.0) {
+      printf("\nmdata->chLow must be >= 0.0 in read_mak_file()\n");
+      exit(1);
+   }
+
+   fscanf(makefile, "%*[^=]= %lf", &mdata->DM);
 
    fclose(makefile);
 }
@@ -479,6 +530,12 @@ void write_mak_file(makedata * mdata)
 
    fprintf(makefile, "Signal seed 1     = %lu\n",  mdata->signalRand1);
    fprintf(makefile, "Signal seed 2     = %lu\n",  mdata->signalRand2);
+
+   fprintf(makefile, "Number of channels                = %d\n",        mdata->chN      );
+   fprintf(makefile, "Total bandwidth (Mhz)             = %25.15g\n",   mdata->badWidth );
+   //fprintf(makefile, "Channel bandwidth (Mhz)           = %25.15g\n",   mdata->chWidth  );
+   fprintf(makefile, "Central freq of low channel (Mhz) = %25.15g\n",   mdata->chLow    );
+   fprintf(makefile, "Dispersion Measure (cm-3 pc)      = %25.15g\n",   mdata->DM       );
 
    fclose(makefile);
 }
