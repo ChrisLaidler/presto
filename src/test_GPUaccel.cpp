@@ -356,7 +356,7 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
         {
           d1 = fabs(cpu1->r - gpu1->r );
           s1 = gpu1->sigma - cpu1->sigma;
-          r1 = std::min(r1,fabs(1-cpu1->sigma/gpu1->sigma));
+          r1 = std::min<double>(r1,fabs(1-cpu1->sigma/gpu1->sigma));
         }
         else
         {
@@ -369,7 +369,7 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
           gpu2 = (accelcand*)gpul->data;
           d2 = fabs(cpu1->r - gpu2->r );
           s2 = gpu2->sigma - cpu1->sigma;
-          r2 = std::min(r2,fabs(1-cpu1->sigma/gpu2->sigma));
+          r2 = std::min<double>(r2,fabs(1-cpu1->sigma/gpu2->sigma));
         }
         else
         {
@@ -500,7 +500,7 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
       {
         cpu1 = (accelcand*)cpul->data;
         if ( cpu1->r > gpu1->r - ACCEL_CLOSEST_R )
-          r1 = std::min(r1,fabs(1-cpu1->sigma/gpu1->sigma) );
+          r1 = std::min<double>(r1,fabs(1-cpu1->sigma/gpu1->sigma) );
         cpul = cpul->next;
       }
 
@@ -508,7 +508,7 @@ void compareCands(GSList *candsCPU, GSList *candsGPU, double T)
       while (cpul2->next && ((accelcand*)cpul2->data)->r < gpu1->r + ACCEL_CLOSEST_R )
       {
         cpu2 = (accelcand*)cpul2->data;
-        r2 = std::min(r2,fabs(1-cpu2->sigma/gpu1->sigma) );
+        r2 = std::min<double>(r2,fabs(1-cpu2->sigma/gpu1->sigma) );
         cpul2 = cpul2->next;
       }
 

@@ -143,7 +143,6 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
-
   ifeq ($(CUDA_ARCH),)
   	$(info )
   	$(info Please specify CUDA_ARCH in the makefile if compiling with CUDA  )
@@ -285,11 +284,11 @@ ifeq ($(WITHCBL),yes)
   FTCFLG     	 = $(shell freetype-config --cflags)
   FTLINK     	 = $(shell freetype-config --libs)
 
-  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
   INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)
 
   NVCCFLAGS  	+= -DCBL $(INDARR)
-  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
 
   CFLAGS     	+= -DCBL
   CXXFLAGS   	+= -DCBL $(INDARR) -Wno-unknown-pragmas
@@ -656,7 +655,7 @@ $(OBJDIR)%.o: %.c
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
-	$(CPP) $(CXXFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+	$(CPP) $(CXXFLAGS) -std=c++0x -o $@ -c $< $(INDARR)
 
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)

@@ -47,7 +47,7 @@ const char* _cudaGetErrorEnum(cufftResult error);
 //float warpReduceSum(float val)
 //{
 //  for (int offset = WARP_SIZE/2; offset > 0; offset /= 2)
-//    val += __shfl_down(val, offset);
+//    val += __shfl_down_sync(0xffffffff, val, offset);
 //
 //  return val;
 //}
