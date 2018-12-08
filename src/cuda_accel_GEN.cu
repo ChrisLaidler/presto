@@ -1096,6 +1096,12 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
 #endif
 
+      int driverVersion = 0;
+      int runtimeVersion = 0;
+      CUDA_SAFE_CALL( cudaDriverGetVersion (&driverVersion),  "Failed to get driver version using cudaDriverGetVersion");
+      CUDA_SAFE_CALL( cudaRuntimeGetVersion(&runtimeVersion), "Failed to get run time version using cudaRuntimeGetVersion");
+      printf("  CUDA Runtime Version: %02d.%02d \n", runtimeVersion / 1000, (runtimeVersion % 100) / 10);
+      printf("  CUDA Driver Version:  %02d.%02d \n", driverVersion / 1000, (driverVersion % 100) / 10);
     }
 
     PROF // Profiling  .
