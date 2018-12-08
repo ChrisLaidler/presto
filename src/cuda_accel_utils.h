@@ -755,7 +755,7 @@ void printContext();
 
 /** Write CUFFT call backs to device  .
  */
-void copyCUFFT_LD_CB(cuFFdotBatch* batch);
+void copyCUFFT_CBs(cuFFdotBatch* batch);
 
 /** Create the stacks to do the  .
  *

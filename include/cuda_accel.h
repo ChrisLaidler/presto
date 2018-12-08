@@ -1187,14 +1187,15 @@ typedef struct cuFFdotBatch
     long long*         	compTime;		///< Array of floats from timing, one float for each stack
 
 #if CUDA_VERSION >= 6050
-    cufftCallbackLoadC    h_ldCallbackPtr;
-    cufftCallbackStoreC   h_stCallbackPtr;
+    // NOTE: This could be CUDART_VERSION
+    cufftCallbackLoadC	h_ldCallbackPtr;
+    cufftCallbackStoreC	h_stCallbackPtr;
 
-    cufftCallbackLoadC    h_ldCallbackPtr0;
-    cufftCallbackLoadC    h_ldCallbackPtr1;
-    cufftCallbackLoadC    h_ldCallbackPtr2;
-    cufftCallbackLoadC    h_ldCallbackPtr3;
-    cufftCallbackLoadC    h_ldCallbackPtr4;
+    cufftCallbackLoadC	h_ldCallbackPtr0;
+    cufftCallbackLoadC	h_ldCallbackPtr1;
+    cufftCallbackLoadC	h_ldCallbackPtr2;
+    cufftCallbackLoadC	h_ldCallbackPtr3;
+    cufftCallbackLoadC	h_ldCallbackPtr4;
 #endif
 
 } cuFFdotBatch;

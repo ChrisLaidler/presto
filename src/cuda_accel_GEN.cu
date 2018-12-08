@@ -102,6 +102,7 @@ extern "C"
 #include "cuda_accel_utils.h"
 #include "cuda_accel_GEN.h"
 #include "cuda_accel_IN.h"
+#include "cuda_accel_MU.h"
 #include "cuda_cand_OPT.h"
 
 #ifdef CBL
@@ -2187,7 +2188,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     FOLD // Calculate return type, size and data structure  .
     {
-      kernel->retType       = conf->retType;
+     kernel->retType       = conf->retType;
 
       if      (kernel->retType & CU_STR_PLN   )
       {
@@ -3196,7 +3197,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       if ( !(kernel->flags & CU_FFT_SEP_PLN) )
       {
 #if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
-	copyCUFFT_LD_CB(kernel);
+	copyCUFFT_CBs(kernel);
 #endif
       }
     }
@@ -3660,11 +3661,18 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       createFFTPlans(batch, FFT_PLANE);
     }
 
-    if ( kernel->flags & CU_FFT_SEP_PLN )  // Set CUFFT callbacks
+    if ( kernel->flags & CU_FFT_SEP_PLN )               // Set CUFFT callbacks
     {
-#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
-      copyCUFFT_LD_CB(batch);
+#if CUDA_VERSION >= 6050                                // CUFFT callbacks only implemented in CUDA 6.5
+      copyCUFFT_CBs(batch);
 #endif
+    }
+
+    // Set the CUFFT load and store callback if necessary  .
+    for (int i = 0; i < batch->noStacks; i++)           // Loop through Stacks
+    {
+	cuFfdotStack* cStack = &batch->stacks[i];
+	setCB(batch, cStack);
     }
   }
 
@@ -3689,7 +3697,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 	batch->rAraays = &batch->rArraysPlane;
       }
 
-      FOLD // Create the planes structures  .
+      FOLD // Create the planes data structures  .
       {
 	if ( batch->noGenHarms* sizeof(cuFFdot) > getFreeRamCU() )
 	{
@@ -3769,6 +3777,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planeMult,   batch->plnDataSize ), "Failed to allocate device memory for batch complex plane.");
 	  free -= batch->plnDataSize;
+	  infoMSG(7,7,"complex plane: %p", batch->d_planeMult);
 	}
 
 	if ( batch->pwrDataSize )
@@ -3777,6 +3786,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
 	  CUDA_SAFE_CALL(cudaMalloc((void** )&batch->d_planePowr,   batch->pwrDataSize ), "Failed to allocate device memory for batch powers plane.");
 	  free -= batch->pwrDataSize;
+	  infoMSG(7,7,"powers plane:  %p", batch->d_planePowr);
 	}
 
 	if ( kernel->retDataSize && !(kernel->retType & CU_STR_PLN) )
@@ -5969,15 +5979,3 @@ GSList* generateCandidatesGPU(cuSearch* cuSrch)
 
   return cuSrch->cands;
 }
-
-
-
-
-
-
-
-
-
-
-
-

@@ -136,7 +136,7 @@ static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStac
       // Wait for all the input FFT's to complete
       for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
       {
-	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp");
+	infoMSG(5,5,"Synchronise stream %s on %s - stack %i.\n", "multStream", "inpFFTinitComp", synchIdx);
 
 	cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0), "Stream wait on event inpFFTinitComp.");
@@ -379,18 +379,15 @@ static void callPlaneCUFTT(cuFFdotBatch* batch, cuFfdotStack* cStack)
     }
   }
 
-  FOLD // Set the load and store FFT callback if necessary  .
-  {
-    setCB(batch, cStack);
-  }
-
   FOLD // Call the FFT  .
   {
-    infoMSG(5,5,"CUFFT kernel");
+    infoMSG(5,5,"Call CUFFT kernel");
 
     void* dst = getCBwriteLocation(batch, cStack);
 
     CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
+
+    infoMSG(7,7,"CUFFT input  %p", cStack->d_planeMult);
 
     if ( batch->flags & FLAG_DOUBLE )
       CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
@@ -486,7 +483,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 
   FOLD // Call the inverse CUFFT  .
   {
-    infoMSG(4,4,"Call the inverse CUFFT\n");
+    infoMSG(4,4,"Call the iFFT\n");
 
     if ( cStack->flags & CU_FFT_SEP_PLN )
     {
