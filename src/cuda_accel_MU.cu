@@ -532,15 +532,27 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 	    if ( rVal->numdata )
 	    {
 	      char tName[1024];
-	      sprintf(tName,"/home/chris/accel/Powers_setp_%05i_h_%02i.csv", rVal->step, harm );
+	      sprintf(tName, "/home/chris/accel/Powers_setp_%05i_h_%02i.csv", rVal->step, harm );
 	      FILE *f2 = fopen(tName, "w");
 
-	      fprintf(f2,"%i",harm);
+	      fprintf(f2,"Harm plane\n");
+	      fprintf(f2,"centR: %.23f\n", (rVal->drhi-rVal->drlo)/2.0);
+	      fprintf(f2,"centZ: %.23f\n", abs(cHInfo->zEnd-cHInfo->zStart)/2.0);
+	      fprintf(f2,"rSize: %.23f\n", (rVal->drhi-rVal->drlo));
+	      fprintf(f2,"zSize: %.23f\n", abs(cHInfo->zEnd-cHInfo->zStart));
+	      fprintf(f2,"noZ: %.i\n",     (int)cHInfo->noZ);
+	      fprintf(f2,"noR: %.i\n",     (int)rVal->numrs);
+	      fprintf(f2,"Harms: %i\n",    1);
+
+	      fprintf(f2,"Type: power\n");
+	      fprintf(f2,"Layout: Harmonics\n");
+
+	      fprintf(f2,"Harm %i", 1);
 
 	      for ( int i = 0; i < rVal->numrs; i++)
 	      {
 		double r = rVal->drlo + i / (double)batch->conf->noResPerBin;
-		fprintf(f2,"\t%.6f",r);
+		fprintf(f2,"\t%.17e", r );
 	      }
 	      fprintf(f2,"\n");
 
@@ -555,13 +567,11 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		{
 		  if      ( batch->flags & FLAG_ITLV_ROW )
 		  {
-		    //offset = (y*trdBatch->noSteps + step)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
 		    offset = (y*batch->noSteps + step)*cStack->strideCmplx   + cHInfo->kerStart ;
 		  }
 #ifdef WITH_ITLV_PLN
 		  else
 		  {
-		    //offset  = (y + step*cHInfo->height)*cStack->strideCmplx   + cHInfo->halfWidth * 2 ;
 		    offset  = (y + step*cHInfo->noZ)*cStack->strideCmplx   + cHInfo->kerStart ;
 		  }
 #else
@@ -628,11 +638,11 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		  double z = cHInfo->zStart + (cHInfo->zEnd-cHInfo->zStart)/(double)(cHInfo->noZ-1)*y;
 		  if (cHInfo->noZ == 1 )
 		    z = 0;
-		  fprintf(f2,"%.15f",z);
+		  fprintf(f2,"%.17e", z);
 
 		  for ( int i = 0; i < rVal->numrs; i++)
 		  {
-		    fprintf(f2,"\t%.20f", outVals[i] );
+		    fprintf(f2,"\t%.17e", outVals[i] );
 		  }
 		  fprintf(f2,"\n");
 		}
@@ -650,8 +660,13 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		}
 
 		char cmd[1024];
-		sprintf(cmd,"python ~/bin/bin/plt_ffd.py %s 2.5 > /dev/null 2>&1", tName);
-		system(cmd);
+		sprintf(cmd,"python $PRESTO/python/plt_ffd.py %s  -r 2 -s 50 -a 0.9  > /dev/null 2>&1", tName);
+		infoMSG(6,6,"%s", cmd);
+		int ret = system(cmd);
+		if ( ret )
+		{
+		  fprintf(stderr,"ERROR: Problem running potting python script.");
+		}
 
 		PROF // Profiling  .
 		{
