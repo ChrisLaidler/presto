@@ -1450,6 +1450,8 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 {
   int ii, rootlen, input_shorts = 0;
 
+  memset(obs, 0, sizeof(accelobs));
+
   if(1)
   {
     int hassuffix = 0;
