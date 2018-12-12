@@ -1357,7 +1357,7 @@ int main(int argc, char *argv[])
 
                         if      ( batch->flags & FLAG_POW_HALF )
                         {
-#if CUDA_VERSION >= 7050   // Half precision getter and setter  .
+#if CUDART_VERSION >= 7050   // Half precision getter and setter  .
                           powers =  &((half*)      plan->d_planePowr)[offset];
                           elsz   = sizeof(half);
                           CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");

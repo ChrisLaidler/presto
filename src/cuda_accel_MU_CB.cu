@@ -2,7 +2,7 @@
 
 //====================================== Constant variables  ===============================================\\
 
-#if	CUDA_VERSION >= 6050
+#if	CUDART_VERSION >= 6050
 
 #ifdef	WITH_MUL_PRE_CALLBACK	// Pre Callbacks (mult)  .
 __device__ cufftCallbackLoadC  d_loadConst          = CB_RetConst;
@@ -21,16 +21,16 @@ __device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
 __device__ cufftCallbackStoreC d_inmemRow_f         = CB_InmemOutRow_f;
 __device__ cufftCallbackStoreC d_inmemPln_f         = CB_InmemOutPln_f;
 #endif	// WITH_SINGLE_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050
+#if 	CUDART_VERSION >= 7050
 #ifdef	WITH_HALF_RESCISION_POWERS
 __device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
 __device__ cufftCallbackStoreC d_inmemRow_h         = CB_InmemOutRow_h;
 __device__ cufftCallbackStoreC d_inmemPln_h         = CB_InmemOutPln_h;
 #endif	// WITH_HALF_RESCISION_POWERS
-#endif	// CUDA_VERSION >= 7050
+#endif	// CUDART_VERSION >= 7050
 #endif	// WITH_POW_POST_CALLBACK
 
-#endif	// CUDA_VERSION >= 6050
+#endif	// CUDART_VERSION >= 6050
 
 //========================================== Functions  ====================================================\\
 
@@ -77,7 +77,7 @@ __device__ int calcInMemIdx_PLN( size_t offset )
 }
 
 
-#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5  .
+#if CUDART_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5  .
 
 #ifdef WITH_MUL_PRE_CALLBACK	// Pre Callbacks (mult)  .
 
@@ -371,7 +371,7 @@ __device__ void CB_InmemOutPln_f( void *dataOut, size_t offset, cufftComplex ele
 
 #endif	// WITH_SINGLE_RESCISION_POWERS
 
-#if	CUDA_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)	// Half precision CUFFT power call back  .
+#if	CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)	// Half precision CUFFT power call back  .
 
 /** CUFFT callback kernel to calculate and store half powers after the FFT  .
  */
@@ -428,7 +428,7 @@ __device__ void CB_InmemOutPln_h( void *dataOut, size_t offset, cufftComplex ele
   ((half*)dataOut)[plnOff] = __float2half(power);
 }
 
-#endif	// CUDA_VERSION >= 7050 && WITH_HALF_RESCISION_POWERS
+#endif	// CUDART_VERSION >= 7050 && WITH_HALF_RESCISION_POWERS
 
 #endif	// WITH_POW_POST_CALLBACK
 
@@ -469,7 +469,7 @@ void copyCUFFT_CBs(cuFFdotBatch* batch)
     if ( batch->flags & FLAG_POW_HALF )
     {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050
+#if 	CUDART_VERSION >= 7050
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
 	// Store powers to inmem plane
@@ -544,7 +544,7 @@ void copyCUFFT_CBs(cuFFdotBatch* batch)
   }
 }
 
-#endif  // CUDA_VERSION >= 6050
+#endif  // CUDART_VERSION >= 6050
 
 /** Get a pointer to the location of the first element of the output of the CUFFT  .
  *
@@ -555,12 +555,12 @@ void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack)
 
   if ( batch->flags &    FLAG_CUFFT_CB_INMEM )
   {
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
     rVals* rVal   = &(*batch->rAraays)[batch->rActive][0][0];
 
     if ( batch->flags &  FLAG_POW_HALF )
     {
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
       dst    = ((half*)batch->cuSrch->d_planeFull) + rVal->step * batch->accelLen;              // A pointer to the location of the first step in the in-mem plane
 #else
       fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -594,7 +594,7 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
   {
     infoMSG(5,5,"Set CB powers output\n");
 
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
 
     if ( batch->flags & FLAG_DOUBLE )
     {

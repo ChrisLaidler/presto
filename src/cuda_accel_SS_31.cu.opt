@@ -632,12 +632,12 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   if      ( batch->flags & FLAG_POW_HALF	)	// CUFFT callbacks using half powers  .
   {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050
+#if 	CUDART_VERSION >= 7050
     add_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, batch );
-#else	// CUDA_VERSION
+#else	// CUDART_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
-#endif	// CUDA_VERSION
+#endif	// CUDART_VERSION
 #else	// WITH_HALF_RESCISION_POWERS
     EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS

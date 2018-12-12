@@ -491,12 +491,12 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
       if ( batch->flags & FLAG_POW_HALF  )
       {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050
+#if 	CUDART_VERSION >= 7050
 	searchINMEM_p<half>(batch);
-#else	// CUDA_VERSION
+#else	// CUDART_VERSION
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	exit(EXIT_FAILURE);
-#endif	// CUDA_VERSION
+#endif	// CUDART_VERSION
 #else	// WITH_HALF_RESCISION_POWERS
 	EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS

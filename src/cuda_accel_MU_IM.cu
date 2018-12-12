@@ -260,16 +260,16 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
       if ( batch->flags & FLAG_POW_HALF )
       {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if	CUDA_VERSION >= 7050
+#if	CUDART_VERSION >= 7050
 	// Each Step has its own start location in the inmem plane
 	half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
 	// Call kernel
 	cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
-#else	// CUDA_VERSION
+#else	// CUDART_VERSION
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	exit(EXIT_FAILURE);
-#endif	// CUDA_VERSION
+#endif	// CUDART_VERSION
 #else	// WITH_HALF_RESCISION_POWERS
 	EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS
@@ -368,7 +368,7 @@ void copyToInMemPln(cuFFdotBatch* batch)
 	    if ( batch->flags & FLAG_POW_HALF )
 	    {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050
+#if 	CUDART_VERSION >= 7050
 	      copyIFFTtoPln<half,half>( batch, cStack );
 #else
 	      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");

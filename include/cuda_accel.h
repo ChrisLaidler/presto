@@ -8,7 +8,7 @@
 #include <cufft.h>
 #include <cufftXt.h>
 
-#if CUDA_VERSION >= 7050   // Half precision
+#if CUDART_VERSION >= 7050   // Half precision
 #include <cuda_fp16.h>
 #endif
 
@@ -234,7 +234,7 @@ extern "C"
 #define		CU_FFT_SEP_ALL		( CU_FFT_SEP_INP | CU_FFT_SEP_PLN ) /// All callbacks
 
 #define		FLAG_CUFFT_CB_POW	BIT(37)		///< Use an output callback to create powers, this works in std or in-mem searches - This is a similar iFFT speed but speeds up SS
-#define		FLAG_CUFFT_CB_INMEM	BIT(38)		///< Use the in-mem FFT's to copy values strait back to in-mem plane
+#define		FLAG_CUFFT_CB_INMEM	BIT(38)		///< Use the in-mem FFT's to copy values strait back to in-mem plane - this is generally slow
 #define		FLAG_CUFFT_CB_OUT	( FLAG_CUFFT_CB_POW | FLAG_CUFFT_CB_INMEM ) /// All output callbacks
 #define		FLAG_CUFFT_ALL		( FLAG_CUFFT_CB_OUT | FLAG_MUL_CB ) /// All callbacks
 
@@ -902,7 +902,6 @@ typedef struct cuFfdotStack
     fcomplexcu*     h_iData;            ///< Paged locked input data for this stack
     fcomplexcu*     d_iData;            ///< Device       input data for this stack
 
-
     void*           d_planeMult;        ///< Plane of complex data for multiplication
     void*           d_planePowr;        ///< Plane of float data for the search
 
@@ -1154,7 +1153,7 @@ typedef struct cuFFdotBatch
     char            	rActive;		///< The index of the r-array we are working on
     rVals****       	rAraays;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
 
-    rVals*         	rArr1;			///< A pointer to the first value in a full flat list of r arrays used by the batch
+    rVals*          	rArr1;			///< A pointer to the first value in a full flat list of r arrays used by the batch
     rVals*          	rArr2;			///< A pointer to the first value in a full flat list of r arrays used by the batch
 
     rVals***        	rArraysPlane;		///< Pointer to an array of 2D array [step][harmonic] of the base expanded r index
@@ -1186,8 +1185,7 @@ typedef struct cuFFdotBatch
     // TIMING values
     long long*         	compTime;		///< Array of floats from timing, one float for each stack
 
-#if CUDA_VERSION >= 6050
-    // NOTE: This could be CUDART_VERSION
+#if CUDART_VERSION >= 6050
     cufftCallbackLoadC	h_ldCallbackPtr;
     cufftCallbackStoreC	h_stCallbackPtr;
 

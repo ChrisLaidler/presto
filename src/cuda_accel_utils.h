@@ -644,7 +644,7 @@ __device__ inline float getPowerAsFloat(float2* adress, uint offset)
   return POWERF(adress[offset]);
 }
 
-#if CUDA_VERSION >= 7050   // Half precision getter and setter  .
+#if CUDART_VERSION >= 7050   // Half precision getter and setter  .
 
 #ifdef __CUDACC__
 
@@ -674,7 +674,7 @@ __device__ inline float getPowerAsFloat(half* adress, uint offset)
 }
 #endif
 
-#endif  // CUDA_VERSION >= 7050
+#endif  // CUDART_VERSION >= 7050
 
 
 //===================================== Function Prototypes ===============================================\\

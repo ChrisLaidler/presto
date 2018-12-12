@@ -494,7 +494,7 @@ const char* _cudaGetErrorEnum(cufftResult error)
     case CUFFT_NO_WORKSPACE:
       return "CUFFT_NO_WORKSPACE";
 
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
     case CUFFT_LICENSE_ERROR:
       return "CUFFT_LICENSE_ERROR";
 

@@ -1122,7 +1122,7 @@ void readAccelDefalts(confSpecs *conf)
 	}
 	else if ( strCom("CB", str2 ) )
 	{
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
 
 #ifdef	WITH_MUL_PRE_CALLBACK
 	  (*genFlags) &= ~FLAG_MUL_ALL;
@@ -1231,7 +1231,7 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("CB", str2 ) )
 	{
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
 	  (*genFlags) |=     FLAG_CUFFT_CB_POW;
 #else
 	  line[flagLen] = 0;
@@ -1256,7 +1256,7 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("CB", str2 ) )
 	{
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
 	  (*genFlags) |=     FLAG_CUFFT_CB_INMEM;
 #else
 	  line[flagLen] = 0;
@@ -1265,7 +1265,7 @@ void readAccelDefalts(confSpecs *conf)
 	}
 	else if ( strCom("MEM_CPY", str2 ) || strCom("", str2 ))
 	{
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
 	  (*genFlags) &=    ~FLAG_CUFFT_CB_INMEM;
 	  (*genFlags) |=     FLAG_CUFFT_CB_POW;
 #else
@@ -1297,7 +1297,7 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("HALF",   str2 ) )
 	{
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	  (*genFlags) |=  FLAG_POW_HALF;
 #else
 	  (*genFlags) &= ~FLAG_POW_HALF;
@@ -1966,7 +1966,7 @@ void readAccelDefalts(confSpecs *conf)
 	}
 	else
 	{
-	  fprintf(stderr, "ERROR: %s expects 4 parameters: LVL DIM ACCURACY PRECISION \n", str1, lineno, fName);
+	  fprintf(stderr, "ERROR: %s on line %i of %s expects 4 parameters: LVL DIM ACCURACY PRECISION \n", str1, lineno, fName);
 	}
       }
 
@@ -2206,7 +2206,7 @@ confSpecs* defaultConfig()
   {
     conf->gen->flags	|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     conf->gen->flags	|= FLAG_ITLV_ROW    ;
-    conf->gen->flags	|= FLAG_CENTER      ;	// Centre and align the usable part of the planes
+    conf->gen->flags	|= FLAG_CENTER      ;	// Center and align the usable part of the planes
     conf->gen->flags	|= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
 #ifdef WITH_SAS_COUNT
@@ -2216,14 +2216,14 @@ confSpecs* defaultConfig()
     // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_CAND_MEM_PRE
 #ifndef DEBUG
     conf->gen->flags	|= FLAG_CAND_THREAD ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
-    conf->opt->flags	|= FLAG_OPT_THREAD  ;	// Do CPU component of optimisation in a separate thread - A very good idea
+    conf->opt->flags	|= FLAG_OPT_THREAD  ;	// Do CPU component of optimization in a separate thread - A very good idea
 #endif
 
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
     conf->gen->flags	|= FLAG_CUFFT_CB_POW;	// CUFFT callback to calculate powers, very efficient so on by default
 #endif
 
-#if CUDA_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)
+#if CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)
     conf->gen->flags	|= FLAG_POW_HALF;
 #endif
 
@@ -2240,7 +2240,7 @@ confSpecs* defaultConfig()
     conf->gen->retType	|= CU_POWERZ_S;		// Return type
     conf->gen->retType	|= CU_STR_ARR;		// Candidate storage structure
 
-    conf->gen->noResPerBin	= 2;		// Inter binning
+    conf->gen->noResPerBin	= 2;		// Inter-binning
     conf->gen->candRRes		= 0.5;		// 1 Candidate per 2 bins
     conf->gen->zRes		= 2;
     conf->gen->zMax		= 200;

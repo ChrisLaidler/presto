@@ -3,7 +3,7 @@
 #include <cufft.h>
 #include <cufftXt.h>
 
-#if CUDA_VERSION >= 7050   // Half precision header  .
+#if CUDART_VERSION >= 7050   // Half precision header  .
 #include <cuda_fp16.h>
 #endif
 
@@ -23,7 +23,7 @@ extern "C"
 
 #define CPY_WIDTH 512  // 256  512 768
 
-#if CUDA_VERSION >= 6050  // CUFFT callbacks type defines
+#if CUDART_VERSION >= 6050  // CUFFT callbacks type defines
 
 extern  __device__ cufftCallbackLoadC d_loadConst;
 extern  __device__ cufftCallbackLoadC d_loadRead;
@@ -46,7 +46,7 @@ extern  __device__ cufftCallbackStoreC d_storeInmemPln;
 //======================================= CUFFT callbacks =================================================\\
 
 
-#if CUDA_VERSION >= 6050 // CUFFT callbacks, only implemented in CUDA 6.5
+#if CUDART_VERSION >= 6050 // CUFFT callbacks, only implemented in CUDA 6.5
 
 /** CUFFT callback kernel to simply return constant value  .
  */

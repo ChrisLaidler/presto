@@ -106,12 +106,12 @@ __host__ void add_and_searchCU00_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
   if      ( batch->flags & FLAG_POW_HALF         )
   {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050
+#if 	CUDART_VERSION >= 7050
     add_and_searchCU00_k< half>        <<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, batch->noGenHarms, noStages, batch->noSteps  );
-#else	// CUDA_VERSION
+#else	// CUDART_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
-#endif	// CUDA_VERSION
+#endif	// CUDART_VERSION
 #else	// WITH_HALF_RESCISION_POWERS
     EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS

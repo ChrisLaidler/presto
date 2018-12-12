@@ -403,7 +403,7 @@ static void callPlaneCUFTT(cuFFdotBatch* batch, cuFfdotStack* cStack)
     // If using power calculate call back with the inmem plane
     if ( batch->flags & FLAG_CUFFT_CB_INMEM )
     {
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
       infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "fftPStream");
       CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream),"Recording event: ifftInit");
 #endif
@@ -582,7 +582,7 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		  if      ( batch->flags & FLAG_POW_HALF )
 		  {
 #ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDA_VERSION >= 7050   // Half precision getter and setter  .
+#if 	CUDART_VERSION >= 7050   // Half precision getter and setter  .
 		    powers =  &((half*)      plan->d_planePowr)[offset];
 		    elsz   = sizeof(half);
 		    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
@@ -591,10 +591,10 @@ void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
 		    {
 		      outVals[i] = half2float(((ushort*)tmpRow)[i]);
 		    }
-#else	// CUDA_VERSION
+#else	// CUDART_VERSION
 		    fprintf(stderr, "ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
 		    exit(EXIT_FAILURE);
-#endif	// CUDA_VERSION
+#endif	// CUDART_VERSION
 #else	// WITH_HALF_RESCISION_POWERS
 		    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS

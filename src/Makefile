@@ -285,16 +285,16 @@ ifeq ($(WITHCBL),yes)
   FTCFLG     	 = $(shell freetype-config --cflags)
   FTLINK     	 = $(shell freetype-config --libs)
 
-  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
   INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)
 
   NVCCFLAGS  	+= -DCBL $(INDARR)
-  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
 
   CFLAGS     	+= -DCBL
   CXXFLAGS   	+= -DCBL $(INDARR) -Wno-unknown-pragmas
 
-  GPUOUTP    	+= $(BINPATH)/test_GPUaccel$(POSTFIX)
+  #GPUOUTP    	+= $(BINPATH)/test_GPUaccel$(POSTFIX)
 else
   LNDARR     =
   INDARR     =

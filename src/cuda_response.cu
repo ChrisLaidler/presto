@@ -1114,7 +1114,7 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
 	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is not needed!
 	  // However evidently, there can be bank conflicts in cache so I adjust the per thread offset with "bank" - Differing cooperatives will access the same bank, but most lightly the same value so no conflict
 	  float2 inp = inputData[i + idx ];
-#if CUDART_VERSION >= 1000
+#if CUDART_VERSION >= 10000
 	  T resCRea_c = __shfl_sync(0xffffffff, resReal, idx, noColumns );
 	  T resImag_c = __shfl_sync(0xffffffff, resImag, idx, noColumns );
 #else

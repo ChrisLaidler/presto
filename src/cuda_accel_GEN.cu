@@ -325,7 +325,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
       // Half precision plane
       if ( conf->flags & FLAG_POW_HALF )
       {
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	plnElsSZ = sizeof(half);
 	infoMSG(7,7,"in-mem - half precision powers \n");
 #else
@@ -592,7 +592,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //      // Half precision plane
 //      if ( kernel->flags & FLAG_POW_HALF )
 //      {
-//#if CUDA_VERSION >= 7050
+//#if CUDART_VERSION >= 7050
 //	plnElsSZ = sizeof(half);
 //	infoMSG(7,7,"in-mem - half precision powers \n");
 //#else
@@ -819,7 +819,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //
 //	kernel->flags |= FLAG_SS_INMEM ;
 //
-//#if CUDA_VERSION >= 6050
+//#if CUDART_VERSION >= 6050
 //	if ( !(kernel->flags & FLAG_CUFFT_CB_POW) )
 //	  fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
 //#else
@@ -827,7 +827,7 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //	kernel->flags &= ~FLAG_CUFFT_ALL;
 //#endif
 //
-//#if CUDA_VERSION >= 7050
+//#if CUDART_VERSION >= 7050
 //	if ( !(kernel->flags & FLAG_POW_HALF) )
 //	  fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
 //#else
@@ -911,13 +911,13 @@ bool checkIMposable(searchSpecs* sSpec, confSpecsGen* conf, gpuInf* gInf)
 //      infoMSG(4,4,"Sanity check on some settings.\n");
 //
 //      // CUFFT callbacks
-//#if CUDA_VERSION < 6050
+//#if CUDART_VERSION < 6050
 //      kernel->flags &= ~FLAG_CUFFT_ALL;
 //#endif
 //
 //      if ( (kernel->flags & FLAG_POW_HALF) && !(kernel->flags & FLAG_SS_INMEM) && !(kernel->flags & FLAG_CUFFT_CB_POW) )
 //      {
-//#if CUDA_VERSION >= 7050
+//#if CUDART_VERSION >= 7050
 //	fprintf(stderr, "WARNING: Can't use half precision with out of memory search and no CUFFT callbacks. Reverting to single precision!\n");
 //#endif
 //	kernel->flags &= ~FLAG_POW_HALF;
@@ -1169,7 +1169,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	// Half precision plane
 	if ( kernel->flags & FLAG_POW_HALF )
 	{
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	  plnElsSZ = sizeof(half);
 	  infoMSG(7,7,"in-mem - half precision powers \n");
 #else
@@ -1397,7 +1397,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
 	kernel->flags |= FLAG_SS_INMEM ;
 
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
 	if ( !(kernel->flags & FLAG_CUFFT_CB_POW) )
 	  fprintf(stderr,"  Warning: Doing an in-mem search with no CUFFT callbacks, this is not ideal.\n"); // It should be on by default the user must have disabled it
 #else
@@ -1405,7 +1405,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 	kernel->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	if ( !(kernel->flags & FLAG_POW_HALF) )
 	  fprintf(stderr,"  Warning: You could be using half precision.\n"); // They should be on by default the user must have disabled them
 #else
@@ -1491,13 +1491,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       infoMSG(4,4,"Sanity check on some settings.\n");
 
       // CUFFT callbacks
-#if CUDA_VERSION < 6050
+#if CUDART_VERSION < 6050
       kernel->flags &= ~FLAG_CUFFT_ALL;
 #endif
 
       if ( (kernel->flags & FLAG_POW_HALF) && !(kernel->flags & FLAG_SS_INMEM) && !(kernel->flags & FLAG_CUFFT_CB_POW) )
       {
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	fprintf(stderr, "WARNING: Can't use half precision with out of memory search and no CUFFT callbacks. Reverting to single precision!\n");
 #endif
 	kernel->flags &= ~FLAG_POW_HALF;
@@ -2233,7 +2233,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       }
       else if (kernel->retType & CU_HALF      )
       {
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	retSZ = sizeof(half);
 #else
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -3202,7 +3202,7 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       if ( !(kernel->flags & CU_FFT_SEP_PLN) )
       {
-#if CUDA_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5
+#if CUDART_VERSION >= 6050                                      // CUFFT callbacks only implemented in CUDA 6.5
 	copyCUFFT_CBs(kernel);
 #endif
       }
@@ -3669,7 +3669,7 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
 
     if ( kernel->flags & CU_FFT_SEP_PLN )               // Set CUFFT callbacks
     {
-#if CUDA_VERSION >= 6050                                // CUFFT callbacks only implemented in CUDA 6.5
+#if CUDART_VERSION >= 6050                              // CUFFT callbacks only implemented in CUDA 6.5
       copyCUFFT_CBs(batch);
 #endif
     }
@@ -5026,7 +5026,7 @@ void setPlanePointers(cuFFdotBatch* batch)
       {
 	if ( batch->flags & FLAG_POW_HALF )
 	{
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	  cPlane->d_planePowr   = &((half*)         cStack->d_planePowr)[ cStack->startZ[j] * batch->noSteps * cStack->stridePower ];
 #else
 	  fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
@@ -5086,7 +5086,7 @@ void setStkPointers(cuFFdotBatch* batch)
     {
       if ( batch->flags & FLAG_POW_HALF )
       {
-#if CUDA_VERSION >= 7050
+#if CUDART_VERSION >= 7050
 	cStack->d_planePowr     = &((half*)       batch->d_planePowr)[ pwrStart ];
 #else
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
