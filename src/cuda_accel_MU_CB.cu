@@ -598,12 +598,18 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
 
     if ( batch->flags & FLAG_DOUBLE )
     {
+#if CUDART_VERSION >= 9000
+      // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_ST_COMPLEX_DOUBLE), "Error clearing CUFFT store callback.");
+#endif
       CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX_DOUBLE, NULL ),"Error assigning CUFFT store callback.");
     }
     else
     {
+#if CUDART_VERSION >= 9000
+      // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_ST_COMPLEX), "Error clearing CUFFT store callback.");
+#endif
       CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, NULL ),"Error assigning CUFFT store callback.");
     }
 #else
@@ -619,12 +625,18 @@ void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
 #ifdef 	WITH_MUL_PRE_CALLBACK
     if ( batch->flags & FLAG_DOUBLE )
     {
+#if CUDART_VERSION >= 9000
+      // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_LD_COMPLEX_DOUBLE), "Error clearing CUFFT load callback.");
+#endif
       CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX_DOUBLE, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     }
     else
     {
+#if CUDART_VERSION >= 9000
+      // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_LD_COMPLEX), "Error clearing CUFFT load callback.");
+#endif
       CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     }
 
