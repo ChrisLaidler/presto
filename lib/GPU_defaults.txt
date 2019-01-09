@@ -35,13 +35,13 @@ DUMMY_FLAG_TWO off		# This will disable the flag "DUMMY_FLAG_TWO", you can just 
 ########################### General ###########################
 
 
-R_RESOLUTION	2
+R_RESOLUTION	2		# Frequency 'bins' are separated by 1/R_RESOLUTION - 2 is inter-binning
 
-Z_RESOLUTIOM	2
+Z_RESOLUTIOM	2		# Acceleration trials are separated this value - measured in z
 
 #FLAG_Z_SPLIT			# Force splitting of the in-memory plane - Not advisable
 
-RESULTS_RING	3
+RESULTS_RING	5		# Number of buffers to hold sections of input - used for pipelining processing of batches
 
 
 ########################### Memory ############################
@@ -85,40 +85,42 @@ KER_FFT_PRECISION 	SINGLE
 
 ############################# Input ############################
 
-# Normalise input in the CPU or the GPU
+# Normalise sections of the input DFT with the CPU or the GPU
 # INP_NORM:
 # 	CPU     		# Do the input Normalisation on the CPU - This is usually the best option, the task is short enough that the CPU may as well do it (unless Z-Max is very small  ( < ~10 )
 #	GPU     		# Do the input Normalisation on the GPU using an in-place Shared Memory sort
 #	GPU_SM     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort
 #	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort - Minimise SM use
 #	GPU_OS			# DEBUG: Do the input Normalisation on the GPU using a custom novel order statistic algorithm
-# D	AA      		# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
-INP_NORM		AA
+# D	AUTO      		# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
+INP_NORM		AUTO
 
 
 # ZBOUND_NORM:
-# This marks a boundary, if the search z-max exceeds this value the CPU will be used for input normalisation. I find this should generally be low, the CPU is better at normalisation.
-# Any result of ZBOUND_NORM may be over ridden by ZBOUND_INP_FFT
-# iff z-max is equal or exceeds ZBOUND_NORM, the CPU will be used for input normalisation, This will will override any value of INP_NORM.
-# if z-max is less than ZBOUND_NORM, GPU normalisation will be used, This will will override any value of INP_NORM.
-# if ZBOUND_NORM is commented out or set to -1 INP_NORM will be used.
-#ZBOUND_NORM		-1
+# This marks a boundary, if the search z-max exceeds ZBOUND_NORM the CPU will be used for input normalisation.
+# ZBOUND_NORM may be over ridden by ZBOUND_INP_FFT and will override any value of INP_NORM.
+# iff z-max is equal or exceeds ZBOUND_NORM, the CPU will be used for input normalisation.
+# if z-max is less than ZBOUND_NORM, GPU normalisation will be used.
+# if ZBOUND_NORM is commented out or set to -1, INP_NORM will be used.
+# I find this should generally be low (~30), beyond this the CPU may as well do the normalisation if the alternative is being idle, below this point the CPU becomes the limiting factor so using the GPU is faster.
+#ZBOUND_NORM		40
 
 
 # FFT input in the CPU or the GPU
 # INP_FFT:
 #	CPU     		# Do the input FFT's on the CPU
 # D	GPU     		# Do the input FFT's on the GPU - I generally find this a bit faster
-# 	AA			# Automatically chose, for the moment this will use the GPU
-INP_FFT			AA
+# 	AUTO			# Automatically chose, for the moment this will always the GPU
+INP_FFT			AUTO
 
 
 # ZBOUND_INP_FFT:
-# This marks a boundary, if the search z-max exceeds this value the CPU will be used for input FFT ( and thus input normalisation).
-# iff z-max is equal or exceeds ZBOUND_INP_FFT it use the CPU and it will override INP_FFT, INP_NORM and ZBOUND_NORM.
-# if z-max is less than it, CPU FFT's will be used. This will will override any value of INP_FFT and no charge will be made to input normalisation.
-# if ZBOUND_INP_FFT is commented out or set to -1 INP_NORM, ZBOUND_NORM and INP_FFT will be used.
-#ZBOUND_FFT		-1
+# This marks a boundary, if the search z-max exceeds ZBOUND_INP_FFT the CPU will be used for the input FFT AND input normalisation as well. 
+# iff z-max is equal or exceeds ZBOUND_INP_FFT, the CPU is used for input normalisation and FFT, this will override INP_FFT, INP_NORM and ZBOUND_NORM.
+# if z-max is less than ZBOUND_INP_FFT, CPU FFT's will be used. This will will override any value of INP_FFT and no change will be made to input normalisation.
+# if ZBOUND_INP_FFT is commented out or set to -1, INP_NORM, ZBOUND_NORM and INP_FFT will be used.
+# A good value for this is ~50, but is system dependent. Beyond some point the GPU computation exceeds CPU normalisation and FFT so may as well do it on the CPU in the background
+#ZBOUND_FFT		60
 
 
 # This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192
@@ -295,6 +297,14 @@ SS_INMEM_SZ 		0
 #	PRE			# Allocate temporary memory for each thread processing results - The allocation can slow things down but if there is lots of RFI this can allow the thread to run longer
 #CAND_MEM		PRE
 
+# Delay copying and processing the results - this allows each batch to simultaneously process multiple iterations (i.e. pipelining)
+# CAND_DELAY
+#	int			# A number from 0 to 4
+# 	0			# This is synchronous processing of an iteration i.e. perform all components one after another
+# 	1			# Delay copying and processing batch results by one iterations - This allows overlapping the execution components of different iterations
+# D	2			# Delay copying and processing batch results by two iterations - This allows more overlap and may help with small z-max (<50)
+# 	A			# Use the default
+CAND_DELAY		1
 
 #FLAG_STORE_ALL 		# [Not yet implemented]	Don't fiddle with this this is for future use
 #FLAG_STORE_EXP 		# [Not yet implemented]	Don't fiddle with this this is for future use
@@ -495,9 +505,4 @@ DBG_LEV			0
 
 #FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
 #FLAG_DBG_PROFILING		# [ Debug ]	Perform advanced profiling and timing the search
-
-
-
-
-
 

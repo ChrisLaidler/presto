@@ -2992,17 +2992,13 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
 
     if ( hostC )
     {
-      printf("    Input and candidates use and additional:\n");
+      printf("    Input and candidates use an additional:\n");
       if ( hostC )
 	printf("                        %5.2f GB of host   memory\n", hostC * 1e-9 );
     }
     printf("    -----------------------------------------------\n" );
 
     CUDA_SAFE_CALL(cudaGetLastError(), "Failed to create memory for candidate list or input data.");
-
-    printf("  Done\n");
-
-
 
     PROF // Profiling  .
     {
@@ -5435,38 +5431,103 @@ void search_ffdot_batch_CU(cuFFdotBatch* batch)
   }
   else
   {
-    // Setup input
-    setActiveIteration(batch, 0);
-    prepInput(batch);
 
     if  ( batch->flags & FLAG_SS_INMEM )
     {
       setActiveIteration(batch, 0);
+      prepInput(batch);
       multiplyBatch(batch);
-
-      setActiveIteration(batch, 0);
       IFFTBatch(batch);
-
-      setActiveIteration(batch, 0);
       copyToInMemPln(batch);
     }
     else
     {
-      // Sum and Search
-      setActiveIteration(batch, 1);
-      sumAndSearch(batch);
+      if      ( batch->conf->cndProcessDelay == 0)
+      {
+	// This is synchronous processing of a single iteration
 
-      // Results
-      setActiveIteration(batch, 2);
-      processBatchResults(batch);
+	setActiveIteration(batch, 0);
+	prepInput(batch);
+	convolveBatch(batch);
+	sumAndSearch(batch);
+	getResults(batch);
+	processBatchResults(batch);
+      }
+      else if ( batch->conf->cndProcessDelay == 1)
+      {
+	// This is good and will overlap GPU kernels as well as CPU computation
 
-      // Copy
-      setActiveIteration(batch, 1);
-      getResults(batch);
+	setActiveIteration(batch, 0);
+	prepInput(batch);
+	convolveBatch(batch);
+	sumAndSearch(batch);
 
-      // Multiply and iFFT
-      setActiveIteration(batch, 0);
-      convolveBatch(batch);
+	setActiveIteration(batch, 1);
+	processBatchResults(batch);
+
+	setActiveIteration(batch, 0);
+	getResults(batch);
+      }
+      else if ( batch->conf->cndProcessDelay == 2)
+      {
+	// I generally find this is the best option especially with smaller z-max
+
+	setActiveIteration(batch, 0);
+	prepInput(batch);
+	convolveBatch(batch);
+
+	setActiveIteration(batch, 2);
+	processBatchResults(batch);
+
+	setActiveIteration(batch, 1);
+	getResults(batch);
+
+	setActiveIteration(batch, 0);
+	sumAndSearch(batch);
+      }
+      else if ( batch->conf->cndProcessDelay == 3)
+      {
+	setActiveIteration(batch, 0);
+	prepInput(batch);
+
+	setActiveIteration(batch, 3);
+	processBatchResults(batch);
+
+	setActiveIteration(batch, 2);
+	getResults(batch);
+
+	setActiveIteration(batch, 1);
+	sumAndSearch(batch);
+
+	setActiveIteration(batch, 0);
+	convolveBatch(batch);
+
+      }
+      else if ( batch->conf->cndProcessDelay == 4)
+      {
+	setActiveIteration(batch, 0);
+	prepInput(batch);
+
+	setActiveIteration(batch, 4);
+	processBatchResults(batch);
+
+	setActiveIteration(batch, 3);
+	getResults(batch);
+
+	setActiveIteration(batch, 2);
+	sumAndSearch(batch);
+
+	setActiveIteration(batch, 1);
+	IFFTBatch(batch);
+
+	setActiveIteration(batch, 0);
+	multiplyBatch(batch);
+      }
+      else
+      {
+	fprintf(stderr, "ERROR: invalid value of cndProcessDelay  AKA  CAND_DELAY");
+	exit(EXIT_FAILURE);
+      }
     }
   }
 

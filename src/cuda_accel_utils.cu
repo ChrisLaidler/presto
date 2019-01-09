@@ -587,6 +587,8 @@ gpuInf* initGPU(int device, gpuInf* gInf)
     }
   }
 
+  CUDA_SAFE_CALL(cudaGetLastError(), "Leaving initGPU.");
+
   return gInf;
 }
 
@@ -1517,6 +1519,36 @@ void readAccelDefalts(confSpecs *conf)
 	singleFlag ( genFlags, str1, str2, FLAG_CAND_MEM_PRE, "PRE", "RING", lineno, fName );
       }
 
+      else if ( strCom("CAND_DELAY", str1 ) )
+      {
+	if ( strCom(str2, "A"   ) )
+	{
+	  conf->gen->cndProcessDelay = 2;
+	}
+	else
+	{
+	  int no;
+	  int read1 = sscanf(str2, "%i", &no  );
+	  if ( read1 == 1 )
+	  {
+	    if ( no < 0 || no > 4 )
+	    {
+	      fprintf(stderr, "WARNING: %s not in compiled bounds (%i - %i). Line %i of %s.\n", str1, 0, 4, lineno, fName);
+	      conf->gen->cndProcessDelay = 2;
+	    }
+	    else
+	    {
+	      conf->gen->cndProcessDelay = no;
+	    }
+	  }
+	  else
+	  {
+	    line[flagLen] = 0;
+	    fprintf(stderr, "ERROR: Found unknown value for %s on line %i of %s.\n", str1, lineno, fName);
+	  }
+	}
+      }
+
       else if ( strCom("CAND_STORAGE", str1 ) )
       {
 	if      ( strCom("ARR", str2 ) || strCom("", str2 ) )
@@ -2244,7 +2276,8 @@ confSpecs* defaultConfig()
     conf->gen->candRRes		= 0.5;		// 1 Candidate per 2 bins
     conf->gen->zRes		= 2;
     conf->gen->zMax		= 200;
-    conf->gen->ringLength	= 7;		// Just a good number
+    conf->gen->ringLength	= 5;		// Just a good number
+    conf->gen->cndProcessDelay	= 2;		// Queue at least one full iteration in the pipeline before copying and processing results of "previous" iteration
     conf->gen->planeWidth	= 8;		// A good default for newer GPU's
 
     conf->gen->normType		= 0;
@@ -3122,6 +3155,7 @@ void* contextInitTrd(void* ptr)
     gettimeofday(&end, NULL);
     gSpec->nctxTime += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
   }
+
 
   pthread_exit(&gSpec->nctxTime);
 

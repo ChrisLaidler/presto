@@ -831,9 +831,9 @@ typedef struct cuHarmInfo
 typedef struct cuKernel
 {
     cuHarmInfo*		harmInf;	///< A pointer to the harmonic information for this kernel
-    int			kreOff;		///< The offset of the first column of the knerl in the stack kernel
+    int			kreOff;		///< The offset of the first column of the kernel in the stack kernel
     int			stride;		///< The stride of the data in the kernel
-    int			type;		///< The data type of the kernel data (foat or double)
+    int			type;		///< The data type of the kernel data (float or double)
     void*		d_kerData;	///< A pointer to the first kernel element (Width, Stride and height determined by harmInf)
     fCplxTex		kerDatTex;	///< A texture holding the kernel data
 } cuKernel;
@@ -1009,6 +1009,7 @@ typedef struct confSpecsGen
     int			ssColumn;			///< The number of sum and search columns
 
     int			ringLength;			///< The number of elements in the results ring buffer
+    int			cndProcessDelay;		///< The number of elements in the results ring buffer
 
     int			retType;			///< The type of output
     int			cndType;			///< The type of output
@@ -1040,7 +1041,7 @@ typedef struct confSpecsOpt
     float		optPlnScale;			///< The ratio by which to decrease the optimisation planes (I like 10)
 
     int			optPlnDim[NO_OPT_LEVS];		///< The size of optimisation planes
-    CU_TYPE		optPlnPrec[NO_OPT_LEVS];	///< The precision of the levles
+    CU_TYPE		optPlnPrec[NO_OPT_LEVS];	///< The precision of the levels
     presto_interp_acc	optPlnAccu[NO_OPT_LEVS];	///< The accuracy precision
 
     int64_t		flags;				///< The search bit flags specified by the user, the actual bit flag used in the search will be different
@@ -1437,7 +1438,7 @@ typedef struct candSrch
     cuHarmInput*	input;			///< Input data for the harmonics
     accelcand*		cand;			///< The candidate to optimise
     int			candNo;			///< The 0 based index of this candidate
-    double		resolution;		///< The size to start the final optemisation at
+    double		resolution;		///< The size to start the final optimisation at
 } candSrch;
 
 
