@@ -304,7 +304,7 @@ SS_INMEM_SZ 		0
 # 	1			# Delay copying and processing batch results by one iterations - This allows overlapping the execution components of different iterations
 # D	2			# Delay copying and processing batch results by two iterations - This allows more overlap and may help with small z-max (<50)
 # 	A			# Use the default
-CAND_DELAY		1
+CAND_DELAY		A
 
 #FLAG_STORE_ALL 		# [Not yet implemented]	Don't fiddle with this this is for future use
 #FLAG_STORE_EXP 		# [Not yet implemented]	Don't fiddle with this this is for future use
