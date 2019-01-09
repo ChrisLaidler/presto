@@ -3,7 +3,6 @@
 
 #include <pthread.h>
 
-//#include "cuda_accel.h"
 #include "cuda_utils.h"
 
 #define NO_QUAD_CHILD   4

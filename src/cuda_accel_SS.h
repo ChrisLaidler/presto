@@ -6,8 +6,6 @@
 
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
-#include <nvToolsExt.h>
-#include <nvToolsExtCudaRt.h>
 
 #include "cuda_accel.h"
 #include "cuda_utils.h"
@@ -17,10 +15,11 @@
 //====================================== Constant variables  ===============================================\\
 
 extern  __device__ const float FRAC_STAGE[16]       ;
+extern  __device__ const float STP_STAGE[16]        ;
 extern             const float HARM_FRAC_STAGE[16]  ;
 extern  __device__ const float FRAC_HARM[16]        ;
 extern  __device__ const short STAGE[5][2]          ;
-extern  __device__ const short CHUNKSZE[5]          ;
+extern  __device__ const short NO_HARMS[5]          ;
 
 __host__ void add_and_searchCU00  ( cudaStream_t stream, cuFFdotBatch* batch );
 

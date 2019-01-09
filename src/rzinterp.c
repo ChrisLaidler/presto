@@ -196,7 +196,8 @@ void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_wi
 
   FOLD /* Determine the summation boundaries */
   {
-    lodata = intfreq - kern_half_width;
+    //lodata = intfreq - kern_half_width;	// Original
+    lodata = intfreq - kern_half_width + 1;	// NB: Fixed by Chris laidler -> This is needed to get the values to the correct point
     if (lodata < 0)
     {
       loresp = abs(lodata);
@@ -206,7 +207,8 @@ void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_wi
     {
       loresp = 0;
     }
-    hidata = intfreq + kern_half_width - 1;
+    //hidata = intfreq + kern_half_width - 1;	// Original
+    hidata = intfreq + kern_half_width;		// NB: Fixed by Chris laidler -> This is needed to get the values to the correct point
     if (hidata > numdata - 1)
     {
       hiresp = numkern - hidata + numdata - 1;
@@ -229,6 +231,8 @@ void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_wi
     ans->r = 0.0;
     ans->i = 0.0;
 
+
+
     for (ii = 0; ii < nsum; ii++)
     {
       if(0)  // Correct method
@@ -249,6 +253,7 @@ void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_wi
         tmpr    = *(respptr++);
         ans->r += tmpd * tmpr + (*dataptr) * (*respptr);
         ans->i += (*dataptr) * tmpr - (*respptr) * tmpd;
+
         //printf("%03i %05i Data %12.2f %12.2f  Response: %13.10f %13.10f   Sum: %13.10f %13.10f  %12.2f \n", ii, lodata+ii, tmpd, (*dataptr), tmpr, (*respptr), ans->r, ans->i,  ans->r*ans->r+ans->i*ans->i );
 
         dataptr++;

@@ -27,6 +27,46 @@
 /* Return 2**n */
 #define index_to_twon(n) (1<<n)
 
+#if __linux
+#include <sys/sysinfo.h>
+/** Get the amount of free RAM in bytes
+ *
+ */
+unsigned long getFreeRam()
+{
+  long cach;
+
+  FILE *fp;
+  char buf[1024];
+  char rr[1024];
+  fp = fopen("/proc/meminfo", "r");
+  int i;
+  for(i = 0; i <= 3; i++) {
+    fgets(buf, 1024, fp);
+  }
+  sscanf(buf,"%s %li kB", rr, &cach);
+
+  struct sysinfo sys_info;
+  if(sysinfo(&sys_info) != 0)
+  {
+    fprintf(stderr, "ERROR: Reading memory info.");
+    return 0;
+  }
+  else
+  {
+    unsigned long vv = sys_info.freeram + sys_info.bufferram ;
+    vv *= sys_info.mem_unit;
+    vv += cach * 1000; // Add chaged mem (Kb -> B )
+    return vv;
+  }
+}
+#else
+uint64_t getFreeRam()
+{
+  fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
+}
+#endif
+
 /* Return x such that 2**x = n */
 static inline int twon_to_index(int n)
 {
@@ -509,6 +549,39 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
         rat = other_cand->r / (float)current_cand->r ;
         remove = 1;
       }
+
+//      /* Check */
+//      float inc = fabs( (current_cand->z - other_cand->z) / (float)(current_cand->r - other_cand->r) );
+//      //inc = fabs(inc) - 1.0;
+//
+//      if ( inc > 1 )
+//      {
+//	printf("%10.4f\t%10.4f\t%10.4f\t%10.4f\t%10.4f\t \n", current_cand->z, other_cand->z, current_cand->r, other_cand->r, inc );
+//	int tmp = 0;
+//      }
+
+//      if ( ( current_cand->z == 40 || other_cand->z == 40 ) && ( current_cand->r > 10095 && other_cand->r > 10095 && current_cand->r < 10125 && other_cand->r < 10125 ) )
+//      {
+//	if (inc < 30 )
+//	{
+//	  int tmp = 0;
+//	  printf("%10.4f\n",inc);
+//	}
+//      }
+//      if ( ( current_cand->z == 40 || other_cand->z == 40 ) )
+//      {
+//	if (inc < 30 )
+//	{
+//	  int tmp = 0;
+//	  printf("%10.4f\n",inc);
+//	}
+//      }
+//
+//      if (/*remove == 0 &&*/ (inc < 1.1) && (inc > 0.9) )
+//      {
+//	remove = 1;
+//      }
+
       /* Remove the "other" cand */
       if (remove) {
         fprintf(pFile, "remove %15.2f h[%02i] (%6.2f)  - x %5.2f -  %15.2f h[%02i] (%6.2f) \n", current_cand->r, current_cand->numharm, current_cand->sigma, rat, other_cand->r, other_cand->numharm, other_cand->sigma );
@@ -534,22 +607,25 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
   return cands;
 }
 
-
 void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
 {
   int ii;
   int *r_offset;
   fcomplex **data;
   double r, z;
+  double *norm;
 
   //printf("\n%4i  optimize_accelcand  harm %2i   r %20.4f   z %7.3f  pow: %8.3f  sigma: %8.3f\n", nn, cand->numharm, cand->r, cand->z, cand->power, cand->sigma );
 
   cand->pows   = gen_dvect(cand->numharm);
   cand->hirs   = gen_dvect(cand->numharm);
   cand->hizs   = gen_dvect(cand->numharm);
+  norm	       = gen_dvect(cand->numharm);
+
   r_offset     = (int*) malloc(sizeof(int)*cand->numharm);
   data         = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
   cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
+
 
   if (obs->use_harmonic_polishing)
   {
@@ -559,6 +635,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
       {
         r_offset[ii]   = obs->lobin;
         data[ii]       = obs->fft;
+        norm[ii]	= 0;
       }
       max_rz_arr_harmonics(data,
           cand->numharm,
@@ -569,7 +646,8 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
           &r,
           &z,
           cand->derivs,
-          cand->pows);
+          cand->pows,
+          norm);
     }
     else
     {
@@ -1124,11 +1202,13 @@ void fund_to_ffdotplane(ffdotpows *ffd, accelobs *obs)
 {
   // This moves the fundamental's ffdot plane powers
   // into the one for the full array
-  int ii, rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
+  // Convert to unsigned long to handle planes greater than 8GB
+  unsigned long ii;
+  unsigned long rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
   float *outpow;
 
-  for (ii = 0 ; ii < ffd->numzs ; ii++) {
-    outpow = obs->ffdotplane + ii * rlen + ffd->rlo * ACCEL_RDR;
+  for (ii = 0 ; ii < (unsigned long)ffd->numzs ; ii++) {
+    outpow =  obs->ffdotplane + ii * rlen + (unsigned long)ffd->rlo * ACCEL_RDR ;
     memcpy(outpow, ffd->powers[ii], ffd->numrs*sizeof(float));
   }
 }
@@ -1209,7 +1289,7 @@ void inmem_add_ffdotpows(ffdotpows *fundamental, accelobs *obs,
   const int rlo = fundamental->rlo;
   const int numrs = fundamental->numrs;
   const int numzs = fundamental->numzs;
-  const int rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
+  const unsigned long rlen = (obs->highestbin + ACCEL_USELEN) * ACCEL_RDR;
   const double harm_fract = (double) harmnum / (double) numharm;
   float *outpows, *inpows;
   int *indices;
@@ -1370,6 +1450,8 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 {
   int ii, rootlen, input_shorts = 0;
 
+  memset(obs, 0, sizeof(accelobs));
+
   if(1)
   {
     int hassuffix = 0;
@@ -1491,11 +1573,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      //nvtxRangePush("Read file");
+      unsigned long freeRam = getFreeRam();
 
-      unsigned long freeRam = getFreeRamCU();
-
-      if ( freeRam * 0.7 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
+      if ( freeRam * 0.9 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
       {
         FILE *datfile;
         long long filelen;
@@ -1541,11 +1621,6 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
           obs->mmap_file = 0;
         }
       }
-
-#ifdef CUDA
-      //nvtxRangePop();
-#endif
-
     }
     else
     {
@@ -1693,8 +1768,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
    */
 
   /* Can we perform the search in-core memory? */
+  if(1)
   {
-    long long memuse;
+    unsigned long long memuse;
     double gb = (double)(1L<<30);
 
     // This is the size of powers covering the full f-∂f plane to search
@@ -1702,7 +1778,22 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     memuse = sizeof(float) * (obs->highestbin + ACCEL_USELEN) \
         * obs->numbetween * obs->numz;
     printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
-    if (memuse < MAXRAMUSE || cmd->inmemP) {
+
+    if ( memuse < MAXRAMUSE || cmd->inmemP) {
+#ifdef CUDA
+      //size_t freeRam = getFreeRam();
+      unsigned long freeRam = getFreeRam();
+      if ( freeRam * 0.95 < memuse )
+      {
+	// Lets not kill the computer
+	printf("Not enough memory for in-mem plane there is only %.2f GB.\n", freeRam / gb);
+	printf("Using standard accelsearch.\n\n");
+	obs->inmem = 0;
+	obs->ffdotplane = NULL;
+
+	return;
+      }
+#endif
       printf("using in-memory accelsearch.\n\n");
       obs->inmem = 1;
       obs->ffdotplane = gen_fvect(memuse / sizeof(float));
@@ -1738,3 +1829,23 @@ void free_accelobs(accelobs * obs)
   }
 }
 
+void print_percent_complete(int current, int number, const char *what, int reset)
+{
+  static int newper = 0, oldper = -1;
+
+  if (reset) {
+    oldper = -1;
+    newper = 0;
+  } else {
+    newper = (int) (current / (float) (number) * 100.0);
+    if (newper < 0)
+      newper = 0;
+    if (newper > 100)
+      newper = 100;
+    if (newper > oldper) {
+      printf("\rAmount of %s complete = %3d%%  ", what, newper);
+      fflush(stdout);
+      oldper = newper;
+    }
+  }
+}

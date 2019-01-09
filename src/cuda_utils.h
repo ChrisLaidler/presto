@@ -24,6 +24,8 @@
 #define MAGENTA   "\033[22;35m"
 #define RESET     "\033[0m"
 
+#define WARP_SIZE (32)
+
 // Free a pointer and set value to zero
 #define freeNull(pointer) { if (pointer) free ( pointer ); pointer = NULL; }
 #define cudaFreeNull(pointer) { if (pointer) CUDA_SAFE_CALL(cudaFree(pointer), "Failed to free device memory."); pointer = NULL; }
@@ -40,6 +42,37 @@ typedef struct
 //====================================== Inline functions ================================================//
 
 const char* _cudaGetErrorEnum(cufftResult error);
+
+//__device__ inline
+//float warpReduceSum(float val)
+//{
+//  for (int offset = WARP_SIZE/2; offset > 0; offset /= 2)
+//    val += __shfl_down_sync(0xffffffff, val, offset);
+//
+//  return val;
+//}
+//
+//__device__ inline
+//float blockReduceSum(float val, int lId, int wId)
+//{
+//  static __shared__ float shared[32]; // Shared mem for 32 partial sums
+//
+//  val = warpReduceSum(val);     // Each warp performs partial reduction
+//
+//  if (lId==0) shared[wId]=val;  // Write reduced value to shared memory
+//
+//  __syncthreads();              // Wait for all partial reductions
+//
+//  if (wId==0)
+//  {
+//    //read from shared memory only if that warp existed
+//    val = ( lId < blockDim.x * blockDim.y / WARP_SIZE) ? shared[lId] : 0;
+//
+//    val = warpReduceSum(val); //Final reduce within first warp
+//  }
+//
+//  return val;
+//}
 
 //==================================== Function Prototypes ===============================================//
 
@@ -64,22 +97,22 @@ int detect_gdb_tree(void);
  *
  * @return number of bytes of free RAM
  **/
-ExternC unsigned long getFreeRamCU();
-
-ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
-//ExternC void opt_candPlns(accelcand* cand, cuSearch* srch, accelobs* obs, int nn, cuOptCand* pln);
-//ExternC void opt_candSwrm(accelcand* cand, accelobs* obs, int nn, cuOptCand* pln);
-
-ExternC void opt_accelcand(accelcand* cand, cuOptCand* pln, int no);
+ExternC size_t getFreeRamCU();
 
 ExternC int optList(GSList *listptr, cuSearch* cuSrch);
 
-ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char *errorMsg);
-ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg);
+ExternC void __cuSafeCall(cudaError_t cudaStat,    const char *file, const int line, const char* format, ...);
+ExternC void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char* format, ...);
+ExternC void __exit_directive(const char *file, const int line, const char *flag);
+ExternC ACC_ERR_CODE __cuErrCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...);
 
 /** Get the number of CUDA capable GPUS's
  */
 ExternC int getGPUCount();
+
+ExternC gpuInf* getGPU(gpuInf* gInf);
+
+ExternC gpuInf* initGPU(int device, gpuInf* gInf);
 
 ExternC void initGPUs(gpuSpecs* gSpec);
 
@@ -94,8 +127,12 @@ ExternC int getMemAlignment();
 
 /** Get the stride (in number of elements) given a number of elements and the "block" size  .
  */
-ExternC int getStrie(int noEls, int elSz, int blockSz);
+ExternC int getStride(int noEls, int elSz, int blockSz);
 
-void timeEvents( cudaEvent_t start, cudaEvent_t end, float* timeSum, const char* msg );
+ExternC void streamSleep(cudaStream_t stream, long long int clock_count );
+
+ExternC void queryEvents( cudaEvent_t   evnt, const char* msg );
+
+ExternC void timeEvents( cudaEvent_t   start, cudaEvent_t   end, long long* timeSum, const char* msg );
 
 #endif /* CUDA_UTILS_H_ */

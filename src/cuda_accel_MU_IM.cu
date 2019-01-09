@@ -1,6 +1,5 @@
 #include "cuda_accel_MU.h"
 
-
 /** Kernel to copy powers from complex plane to in-mem plane  .
  *
  * One thread per column
@@ -25,7 +24,7 @@ __global__ void cpyPowers_ker( T* dst, size_t  dpitch, T*  src, size_t  spitch, 
  * One thread per column
  */
 template<typename T>
-__global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height)
+__global__ void cpyCmplx_ker( T* dst, size_t  dpitch, float2* src, size_t  spitch, size_t  width, size_t  height)
 {
   int ix = blockIdx.x * CPY_WIDTH + threadIdx.x ;
 
@@ -41,19 +40,19 @@ __global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  s
     {
       for ( iy = 0 ; iy < height - buffLen ; iy+=buffLen)
       {
-        for ( int by = 0 ; by < buffLen; by++)
-        {
-          int gy = iy + by;
+	for ( int by = 0 ; by < buffLen; by++)
+	{
+	  int gy = iy + by;
 
-          buff[by]          = getPower(src, gy*spitch + ix);
-        }
+	  buff[by]          = getPowerAsFloat(src, gy*spitch + ix);
+	}
 
-        for ( int by = 0 ; by < buffLen; by++)
-        {
-          int gy = iy + by;
+	for ( int by = 0 ; by < buffLen; by++)
+	{
+	  int gy = iy + by;
 
-          set(dst, gy*dpitch + ix, buff[by]);
-        }
+	  set(dst, gy*dpitch + ix, buff[by]);
+	}
       }
     }
 
@@ -61,22 +60,22 @@ __global__ void cpyCmplx_ker( T* dst, size_t  dpitch, fcomplexcu* src, size_t  s
     {
       for ( int by = 0 ; by < buffLen; by++)
       {
-        int gy = iy + by;
+	int gy = iy + by;
 
-        if ( gy < height)
-        {
-          buff[by]          = getPower(src, gy*spitch + ix);
-        }
+	if ( gy < height)
+	{
+	  buff[by]          = getPowerAsFloat(src, gy*spitch + ix);
+	}
       }
 
       for ( int by = 0 ; by < buffLen; by++)
       {
-        int gy = iy + by;
+	int gy = iy + by;
 
-        if ( gy < height)
-        {
-          set(dst, gy*dpitch + ix, buff[by]);
-        }
+	if ( gy < height)
+	{
+	  set(dst, gy*dpitch + ix, buff[by]);
+	}
       }
     }
   }
@@ -103,7 +102,7 @@ void cpyPowers( T* dst, size_t  dpitch, T* src, size_t  spitch, size_t  width, s
 /** Function to call the kernel to copy powers from powers plane to in-mem plane  .
  */
 template<typename T>
-void cpyCmplx( T* dst, size_t  dpitch, fcomplexcu* src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
+void cpyCmplx( T* dst, size_t  dpitch, float2* src, size_t  spitch, size_t  width, size_t  height, cudaStream_t  stream)
 {
   dim3 dimBlock, dimGrid;
 
@@ -140,7 +139,6 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   outSz = sizeof(Tout);
 
   dpitch  = batch->cuSrch->inmemStride * outSz;
-  width   = batch->accelLen * outSz;
   height  = cStack->height;
   spitch  = cStack->stridePower * inSz;
 
@@ -154,28 +152,49 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
   if ( batch->flags & FLAG_CUFFT_CB_INMEM )
   {
     // Copying was done by the callback directly
+    infoMSG(5,5,"break - Copy done by callback");
     return;
   }
 
   for ( int step = 0; step < batch->noSteps; step++ )
   {
-    rVals* rVal = &(*batch->rAraays)[batch->rActive][step][0];
+    rVals* rVal	= &(*batch->rAraays)[batch->rActive][step][0];
 
     if ( rVal->numrs )
     {
-      dst     = ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
+      width	= rVal->numrs;					// Width is dependent on the number of good values
+      MINN( width, batch->cuSrch->inmemStride - rVal->step * batch->accelLen -1 );	// Clamp to plane
+
+      // Check
+      size_t  end = rVal->step * batch->accelLen + width ;
+      if ( end >= batch->cuSrch->inmemStride )
+      {
+	fprintf(stderr,"ERROR: Data exceeds plane.\n");
+	exit(EXIT_FAILURE);
+      }
+
+      width	*= outSz;
+      dst	= ((Tout*)batch->cuSrch->d_planeFull)    + rVal->step * batch->accelLen;
 
       if      ( batch->flags & FLAG_ITLV_ROW )
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
-        spitch  = cStack->stridePower*batch->noSteps*inSz;
+	src	= ((Tin*)cStack->d_planePowr)  + cStack->stridePower*step + cStack->harmInf->kerStart;
+	spitch	= cStack->stridePower*batch->noSteps*inSz;
       }
+#ifdef WITH_ITLV_PLN
       else
       {
-        src     = ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
+	src	= ((Tin*)cStack->d_planePowr)  + cStack->stridePower*height*step + cStack->harmInf->kerStart;
       }
+#else
+      else
+      {
+	fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	exit(EXIT_FAILURE);
+      }
+#endif
 
-      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ),"Calling cudaMemcpy2DAsync after IFFT.");
+      CUDA_SAFE_CALL(cudaMemcpy2DAsync(dst, dpitch, src, spitch, width, height, cudaMemcpyDeviceToDevice, batch->srchStream ), "Calling cudaMemcpy2DAsync after IFFT.");
     }
   }
 }
@@ -185,7 +204,7 @@ void copyIFFTtoPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
  */
 void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
 {
-  fcomplexcu*   src;
+  float2*       src;
 
   size_t        dpitch;
   size_t        spitch;
@@ -218,40 +237,56 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
     {
       FOLD // Calculate striding info
       {
-        // Source data location
-        if ( batch->flags & FLAG_ITLV_ROW )
-        {
-          src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
-          spitch  = cStack->strideCmplx*batch->noSteps;
-        }
-        else
-        {
-          src     = ((fcomplexcu*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
-        }
+	// Source data location
+	if ( batch->flags & FLAG_ITLV_ROW )
+	{
+	  src     = ((float2*)cStack->d_planePowr)  + cStack->strideCmplx*step + cStack->harmInf->kerStart;
+	  spitch  = cStack->strideCmplx*batch->noSteps;
+	}
+#ifdef WITH_ITLV_PLN
+	else
+	{
+	  src     = ((float2*)cStack->d_planePowr)  + cStack->strideCmplx*height*step + cStack->harmInf->kerStart;
+	}
+#else
+	else
+	{
+	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+	  exit(EXIT_FAILURE);
+	}
+#endif
       }
 
-      if ( batch->flags & FLAG_HALF )
+      if ( batch->flags & FLAG_POW_HALF )
       {
-#if CUDA_VERSION >= 7050
-        // Each Step has its own start location in the inmem plane
-        half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if	CUDART_VERSION >= 7050
+	// Each Step has its own start location in the inmem plane
+	half *dst = ((half*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
-        // Call kernel
-        cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
-#else
-        fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-        exit(EXIT_FAILURE);
-#endif
+	// Call kernel
+	cpyCmplx<half>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+#else	// CUDART_VERSION
+	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+	exit(EXIT_FAILURE);
+#endif	// CUDART_VERSION
+#else	// WITH_HALF_RESCISION_POWERS
+	EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
       }
       else
       {
-        // Each Step has its own start location in the inmem plane
-        float *dst  = ((float*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
+#ifdef	WITH_SINGLE_RESCISION_POWERS
+	// Each Step has its own start location in the inmem plane
+	float *dst  = ((float*)batch->cuSrch->d_planeFull)        + rVal->step * batch->accelLen;
 
-        // Call kernel
-        cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+	// Call kernel
+	cpyCmplx<float>(dst, dpitch, src, spitch,  width,  height, batch->srchStream );
+
+#else	// WITH_SINGLE_RESCISION_POWERS
+	EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
       }
-
     }
   }
 }
@@ -261,15 +296,19 @@ void cmplxToPln( cuFFdotBatch* batch, cuFfdotStack* cStack)
  */
 void copyToInMemPln(cuFFdotBatch* batch)
 {
-  // Timing
-  if ( (batch->flags & FLAG_TIME) )
+  PROF // Profiling  .
   {
-    if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+    if ( (batch->flags & FLAG_PROF) )
     {
-      for (int stack = 0; stack < batch->noStacks; stack++)
+      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
       {
-        cuFfdotStack* cStack = &batch->stacks[stack];
-        timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->copyToPlnTime[stack],  "Copy to full plane");
+	infoMSG(5,5,"Time previous components");
+
+	for (int stack = 0; stack < batch->noStacks; stack++)
+	{
+	  cuFfdotStack* cStack = &batch->stacks[stack];
+	  timeEvents( cStack->ifftMemInit, cStack->ifftMemComp, &batch->compTime[NO_STKS*COMP_GEN_D2D + stack ],  "Copy to full plane");
+	}
       }
     }
   }
@@ -278,90 +317,98 @@ void copyToInMemPln(cuFFdotBatch* batch)
   {
     if ( batch->flags & FLAG_SS_INMEM )
     {
-      infoMSG(2,2,"Copy to in-mem plane\n");
+      infoMSG(2,2,"Copy powers to in-mem plane - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+
+      cuFfdotStack* cStack = batch->stacks;
+
+      PROF // Profiling  .
+      {
+	NV_RANGE_PUSH("CPY2IM");
+      }
 
       if ( batch->flags & FLAG_CUFFT_CB_INMEM )
       {
-        // Copying was done by the callback directly
-        return;
+	// Copying was done by the callback directly
+	return;
       }
 
       // Error check
       if (batch->noStacks > 1 )
       {
-        fprintf(stderr,"ERROR: %s cannot handle a family with more than one plane.\n", __FUNCTION__);
-        exit(EXIT_FAILURE);
+	fprintf(stderr,"ERROR: %s cannot handle a family with more than one plane.\n", __FUNCTION__);
+	exit(EXIT_FAILURE);
       }
 
       FOLD // Copy back data  .
       {
-        cuFfdotStack* cStack = &batch->stacks[0];
+	FOLD // Synchronisation  .
+	{
+	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "ifftComp");
 
-        FOLD // Synchronisation  .
-        {
-          infoMSG(3,4,"pre synchronisation\n");
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+	}
 
-          CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, cStack->ifftComp,    0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-        }
+	PROF // Profiling  .
+	{
+	  if ( batch->flags & FLAG_PROF )
+	  {
+	    infoMSG(5,5,"Event %s in %s.\n", "ifftMemInit", "srchStream");
 
-        FOLD // Timing event  .
-        {
-          if ( batch->flags & FLAG_TIME )
-          {
-            CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: multInit");
-          }
-        }
+	    CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemInit, batch->srchStream),"Recording event: ifftMemInit");
+	  }
+	}
 
-        FOLD // Copy memory on the device  .
-        {
-          if ( batch->flags & FLAG_CUFFT_CB_POW )
-          {
-            infoMSG(3,4,"2D async memory copy\n");
+	FOLD // Copy memory on the device  .
+	{
+	  if ( batch->flags & FLAG_CUFFT_CB_POW )
+	  {
+	    infoMSG(4,4,"2D async D2D memory copy");
 
-            // Copy memory using a 2D async memory copy
-            if ( batch->flags & FLAG_HALF )
-            {
-#if CUDA_VERSION >= 7050
-              copyIFFTtoPln<half,half>( batch, cStack );
+	    // Copy memory using a 2D async memory copy
+	    if ( batch->flags & FLAG_POW_HALF )
+	    {
+#ifdef	WITH_HALF_RESCISION_POWERS
+#if 	CUDART_VERSION >= 7050
+	      copyIFFTtoPln<half,half>( batch, cStack );
 #else
-              fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-              exit(EXIT_FAILURE);
+	      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+	      exit(EXIT_FAILURE);
 #endif
-            }
-            else
-            {
-              copyIFFTtoPln<float, float>( batch, cStack );
-            }
-          }
-          else
-          {
-            infoMSG(3,4,"kernel memory copy\n");
+#else	// WITH_HALF_RESCISION_POWERS
+	      EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
+#endif	// WITH_HALF_RESCISION_POWERS
+	    }
+	    else
+	    {
+#ifdef	WITH_SINGLE_RESCISION_POWERS
+	      copyIFFTtoPln<float, float>( batch, cStack );
+#else	// WITH_SINGLE_RESCISION_POWERS
+	      EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
+#endif	// WITH_SINGLE_RESCISION_POWERS
+	    }
+	  }
+	  else
+	  {
+	    infoMSG(4,4,"Kernel memory copy\n");
 
-            // Use kernel to copy powers from powers plane to the inmem plane
-            cmplxToPln( batch, cStack );
-          }
+	    // Use kernel to copy powers from powers plane to the inmem plane
+	    cmplxToPln( batch, cStack );
+	  }
 
-          CUDA_SAFE_CALL(cudaGetLastError(), "At IFFT - copyToInMemPln");
-        }
+	  CUDA_SAFE_CALL(cudaGetLastError(), "At IFFT - copyToInMemPln");
+	}
 
-        FOLD // Synchronisation  .
-        {
-          CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, batch->srchStream),"Recording event: ifftMemComp");
-        }
+	FOLD // Synchronisation  .
+	{
+	  infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "srchStream");
+
+	  CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, batch->srchStream),"Recording event: ifftMemComp");
+	}
       }
 
-      FOLD // Blocking if synchronises  .
+      PROF // Profiling  .
       {
-        if ( batch->flags & FLAG_SYNCH )
-        {
-          infoMSG(3,4,"post synchronisation [blocking] ifftMemComp\n");
-
-          cuFfdotStack* cStack = &batch->stacks[0];
-
-          nvtxRangePush("EventSynch");
-          CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-          nvtxRangePop();
-        }
+	NV_RANGE_POP("CPY2IM");
       }
     }
   }

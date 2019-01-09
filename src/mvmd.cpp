@@ -32,7 +32,7 @@ double MVMD(double k, double phase, double a, double* bess)
   if (bess == NULL)
   {
     // calculate Bessel
-    bess_l = boost::math::cyl_bessel_i<double, double>(0.0, k);;
+    bess_l = boost::math::cyl_bessel_i<double, double>(0.0, k);
   }
   else
   {

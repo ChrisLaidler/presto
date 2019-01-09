@@ -91,6 +91,7 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
    double lo1, lo2, hi1, hi2, freq;
    int binsperside, kern_half_width;
    fcomplex ans;
+   double count = 0;
 
    //printf("\nget_localpower3d   r: %12.5f   z: %12.5f   w: %12.5f\n", r, z, w );
 
@@ -129,16 +130,25 @@ double get_localpower3d(fcomplex * data, int numdata, double r, double z, double
    for (freq = lo1; freq < hi1; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
+      count++;
    }
 
    // Above
    for (freq = lo2; freq < hi2; freq += 1.0) {
       rzw_interp(data, numdata, freq, z, w, kern_half_width, &ans);
       sum += POWER(ans.r, ans.i);
+      count++;
    }
    
-   sum /= (double) NUMLOCPOWAVG; // Average
-   return sum;
+   if ( count )
+   {
+     sum /= count; // Average
+     return sum;
+   }
+   else
+   {
+     return 0;
+   }
 }
 
 

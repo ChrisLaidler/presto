@@ -145,7 +145,7 @@ __host__ __device__ double incdf (double p, double q )
   else
   {
     if ( p == 0 )
-      return 0;
+      return NAN;	// I found sigma bottoms out at ~ -35 0 NAN marks an error
 
     if ( 0.02425 > p )
     {
@@ -183,6 +183,7 @@ __host__ __device__ double incdf (double p, double q )
 
   return sighn*x;
 }
+
 //Incomplete gamma by quadrature. Returns P .a; x/ or Q.a; x/, when psig is 1 or 0,
 //respectively. User should not call directly.
 double gammpapprox(double a, double x, int psig)
@@ -420,8 +421,8 @@ void calcNQ(double qOrr, long long n, double* p, double* q)
       pp  += term;
       dff  = fabs(sum0-qq);
 
-      //      if ( trueV > 0.5 )
-      //printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
+//      if ( trueV > 0.5 )
+//	printf("calcNQ %03i sum: %.4e  term: %.6e   dff: %.3e\n", k-1, pp, term, dff );
     }
     while ( dff > 0 && k < n && k <= 20 );
 

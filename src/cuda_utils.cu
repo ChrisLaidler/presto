@@ -23,7 +23,7 @@ size_t getFreeRamCU()
 /** Get the amount of free RAM in bytes
  *
  */
-unsigned long getFreeRamCU()
+size_t getFreeRamCU()
 {
   long pages = sysconf(_SC_PHYS_PAGES);
   long freePages = sysconf(_SC_AVPHYS_PAGES);
@@ -43,7 +43,7 @@ unsigned long getFreeRamCU()
   }
 }
 #else
-unsigned long getFreeRamCU()
+size_t getFreeRamCU()
 {
   fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
@@ -59,11 +59,15 @@ static SMVal opsF32_A_M_MAD_perMPperCC[] =
     { 0x13, 8 },      // Tesla   Generation (SM 1.3) GT200 class
     { 0x20, 32 },     // Fermi   Generation (SM 2.0) GF100 class
     { 0x21, 48 },     // Fermi   Generation (SM 2.1) GF10x class
+
     { 0x30, 192 },    // Kepler  Generation (SM 3.0) GK10x class
-    { 0x32, 192},     // Kepler  Generation (SM 3.2) GK10x class
+    { 0x32, 192 },    // Kepler  Generation (SM 3.2) GK10x class
     { 0x35, 192 },    // Kepler  Generation (SM 3.5) GK11x class
-    { 0x37, 192},     // Kepler  Generation (SM 3.7) GK21x class
+    { 0x37, 192 },    // Kepler  Generation (SM 3.7) GK11x class
+
     { 0x50, 128 },    // Maxwell Generation (SM 5.0) GM10x class
+    { 0x52, 128 },    // Maxwell Generation (SM 5.2) GM10x class
+    { 0x53, 128 },    // Maxwell Generation (SM 5.3) GM10x class
     { -1, -1 }
 };
 
@@ -88,37 +92,116 @@ static SMVal opsF64_A_M_MAD_perMPperCC[] =
 // Defined number of cores for SM of specific compute versions ( Taken from CUDA 6.5 Samples )
 static SMVal nGpuArchCoresPerSM[] =
 {
-    { 0x10,  8 }, // Tesla   Generation (SM 1.0) G80   class
-    { 0x11,  8 }, // Tesla   Generation (SM 1.1) G8x   class
-    { 0x12,  8 }, // Tesla   Generation (SM 1.2) G9x   class
-    { 0x13,  8 }, // Tesla   Generation (SM 1.3) GT200 class
-    { 0x20, 32 }, // Fermi   Generation (SM 2.0) GF100 class
-    { 0x21, 48 }, // Fermi   Generation (SM 2.1) GF10x class
-    { 0x30, 192}, // Kepler  Generation (SM 3.0) GK10x class
-    { 0x32, 192}, // Kepler  Generation (SM 3.2) GK10x class
-    { 0x35, 192}, // Kepler  Generation (SM 3.5) GK11x class
-    { 0x37, 192}, // Kepler  Generation (SM 3.7) GK21x class
-    { 0x50, 128}, // Maxwell Generation (SM 5.0) GM10x class
-    {   -1, -1 }
+    { 0x10, 8 },      // Tesla   Generation (SM 1.0) G80   class
+    { 0x11, 8 },      // Tesla   Generation (SM 1.1) G8x   class
+    { 0x12, 8 },      // Tesla   Generation (SM 1.2) G9x   class
+    { 0x13, 8 },      // Tesla   Generation (SM 1.3) GT200 class
+    { 0x20, 32 },     // Fermi   Generation (SM 2.0) GF100 class
+    { 0x21, 48 },     // Fermi   Generation (SM 2.1) GF10x class
+
+    { 0x30, 192 },    // Kepler  Generation (SM 3.0) GK10x class
+    { 0x32, 192 },    // Kepler  Generation (SM 3.2) GK10x class
+    { 0x35, 192 },    // Kepler  Generation (SM 3.5) GK11x class
+    { 0x37, 192 },    // Kepler  Generation (SM 3.7) GK11x class
+
+    { 0x50, 128 },    // Maxwell Generation (SM 5.0) GM10x class
+    { 0x52, 128 },    // Maxwell Generation (SM 5.2) GM10x class
+    { 0x53, 128 },    // Maxwell Generation (SM 5.3) GM10x class
+    { -1, -1 }
 };
 
+
+__global__ void clock_block(long long int clock_count)
+{
+  long long int start_clock = clock64();
+  long long int clock_offset = 0;
+
+    while (clock_offset < clock_count)
+    {
+        clock_offset = clock64() - start_clock;
+    }
+
+    if( clock_offset < 0 )
+    {
+      printf("This is a dummy string so that this wont get optimised out");
+    }
+}
+
+__host__ void streamSleep(cudaStream_t stream, long long int clock_count )
+{
+  dim3 dimBlock, dimGrid;
+
+  // Blocks of 1024 threads ( the maximum number of threads per block )
+  dimBlock.x = 1;
+  dimBlock.y = 1;
+  dimBlock.z = 1;
+
+  // One block per harmonic, thus we can sort input powers in Shared memory
+  dimGrid.x = 1;
+  dimGrid.y = 1;
+
+  clock_block<<< dimGrid,  dimBlock, 0, stream >>>(clock_count);
+
+  CUDA_SAFE_CALL(cudaGetLastError(), "Calling the clock_block kernel.");
+}
+
+/** Convert CUDA half values to floats
+ *
+ * @param h	The half precision floating point value to be converts
+ * @return	The single precision floating point value
+ */
+float half2float(const ushort h)
+{
+  unsigned int sign     = ((h >> 15) & 1);
+  unsigned int exponent = ((h >> 10) & 0x1f);
+  unsigned int mantissa = ((h & 0x3ff) << 13);
+
+  if (exponent == 0x1f)     // NaN or Inf
+  {
+    mantissa = (mantissa ? (sign = 0, 0x7fffff) : 0);
+    exponent = 0xff;
+  }
+  else if (!exponent)       // Denorm or Zero
+  {
+    if (mantissa)
+    {
+      unsigned int msb;
+      exponent = 0x71;
+      do
+      {
+	msb = (mantissa & 0x400000);
+	mantissa <<= 1;  /* normalize */
+	--exponent;
+      }
+      while (!msb);
+
+      mantissa &= 0x7fffff;  /* 1.mantissa is implicit */
+    }
+  }
+  else
+  {
+    exponent += 0x70;
+  }
+
+  uint res = ((sign << 31) | (exponent << 23) | mantissa);
+  return  *((float*)(&res));
+}
 
 void debugMessage ( const char* format, ... )
 {
 #ifdef DEBUG
   if ( detect_gdb_tree() )
   {
-    //printf("in GDB\n");
+    // in GDB
+
     va_list ap;
     va_start ( ap, format );
     vprintf ( format, ap );      // Write the line
     va_end ( ap );
-
-    //std::cout.flush();
   }
   else
   {
-    //printf("NOT in GDB\n");
+    // NOT in GDB
     printf ( MAGENTA );
 
     va_list ap;
@@ -127,7 +210,6 @@ void debugMessage ( const char* format, ... )
     va_end ( ap );
 
     printf ( RESET );
-    //std::cout.flush();
   }
 #endif
 }
@@ -159,22 +241,81 @@ int detect_gdb_tree(void)
   return gdb;
 }
 
-void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char *errorMsg)
+void __cufftSafeCall(cufftResult cudaStat, const char *file, const int line, const char* format, ...)
 {
   if (cudaStat != CUFFT_SUCCESS)
   {
-    fprintf(stderr, "CUFFT ERROR: %s [ %s at line %d in file %s ]\n", errorMsg, _cudaGetErrorEnum(cudaStat), line, file);
+    fflush(stdout);
+    fflush(stderr);
+
+    fprintf(stderr, "CUFFT ERROR: ");
+
+    // Print function error message
+    va_list ap;
+    va_start ( ap, format );
+    vfprintf ( stderr, format, ap );
+    va_end ( ap );
+
+    // Print valuable details
+    fprintf(stderr, " [ %s at line %d in file %s ]\n", _cudaGetErrorEnum(cudaStat), line, file);
+
     exit(EXIT_FAILURE);
   }
 }
 
-void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const char *errorMsg)
+void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...)
 {
   if (cudaStat != cudaSuccess)
   {
-    fprintf(stderr, "CUDA ERROR: %s [ %s at line %d in file %s ]\n", errorMsg, cudaGetErrorString(cudaStat), line, file);
+    fflush(stdout);
+    fflush(stderr);
+
+    fprintf(stderr, "CUDA ERROR: ");
+
+    // Print function error message
+    va_list ap;
+    va_start ( ap, format );
+    vfprintf ( stderr, format, ap );
+    va_end ( ap );
+
+    // Print valuable details
+    fprintf(stderr, " [ %s at line %d in file %s ]\n", cudaGetErrorString(cudaStat), line, file);
+
     exit(EXIT_FAILURE);
   }
+}
+
+ACC_ERR_CODE __cuErrCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...)
+{
+  if (cudaStat != cudaSuccess)
+  {
+    fflush(stdout);
+    fflush(stderr);
+
+    fprintf(stderr, "CUDA ERROR (MSG): ");
+
+    // Print function error message
+    va_list ap;
+    va_start ( ap, format );
+    vfprintf ( stderr, format, ap );
+    va_end ( ap );
+
+    // Print valuable details
+    fprintf(stderr, " [ %s at line %d in file %s ]\n", cudaGetErrorString(cudaStat), line, file);
+
+    return ACC_ERR_CU_CALL;
+  }
+
+  return ACC_ERR_NONE;
+}
+
+void __exit_directive(const char *file, const int line, const char *flag)
+{
+  fflush(stdout);
+  fflush(stderr);
+
+  fprintf(stderr, "ERROR: This code has not bee compiled with the \"%s\" preprocessor directive. Line: %d In: %s.\n\tIf you have enabled this you may need a full recompile ie. make cudaclean; make \n", flag,line, file);
+  exit(EXIT_FAILURE);
 }
 
 int getGPUCount()
@@ -201,88 +342,6 @@ inline int getValFromSMVer(int major, int minor, SMVal* vals)
 
   // If we get here we didn't find the value in the array
   return -1;
-}
-
-//void* initGPU(void* ptr)
-//{
-//  int currentDevvice;
-//  char txt[1024];
-//
-//  //int device = *((int*)(&ptr));
-//  gpuInf device = *((int*)(&ptr));
-//
-//  printf("Device no is %i \n", device);
-//
-//  CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-//
-//  // Check if the the current device is 'device'
-//  CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-//  if ( currentDevvice != device)
-//  {
-//    fprintf(stderr, "ERROR: Device not set.\n");
-//  }
-//  else // call something to initialise the device
-//  {
-//    sprintf(txt,"Init device %02i", device );
-//    nvtxRangePush(txt);
-//
-//    //size_t free, total;
-//    //CUDA_SAFE_CALL(cudaMemGetInfo ( &free, &total ), "Getting Device memory information");
-//
-//    //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-//
-//    cudaFree(0);
-//
-//    nvtxRangePop();
-//  }
-//
-//  return NULL;
-//}
-
-void initGPUs(gpuSpecs* gSpec)
-{
-  int currentDevvice, deviceCount;
-  char txt[1024];
-
-  int major           = 0;
-  int minor           = 0;
-
-  CUDA_SAFE_CALL(cudaGetDeviceCount(&deviceCount), "Failed to get device count using cudaGetDeviceCount");
-
-  for (int dIdx = 0; dIdx < gSpec->noDevices; dIdx++)
-  {
-    int device    = gSpec->devId[dIdx];
-    gpuInf* gInf  = &gSpec->devInfo[dIdx];
-
-    CUDA_SAFE_CALL( cudaSetDevice ( device ), "Failed to set device using cudaSetDevice");
-
-    // Check if the the current device is 'device'
-    CUDA_SAFE_CALL( cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice" );
-
-    if ( currentDevvice != device)
-    {
-      fprintf(stderr, "ERROR: Device not set.\n");
-    }
-    else // call something to initialise the device
-    {
-      sprintf(txt,"Init device %02i", device );
-      nvtxRangePush(txt);
-
-      cudaDeviceProp deviceProp;
-      CUDA_SAFE_CALL( cudaGetDeviceProperties(&deviceProp, device), "Failed to get device properties device using cudaGetDeviceProperties");
-
-      major                           = deviceProp.major;
-      minor                           = deviceProp.minor;
-      gInf->capability                = major + minor/10.0f;
-      gInf->alignment                 = getMemAlignment();                  // This action will initialise the CUDA context
-      gInf->devid                     = device;
-      gInf->name                      = (char*)malloc(256*sizeof(char));
-
-      sprintf(gInf->name, "%s", deviceProp.name );
-
-      nvtxRangePop();
-    }
-  }
 }
 
 void listDevices()
@@ -374,14 +433,17 @@ int getMemAlignment()
   return stride;
 }
 
-int getStrie(int noEls, int elSz, int blockSz)
+int getStride(int noEls, int elSz, int blockSz)
 {
   int     noBlocks = ceil(noEls*elSz/(float)blockSz);
   float   elStride = noBlocks * blockSz / (float)elSz;
 
   float rem = elStride - (int)elStride;
   if ( rem != 0 )
-    fprintf(stderr, "ERROR: Memory not aligned to the size of stride.\n");
+  {
+    fprintf(stderr, "ERROR: Memory not aligned to the size of stride. Pleas contact Chris Laidler.\n");
+    exit(EXIT_FAILURE);
+  }
 
   return elStride;
 }
@@ -432,7 +494,7 @@ const char* _cudaGetErrorEnum(cufftResult error)
     case CUFFT_NO_WORKSPACE:
       return "CUFFT_NO_WORKSPACE";
 
-#if CUDA_VERSION >= 6050
+#if CUDART_VERSION >= 6050
     case CUFFT_LICENSE_ERROR:
       return "CUFFT_LICENSE_ERROR";
 
@@ -455,6 +517,7 @@ const char* _cudaGetErrorEnum(cufftResult error)
  **/
 void infoMSG ( int lev, int indent, const char* format, ... )
 {
+
   if ( lev <= msgLevel )
   {
     char buffer[1024];
@@ -488,11 +551,28 @@ void infoMSG ( int lev, int indent, const char* format, ... )
   }
 }
 
-
-void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const char* msg )
+void queryEvents( cudaEvent_t   evmt, const char* msg )
 {
-  infoMSG(3,3,"timeEvent %s\n", msg);
+  cudaError_t ret;
 
+  ret = cudaEventQuery(evmt);
+
+  if ( ret == cudaSuccess )
+  {
+    infoMSG(6,6,"Event Query %s: Done or not called.\n", msg);
+  }
+  else if ( ret == cudaErrorNotReady )
+  {
+    infoMSG(6,6,"Event Query %s: Not finished.\n", msg);
+  }
+  else
+  {
+    infoMSG(6,6,"Event Query %s: Unknown.. %s ", msg, cudaGetErrorString(ret) );
+  }
+}
+
+void timeEvents( cudaEvent_t   start, cudaEvent_t   end, long long* timeSum, const char* msg )
+{
   // Check for previous errors
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering timing");
 
@@ -503,18 +583,24 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
   if ( ret == cudaErrorNotReady )
   {
     // This is not ideal!
-    infoMSG(3,4,"pre synchronisation [blocking] end\n");
+    infoMSG(6,6,"timeEvents, end event not complete, Blocking");
 
-    char msg2[1024];
     cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
-    sprintf(msg2, "Blocking on %s", msg);
-    nvtxRangePush(msg2);
+    char msg2[1024];
+
+    PROF // Profiling  .
+    {
+      sprintf(msg2, "Timing block [%s]", msg);
+      NV_RANGE_PUSH(msg2);
+    }
 
     sprintf(msg2, "At a timing blocking synchronisation \"%s\"", msg);
     CUDA_SAFE_CALL(cudaEventSynchronize(end), msg2 );
 
-    nvtxRangePop();
-
+    PROF // Profiling  .
+    {
+      NV_RANGE_POP("msg2");
+    }
   }
 
   // Do the actual timing
@@ -526,15 +612,18 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
     // This shouldn't happen if the checks were done correctly!
 
     cudaError_t res = cudaGetLastError(); // Resets the error to cudaSuccess
+    infoMSG(6,6,"Event not created yet?");
   }
   else if ( ret == cudaErrorNotReady )
   {
-    infoMSG(3,4,"\nnot ready!\n");
+    infoMSG(6,6,"Event no ready!\n");
   }
   else if ( ret == cudaSuccess )
   {
 #pragma omp atomic
-    (*timeSum) += time;
+    (*timeSum) += time*1e3; // Convert to Microsecond
+
+    infoMSG(6,6,"Event: \"%s\"  Time: %.3f ms \n", msg, time);
   }
   else
   {
@@ -544,4 +633,39 @@ void timeEvents( cudaEvent_t   start, cudaEvent_t   end, float* timeSum, const c
     fprintf(stderr, "CUDA ERROR: %s [ %s ]\n", msg2, cudaGetErrorString(ret));
     exit(EXIT_FAILURE);
   }
+}
+
+void printContext()
+{
+  int currentDevvice;
+  CUcontext pctx;
+  cuCtxGetCurrent ( &pctx );
+  CUDA_SAFE_CALL(cudaGetDevice(&currentDevvice), "Failed to get device using cudaGetDevice");
+
+  int tid = 0;
+#ifdef	WITHOMP
+  tid = omp_get_thread_num();
+#endif	// WITHOMP
+
+  printf("Thread %02i  currentDevvice: %i Context %p \n", tid, currentDevvice, pctx);
+}
+
+int setDevice(int device)
+{
+  int dev;
+
+  CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+
+  if ( dev != device )
+  {
+    CUDA_SAFE_CALL(cudaSetDevice(device), "Failed to set device using cudaSetDevice");
+    CUDA_SAFE_CALL(cudaGetDevice(&dev), "Failed to get device using cudaGetDevice");
+    if ( dev != device )
+    {
+      fprintf(stderr, "ERROR: CUDA Device not set.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  return dev;
 }

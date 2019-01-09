@@ -18,8 +18,8 @@
 // #define ACCEL_USELEN 3850	// This works up to zmax=100 to use 4K FFTs
 // #define ACCEL_USELEN 1820	// This works up to zmax=100 to use 2K FFTs
 
-//#undef  ACCEL_USELEN
-//#define ACCEL_USELEN  7456 // TMP added 16k
+#undef  ACCEL_USELEN
+#define ACCEL_USELEN	8126			// Added by run time script for 8K FFT's at a ZMAZ of 0
 
 #undef FOLD
 #undef FOUT
@@ -94,15 +94,6 @@ typedef struct accelcand{
   double *hirs;        /* Optimized freqs for the harmonics */
   double *hizs;        /* Optimized fdots for the harmonics */
   rderivs *derivs;     /* An rderivs structure for each harmonic */
-
-//#ifdef CBL
-  //TMP Remove these vars
-  float   init_power;
-  float   init_sigma;
-  int     init_numharm;
-  double  init_r;
-  double  init_z;
-//#endif
 } accelcand;
 
 typedef struct kernel{
@@ -175,5 +166,7 @@ GSList *duplicate_accelcands(GSList * list);
 
 GSList *insert_new_accelcand(GSList * list, float power, float sigma, int numharm, double rr, double zz, int *added);
 GSList *insert_accelcand(GSList * list, accelcand *cand);
+
+void print_percent_complete(int current, int number, const char *what, int reset);
 
 #endif // _ACECEL_H

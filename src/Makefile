@@ -11,15 +11,15 @@ WITH_CUDA  = yes
 WITHOMP    = yes
 WITHCBL    = no
 
-# CUDA_ARCH needs to be set to the artitech of the device(s) you wnat to run the search on
-# CUDA_ARCH should be a space seperated list consisting to numbers ie "30 50" 
+# CUDA_ARCH needs to be set to the architecture of the device(s) you want to run the search on
+# CUDA_ARCH should be a space separated list consisting to numbers ie "30 50"
 # Where the numbers are major minor and can be found by running deviceQuery
-# You can use multiple values, just uncomment the specific lines below, or add youre own
+# You can use multiple values, just uncomment the specific lines below, or add you’re own
 CUDA_ARCH  =
 #CUDA_ARCH += 20
 #CUDA_ARCH += 30
 #CUDA_ARCH += 35
-#CUDA_ARCH += 50
+CUDA_ARCH += 50
 
 
 OS_SIZE    = $(shell uname -m | sed -e "s/x86_64/64/" -e "s/armv7l/32/" -e "s/aarch64/64/")
@@ -29,7 +29,7 @@ ARCH_FLAGS =
 BINPATH    = $(PRESTO)/bin
 LIBPATH    = $(PRESTO)/lib
 
-PRESTOOBJS_BASE = amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
+PRESTOOBJS_BASE = accel_utils.o amoeba.o atwood.o barycenter.o birdzap.o cand_output.o\
 	characteristics.o cldj.o chkio.o corr_prep.o corr_routines.o\
 	correlations.o database.o dcdflib.o dispersion.o\
 	fastffts.o fftcalls.o fminbr.o fold.o fresnl.o ioinf.o\
@@ -104,11 +104,12 @@ CFITSIOINC  := $(shell pkg-config --cflags cfitsio)
 CFITSIOLINK := $(shell pkg-config --libs cfitsio) -lm
 
 # The standard PRESTO libraries to link into executables
-PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(FFTLINK)
+PRESTOLINK = $(CFITSIOLINK) -L$(PRESTO)/lib -lpresto$(POSTFIX) $(GLIBLINK) $(FFTLINK) -ldl
+CUACCELLINK = ""
 
-CC 	= gcc
+CC  = gcc
 CPP = g++
-FC = gfortran
+FC  = gfortran
 #FC = g77
 NVCC = nvcc
 
@@ -142,7 +143,7 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
-  
+
   ifeq ($(CUDA_ARCH),)
   	$(info )
   	$(info Please specify CUDA_ARCH in the makefile if compiling with CUDA  )
@@ -152,20 +153,20 @@ ifeq ($(WITH_CUDA),yes)
   endif
 endif
 #
-# Very recent Intel CPUs might see a few percent speedup using -mavx
+# Very recent Intel CPUs might see a few percent speed-up using -mavx
 BASEFLAGS 			= -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) $(PGPLOTINC) $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -g -Wall -W -fPIC
 #	 -march=native
 #       -g -O3 -ffast-math -Wall -W -fPIC  # Debug builds now done with mode=debug
 
 # Warnings
 CXXWARN			 	= -Wno-unused-result
-# Other Warnings  
-CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function 
+# Other Warnings
+CXXWARN			  += -Wno-comment -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
 
 CWARN				  = -Wno-implicit-function-declaration
 
-CFLAGS			 	= $(BASEFLAGS) $(CWARN) $(CXXWARN)
-CXXFLAGS			= $(BASEFLAGS) $(CXXWARN)
+CFLAGS			 	+= $(BASEFLAGS) $(CWARN) $(CXXWARN)
+CXXFLAGS			+= $(BASEFLAGS) $(CXXWARN)
 
 CLINKFLAGS 		= $(CFLAGS)
 # NOTE:  Be careful of upping the optimization on the
@@ -186,19 +187,23 @@ CUDA_ARCH  := $(foreach root, $(CUDA_ARCH), -gencode arch=compute_$(root),code=s
 
 CUDA_PATH  = /usr/local/cuda
 
-CUDALIBS   = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
-CUDAINC    = -I$(CUDA_PATH)/include
+CUDALIBS   += -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lnvToolsExt
+CUDAINC    += -I$(CUDA_PATH)/include
 
 NVCCFLAGS  =  $(CUDAINC) $(CUDA_ARCH) -I$(PRESTO)/include $(GLIBINC) $(CFITSIOINC) -m${OS_SIZE} -dc ${ARCH_FLAGS}
-NVCCFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+NVCCFLAGS  += $(FFTINC) -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 #NVCCFLAGS  += -Xcompiler -Wno-comment
-NVCCFLAGS	 += $(foreach root, $(CXXWARN), -Xcompiler $(root))
+NVCCFLAGS  += $(foreach root, $(CXXWARN), -Xcompiler $(root))
 
-NVCLFLAGS  = $(CUDAINC) $(CUDA_ARCH) $(CUDALIBS)
+NVCLFLAGS  = --cudart shared $(CUDA_ARCH)
 NVCLFLAGS  += -DUSEFFTW -DUSEMMAP -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 GPUOUTP		=
 
+CXXFLAGS  += -DNVVP
+CFLAGS    += -DNVVP
+NVCCFLAGS += -DNVVP
+NVCLFLAGS += -DNVVP
 
 $(info)
 
@@ -208,11 +213,14 @@ OPT_FLAGS =
 ifeq ($(DEBUG),1)
   $(info Compiling in debug mode)
 
-  OPT_FLAGS     += -O0 -ggdb  -DDEBUG
+  OPT_FLAGS     += -O0 -ggdb -DDEBUG
 
-  NVCCFLAGS     += -g -G -O0 -DDEBUG
-  NVCLFLAGS     += -g -G -O0 -DDEBUG
+  NVCCFLAGS     += -g -G -O0 -DDEBUG -lineinfo
+  NVCLFLAGS     += -g -G -O0 -DDEBUG -lineinfo
 
+#  NVCCFLAGS     += --relocatable-device-code=true
+#  NVCLFLAGS     += --relocatable-device-code=true
+  
   DEBUG_TARGET  =debug
   POSTFIX       =_debug
   export DEBUG  =1
@@ -226,7 +234,7 @@ else
   # Additional CPU optimisations
   OPT_FLAGS		+= -unsafe-math -funroll-loops -funswitch-loops -fprefetch-loop-arrays
   # could use -mpc32
-  
+
   # vectorisation output
   # CFLAGS+=-ftree-vectorizer-verbose=2 -fdump-tree-vect-details
 
@@ -234,13 +242,12 @@ else
   NVCLFLAGS += -O3 -DFLOAT -DFORUM -use_fast_math -prec-div=false -ftz=true -prec-sqrt=false --fmad=true -lineinfo
 
   # Global memory accesses cached in both L1 and L2 (default)
-  #NVCCFLAGS += -Xptxas -dlcm=ca
-  #NVCLFLAGS += -Xptxas -dlcm=ca
+  NVCCFLAGS += -Xptxas -dlcm=ca
+  NVCLFLAGS += -Xptxas -dlcm=ca
 
-  # Global memory accesses cached in L2 only
+  # Global memory accesses cached in L2 only - more SM
   #NVCCFLAGS += -Xptxas -dlcm=cg
   #NVCLFLAGS += -Xptxas -dlcm=cg
-
 
   DEBUG_TARGET   =release
   POSTFIX        =
@@ -278,16 +285,16 @@ ifeq ($(WITHCBL),yes)
   FTCFLG     	 = $(shell freetype-config --cflags)
   FTLINK     	 = $(shell freetype-config --libs)
 
-  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
   INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)
 
   NVCCFLAGS  	+= -DCBL $(INDARR)
-  NVCLFLAGS  	+= -DCBL $(INDARR) -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
+  CUDALIBS	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lPNGwriter $(PNGLINK) $(FTLINK)
 
   CFLAGS     	+= -DCBL
   CXXFLAGS   	+= -DCBL $(INDARR) -Wno-unknown-pragmas
 
-  GPUOUTP    	+= $(BINPATH)/test_GPUaccel$(POSTFIX)
+  #GPUOUTP    	+= $(BINPATH)/test_GPUaccel$(POSTFIX)
 else
   LNDARR     =
   INDARR     =
@@ -296,13 +303,14 @@ endif
 
 # With CUDA
 ifeq ($(WITH_CUDA),yes)
-  
+
   CUDA_VER    = $(shell $(NVCC) -V | grep release | cut -f 5 -d ' ' | tr -d ,)
-  
+
   $(info • Compileing with CUDA version $(CUDA_VER))
 
   NVCC_SRCS  	= $(wildcard *.cu)
   NVCC_OBS   	= $(patsubst %.cu, $(OBJDIR)%.cu.o,  $(NVCC_SRCS)  )
+  NVCC_LIB_OBS  = $(NVCC_OBS)
 
   NVCCFLAGS  	+= -DCUDA -Xcompiler -fPIC
   NVCLFLAGS  	+= -DCUDA -Xcompiler -fPIC
@@ -318,14 +326,14 @@ ifeq ($(WITH_CUDA),yes)
 
   CUACCL     	= -lcuaccel$(POSTFIX)
 
-  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
+  GPUOUTP    	+= $(BINPATH)/accelsearch$(POSTFIX) $(BINPATH)/getAccelLen$(POSTFIX) # $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
-	# Check for CUDA 6.5 for CUFFT callbacks 
-	ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
-  	CUDALIBS  	+= -lcufft_static -lculibos
-	else
-	  CUDALIBS		+= -lcufft
-	endif
+  # Check for CUDA 6.5 for CUFFT callbacks
+  ifeq ($(shell echo ${CUDA_VER}\>=6.5 | bc),1)
+   CUDALIBS  	+= -lcufft_static -lculibos
+  else
+   CUDALIBS	+= -lcufft
+  endif
 
 else
   NVCC        = $(CPP)
@@ -373,7 +381,7 @@ SLA_SRCS	= $(wildcard slalib/*.f)
 SLA_SRCS	:= $(filter-out slalib/sla_test.f, $(SLA_SRCS))
 SLA_OBS		= $(patsubst %.f, %.o,  $(SLA_SRCS)  )
 
-libpresto		= $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
+libpresto	= $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX)
 libcuaccel	= $(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX)
 
 all: libpresto slalib binaries $(GPUOUTP)
@@ -419,6 +427,9 @@ slalib: slalib/sla_test test_sla
 test_GPUaccel: $(BINPATH)/test_GPUaccel$(POSTFIX)
 	@ # Make file cant handle blank targets so here is a random comment =/
 
+getAccelLen: $(BINPATH)/getAccelLen$(POSTFIX)
+	@ # Make file cant handle blank targets so here is a random comment =/
+
 accelsearch: $(BINPATH)/accelsearch$(POSTFIX)
 	@ # Make file cant handle blank targets so here is a random comment =/
 
@@ -434,10 +445,10 @@ $(LIBPATH)/libpresto$(POSTFIX)$(LIBSUFFIX): $(PRESTOOBJS)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),libpresto$(POSTFIX))
 
 
-$(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(NVCC_OBS)
+$(LIBPATH)/libcuaccel$(POSTFIX)$(LIBSUFFIX): $(libpresto) $(NVCC_LIB_OBS)
 	@echo ""
 	@echo "Linking libcuaccel$(POSTFIX)"
-	$(NVCC) $(LIBCMD) -o $@ $(NVCC_OBS) $(FFTLINK) $(NVCLFLAGS)
+	$(NVCC) $(LIBCMD) $(NVCLFLAGS) -o $@ $(NVCC_LIB_OBS) $(FFTLINK) $(PRESTOLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),libcuaccel$(POSTFIX))
 
 ###############   Tests   ################
@@ -478,14 +489,21 @@ mpiprepsubband: mpiprepsubband_cmd.c $(OBJDIR)mpiprepsubband_cmd.o $(OBJDIR)mpip
 ${BINPATH}/accelsearch$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o
 	@echo ""
 	@echo "Linking accelsearch$(POSTFIX)"
-	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)accelsearch.o $(OBJDIR)zapping.o $(CUDALIBS) $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm $(FFTLINK)
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),accelsearch$(POSTFIX))
 
 $(BINPATH)/test_GPUaccel$(POSTFIX): $(libpresto) $(NVCC_OBS) $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o
 	@echo ""
 	@echo "Linking test_GPUaccel"${POSTFIX}
-	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
+	$(NVCC) $(NVCLFLAGS) -o $@ $(OBJDIR)accelsearch_cmd.o $(OBJDIR)accel_utils.o $(OBJDIR)test_GPUaccel.o $(OBJDIR)zapping.o $(CUDALIBS) $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
 	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),test_GPUaccel${POSTFIX})
+
+
+$(BINPATH)/getAccelLen$(POSTFIX): $(OBJDIR)accel_utils.o $(OBJDIR)getAccelLen.o $(NVCC_OBS) $(libpresto)
+	@echo ""
+	@echo "Linking getAccelLen"${POSTFIX}
+	$(NVCC) $(NVCLFLAGS) $(OBJDIR)accel_utils.o -o $@ $(OBJDIR)getAccelLen.o $(CUDALIBS) $(PRESTOLINK) $(NVCC_OBS) $(GLIBLINK) -lm
+	$(call print_timer,$(COMPILE_CURRENT_TIME),$(COMPILE_START_TIME),getAccelLen${POSTFIX})
 
 check_parkes_raw: $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(libpresto)
 	$(CC) $(CLINKFLAGS) -o $(PRESTO)/bin/$@ $(OBJDIR)check_parkes_raw.o $(OBJDIR)multibeam.o $(PRESTOLINK) -lm
@@ -541,7 +559,7 @@ cal2mjd: $(OBJDIR)cldj.o $(OBJDIR)cal2mjd.o
 plotbincand: $(OBJDIR)plotbincand.o $(PLOT2DOBJS) $(libpresto)
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) $(OBJDIR)plotbincand.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
-profile: profile_cmd.c $(OBJDIR)profile_cmd.o $(OBJDIR)profile.o $(PLOT2DOBJS) $(libpresto)
+profile: profile_cmd.c $(OBJDIR)profile_cmd.o $(OBJDIR)profile.o $(PLOT2DOBJS) ${POSTFIX}
 	$(FC) $(FLINKFLAGS) -o $(PRESTO)/bin/$@ $(PLOT2DOBJS) $(OBJDIR)profile.o $(OBJDIR)profile_cmd.o $(PRESTOLINK) $(PGPLOTLINK) -lm
 
 psrorbit: $(OBJDIR)psrorbit.o $(PLOT2DOBJS) $(libpresto)
@@ -639,7 +657,7 @@ $(OBJDIR)%.o: %.c
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(OBJDIR)
 	$(CPP) $(CXXFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
-	
+
 $(OBJDIR)%.o: %.f
 	@mkdir -p $(OBJDIR)
 	$(FC) $(FFLAGS) -o $@ -c $<
@@ -659,53 +677,84 @@ $(OBJDIR)test_GPUaccel.o: test_GPUaccel.cpp
 	@mkdir -p $(OBJDIR)
 	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
 
+$(OBJDIR)getAccelLen.o: getAccelLen.cpp
+	@mkdir -p $(OBJDIR)
+	$(NVCC) $(NVCCFLAGS) -std=c++11 -o $@ -c $< $(INDARR)
+
 ###############  Cleans   ################
 
 cleanALEN:
 	# Debug
-	rm -f build/*/accel_utils.o
-	rm -f build/*/accelsearch.o
-	rm -f build/*/test_GPUaccel.o
+	rm -rf build/*/accel_utils.o
+	rm -rf build/*/accelsearch.o
+	rm -rf build/*/test_GPUaccel.o
 
-cleanTIMING:
+cleanPROFILE:
 	rm -rf build/*/accelsearch*.o
 	rm -rf build/*/cuda_accel_IN.cu.o
-	rm -rf build/*/cuda_accel_MU_10.cu.o
+	rm -rf build/*/cuda_accel_KR.cu.o
+	rm -rf build/*/cuda_accel_MU_CB.cu.o
+	rm -rf build/*/cuda_accel_MU_IM.cu.o
 	rm -rf build/*/cuda_accel_MU.cu.o
 	rm -rf build/*/cuda_accel_SS_CPU.cu.o
 	rm -rf build/*/cuda_accel_SS_INMEM.cu.o
 	rm -rf build/*/cuda_accel_SS.cu.o
 	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
 	rm -rf build/*/cuda_cand_OPT.cu.o
+	rm -rf build/*/cuda_utils.cu.o
+
+cleanMULT:
+	rm -rf build/*/accelsearch*.o
 	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
+	rm -rf build/*/cuda_accel_MU*.o
+
+cleanSAS:
+	rm -rf build/*/accelsearch*.o
+	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
+	rm -rf build/*/cuda_accel_SS*.o
+	
+cleanOPT:
+	rm -rf build/*/accelsearch*.o
+	rm -rf build/*/test_GPUaccel*.o
+	rm -rf build/*/cuda_response.cu.o
+	rm -rf build/*/cuda_accel_PLN.o
+	rm -rf build/*/cuda_cand_OPT.cu.o
+	
 
 cleanGPU: cudaclean
-	rm -f ../lib/libpresto*
-	rm -f ../lib/libcuaccel*
-	rm -f ../bin/test_GPUaccel*
-	rm -f ../bin/accelsearch*
+	rm -rf ../lib/libpresto*
+	rm -rf ../lib/libcuaccel*
+	rm -rf ../bin/test_GPUaccel*
+	rm -rf ../bin/accelsearch*
+	rm -rf ../bin/getAccelLen*
 
 cleancubasics:
-	rm -f build/*/cuda_accel_IN.cu.o
-	rm -f build/*/cuda_accel_KR.cu.o
-	rm -f build/*/cuda_accel_SS.cu.o
-	rm -f build/*/cuda_accel_utils.cu.o
-	rm -f build/*/cuda_cand_OPT.cu.o
-	rm -f build/*/cuda_utils.cu.cu.o
-	rm -f build/*/accelsearch.o
-	rm -f build/*/test_GPUaccel.o
-	
+	rm -rf build/*/cuda_accel_IN.cu.o
+	rm -rf build/*/cuda_accel_KR.cu.o
+	rm -rf build/*/cuda_accel_SS.cu.o
+	rm -rf build/*/cuda_cand_OPT.cu.o
+	rm -rf build/*/cuda_accel_utils.cu.o
+	rm -rf build/*/cuda_accel_GEN.cu.o
+	rm -rf build/*/cuda_utils.cu.cu.o
+	rm -rf build/*/accelsearch.o
+	rm -rf build/*/test_GPUaccel.o
+
 cudaclean:
-	rm -f build/*/*cu.o
-	rm -f build/*/cuda*.o
-	rm -f build/*/accelsearch.o
-	rm -f build/*/accel_utils.o
-	rm -f build/*/test_GPUaccel.o
+	rm -rf build/*/*cu.o
+	rm -rf build/*/cuda*.o
+	rm -rf build/*/accelsearch.o
+	rm -rf build/*/accel_utils.o
+	rm -rf build/*/test_GPUaccel.o
 
 clean:
 	rm -rf build/
-	rm -f *.o *~ *#
-	rm -f slalib/*.o slalib/sla_test
+	rm -rf *.o *~ *#
+	rm -rf slalib/*.o slalib/sla_test
 
 cleaner: clean
 	cd ../bin ; rm -f $(BINARIES)

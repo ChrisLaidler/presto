@@ -119,7 +119,8 @@ typedef enum {
 
 /*  Constants used in the interpolation routines */
 typedef enum {
-  LOWACC, HIGHACC
+  LOWACC	= -1,
+  HIGHACC	= -2
 } presto_interp_acc;
 
 /*  Constants used in the binary search routines */
@@ -1182,7 +1183,7 @@ void max_rz_arr_harmonics(fcomplex * data[], int num_harmonics,
                             int r_offset[],
                             int numdata, double rin, double zin,
                             double *rout, double *zout, rderivs derivs[],
-                            double power[]);
+                            double power[], double norm[]);
 /* Return the Fourier frequency and Fourier f-dot that      */
 /* maximizes the power.                                     */
 
