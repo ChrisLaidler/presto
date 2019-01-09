@@ -178,9 +178,9 @@ __host__            inline long double getE2lim(long double nothing)
   return E2_LIM_Q;
 }
 
-__host__ __device__ float getZlim(float r);			// DBG
-__host__ __device__ double getZlim(double r);			// DBG
-__host__            long double getZlim(long double r);		// DBG
+__host__ __device__ float getZlim(float r);
+__host__ __device__ double getZlim(double r);
+__host__            long double getZlim(long double r);
 
 /////////////////////////////////
 

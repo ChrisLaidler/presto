@@ -9,7 +9,7 @@ OS = Linux
 # yes / no
 WITH_CUDA  = yes
 WITHOMP    = yes
-WITHCBL    = yes
+WITHCBL    = no
 
 # CUDA_ARCH needs to be set to the architecture of the device(s) you want to run the search on
 # CUDA_ARCH should be a space separated list consisting to numbers ie "30 50"

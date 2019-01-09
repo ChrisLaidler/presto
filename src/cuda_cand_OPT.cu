@@ -52,10 +52,6 @@ extern "C"
 
 #define SWAP_PTR(p1, p2) do { initCand* tmp = p1; p1 = p2; p2 = tmp; } while (0)
 
-#ifdef CBL // DBG - Thesis output
-Logger nmLog;
-#endif
-
 template<typename T>
 T pow(double r, double z, int numharm, cuHarmInput* inp, int hw = HIGHACC)
 {
@@ -645,14 +641,9 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
     }
   }
 
-  double r1, z1, r2, z2;
-
   FOLD // Get new max  .
   {
     err += pln_max_pnt( pln, cand );
-
-    r1 = cand->r;
-    z1 = cand->z;
 
     if ( scale < 0.7 )
     {
@@ -661,25 +652,6 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
       err += pln_max_wAve( pln, cand, bound );
     }
 
-    r2 = cand->r;
-    z2 = cand->z;
-  }
-
-  FOLD // Write CSV & plot output  .
-  {
-#ifdef CBL
-    if ( conf->flags & FLAG_DPG_PLT_OPT ) // Write CSV & plot output  .
-    {
-      // TODO: Check if we can get the directory name and then this can be added into standard accelsearch
-      char tName[1024];
-      sprintf(tName,"Cand_%05i_Rep_%02i_Lv_%i_h%02i", nn, plt, lv, cand->numharm );
-
-      char pName[1024];
-      sprintf(pName," --max1 %.17f %.17f --max2 %.17f %.17f ", r1, z1, r2, z2 );
-
-      ffdotPln_plotPln( pln, "/home/chris/accel/", tName, pName );
-    }
-#endif
   }
 
   return err;
@@ -697,25 +669,11 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
+ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0)
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
   infoMSG(3,3,"Simplex refine position - lvl %i  size %.4e by %.4e \n", lv+1, rSize, zSize);
-
-#ifdef CBL // DBG - Thesis output
-  Logger nmPathLog;
-  if ( plt)
-  {
-    char cmpName[1024];
-    sprintf(cmpName, "/home/chris/accel/nm_path_%03i.csv", nn );
-
-    nmPathLog.setFile(cmpName);
-    nmPathLog.setEcho(false);
-    nmPathLog.setCsvLineNums(true);
-    nmPathLog.setCsvDeliminator(';');
-  }
-#endif
 
   // These are the Nelder–Mead parameter values
   double reflect	= 1.0;
@@ -779,27 +737,6 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
     ite++;
 
     rtol = 2.0 * fabs(olst[NM_BEST]->power - olst[NM_WRST]->power) / (fabs(olst[NM_BEST]->power) + fabs(olst[NM_MIDL]->power) + 1.0e-15) ;
-
-#ifdef CBL
-    if ( plt)
-    {
-      nmPathLog.csvWrite("r0",      "%18.15e", olst[NM_BEST]->r);
-      nmPathLog.csvWrite("z0",      "%18.15e", olst[NM_BEST]->z);
-      nmPathLog.csvWrite("power0",  "%18.15e", olst[NM_BEST]->power);
-
-      nmPathLog.csvWrite("r1",      "%18.15e", olst[NM_MIDL]->r);
-      nmPathLog.csvWrite("z1",      "%18.15e", olst[NM_MIDL]->z);
-      nmPathLog.csvWrite("power1",  "%18.15e", olst[NM_MIDL]->power);
-
-      nmPathLog.csvWrite("r2",      "%18.15e", olst[NM_WRST]->r);
-      nmPathLog.csvWrite("z2",      "%18.15e", olst[NM_WRST]->z);
-      nmPathLog.csvWrite("power2",  "%18.15e", olst[NM_WRST]->power);
-
-      nmPathLog.csvWrite("rtol",   "%18.15e", rtol);
-
-      nmPathLog.csvEndLine();
-    }
-#endif
 
     if (rtol < bound )  // Within error so leave  .
     {
@@ -878,18 +815,6 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
 
   infoMSG(4,4,"End   - Power: %8.3f at (%.6f %.6f) %3i iterations moved %9.7e  power inc: %9.7e", cand->power, cand->r, cand->z, ite, dist, powInc);
 
-#ifdef CBL
-  if ( plt)
-  {
-    nmLog.csvWrite("ite",   "%i",      ite);
-    nmLog.csvWrite("dst",   "%9.7e",   dist);
-    nmLog.csvWrite("inc",   "%9.7e",   powInc);
-    nmLog.csvWrite("power", "%18.15e", cand->power);
-    nmLog.csvEndLine();
-
-    nmPathLog.close();
-  }
-#endif
   return err;
 }
 
@@ -905,7 +830,7 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
+ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0 )
 {
   ACC_ERR_CODE err = ACC_ERR_NONE;
 
@@ -915,7 +840,7 @@ ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize =
   tCand.z	= cand->z;
   //tCand.sig	= cand->numharm;
 
-  err += optInitCandPosSim<T>(&tCand, inp, rSize, zSize, hw, maxReps, bound, nn, lv, plt );
+  err += optInitCandPosSim<T>(&tCand, inp, rSize, zSize, hw, maxReps, bound, nn, lv );
 
   cand->numharm	= tCand.numharm;
   cand->r	= tCand.r;
@@ -1357,14 +1282,7 @@ void* cpuProcess(void* ptr)
       }
 
       // Run the NM
-      if ( conf->flags & FLAG_DPG_CAND_PLN )// DBG REM for testing
-      {
-	optInitCandPosSim<double>(&iCand,  res->input, res->resolution, res->resolution*conf->zScale, HIGHACC, conf->nelderMeadReps, conf->nelderMeadDelta, res->candNo, 0, 1  );
-      }
-      else
-      {
-	optInitCandPosSim<double>(&iCand,  res->input, res->resolution, res->resolution*conf->zScale, HIGHACC, conf->nelderMeadReps, conf->nelderMeadDelta, res->candNo, 0, 0  );
-      }
+      optInitCandPosSim<double>(&iCand,  res->input, res->resolution, res->resolution*conf->zScale, HIGHACC, conf->nelderMeadReps, conf->nelderMeadDelta, res->candNo, 0 );
 
       cand->r		= iCand.r;
       cand->z		= iCand.z;
@@ -1484,16 +1402,6 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
   confSpecsOpt*	conf	= opt->conf;
   cuRzHarmPlane* pln	= opt->plnGen->pln;
 
-#ifdef CBL // DBG - Thesis output
-  char tName[1024];
-  sprintf(tName,"/home/chris/accel/OPT_%03i.csv", candNo);
-  FILE *f2;
-  if ( conf->flags & FLAG_DPG_CAND_PLN ) // Write CSV & plot output  .
-  {
-    f2 = fopen(tName, "w");
-  }
-#endif
-
   FOLD // Get best candidate location using iterative GPU planes  .
   {
     int depth;
@@ -1505,7 +1413,6 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
     const float outBound	= 0.9;
     double sz;
     float posR, posZ;
-    double rRes;
 
     if      ( cand->numharm == 1  )
       sz = conf->optPlnSiz[0];
@@ -1578,25 +1485,6 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	  else
 	    infoMSG(4,4,"Plane max in same position as current.\n");
 
-	  FOLD // DBG - Thesis output
-	  {
-#ifdef CBL
-	    if ( conf->flags & FLAG_DPG_CAND_PLN ) // Write CSV & plot output  .
-	    {
-	      fprintf(f2,"Optimisation details\n");
-	      fprintf(f2,"Depth: %i\n", depth);
-	      fprintf(f2,"Level: %i\n", lvl);
-	      fprintf(f2,"Repetition: %i\n", rep);
-	      fprintf(f2,"Precision: %i\n", 1);
-	      fprintf(f2,"Max_r: %.23f\n", cand->r);
-	      fprintf(f2,"Max_z: %.23f\n", cand->z);
-
-	      err += ffdotPln_writePlnToFile(pln, f2);
-	      fflush(f2);
-	    }
-#endif
-	  }
-
 	  // Determine whether to move the grid or zoom in
 	  if ( posR > moveBound || posZ > moveBound )
 	  {
@@ -1619,8 +1507,6 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	    sz /= conf->optPlnScale;
 	    depth--;
 	    infoMSG(5,5,"Zoom in\n");
-//	    if ( sz < 2.0*rRes )
-//	      sz = rRes*2.0;
 
 	    double plnRng = pln->maxPower - pln->minPower ;
 	    if ( plnRng > 0 && plnRng < 0.2 )	// Potently force double precision
@@ -1653,36 +1539,6 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
       }
     }
   }
-
-#ifdef CBL // DBG - Thesis output
-  if ( conf->flags & FLAG_DPG_CAND_PLN ) // Write CSV & plot output  .
-  {
-    fclose(f2);
-
-//    FOLD // Make image  .
-//    {
-//      infoMSG(5,5,"Image %s\n", tName);
-//
-//      PROF // Profiling  .
-//      {
-//	NV_RANGE_PUSH("Image");
-//      }
-//
-//      char cmd[1024];
-//      sprintf(cmd,"python $PRESTO/python/pltOpt.py %s > /dev/null 2>&1", tName);
-//      int ret = system(cmd);
-//      if ( ret )
-//      {
-//	fprintf(stderr,"ERROR: Problem running potting python script.");
-//      }
-//
-//      PROF // Profiling  .
-//      {
-//	NV_RANGE_POP("Image");
-//      }
-//    }
-  }
-#endif
 
   PROF // Profiling  .
   {
@@ -1724,12 +1580,6 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
   initCand iCand = dupCand(cand);		// plane refining uses an initial candidate data structure
 
-//  initCand iCand;				// plane refining uses an initial candidate data structure
-//  iCand.r 		= cand->r;
-//  iCand.z 		= cand->z;
-//  iCand.power		= cand->power;
-//  iCand.numharm 	= cand->numharm;
-
   double resolved	= 0;
 
   FOLD // Refine position in ff space  .
@@ -1764,14 +1614,6 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
       err += optInitCandLocPlns(&iCand, opt, candNo);
 
       resolved = opt->plnGen->pln->rSize / (opt->plnGen->pln->noR-1) * 0.1;
-
-#ifdef CBL
-//      if ( conf->flags & FLAG_DPG_CAND_PLN )
-//      {
-//	nmLog.csvWrite("res", "%5e",  opt->plnGen->pln->rSize/(opt->plnGen->pln->noR-1));
-//      }
-#endif
-
     }
 
     PROF // Profiling  .
@@ -1818,24 +1660,6 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 int optList(GSList *listptr, cuSearch* cuSrch)
 {
   struct timeval start, end;
-
-#ifdef CBL // DBG - Thesis output
-  char cmpName[1024];
-  Logger cmpLog;
-  if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN )
-  {
-    sprintf(cmpName,"/home/chris/accel/cand_cmp.csv");
-    cmpLog.setFile(cmpName);
-    cmpLog.setEcho(true);
-    cmpLog.setCsvLineNums(false);
-    cmpLog.setCsvDeliminator(',');
-
-    nmLog.setFile("/home/chris/accel/NM_2.csv");
-    nmLog.setEcho(false);
-    nmLog.setCsvLineNums(false);
-    nmLog.setCsvDeliminator(';');
-  }
-#endif
 
   TIME //  Timing  .
   {
@@ -1899,16 +1723,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	    listptr	= listptr->next;
 	    ii++;
 	    ti = ii;
-#ifdef CBL
-	    if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN ) // TMP: This can get removed
-	    {
-	      candGPU->init_power    = candGPU->power;
-	      candGPU->init_sigma    = candGPU->sigma;
-	      candGPU->init_numharm  = candGPU->numharm;
-	      candGPU->init_r        = candGPU->r;
-	      candGPU->init_z        = candGPU->z;
-	    }
-#endif
 	  }
 	  else
 	  {
@@ -1932,278 +1746,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 #pragma omp atomic
 	comp++;
 
-	FOLD // DBG - Compare optimisation results - Thesis output
-	{
-#ifdef CBL
-
-	  ACC_ERR_CODE	err		= ACC_ERR_NONE;
-
-	  //void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_width, fcomplex * ans);
-
-//	  int hw = getHw<double>(candGPU->z, HIGHACC);
-//	  fcomplex ans;
-//	  fcomplex* data = (fcomplex*)(&opt->input->h_inp[-opt->input->loR[0]]);
-//	  long noBins = 70000000;
-//	  double real, imag;
-//	  candGPU->z = 0.0000001;
-//
-//	  ans.r = 0.0;
-//	  ans.i = 0.0;
-//	  real = 0.0;
-//	  imag = 0.0;
-//
-//	  printf("\nCPU conv %.6f\n", candGPU->r);
-//	  rz_interp(data, noBins, candGPU->r, candGPU->z, hw, &ans);
-//
-//	  printf("\nGPU conv %.6f\n", candGPU->r);
-//	  rz_convolution_cu_debg<double, float2> ((float2*)data, 0, noBins, candGPU->r, candGPU->z, hw, &real, &imag);
-
-	  bool prnt = false;
-
-	  if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
-	  {
-	    cmpLog.csvWrite("idx",	"%5i",    ti);
-	    cmpLog.csvWrite("r",	"%18.9f", candCPU->r);
-	    cmpLog.csvWrite("z",	"%15.9f", candCPU->z);
-	    cmpLog.csvWrite("pow",	"%15.9f", candCPU->power);
-	    cmpLog.csvWrite("sig",	"%15.9f", candCPU->sigma);
-
-	    int *r_offset;
-	    fcomplex **data;
-	    double r, z;
-
-	    double iSig, gSig, cSig;
-
-	    r_offset     = (int*) malloc(sizeof(int)*candCPU->numharm);
-	    data         = (fcomplex**) malloc(sizeof(fcomplex*)*candCPU->numharm);
-
-	    candCPU->pows	= gen_dvect(candCPU->numharm*2);
-	    candCPU->hirs	= gen_dvect(candCPU->numharm*2);
-	    candCPU->hizs	= gen_dvect(candCPU->numharm*2);
-	    candCPU->derivs	= (rderivs *)  malloc(sizeof(rderivs) * candCPU->numharm);
-
-	    for( int ii=0; ii< candCPU->numharm; ii++ )
-	    {
-	      r_offset[ii]   = 0;
-	      data[ii]       = opt->cuSrch->fft->data;
-	    }
-
-	    FOLD // Original CPU optimisation
-	    {
-	      NV_RANGE_PUSH("CPU refine");
-
-	      max_rz_arr_harmonics(data,
-		  candCPU->numharm,
-		  r_offset,
-		  opt->cuSrch->fft->noBins,
-		  candCPU->r,
-		  candCPU->z,
-		  &r,
-		  &z,
-		  candCPU->derivs,
-		  candCPU->pows,
-		  opt->input->norm);
-	      candCPU->r = r;
-	      candCPU->z = z;
-	      candCPU->power = 0;
-	      candCPU->sigma = 0;
-
-	      NV_RANGE_POP("CPU refine");
-	    }
-	    else // My new NM optimisation  .
-	    {
-	      double sz = 15;	// This size could be a configurable parameter
-	      prepInput_cand( candCPU, opt->input, opt->cuSrch->fft, sz, sz*opt->conf->zScale, opt->flags );
-
-	      optInitCandPosSim<double>(candCPU, opt->input, 0.4,   0.4*opt->conf->zScale, LOWACC,  1000, 1e-7 );
-
-	      optInitCandPosSim<double>(candCPU, opt->input, 0.01, 0.01*opt->conf->zScale, HIGHACC, 100, 1e-10  );
-	    }
-
-	    FOLD // Calculate powers  .
-	    {
-	      pow<double>(candINT, opt->input);
-	      pow<double>(candCPU, opt->input);
-	      pow<double>(candGPU, opt->input);
-
-	      int noStages	= log2((double)candGPU->numharm);
-	      long long numindep	= cuSrch->numindep[noStages];
-
-	      //candINT->sigma	= candidate_sigma_cu(candINT->power, candINT->numharm, numindep);
-	      //candGPU->sigma	= candidate_sigma_cu(candGPU->power, candGPU->numharm, numindep);
-	      //candCPU->sigma	= candidate_sigma_cu(candCPU->power, candCPU->numharm, numindep);
-
-	      iSig	= candidate_sigma_cu(candINT->power, candINT->numharm, numindep);
-	      gSig	= candidate_sigma_cu(candGPU->power, candGPU->numharm, numindep);
-	      cSig	= candidate_sigma_cu(candCPU->power, candCPU->numharm, numindep);
-	    }
-
-	    double rDist = candCPU->r - candGPU->r ;
-	    double zDist = candCPU->z - candGPU->z ;
-	    double bDist = sqrt(rDist*rDist + zDist*zDist);			// Euclidean distance between the two point (in bins)
-	    double sDist = gSig - cSig ;
-
-	    cmpLog.csvWrite("INIT pow",		"%15.9f", candINT->power);
-	    cmpLog.csvWrite("INIT sig",		"%15.9f", iSig);
-
-	    cmpLog.csvWrite("GPU r",		"%18.9f", candGPU->r);
-	    cmpLog.csvWrite("GPU z",		"%15.9f", candGPU->z);
-	    cmpLog.csvWrite("GPU Pow",		"%15.9f", candGPU->power );
-	    cmpLog.csvWrite("GPU sig",		"%15.9f", gSig );
-
-	    cmpLog.csvWrite("CPU r",		"%18.9f", candCPU->r );
-	    cmpLog.csvWrite("CPU z",		"%15.9f", candCPU->z );
-	    cmpLog.csvWrite("CPU pow",		"%15.9f", candCPU->power );
-	    cmpLog.csvWrite("CPU sig",		"%15.9f", cSig );
-
-	    cmpLog.csvWrite("Dist",		"%15.9f", bDist                              );
-	    cmpLog.csvWrite("Pow diff",		"%15.9f",   candGPU->power - candCPU->power  );
-	    cmpLog.csvWrite("Neg Pow diff",	"%15.9f", -(candGPU->power - candCPU->power) );
-	    cmpLog.csvWrite("Dist",		"%15.9f", bDist                              );
-	    cmpLog.csvWrite("Sig diff",		"%15.9f",  sDist                             );
-	    cmpLog.csvWrite("Neg Sig diff",	"%15.9f", -sDist                             );
-
-	    cmpLog.csvEndLine();
-
-	    if ( sDist < -0.001 || sDist > 0.001 || bDist > 0.01 )
-	    {
-	      // These are interesting cases so plot them...
-	      //prnt = true; // DBG removed for profiling
-	    }
-
-	    Fout // Do a high accuracy plane  to find the true maximum
-	    {
-	      confSpecsOpt*conf		= opt->conf;
-	      cuRzHarmPlane* pln	= opt->plnGen->pln;
-
-	      initCand iCand = dupCand(candGPU);
-
-	      char pltNm[1024];
-	      char pthNm[1024];
-	      sprintf(pltNm, "CND_close_%03i", ti);
-	      if ( conf->nelderMeadReps )
-		sprintf(pthNm, "-p /home/chris/accel/nm_path_%03i.csv ", ti);
-	      sprintf(pthNm, "%s --max1  %.17f %.17f  --max2  %.17f %.17f ", pthNm, candCPU->r, candCPU->z, candGPU->r, candGPU->z);
-	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm);
-
-	      double scale = pln->rSize / (pln->noR-1);
-
-//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale, 1, ti, 0 );
-//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
-//
-//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 1 );
-//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
-//
-//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 2 );
-//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
-//
-//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 3 );
-//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
-//
-//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 4 );
-//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
-//
-//	      err += optRefinePosPln<double>(&iCand, opt, 128, scale/=10.0, 1, ti, 5 );
-//	      //ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm );
-
-
-	      pln->centR = candGPU->r;
-	      pln->centZ = candGPU->z;
-
-	      //pln->rSize / (pln->noR-1) * 0.5;
-	      pln->rSize = pln->rSize / (pln->noR-1) * 1.5 ;
-	      pln->zSize = pln->rSize*conf->zScale;
-
-	      pln->noZ		= 128;
-	      pln->noR		= 128;
-
-	      //opt->plnGen->flags |= FLAG_OPT_CPU_PLN;
-
-	      ffdotPln<double>(opt->plnGen, opt->cuSrch->fft);
-	      ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm );
-
-	      //opt->plnGen->flags &= ~FLAG_OPT_CPU_PLN;
-
-
-	    }
-
-//	    FOLD
-//	    {
-//	      confSpecsOpt*conf		= opt->conf;
-//	      cuRzHarmPlane* pln	= opt->plnGen->pln;
-//
-//	      pln->centR = candGPU->r;
-//	      pln->centZ = candGPU->z;
-//
-//	      //pln->rSize / (pln->noR-1) * 0.5;
-//	      pln->rSize = pln->rSize / (pln->noR-1) * 2.0;
-//	      pln->zSize = pln->rSize*conf->zScale;
-//
-//	      pln->noZ		= 128;
-//	      pln->noR		= 128;
-//
-//	      //opt->plnGen->flags |= FLAG_OPT_CPU_PLN;
-//
-//	      ffdotPln<double>(opt->plnGen, opt->cuSrch->fft);
-//
-//	      //opt->plnGen->flags &= ~FLAG_OPT_CPU_PLN;
-//
-//	      char pltNm[1024];
-//	      char pthNm[1024];
-//	      sprintf(pltNm, "CND_close_%03i", ti);
-//	      sprintf(pthNm, "-p /home/chris/accel/nm_path_%03i.csv", ti);
-//	      ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm);
-//	    }
-	  }
-
-	  if ( (opt->conf->flags & FLAG_DPG_CAND_PLN) ) // Write CSV & plot output  .
-	  {
-	    char tName[1024];
-	    sprintf(tName, "/home/chris/accel/OPT_%03i.csv", ti);
-
-	    FOLD // Used to mark points on the optimisation plot (plt_opt_cmp) .
-	    {
-	      FILE *f2 = fopen(tName, "a");
-
-	      fprintf(f2, "init_r: %.23f\n", candINT->r);
-	      fprintf(f2, "init_z: %.23f\n", candINT->z);
-
-	      fprintf(f2, "GPU_r: %.23f\n", candGPU->r);
-	      fprintf(f2, "GPU_z: %.23f\n", candGPU->z);
-
-	      fprintf(f2, "CPU_r: %.23f\n", candCPU->r);
-	      fprintf(f2, "CPU_z: %.23f\n", candCPU->z);
-
-	      fclose(f2);
-	    }
-
-	    if ( prnt || (opt->conf->flags & FLAG_DPG_PLT_OPT) ) // Make image  .
-	    {
-	      infoMSG(5,5,"Image %s\n", tName);
-
-	      PROF // Profiling  .
-	      {
-		NV_RANGE_PUSH("Image");
-	      }
-
-	      char cmd[1024];
-	      sprintf(cmd,"python $PRESTO/python/plt_opt_plns.py %s > /dev/null 2>&1", tName);
-	      int ret = system(cmd);
-	      if ( ret )
-	      {
-		fprintf(stderr,"ERROR: Problem running potting python script.");
-	      }
-
-	      PROF // Profiling  .
-	      {
-		NV_RANGE_POP("Image");
-	      }
-	    }
-	  }
-
-#endif // CBL
-	}
-
 	if ( msgLevel == 0 && !(opt->conf->flags & FLAG_DPG_CAND_PLN) )
 	{
 	  printf("\rGPU optimisation %5.1f%% complete   ", comp / (float)numcands * 100.0f );
@@ -2212,21 +1754,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
       }
     }
   }
-
-#ifdef CBL // DBG - Thesis output
-  if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
-  {
-    cmpLog.close();
-
-    char cmd[1024];
-    sprintf(cmd,"python /home/chris/projects/thesis-plots/plt_opt_cmp.py %s > /dev/null 2>&1", cmpName);
-    int ret = system(cmd);
-    if ( ret )
-    {
-	fprintf(stderr,"ERROR: Problem running potting python script.");
-    }
-  }
-#endif
 
   printf("\rGPU optimisation %5.1f%% complete                      \n", 100.0f );
 
@@ -2246,13 +1773,6 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     gettimeofday(&end, NULL);
     cuSrch->timings[TIME_OPT_WAIT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
   }
-
-#ifdef CBL // DBG - Thesis output
-  if ( cuSrch->conf->opt->flags & FLAG_DPG_PRNT_CAND )
-  {
-  nmLog.close();
-  }
-#endif
 
   return 0;
 }

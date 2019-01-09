@@ -851,14 +851,6 @@ cuHarmInput* initHarmInput( size_t memSize, gpuInf* gInf )
   memset(input, 0, sizeof(cuHarmInput));
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-#ifdef MAX_GPU_MEM
-  long  Diff = totalMem - MAX_GPU_MEM;
-  if( Diff > 0 )
-  {
-    freeMem  -= Diff;
-    totalMem -= Diff;
-  }
-#endif
 
   if ( memSize > freeMem )
   {

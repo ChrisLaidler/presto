@@ -129,21 +129,6 @@ ACC_ERR_CODE ffdotPln_CPU(cuPlnGen* plnGen, cuRzHarmPlane* pln)
   
   infoMSG(8,8,"Harms %i sz: %i x %i \n", pln->noHarms, pln->noZ, pln->noR );
 
-  int noStrHarms;
-
-  if      ( pln->type == CU_STR_HARMONICS      )
-  {
-    noStrHarms = pln->noHarms;
-  }
-  else if ( pln->type == CU_STR_INCOHERENT_SUM )
-  {
-    noStrHarms = 1;
-  }
-  else
-  {
-    err += ACC_ERR_UNINIT;
-  }
-
   if ( !err )
   {
     // Print column
@@ -179,20 +164,6 @@ ACC_ERR_CODE ffdotPln_CPU(cuPlnGen* plnGen, cuRzHarmPlane* pln)
 	    ((double*)pln->h_data)[indy*pln->zStride + indx] = power;
 	  }
 	}
-//	else
-//	{
-//	  if      ( pln->type == CU_CMPLXF )
-//	  {
-//	    float2 val = {real, imag};
-//	    ((float2*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx] = val;
-//	  }
-//	  else if ( pln->type == CU_FLOAT  )
-//	  {
-//	    //yy2 +=  ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
-//	    //float val = ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx];
-//	    ((float*)pln->h_data)[indy*pln->zStride + indx*noStrHarms + hIdx] = power;
-//	  }
-//	}
       }
     }
   }
@@ -412,7 +383,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
 {
   ACC_ERR_CODE	 err	= ACC_ERR_NONE;
   confSpecsOpt*	 conf	= plnGen->conf;
-  cuRespPln* 	 rpln 	= plnGen->responsePln;
+  //cuRespPln* 	 rpln 	= plnGen->responsePln;
   cuRzHarmPlane* pln 	= plnGen->pln;
   cuHarmInput*	 input	= plnGen->input;
 
@@ -881,7 +852,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkDimX	= plnGen->pln->noR;
     char kerName[20];
     double dup2pad_ratio;
-    T Nothing;
+    T Nothing = 0;				// This is just used to specify the type of the templated functions
 
     // Clear all "local" kernels
     err += remOptFlag(plnGen, FLAG_PLN_ALL );
@@ -1164,12 +1135,6 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
       FOLD // Select a good power of two number of columns  .
       {
-//	if ( target_noCol <= 32 )	// DBG remove this!
-//	{
-//	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,target_noCol);
-//	}
-//	else
-	{
 	int divs = 2;
 
 	if ( pln->rSize > 8 )
@@ -1187,7 +1152,6 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	}
 	
 	pln->blkCnt	= ceil(pln->rSize/(double)divs)*divs;
-	}
       }
 
       // Other settings are now set using the column width
@@ -1654,14 +1618,6 @@ cuRzHarmPlane* initPln( size_t memSize )
   memset(pln, 0, sizeof(cuRzHarmPlane));
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-#ifdef MAX_GPU_MEM
-  long  Diff = totalMem - MAX_GPU_MEM;
-  if( Diff > 0 )
-  {
-    freeMem  -= Diff;
-    totalMem -= Diff;
-  }
-#endif
 
   if ( memSize > freeMem )
   {
@@ -1701,14 +1657,6 @@ cuRzHarmPlane* dupPln( cuRzHarmPlane* orrpln )
   infoMSG(4,4,"Duplicating harmonic plane\n");
 
   CUDA_SAFE_CALL(cudaMemGetInfo ( &freeMem, &totalMem ), "Getting Device memory information");
-#ifdef MAX_GPU_MEM
-  long  Diff = totalMem - MAX_GPU_MEM;
-  if( Diff > 0 )
-  {
-	freeMem  -= Diff;
-	totalMem -= Diff;
-  }
-#endif
 
   if ( orrpln->size > freeMem )
   {

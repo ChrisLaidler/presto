@@ -1779,7 +1779,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
         * obs->numbetween * obs->numz;
     printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
 
-    if ( /*memuse < MAXRAMUSE || */ cmd->inmemP) {  // DBG REM NB: Put this back
+    if ( memuse < MAXRAMUSE || cmd->inmemP) {
 #ifdef CUDA
       //size_t freeRam = getFreeRam();
       unsigned long freeRam = getFreeRam();
@@ -1790,12 +1790,6 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 	printf("Using standard accelsearch.\n\n");
 	obs->inmem = 0;
 	obs->ffdotplane = NULL;
-
-	FOLD // TMP REM - Added to mark an error for thesis timing
-	{
-	  printf("Temporary testing exit...\n");
-	  exit(EXIT_FAILURE);
-	}
 
 	return;
       }

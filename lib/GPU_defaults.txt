@@ -93,7 +93,7 @@ KER_FFT_PRECISION 	SINGLE
 #	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort - Minimise SM use
 #	GPU_OS			# DEBUG: Do the input Normalisation on the GPU using a custom novel order statistic algorithm
 # D	AUTO      		# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
-INP_NORM		AUTO
+#INP_NORM		AUTO
 
 
 # ZBOUND_NORM:
@@ -103,7 +103,7 @@ INP_NORM		AUTO
 # if z-max is less than ZBOUND_NORM, GPU normalisation will be used.
 # if ZBOUND_NORM is commented out or set to -1, INP_NORM will be used.
 # I find this should generally be low (~30), beyond this the CPU may as well do the normalisation if the alternative is being idle, below this point the CPU becomes the limiting factor so using the GPU is faster.
-#ZBOUND_NORM		40
+ZBOUND_NORM		40
 
 
 # FFT input in the CPU or the GPU
@@ -111,7 +111,7 @@ INP_NORM		AUTO
 #	CPU     		# Do the input FFT's on the CPU
 # D	GPU     		# Do the input FFT's on the GPU - I generally find this a bit faster
 # 	AUTO			# Automatically chose, for the moment this will always the GPU
-INP_FFT			AUTO
+#INP_FFT			AUTO
 
 
 # ZBOUND_INP_FFT:
@@ -120,7 +120,7 @@ INP_FFT			AUTO
 # if z-max is less than ZBOUND_INP_FFT, CPU FFT's will be used. This will will override any value of INP_FFT and no change will be made to input normalisation.
 # if ZBOUND_INP_FFT is commented out or set to -1, INP_NORM, ZBOUND_NORM and INP_FFT will be used.
 # A good value for this is ~50, but is system dependent. Beyond some point the GPU computation exceeds CPU normalisation and FFT so may as well do it on the CPU in the background
-#ZBOUND_FFT		60
+ZBOUND_FFT		60
 
 
 # This is the size of buffers to use in the median selection algorithm used by the CUDA input normalisation kernel this should be one of: 128, 256, 512, 1024, 2048, 4096, 8192

@@ -33,11 +33,6 @@ extern "C"
 }
 #endif
 
-#ifdef CBL
-#include "log.h"
-#endif
-
-
 
 /***************************************** Section Enables *****************************************
  *
@@ -70,18 +65,18 @@ extern "C"
  */
 
 // Just encase these define have been used elsewhere
-//#undef  TIMING
-//#undef  PROFILING
-//#undef  NVVP
-//#undef  CUDA_PROF
+#undef  TIMING
+#undef  PROFILING
+#undef  NVVP
+#undef  CUDA_PROF
 
 // A user can enable or disable GPU functionality with the defines below, if any of them are changed a full recompile is required (including an make clean!)
 
 //     Timing
-#define TIMING  		// Implement basic timing of sections, very low overhead, generally a good idea
+//#define TIMING  		// Implement basic timing of sections, very low overhead, generally a good idea
 
 //     Profiling
-#define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
+//#define PROFILING		// Implement more advanced profiling. This enables timing of individual components and adding CUDA ranges
 
 //	Visual profiler
 //#define NVVP			// Uncomment to allow CUDA profiling
@@ -91,7 +86,7 @@ extern "C"
 //#define  		WITH_ITLV_PLN			///< Allow plane interleaving of stepped data
 
 #define			MIN_STEPS	1		///< The minimum number of steps in a single batch
-#define			MAX_STEPS	12		///< The maximum number of steps in a single batch
+#define			MAX_STEPS	8		///< The maximum number of steps in a single batch
 
 #define			WITH_HALF_RESCISION_POWERS
 //#define 		WITH_SINGLE_RESCISION_POWERS
@@ -108,18 +103,18 @@ extern "C"
 
 // Only one of the mul 0 kernels will get used
 //#define  		WITH_MUL_00			///< Compile with test Multiplication kernel - Version 0 - DEBUG ONLY: Just write to ffdot plane - 1 thread per complex value  .
-#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  .
+//#define 		WITH_MUL_01			///< Compile with test Multiplication kernel - Version 1 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  .
 //#define 		WITH_MUL_02			///< Compile with test Multiplication kernel - Version 2 - DEBUG ONLY: Read input, read kernel, write to ffdot plane - 1 thread per column  - templated for steps  .
 
 //#define 		WITH_MUL_PRE_CALLBACK		///< Multiplication as CUFFT callbacks - Seams very slow, probably best to disable this!
 
-#define 		WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
+//#define 		WITH_MUL_11			///< Plain multiplication kernel 1 - (slow) - Single plane at a time - generally slow and unnecessary
 
 #define 		WITH_MUL_21			///< Stack multiplication kernel 1 - (fastest)	- This is the preferred method if compute version is > 3.0 - read all input - loop over kernel - loop over planes
 #define 		WITH_MUL_22			///< Stack multiplication kernel 2 - (faster)	- Loop ( column, plain - Y )
-#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
+//#define 		WITH_MUL_23			///< Stack multiplication kernel 3 - (fast)	- Loop ( column, chunk (read ker) - plain - Y - step )
 
-#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow)	- Do an entire batch in one kernel
+//#define 		WITH_MUL_31			///< Batch multiplication kernel 1 - (slow)	- Do an entire batch in one kernel
 
 
 ////////	Powers
@@ -128,13 +123,13 @@ extern "C"
 
 ////////	Sum & Search
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
-#define			MAX_SAS_CHUNK	12
+#define			MAX_SAS_CHUNK	12		///< Use up to 10
 
 #define			MIN_SAS_COLUMN	1		///< Not in use yet - min columns for sas kernels
 #define			MAX_SAS_COLUMN	32		///< Not in use yet - max columns for sas kernels
 
 
-#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - DEBUG ONLY: Memory reads and writes only - sliced
+//#define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - DEBUG ONLY: Memory reads and writes only - sliced
 
 #define			WITH_SAS_31			///< Compile with main SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
 
@@ -171,7 +166,7 @@ extern "C"
 #define		MAX_GPUS		32		///< The maximum number GPU's
 #define		CORRECT_MULT		1		///< Generate the kernel values the correct way and do the
 #define		NO_OPT_LEVS		7		///< The number of optimisation planes/steps
-#define 	OPT_INP_BUF   		25		///< Buffer sections of the input FT with this many bins
+#define 	OPT_INP_BUF		25		///< Buffer sections of the input FT with this many bins
 #define		OPT_LOC_PNT_NO		16
 
 

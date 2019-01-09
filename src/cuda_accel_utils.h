@@ -22,20 +22,11 @@
 #include "cuda_utils.h"
 #include "cuda_math.h"
 
-
-#ifdef CBL
-#include "array.h"
-#include "arrayDsp.h"
-#include "log.h"
-#endif
-
 extern "C"
 {
 #define __float128 long double
 #include "accel.h"
 }
-
-#define MAX_GPU_MEM	3400000000						///< This is a TMP REM: GTX 970 memory hack.  REALLY NVIDIA, YOU SUCK!!!
 
 #define CNV_DIMX        16                    // X Thread Block
 #define CNV_DIMY        8                     // Y Thread Block

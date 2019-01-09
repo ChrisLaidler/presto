@@ -58,8 +58,8 @@ double max_rz_arr(fcomplex * data, int numdata, double rin, double zin,
   x[2][1] = zin / ZSCALE;
 
   // Added by Chris Laidler, cos its always best to include the best point  CBL
-  //x[0][0] = rin;
-  //x[0][1] = zin / ZSCALE;
+  x[0][0] = rin;
+  x[0][1] = zin / ZSCALE;
 
   /* Initialize the starting function values */
 
@@ -237,8 +237,8 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    x[2][1] = zin / ZSCALE;
 
    // Added by Chris Laidler, cos its always best to include the best point  CBL
-   //x[0][0] = rin;
-   //x[0][1] = zin / ZSCALE;
+   x[0][0] = rin;
+   x[0][1] = zin / ZSCALE;
 
    /* Initialize the starting function values */
 

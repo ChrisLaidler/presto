@@ -26,13 +26,6 @@ extern "C"
 #include "dmalloc.h"
 #endif
 
-#ifdef CBL
-#include "array.h"
-#include "arrayDsp.h"
-#include "util.h"
-#endif
-
-
 /* Return x such that 2**x = n */
 //static
 inline int twon_to_index(int n)

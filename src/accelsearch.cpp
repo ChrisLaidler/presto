@@ -216,40 +216,7 @@ int main(int argc, char *argv[])
   }
 #endif
 
-#ifdef CBL  // Unoptcands  .
-  char candsFile[1024];
-  sprintf(fname,"%s_hs%02i_zmax%06.1f_sig%06.3f", obs.rootfilenm, obs.numharmstages, obs.zhi, obs.sigma );
-  sprintf(candsFile,"%s.unoptcands", fname );
-
-  if ( (file = fopen(candsFile, "rb")) && useUnopt ) 		// DEBUG: Read candidates from previous search  .
-  {
-    int numcands;
-    fread( &numcands, sizeof(numcands), 1, file );
-    int nc = 0;
-
-    printf("\nReading %i raw candies from \"%s\" previous search.\n", numcands, candsFile);
-
-    for (nc = 0; nc < numcands; nc++)
-    {
-      accelcand* newCnd = (accelcand*)malloc(sizeof(accelcand));
-      fread( newCnd, sizeof(accelcand), 1, file );
-
-      cands=insert_accelcand(cands,newCnd);
-    }
-    fclose(file);
-
-    // Wait for the context thread to complete
-    long long contextTinme = compltCudaContext(gSpec);
-
-    candsCPU = cands ;		// Just encase we are not doing the candidate generation
-
-    TIME // Timing  .
-    {
-      cuSrch->timings[TIME_CONTEXT] = contextTinme;
-    }
-  }
-  else								// Run Search  .
-#endif
+  FOLD
   { // 		-----------------=================== The CPU and GPU main loop ===================----------------------- .
     /* Start the main search loop */
 
@@ -400,39 +367,6 @@ int main(int argc, char *argv[])
 #endif
       }
     }
-
-#ifdef CUDA
-    FOLD // Write candidates to unoptcands file  .
-    {
-      if ( useUnopt )
-      {
-	if ( (file = fopen(candsFile, "wb")) )
-	{
-	  int numcands = g_slist_length(cands);
-	  //printf("\nWriting %i raw candidates from search to \"%s\".\n",numcands, candsFile);
-	  fwrite( &numcands, sizeof(numcands), 1, file );
-
-	  GSList *candLst = cands;
-	  int nc = 0;
-	  while (candLst)
-	  {
-	    accelcand* newCnd = (accelcand*)candLst->data;
-
-	    fwrite( newCnd, sizeof(accelcand), 1, file );
-	    candLst = candLst->next;
-	    nc++;
-	  }
-
-	  fclose(file);
-	}
-	else
-	{
-	  fprintf(stderr,"ERROR: unable to open \"%s\" to write initial candidates.\n",candsFile);
-	}
-      }
-    }
-#endif
-
   }
 
   FOLD  // Optimisation  .
@@ -442,14 +376,9 @@ int main(int argc, char *argv[])
 
     if ( cmd->cpuP && cmd->cpuP ) // Duplicate the CPU candidates  .
     {
-      if ( useUnopt)
-      {
-	//cands = candsGPU;
-      }
-      else
-	// We did a CPU search we may as well use the CPU candidates
-	// TODO: Think about this and put a output message
-	cands = candsCPU;
+      // We did a CPU search we may as well use the CPU candidates
+      // TODO: Think about this and put a output message
+      cands = candsCPU;
     }
 
     int numcands;
@@ -462,27 +391,6 @@ int main(int argc, char *argv[])
     char timeMsg[1024], dirname[1024], scmd[1024];
     time_t rawtime;
     struct tm* ptm;
-
-#ifdef CBL
-    if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN )
-    {
-      time ( &rawtime );
-      ptm = localtime ( &rawtime );
-      sprintf ( timeMsg, "%04i%02i%02i%02i%02i%02i", 1900 + ptm->tm_year, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec );
-
-      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pre", timeMsg );
-      mkdir(dirname, 0755);
-
-      sprintf(scmd,"mv /home/chris/accel/*.png %s/ 2> /dev/null", dirname );
-      system(scmd);
-
-      sprintf(scmd,"mv /home/chris/accel/*.csv %s/ 2> /dev/null", dirname );
-      system(scmd);
-
-      // Remove empty directories
-      rmdir(dirname);
-    }
-#endif
 
     TIME // Timing  .
     {  
@@ -605,45 +513,8 @@ int main(int argc, char *argv[])
 
       printf("\n\n");
 
-#ifdef CBL
-      Fout // TMP - Some info on optimised candidate
-      {
-	slog.setCsvDeliminator('\t');
-	listptr 	= cands;
-	double T	= obs.T;
-
-	for (ii = 0; ii < numcands; ii++)
-	{
-	  cand    = (accelcand *) (listptr->data);
-	  listptr = listptr->next;
-
-	  slog.csvWrite("TAG","cnd");
-
-	  slog.csvWrite("int freq","%9.7f",cand->init_r/T);
-	  slog.csvWrite("opt freq","%9.7f",cand->r/T);
-
-	  slog.csvWrite("int z   ","%9.6f",cand->init_z);
-	  slog.csvWrite("opt z   ","%9.6f",cand->z);
-
-	  slog.csvWrite("int harm","%9i",cand->init_numharm);
-	  slog.csvWrite("opt harm","%9i",cand->numharm);
-
-	  slog.csvWrite("int pow ","%9.5f",cand->init_power);
-	  slog.csvWrite("opt pow ","%9.5f",cand->power);
-
-	  slog.csvWrite("int sigma","%9.4f",cand->init_sigma);
-	  slog.csvWrite("opt sigma","%9.4f",cand->sigma);
-
-	  slog.csvEndLine();
-
-	  //printf("cnd\t%3i\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%14.10f\t%8.3f\t%2i\t%8.6f\t%8.6f\t%8.6f\t%8.6f\n", ii, cand->init_r/T, cand->init_z, cand->init_numharm, cand->init_power, cand->init_sigma, cand->init_r/T, cand->z, cand->numharm, cand->power, cand->sigma /*,pSum, pSum2*/  );
-	}
-
-      }
-#endif
-
 #ifdef CUDA
-      TIMING // Basic timing  .
+      TIME // Basic timing  .
       {
 	NV_RANGE_PUSH("props");
       }
@@ -776,231 +647,8 @@ int main(int argc, char *argv[])
       cuSrch->timings[TIME_ALL_OPT] += (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_usec - start.tv_usec);
     }
 
-#ifdef CBL
-    if ( cuSrch->conf->opt->flags & FLAG_DPG_CAND_PLN )
-    {
-      sprintf(dirname,"/home/chris/accel/Nelder_Mead/%s-pst", timeMsg );
-      mkdir(dirname, 0755);
+ #endif
 
-      sprintf(scmd,"mv /home/chris/accel/*.png %s/ 2> /dev/null", dirname );
-      system(scmd);
-
-      sprintf(scmd,"mv /home/chris/accel/*.csv %s/ 2> /dev/null", dirname );
-      system(scmd);
-
-      // Remove empty directories
-      rmdir(dirname);
-    }
-#endif
-
-#endif
-
-  }
-
-  FOLD 	// Timing message  .
-  {
-#ifdef CUDA
-    if (cuSrch)
-    {
-#ifdef CBL
-
-      TIME // Timing  .
-      {
-	printf("\n*************************************************************************************************\n                            Timing\n*************************************************************************************************\n");
-
-	printf("\n");
-
-	Logger slog(stdout);
-	slog.setCsvDeliminator('\t');
-	slog.setCsvLineNums(false);
-
-	if ( cmd->cpuP )
-	  cuSrch->timings[TIME_CPU_OPT] = cuSrch->timings[TIME_ALL_OPT] - cuSrch->timings[TIME_GPU_REFINE];
-	if ( cmd->gpuP )
-	  cuSrch->timings[TIME_GPU_OPT] = cuSrch->timings[TIME_ALL_OPT] - cuSrch->timings[TIME_CPU_REFINE];
-
-	char pres[] =  "%15.06f";
-
-	slog.csvWrite("Timing:",   "<secs>");
-
-	slog.csvWrite("      Context",  pres, cuSrch->timings[TIME_CONTEXT]		* 1e-6 );
-	slog.csvWrite("         Prep",  pres, cuSrch->timings[TIME_PREP]		* 1e-6 );
-
-	slog.csvWrite("     CPU Init",  pres, cuSrch->timings[TIME_CPU_INIT]		* 1e-6 );
-	slog.csvWrite("      CPU Gen",  pres, cuSrch->timings[TIME_CPU_CND_GEN]		* 1e-6 );
-	slog.csvWrite("      CPU Opt",  pres, cuSrch->timings[TIME_CPU_OPT] 		* 1e-6 );
-	slog.csvWrite("     CPU Time",  pres, (cuSrch->timings[TIME_CPU_SRCH] + cuSrch->timings[TIME_CPU_OPT]) * 1e-6 );
-
-	slog.csvWrite("     GPU Init",  pres, cuSrch->timings[TIME_GPU_INIT]		* 1e-6 );
-	slog.csvWrite("      GPU Gen",  pres, cuSrch->timings[TIME_GPU_CND_GEN]		* 1e-6 );
-	slog.csvWrite("      GPU Opt",  pres, cuSrch->timings[TIME_GPU_OPT]		* 1e-6 );
-	slog.csvWrite("     GPU Time",  pres, (cuSrch->timings[TIME_GPU_SRCH] + cuSrch->timings[TIME_GPU_OPT]) * 1e-6 );
-	slog.csvWrite("         x   ",  pres, (cuSrch->timings[TIME_CPU_SRCH] + cuSrch->timings[TIME_CPU_OPT])/(float)(cuSrch->timings[TIME_GPU_SRCH] + cuSrch->timings[TIME_GPU_OPT]) );
-
-	slog.csvWrite("     GPU Srch",  pres, cuSrch->timings[TIME_GPU_SRCH]		* 1e-6 );
-	slog.csvWrite("      GPU Pln",  pres, cuSrch->timings[TIME_GPU_PLN]		* 1e-6 );
-	slog.csvWrite("      GPU S&S",  pres, cuSrch->timings[TIME_GPU_SS]		* 1e-6 );
-	slog.csvWrite("     GPU Cand",  pres, cuSrch->timings[TIME_CND]			* 1e-6 );
-	slog.csvWrite("     Gen Wait",  pres, cuSrch->timings[TIME_GEN_WAIT]		* 1e-6 );
-
-	slog.csvWrite("     CPU Srch",  pres, cuSrch->timings[TIME_CPU_SRCH]		* 1e-6 );
-
-	slog.csvWrite("      Opt All",  pres, cuSrch->timings[TIME_ALL_OPT]		* 1e-6 );
-	slog.csvWrite("     CPU Rfne",  pres, cuSrch->timings[TIME_CPU_REFINE]		* 1e-6 );
-	slog.csvWrite("     GPU Rfne",  pres, cuSrch->timings[TIME_GPU_REFINE]		* 1e-6 );
-	slog.csvWrite("   GPU Asynch",  pres, cuSrch->timings[TIME_OPT_ASYNCH]		* 1e-6 );
-	slog.csvWrite("     Opt Wait",  pres, cuSrch->timings[TIME_OPT_WAIT]		* 1e-6 );
-	slog.csvWrite("       Output",  pres, cuSrch->timings[TIME_OPT_FILE_WRITE]	* 1e-6 );
-	slog.csvEndLine();
-
-	printf("\n\n");
-      }
-
-      PROF // Profiling  .
-      {
-	if ( cuSrch->conf->opt->flags & FLAG_PROF )  // Advanced timing massage  .
-	{
-	  char pres[] =  "%15.06f";
-
-	  int batch, stack;
-	  float sums[COMP_GEN_END];
-	  for ( int i = 0; i < COMP_GEN_END; i++)
-	    sums[i] = 0;
-
-	  printf("\n*************************************************************************************************\n                           Profiling\n*************************************************************************************************\n");
-
-	  printf("\nAll times are in seconds\n\n");
-
-	  FOLD // Basic profiling  .
-	  {
-	    Logger slog(stdout);
-	    slog.setCsvDeliminator('\t');
-	    slog.setCsvLineNums(false);
-
-	    slog.csvWrite("Comps:",   "<cmps>");
-	    slog.csvWrite("         Resp",  pres, cuSrch->timings[COMP_RESP]		* 1e-6 );
-	    slog.csvWrite("      Ker FFT",  pres, cuSrch->timings[COMP_KERFFT]		* 1e-6 );
-	    slog.csvWrite("     Refine 1",  pres, cuSrch->timings[COMP_OPT_REFINE_1]	* 1e-6 );
-	    slog.csvWrite("     Refine 2",  pres, cuSrch->timings[COMP_OPT_REFINE_2]	* 1e-6 );
-	    slog.csvWrite("       Derivs",  pres, cuSrch->timings[COMP_OPT_DERIVS]	* 1e-6 );
-	    slog.csvEndLine();
-	    printf("\n\n");
-	  }
-
-	  if ( !useUnopt )
-	  {
-	    cuFFdotBatch*   batches = &cuSrch->pInf->batches[0];
-
-	    printf("\n --== Batches ==-- \n");
-
-	    FOLD // Heading  .
-	    {
-	      char heads[COMP_GEN_END][15];
-
-	      sprintf(heads[COMP_GEN_H2D],		"Copy H2D");
-
-	      if      ( batches->flags & CU_NORM_GPU_SM )
-		sprintf(heads[COMP_GEN_NRM],		"Norm GPU SM");
-	      else if ( batches->flags & CU_NORM_GPU_OS )
-		sprintf(heads[COMP_GEN_NRM],		"Norm GPU RDIX");
-	      else
-		sprintf(heads[COMP_GEN_NRM],		"Norm CPU");
-
-	      sprintf(heads[COMP_GEN_GINP],		"GPU Input");
-
-	      sprintf(heads[COMP_GEN_CINP],		"CPU Input");
-
-	      sprintf(heads[COMP_GEN_MEM],		"Input Mem");
-
-	      if ( batches->flags & CU_INPT_FFT_CPU )
-		sprintf(heads[COMP_GEN_FFT],		"Inp FFT CPU");
-	      else
-		sprintf(heads[COMP_GEN_FFT],		"Inp FFT GPU");
-
-	      sprintf(heads[COMP_GEN_MULT],		"Multiplication");
-
-	      sprintf(heads[COMP_GEN_IFFT],		"Inverse FFT");
-
-	      sprintf(heads[COMP_GEN_D2D],		"Copy D2D");
-
-	      sprintf(heads[COMP_GEN_SS],		"Sum & Search");
-
-	      sprintf(heads[COMP_GEN_D2H],		"Copy D2H");
-
-	      sprintf(heads[COMP_GEN_STR],		"iCand storage");
-
-	      printf("\t\t");
-	      for ( int i = 0; i < COMP_GEN_END; i++)
-		printf("%15s\t", heads[i] );
-
-	      printf("\n");
-	    }
-
-	    for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
-	    {
-	      printf("Batch\t%02i\n",batch);
-
-	      batches = &cuSrch->pInf->batches[batch];
-
-	      float	bsums[COMP_GEN_END];
-	      for ( int i = 0; i < COMP_GEN_END; i++)
-		bsums[i] = 0;
-
-	      for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
-	      {
-
-		printf("Stack\t%02i\t", stack);
-
-		for ( int i = 0; i < COMP_GEN_END; i++)
-		{
-		  float val = batches->compTime[i*batches->noStacks+stack];
-		  val *= 1e-6; // Convert to s
-		  printf("%15.06f\t", val );
-		  bsums[i] += val;
-		}
-		printf("\n");
-	      }
-
-	      if ( cuSrch->pInf->noBatches > 1 )
-	      {
-		printf("\t\t");
-		for ( int i = 0; i < COMP_GEN_END; i++)
-		  printf("%15s\t", "---------" );
-		printf("\n");
-
-		printf("\t\t");
-		for ( int i = 0; i < COMP_GEN_END; i++)
-		{
-		  printf("%15.06f\t", bsums[i] );
-		}
-		printf("\n");
-	      }
-
-	      for ( int i = 0; i < COMP_GEN_END; i++)
-	      {
-		sums[i] += bsums[i];
-	      }
-
-	    }
-	    printf("\t\t");
-	    for ( int i = 0; i < COMP_GEN_END; i++)
-	      printf("%15s\t", "---------" );
-	    printf("\n");
-
-	    printf("TotalT\t\t");
-	    for ( int i = 0; i < COMP_GEN_END; i++)
-	    {
-	      printf("%15.06f\t", sums[i] );
-	    }
-	    printf("\n");
-	  }
-
-	  printf("\n*************************************************************************************************\n\n");
-	}
-      }
-#endif
-    }
-#endif
   }
 
   /* Finish up */

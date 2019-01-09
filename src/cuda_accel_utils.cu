@@ -110,11 +110,6 @@ extern "C"
 #include "cuda_cand_OPT.h"
 #include "cuda_response.h"
 
-#ifdef CBL
-#include <unistd.h>
-#include "log.h"
-#endif
-
 int    globalInt01    = 0;
 int    globalInt02    = 0;
 int    globalInt03    = 0;
@@ -926,12 +921,6 @@ void readAccelDefalts(confSpecs *conf)
 #else
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with GPU normalisation.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - GPU norm Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_NORM_GPU
 	}
 	else if ( strCom("GPU_SM_MIN", str2 ) || strCom("GPU_SM2", str2 ))
@@ -941,12 +930,6 @@ void readAccelDefalts(confSpecs *conf)
 #else
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with GPU normalisation.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - GPU norm Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_NORM_GPU
 	}
 	else if ( strCom("GPU_OS", str2 ) )
@@ -957,11 +940,6 @@ void readAccelDefalts(confSpecs *conf)
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with GPU normalisation.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - GPU norm Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_NORM_GPU
 	}
 	else
@@ -996,12 +974,6 @@ void readAccelDefalts(confSpecs *conf)
 	}
 	else if ( singleFlag ( genFlags, str1, str2, CU_INPT_FFT_CPU, "CPU", "GPU", lineno, fName ) )
 	{
-	  if ( (*genFlags) & CU_NORM_GPU )  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - input FFT / NORM \n");
-	    exit(EXIT_FAILURE);
-	  }
-
 	  // IF we are doing CPU FFT's we need to do CPU normalisation
 	  (*genFlags) &= ~CU_NORM_GPU;
 	}
@@ -1035,11 +1007,6 @@ void readAccelDefalts(confSpecs *conf)
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.3 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_MUL_00 WITH_MUL_01 WITH_MUL_02
 	}
 	else if ( strCom("11", str2 ) )
@@ -1051,11 +1018,6 @@ void readAccelDefalts(confSpecs *conf)
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 1.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_MUL_11
 	}
 	else if ( strCom("21", str2 ) )
@@ -1067,11 +1029,6 @@ void readAccelDefalts(confSpecs *conf)
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_MUL_21
 	}
 	else if ( strCom("22", str2 ) )
@@ -1083,11 +1040,6 @@ void readAccelDefalts(confSpecs *conf)
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.2 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_MUL_22
 	}
 	else if ( strCom("23", str2 ) )
@@ -1099,11 +1051,6 @@ void readAccelDefalts(confSpecs *conf)
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 2.3 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
 
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_MUL_23
 	}
 	else if ( strCom("31", str2 ) )
@@ -1114,12 +1061,6 @@ void readAccelDefalts(confSpecs *conf)
 #else	// WITH_MUL_31
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication 3.1 kernel.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif	// WITH_MUL_31
 	}
 	else if ( strCom("CB", str2 ) )
@@ -1132,12 +1073,6 @@ void readAccelDefalts(confSpecs *conf)
 #else
 	  line[flagLen] = 0;
 	  fprintf(stderr, "WARNING: Not compiled with multiplication through CUFFT callbacks enabled.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 #endif
 #else
 	  line[flagLen] = 0;
@@ -1151,12 +1086,6 @@ void readAccelDefalts(confSpecs *conf)
 	else
 	{
 	  fprintf(stderr, "ERROR: Found unknown value \"%s\" for flag \"%s\" on line %i of %s.\n", str2, str1, lineno, fName);
-
-	  FOLD  // TMP REM - Added to mark an error for thesis timing
-	  {
-	    printf("Temporary exit - mult Kernel \n");
-	    exit(EXIT_FAILURE);
-	  }
 	}
       }
 
@@ -1233,12 +1162,17 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("CB", str2 ) )
 	{
+#ifdef WITH_POW_POST_CALLBACK
 #if CUDART_VERSION >= 6050
 	  (*genFlags) |=     FLAG_CUFFT_CB_POW;
-#else
+#else	// CUDART_VERSION
 	  line[flagLen] = 0;
 	  fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-#endif
+#endif	// CUDART_VERSION
+#else	// WITH_POW_POST_CALLBACK
+	  line[flagLen] = 0;
+	  fprintf(stderr,"WARNING: Not compiled with CUDA callbacks.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif	// WITH_POW_POST_CALLBACK
 	}
 	else if ( strCom("SS", str2 ) )
 	{
@@ -1258,22 +1192,32 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("CB", str2 ) )
 	{
-#if CUDART_VERSION >= 6050
+#ifdef WITH_POW_POST_CALLBACK
+#if 	CUDART_VERSION >= 6050
 	  (*genFlags) |=     FLAG_CUFFT_CB_INMEM;
-#else
+#else	// CUDART_VERSION
 	  line[flagLen] = 0;
 	  fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s %s line %i in %s)\n", str1, str2, lineno, fName);
-#endif
+#endif	// CUDART_VERSION
+#else	// WITH_POW_POST_CALLBACK
+	  line[flagLen] = 0;
+	  fprintf(stderr,"WARNING: Not compiled with CUDA callbacks.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif	// WITH_POW_POST_CALLBACK
 	}
 	else if ( strCom("MEM_CPY", str2 ) || strCom("", str2 ))
 	{
-#if CUDART_VERSION >= 6050
+#ifdef WITH_POW_POST_CALLBACK
+#if	CUDART_VERSION >= 6050
 	  (*genFlags) &=    ~FLAG_CUFFT_CB_INMEM;
 	  (*genFlags) |=     FLAG_CUFFT_CB_POW;
-#else
+#else	// CUDART_VERSION
 	  line[flagLen] = 0;
 	  fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s %s line %i in %s)\n", str1, str2, lineno, fName);
-#endif
+#endif	// CUDART_VERSION
+#else	// WITH_POW_POST_CALLBACK
+	  line[flagLen] = 0;
+	  fprintf(stderr,"WARNING: Not compiled with CUDA callbacks.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif	// WITH_POW_POST_CALLBACK
 	}
 	else if ( strCom("KERNEL", str2 ) )
 	{
@@ -1431,12 +1375,6 @@ void readAccelDefalts(confSpecs *conf)
 	    {
 	      fprintf(stderr, "WARNING: Sum & search chunk size not in compiled bounds (%i - %i). Line %i of %s.\n", MIN_SAS_CHUNK, MAX_SAS_CHUNK, lineno, fName);
 	      conf->gen->ssChunk = 0;
-
-	      FOLD  // TMP REM - Added to mark an error for thesis timing
-	      {
-		printf("Temporary exit - ssChunk \n");
-		exit(EXIT_FAILURE);
-	      }
 	    }
 	  }
 	  else
@@ -1471,12 +1409,6 @@ void readAccelDefalts(confSpecs *conf)
 	    {
 	      fprintf(stderr, "WARNING: Sum & search column size not in compiled bounds (%i - %i). Line %i of %s.\n", MIN_SAS_COLUMN, MAX_SAS_COLUMN, lineno, fName);
 	      conf->gen->ssColumn = 0;
-
-	      FOLD  // TMP REM - Added to mark an error for thesis timing
-	      {
-		printf("Temporary exit - ssColumn \n");
-		exit(EXIT_FAILURE);
-	      }
 	    }
 	  }
 	  else
@@ -1749,7 +1681,6 @@ void readAccelDefalts(confSpecs *conf)
 	  (*optFlags) |=  FLAG_OPT_BLK_HRM;
 #else
 	  fprintf(stderr, "ERROR: Found %s on line %i of %s, this has been disabled at compile time. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
-	  exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
 #endif
 	}
 	else if ( strCom("SFL", str2 ) )
@@ -1759,7 +1690,6 @@ void readAccelDefalts(confSpecs *conf)
 	  (*optFlags) |=  FLAG_OPT_BLK_SFL;
 #else
 	  fprintf(stderr, "ERROR: Found %s on line %i of %s, this has been disabled at compile time. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
-	  exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
 #endif
 	}
 	else
@@ -2022,7 +1952,6 @@ void readAccelDefalts(confSpecs *conf)
 	singleFlag ( optFlags, str1, str2, FLAG_PROF, "", "0", lineno, fName );
 #else
 	fprintf(stderr, "ERROR: Found %s on line %i of %s, the program has not been compile with profiling enabled. Check the #define in cuda_accel.h.\n", str1, lineno, fName);
-	exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
 #endif
       }
 
@@ -2154,7 +2083,6 @@ void readAccelDefalts(confSpecs *conf)
       {
 	line[flagLen] = 0;
 	fprintf(stderr, "ERROR: Found unknown flag \"%s\" on line %i of %s.\n", line, lineno, fName);
-	exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
       }
     }
 
@@ -2163,7 +2091,6 @@ void readAccelDefalts(confSpecs *conf)
   else
   {
     printf("Unable to read GPU accel settings from %s\n", fName);
-    exit(EXIT_FAILURE); // TMP REM - Added to mark an error for thesis timing
   }
 }
 
@@ -2187,13 +2114,6 @@ searchSpecs* sSpecsFromObs(Cmdline *cmd, accelobs* obs, confSpecs* conf)
   conf->gen->normType	= obs->norm_type;
 
   conf->gen->zMax	= cu_calc_required_z<double>(1, fabs(sSpec->zMax), conf->gen->zRes);
-
-//  REM
-//  if ( conf->gen->flags & (FLAG_SS_31 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
-//  {
-//    // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
-//    sSpec->searchRLow	= floor(sSpec->searchRLow/(float)cmd->numharm)*cmd->numharm;
-//  }
 
   return sSpec;
 }
@@ -2238,7 +2158,7 @@ confSpecs* defaultConfig()
   {
     conf->gen->flags	|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     conf->gen->flags	|= FLAG_ITLV_ROW    ;
-    conf->gen->flags	|= FLAG_CENTER      ;	// Center and align the usable part of the planes
+    conf->gen->flags	|= FLAG_CENTER      ;	// Centre and align the usable part of the planes
     conf->gen->flags	|= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
 #ifdef WITH_SAS_COUNT
@@ -2251,9 +2171,11 @@ confSpecs* defaultConfig()
     conf->opt->flags	|= FLAG_OPT_THREAD  ;	// Do CPU component of optimization in a separate thread - A very good idea
 #endif
 
-#if CUDART_VERSION >= 6050
+#ifdef	WITH_POW_POST_CALLBACK
+#if	CUDART_VERSION >= 6050
     conf->gen->flags	|= FLAG_CUFFT_CB_POW;	// CUFFT callback to calculate powers, very efficient so on by default
-#endif
+#endif	// CUDART_VERSION
+#endif	// WITH_POW_POST_CALLBACK
 
 #if CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)
     conf->gen->flags	|= FLAG_POW_HALF;
