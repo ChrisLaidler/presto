@@ -643,7 +643,7 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef CUDA
-      TIMING // Basic timing  .
+      TIME // Basic timing  .
       {
 	NV_RANGE_PUSH("props");
       }

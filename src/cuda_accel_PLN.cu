@@ -881,7 +881,7 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
     plnGen->pln->blkDimX	= plnGen->pln->noR;
     char kerName[20];
     double dup2pad_ratio;
-    T Nothing;
+    T Nothing = 0;				// This is just used to specify the type of the templated functions
 
     // Clear all "local" kernels
     err += remOptFlag(plnGen, FLAG_PLN_ALL );
@@ -1164,12 +1164,6 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 
       FOLD // Select a good power of two number of columns  .
       {
-//	if ( target_noCol <= 32 )	// DBG remove this!
-//	{
-//	  pln->blkCnt	= MIN(MAX_OPT_SFL_NO,target_noCol);
-//	}
-//	else
-	{
 	int divs = 2;
 
 	if ( pln->rSize > 8 )
@@ -1187,7 +1181,6 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
 	}
 	
 	pln->blkCnt	= ceil(pln->rSize/(double)divs)*divs;
-	}
       }
 
       // Other settings are now set using the column width

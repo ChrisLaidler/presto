@@ -1233,12 +1233,17 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("CB", str2 ) )
 	{
+#ifdef WITH_POW_POST_CALLBACK
 #if CUDART_VERSION >= 6050
 	  (*genFlags) |=     FLAG_CUFFT_CB_POW;
-#else
+#else	// CUDART_VERSION
 	  line[flagLen] = 0;
 	  fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
-#endif
+#endif	// CUDART_VERSION
+#else	// WITH_POW_POST_CALLBACK
+	  line[flagLen] = 0;
+	  fprintf(stderr,"WARNING: Not compiled with CUDA callbacks.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif	// WITH_POW_POST_CALLBACK
 	}
 	else if ( strCom("SS", str2 ) )
 	{
@@ -1258,22 +1263,32 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if      ( strCom("CB", str2 ) )
 	{
+#ifdef WITH_POW_POST_CALLBACK
 #if CUDART_VERSION >= 6050
 	  (*genFlags) |=     FLAG_CUFFT_CB_INMEM;
-#else
+#else	// CUDART_VERSION
 	  line[flagLen] = 0;
 	  fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s %s line %i in %s)\n", str1, str2, lineno, fName);
-#endif
+#endif	// CUDART_VERSION
+#else	// WITH_POW_POST_CALLBACK
+	  line[flagLen] = 0;
+	  fprintf(stderr,"WARNING: Not compiled with CUDA callbacks.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif	// WITH_POW_POST_CALLBACK
 	}
 	else if ( strCom("MEM_CPY", str2 ) || strCom("", str2 ))
 	{
+#ifdef WITH_POW_POST_CALLBACK
 #if CUDART_VERSION >= 6050
 	  (*genFlags) &=    ~FLAG_CUFFT_CB_INMEM;
 	  (*genFlags) |=     FLAG_CUFFT_CB_POW;
-#else
+#else	// CUDART_VERSION
 	  line[flagLen] = 0;
 	  fprintf(stderr,"WARNING: Use of CUDA callbacks requires CUDA 6.5 or greater.  (FLAG: %s %s line %i in %s)\n", str1, str2, lineno, fName);
-#endif
+#endif	// CUDART_VERSION
+#else	// WITH_POW_POST_CALLBACK
+	  line[flagLen] = 0;
+	  fprintf(stderr,"WARNING: Not compiled with CUDA callbacks.  (FLAG: %s line %i in %s)\n", line, lineno, fName);
+#endif	// WITH_POW_POST_CALLBACK
 	}
 	else if ( strCom("KERNEL", str2 ) )
 	{
@@ -2238,7 +2253,7 @@ confSpecs* defaultConfig()
   {
     conf->gen->flags	|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     conf->gen->flags	|= FLAG_ITLV_ROW    ;
-    conf->gen->flags	|= FLAG_CENTER      ;	// Center and align the usable part of the planes
+    conf->gen->flags	|= FLAG_CENTER      ;	// Centre and align the usable part of the planes
     conf->gen->flags	|= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
 #ifdef WITH_SAS_COUNT
@@ -2251,9 +2266,11 @@ confSpecs* defaultConfig()
     conf->opt->flags	|= FLAG_OPT_THREAD  ;	// Do CPU component of optimization in a separate thread - A very good idea
 #endif
 
+#ifdef	WITH_POW_POST_CALLBACK
 #if CUDART_VERSION >= 6050
     conf->gen->flags	|= FLAG_CUFFT_CB_POW;	// CUFFT callback to calculate powers, very efficient so on by default
-#endif
+#endif	// CUDART_VERSION
+#endif	// WITH_POW_POST_CALLBACK
 
 #if CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)
     conf->gen->flags	|= FLAG_POW_HALF;

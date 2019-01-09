@@ -464,6 +464,7 @@ void copyCUFFT_CBs(cuFFdotBatch* batch)
 
   if ( batch->flags & FLAG_CUFFT_CB_OUT )
   {
+#ifdef WITH_POW_POST_CALLBACK
     infoMSG(5,5,"Set out CB function.");
 
     if ( batch->flags & FLAG_POW_HALF )
@@ -483,23 +484,23 @@ void copyCUFFT_CBs(cuFFdotBatch* batch)
 	{
 	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
 	}
-#else
+#else	//WITH_ITLV_PLN
 	else
 	{
 	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
 	  exit(EXIT_FAILURE);
 	}
-#endif
+#endif	// WITH_ITLV_PLN
       }
       else
       {
 	// Calculate powers and write to powers half precision plane
 	CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
       }
-#else
+#else	// CUDART_VERSION
       fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
       exit(EXIT_FAILURE);
-#endif
+#endif	//CUDART_VERSION
 #else	// WITH_HALF_RESCISION_POWERS
       EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS
@@ -536,6 +537,9 @@ void copyCUFFT_CBs(cuFFdotBatch* batch)
       EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
 #endif	// WITH_SINGLE_RESCISION_POWERS
     }
+#else	// WITH_POW_POST_CALLBACK
+      EXIT_DIRECTIVE("WITH_POW_POST_CALLBACK");
+#endif	// WITH_POW_POST_CALLBACK
   }
 
   PROF // Profiling  .

@@ -345,8 +345,8 @@ __host__  void mult02_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
     {
       if      ( batch->noSteps < MIN_STEPS )
 	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
-      else if ( batch->noSteps > MAX_SAS_CHUNK )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      else if ( batch->noSteps > MAX_STEPS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MAX_STEPS );
       else
 	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
 

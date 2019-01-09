@@ -128,7 +128,7 @@ extern "C"
 
 ////////	Sum & Search
 #define			MIN_SAS_CHUNK	1		///< Reducing the SAS Chunk range can reduce compile time and binary size which reduces CUDA context initialisation time
-#define			MAX_SAS_CHUNK	12
+#define			MAX_SAS_CHUNK	12		///< Use up to 10
 
 #define			MIN_SAS_COLUMN	1		///< Not in use yet - min columns for sas kernels
 #define			MAX_SAS_COLUMN	32		///< Not in use yet - max columns for sas kernels
