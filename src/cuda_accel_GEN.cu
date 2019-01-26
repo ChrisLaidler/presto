@@ -2731,6 +2731,14 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
       total-= Diff;
     }
 #endif
+
+#ifdef WITH_SAS_COUNT // TMP DBG REM
+    if(kernel->gInf->capability < 5.0)
+    {
+      printf("Temporary exit - Old card compiled with WITH_SAS_COUNT \n");
+      exit(EXIT_FAILURE);
+    }
+#endif
   }
 
   FOLD // Copy details from kernel and allocate stacks .
