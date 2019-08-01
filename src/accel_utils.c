@@ -1150,24 +1150,27 @@ GSList *search_ffdotpows(ffdotpows * ffdot, int numharm,
    powcut = obs->powcut[twon_to_index(numharm)];
    numindep = obs->numindep[twon_to_index(numharm)];
 
-   for (ii = 0; ii < ffdot->numzs; ii++) {
-      for (jj = 0; jj < ffdot->numrs; jj++) {
-         if (ffdot->powers[ii][jj] > powcut) {
-            float pow, sig;
-            double rr, zz;
-            int added = 0;
+   for (jj = 0; jj < ffdot->numrs; jj++) {
+     float pow, sig;
+     double rr, zz;
+     int added = 0;
+     pow = powcut;
 
-            pow = ffdot->powers[ii][jj];
-            sig = candidate_sigma(pow, numharm, numindep);
+     for (ii = 0; ii < ffdot->numzs; ii++) {
+	 float pp = ffdot->powers[ii][jj];
+         if ( pp > pow ) {
+            pow = pp;
             rr = (ffdot->rlo + jj * (double) ACCEL_DR) / (double) numharm;
             zz = (ffdot->zlo + ii * (double) ACCEL_DZ) / (double) numharm;
-            cands = insert_new_accelcand(cands, pow, sig, numharm, rr, zz, &added);
-            if (added && !obs->dat_input)
-               fprintf(obs->workfile,
-                       "%-7.2f  %-7.4f  %-2d  %-14.4f  %-14.9f  %-10.4f\n",
-                       pow, sig, numharm, rr, rr / obs->T, zz);
          }
       }
+     if (pow > powcut) {
+       sig = candidate_sigma(pow, numharm, numindep);
+       cands = insert_new_accelcand(cands, pow, sig, numharm, rr, zz, &added);
+       if (added && !obs->dat_input)
+         fprintf(obs->workfile, "%-7.2f  %-7.4f  %-2d  %-14.4f  %-14.9f  %-10.4f\n", pow, sig, numharm, rr, rr / obs->T, zz);
+
+     }
    }
    return cands;
 }
