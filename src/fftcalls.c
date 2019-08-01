@@ -36,7 +36,6 @@ void fftwcall(fcomplex * indata, long nn, int isign)
    unsigned long oldestplan = 0;
    static fftwf_plan plancache_forward[4] = { NULL, NULL, NULL, NULL };
    static fftwf_plan plancache_inverse[4] = { NULL, NULL, NULL, NULL };
-   static fcomplex *indatacache[4] = { NULL, NULL, NULL, NULL };
    static int firsttime = 1, nncache[4] = { 0, 0, 0, 0 };
    static unsigned long lastuse[4] = { 0, 0, 0, 0 };
 
@@ -54,7 +53,7 @@ void fftwcall(fcomplex * indata, long nn, int isign)
    /* If we used the same plan during the last few calls, use it again */
    /* We keep, in effect, a stack of the 4 most recent plans.          */
 
-   if (nn == nncache[0] && indata == indatacache[0]) {
+   if (nn == nncache[0] ) {
       plan_forward = &plancache_forward[0];
       plan_inverse = &plancache_inverse[0];
       lastuse[0] = 0;
@@ -62,7 +61,7 @@ void fftwcall(fcomplex * indata, long nn, int isign)
       lastuse[2]++;
       lastuse[3]++;
       /* printf("Found old plan.  %d  %d\n", nn, ct++); */
-   } else if (nn == nncache[1] && indata == indatacache[1]) {
+   } else if (nn == nncache[1] ) {
       plan_forward = &plancache_forward[1];
       plan_inverse = &plancache_inverse[1];
       lastuse[1] = 0;
@@ -70,7 +69,7 @@ void fftwcall(fcomplex * indata, long nn, int isign)
       lastuse[2]++;
       lastuse[3]++;
       /* printf("Found old plan.  %d  %d\n", nn, ct++); */
-   } else if (nn == nncache[2] && indata == indatacache[2]) {
+   } else if (nn == nncache[2] ) {
       plan_forward = &plancache_forward[2];
       plan_inverse = &plancache_inverse[2];
       lastuse[2] = 0;
@@ -78,7 +77,7 @@ void fftwcall(fcomplex * indata, long nn, int isign)
       lastuse[1]++;
       lastuse[3]++;
       /* printf("Found old plan.  %d  %d\n", nn, ct++); */
-   } else if (nn == nncache[3] && indata == indatacache[3]) {
+   } else if (nn == nncache[3] ) {
       plan_forward = &plancache_forward[3];
       plan_inverse = &plancache_inverse[3];
       lastuse[3] = 0;
@@ -89,8 +88,10 @@ void fftwcall(fcomplex * indata, long nn, int isign)
    } else {
       if (!firsttime) {
          for (ii = 3; ii >= 0; ii--)
-            if (lastuse[ii] >= oldestplan)
+            if (lastuse[ii] >= lastuse[oldestplan])
+            {
                oldestplan = ii;
+            }
          if (plancache_forward[oldestplan])
             fftwf_destroy_plan(plancache_forward[oldestplan]);
          if (plancache_inverse[oldestplan])
@@ -106,7 +107,6 @@ void fftwcall(fcomplex * indata, long nn, int isign)
                                                         (fftwf_complex *) indata,
                                                         +1, FFTW_ESTIMATE);
       nncache[oldestplan] = nn;
-      indatacache[oldestplan] = indata;
       plan_forward = &plancache_forward[oldestplan];
       plan_inverse = &plancache_inverse[oldestplan];
       lastuse[0]++;
@@ -119,9 +119,9 @@ void fftwcall(fcomplex * indata, long nn, int isign)
    /* Call the transform */
 
    if (isign == -1) {
-      fftwf_execute(*plan_forward);
+      fftwf_execute_dft(*plan_forward, (fftwf_complex *) indata, (fftwf_complex *) indata);
    } else {
-      fftwf_execute(*plan_inverse);
+      fftwf_execute_dft(*plan_inverse, (fftwf_complex *) indata, (fftwf_complex *) indata);
    }
 
    firsttime = 0;
