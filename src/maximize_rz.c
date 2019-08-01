@@ -74,7 +74,7 @@ double max_rz_arr(fcomplex * data, int numdata, double rin, double zin,
 
   /*  Restart at minimum using HIGHACC to get a better result */
 
-  max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]) + 4.0, HIGHACC);
+  max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]) * ZSCALE + 4.0, HIGHACC);
 
   /* Re-Initialize some of the starting simplex */
 
@@ -253,7 +253,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
 
    /*  Restart at minimum using HIGHACC to get a better result */
 
-   max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*num_harmonics) + 4.0, HIGHACC);
+   max_kern_half_width = z_resp_halfwidth(fabs(x[0][1]*num_harmonics) * ZSCALE + 4.0, HIGHACC);
 
    /* Re-Initialize some of the starting simplex */
 
