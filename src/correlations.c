@@ -1,5 +1,32 @@
 #include "presto.h"
 
+void mult(fcomplex * data, fcomplex * kernel, int numdata, float normal, fcomplex *tmpdat, presto_optype type)
+{
+	int ii;
+	float tmpd, tmpk;
+
+	if (type == CORR || type == INPLACE_CORR) {
+	  for (ii = 0; ii < numdata; ii++) {
+		 tmpd = tmpdat[ii].r;
+		 tmpk = kernel[ii].r;
+		 tmpdat[ii].r = (tmpd * tmpk + tmpdat[ii].i * kernel[ii].i) * normal;
+		 tmpdat[ii].i = (tmpdat[ii].i * tmpk - kernel[ii].i * tmpd) * normal;
+	  }
+	} else {
+	  for (ii = 0; ii < numdata; ii++) {
+		 tmpd = tmpdat[ii].r;
+		 tmpk = kernel[ii].r;
+		 tmpdat[ii].r = (tmpd * tmpk - tmpdat[ii].i * kernel[ii].i) * normal;
+		 tmpdat[ii].i = (tmpdat[ii].i * tmpk + kernel[ii].i * tmpd) * normal;
+	  }
+	}
+}
+
+void ifft(fcomplex* dataarray, int fftlen, int dir)
+{
+	COMPLEXFFT(dataarray, fftlen, dir);
+}
+
 fcomplex *complex_corr_conv(fcomplex * data, fcomplex * kernel,
                             int numdata, presto_ffts ffts, presto_optype type)
   /* Perform and return a complex correlation or convolution.       */
@@ -53,29 +80,32 @@ fcomplex *complex_corr_conv(fcomplex * data, fcomplex * kernel,
 
    /* Do the complex multiplications */
 
-   if (type == CORR || type == INPLACE_CORR) {
-      for (ii = 0; ii < numdata; ii++) {
-         tmpd = tmpdat[ii].r;
-         tmpk = kernel[ii].r;
-         tmpdat[ii].r = (tmpd * tmpk + tmpdat[ii].i * kernel[ii].i)
-             * normal;
-         tmpdat[ii].i = (tmpdat[ii].i * tmpk - kernel[ii].i * tmpd)
-             * normal;
-      }
-   } else {
-      for (ii = 0; ii < numdata; ii++) {
-         tmpd = tmpdat[ii].r;
-         tmpk = kernel[ii].r;
-         tmpdat[ii].r = (tmpd * tmpk - tmpdat[ii].i * kernel[ii].i)
-             * normal;
-         tmpdat[ii].i = (tmpdat[ii].i * tmpk + kernel[ii].i * tmpd)
-             * normal;
-      }
-   }
+   mult(data, kernel, numdata, normal, tmpdat, type);
+//   if (type == CORR || type == INPLACE_CORR) {
+//      for (ii = 0; ii < numdata; ii++) {
+//         tmpd = tmpdat[ii].r;
+//         tmpk = kernel[ii].r;
+//         tmpdat[ii].r = (tmpd * tmpk + tmpdat[ii].i * kernel[ii].i)
+//             * normal;
+//         tmpdat[ii].i = (tmpdat[ii].i * tmpk - kernel[ii].i * tmpd)
+//             * normal;
+//      }
+//   } else {
+//      for (ii = 0; ii < numdata; ii++) {
+//         tmpd = tmpdat[ii].r;
+//         tmpk = kernel[ii].r;
+//         tmpdat[ii].r = (tmpd * tmpk - tmpdat[ii].i * kernel[ii].i)
+//             * normal;
+//         tmpdat[ii].i = (tmpdat[ii].i * tmpk + kernel[ii].i * tmpd)
+//             * normal;
+//      }
+//   }
 
    /* Perform the inverse FFT on the result and return */
 
-   COMPLEXFFT(tmpdat, numdata, 1);
+   ifft(tmpdat, numdata, 1);
+//   COMPLEXFFT(tmpdat, numdata, 1);
+
    return tmpdat;
 }
 

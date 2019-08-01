@@ -2,6 +2,12 @@
 
 /* define DEBUGPRINT */
 
+void input_fft(fcomplex* dataarray, int fftlen, int dir)
+{
+//  printf("Inp FFT %4i \n", fftlen);
+  COMPLEXFFT(dataarray, fftlen, dir);
+}
+
 int corr_complex(fcomplex * data, int numdata, presto_datainf datainf,
                  fcomplex * kern, int numkern, presto_datainf kerninf,
                  fcomplex * result, int numresult, int lobin,
@@ -178,7 +184,8 @@ int corr_complex(fcomplex * data, int numdata, presto_datainf datainf,
 
          /* FFT the Data */
 
-         COMPLEXFFT(dataarray, fftlen, -1);
+         //COMPLEXFFT(dataarray, fftlen, -1);
+         input_fft(dataarray, fftlen, -1);
 
       } else if (datainf == PREPPED) {
 
@@ -241,6 +248,7 @@ int corr_complex(fcomplex * data, int numdata, presto_datainf datainf,
          printf("Just copying the kernel...\n");
 #endif
 
+         // This memory copy is not necessary why not just have:  kernarray = kern?
          memcpy(kernarray, kern, sizeof(fcomplex) * fftlen);
       }
    }
@@ -251,8 +259,8 @@ int corr_complex(fcomplex * data, int numdata, presto_datainf datainf,
 
    /* Chop off the contaminated ends and/or the extra data */
 
-   chop_complex_ends(tmpdata, fftlen, result, numresult,
-                     kern_half_width * numbetween);
+   chop_complex_ends(tmpdata, fftlen, result, numresult, kern_half_width * numbetween);
+
    vect_free(tmpdata);
 
    /* Set variables for next time... */

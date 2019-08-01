@@ -35,7 +35,7 @@ static inline int twon_to_index(int n)
 }
 
 
-static inline int calc_required_z(double harm_fract, double zfull)
+inline int calc_required_z(double harm_fract, double zfull)
 /* Calculate the 'z' you need for subharmonic  */
 /* harm_fract = harmnum / numharm if the       */
 /* 'z' at the fundamental harmonic is 'zfull'. */
@@ -44,7 +44,7 @@ static inline int calc_required_z(double harm_fract, double zfull)
 }
 
 
-static inline double calc_required_r(double harm_fract, double rfull)
+inline double calc_required_r(double harm_fract, double rfull)
 /* Calculate the 'r' you need for subharmonic  */
 /* harm_fract = harmnum / numharm if the       */
 /* 'r' at the fundamental harmonic is 'rfull'. */
@@ -53,7 +53,7 @@ static inline double calc_required_r(double harm_fract, double rfull)
 }
 
 
-static inline int index_from_r(double r, double lor)
+inline int index_from_r(double r, double lor)
 /* Return an index for a Fourier Freq given an array that */
 /* has stepsize ACCEL_DR and low freq 'lor'.              */
 {
@@ -61,7 +61,7 @@ static inline int index_from_r(double r, double lor)
 }
 
 
-static inline int index_from_z(double z, double loz)
+inline int index_from_z(double z, double loz)
 /* Return an index for a Fourier Fdot given an array that */
 /* has stepsize ACCEL_DZ and low freq 'lor'.              */
 {
@@ -69,7 +69,7 @@ static inline int index_from_z(double z, double loz)
 }
 
 
-static void compare_rzw_cands(fourierprops * list, int nlist, char *notes)
+void compare_rzw_cands(fourierprops * list, int nlist, char *notes)
 {
    int ii, jj, kk;
    char tmp[30];
@@ -101,7 +101,7 @@ static void compare_rzw_cands(fourierprops * list, int nlist, char *notes)
 }
 
 
-static int calc_fftlen(int numharm, int harmnum, int max_zfull)
+int calc_fftlen(int numharm, int harmnum, int max_zfull)
 /* The fft length needed to properly process a subharmonic */
 {
    int bins_needed, end_effects;
@@ -116,8 +116,17 @@ static int calc_fftlen(int numharm, int harmnum, int max_zfull)
    return next2_to_n(bins_needed + end_effects);
 }
 
+void ker_fft(fcomplex* dataarray, int fftlen, int dir)
+{
+	COMPLEXFFT(dataarray, fftlen, dir);
+}
 
-static void init_kernel(int z, int fftlen, kernel * kern)
+fcomplex *ker_coefs(float p1, int numbetween, float z, int numkern)
+{
+	return gen_z_response(p1, numbetween, z, numkern);
+}
+
+void init_kernel(int z, int fftlen, kernel * kern)
 {
    int numkern;
    fcomplex *tempkern;
@@ -129,20 +138,22 @@ static void init_kernel(int z, int fftlen, kernel * kern)
    numkern = 2 * kern->numbetween * kern->kern_half_width;
    kern->numgoodbins = kern->fftlen - numkern;
    kern->data = gen_cvect(kern->fftlen);
-   tempkern = gen_z_response(0.0, kern->numbetween, kern->z, numkern);
+   //tempkern = gen_z_response(0.0, kern->numbetween, kern->z, numkern);
+   tempkern = ker_coefs(0.0, kern->numbetween, kern->z, numkern);
    place_complex_kernel(tempkern, numkern, kern->data, kern->fftlen);
    vect_free(tempkern);
-   COMPLEXFFT(kern->data, kern->fftlen, -1);
+   //COMPLEXFFT(kern->data, kern->fftlen, -1);
+   ker_fft(kern->data, kern->fftlen, -1);
 }
 
 
-static void free_kernel(kernel * kern)
+void free_kernel(kernel * kern)
 {
    vect_free(kern->data);
 }
 
 
-static void init_subharminfo(int numharm, int harmnum, int zmax, subharminfo * shi)
+void init_subharminfo(int numharm, int harmnum, int zmax, subharminfo * shi)
 /* Note:  'zmax' is the overall maximum 'z' in the search */
 {
    int ii, fftlen;
@@ -194,7 +205,7 @@ subharminfo **create_subharminfos(accelobs *obs)
 }
 
 
-static void free_subharminfo(subharminfo * shi)
+void free_subharminfo(subharminfo * shi)
 {
    int ii;
 
@@ -228,7 +239,7 @@ void free_subharminfos(accelobs *obs, subharminfo **shis)
 }
 
 
-static accelcand *create_accelcand(float power, float sigma,
+accelcand *create_accelcand(float power, float sigma,
                                    int numharm, double r, double z)
 {
    accelcand *obj;
@@ -259,7 +270,7 @@ void free_accelcand(gpointer data, gpointer user_data)
 }
 
 
-static int compare_accelcand_sigma(gconstpointer ca, gconstpointer cb)
+int compare_accelcand_sigma(gconstpointer ca, gconstpointer cb)
 /* Sorts from high to low sigma (ties are sorted by increasing r) */
 {
    int result;
@@ -282,7 +293,7 @@ GSList *sort_accelcands(GSList * list)
 }
 
 
-static GSList *insert_new_accelcand(GSList * list, float power, float sigma,
+GSList *insert_new_accelcand(GSList * list, float power, float sigma,
                                     int numharm, double rr, double zz, int *added)
 /* Checks the current list to see if there is already */
 /* a candidate within ACCEL_CLOSEST_R bins.  If not,  */
@@ -437,7 +448,7 @@ GSList *eliminate_harmonics(GSList * cands, int *numcands)
          currentptr = currentptr->next;
    }
    if (numremoved) {
-       printf("Removed %d likely harmonically related candidates.\n", numremoved);
+       printf("Removed %d likely harmonically related candidates %i remain.\n", numremoved, *numcands);
    }
    return cands;
 }
@@ -521,10 +532,10 @@ static void center_string(char *outstring, char *instring, int width)
    char *tmp;
 
    len = strlen(instring);
-   if (width < len) {
-      printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n",
-             len, instring, width);
-   }
+//   if (width < len) {
+//      printf("\nwidth < len (%d) in center_string(outstring, '%s', width=%d)\n",
+//             len, instring, width);
+//   }
    tmp = memset(outstring, ' ', width);
    outstring[width] = '\0';
    if (len >= width) {
@@ -850,6 +861,34 @@ fcomplex *get_fourier_amplitudes(int lobin, int numbins, accelobs * obs)
     }
 }
 
+void med_norm(fcomplex *data, int numdata)
+{
+    //  old-style block median normalization
+	float powargr, powargi;
+	float *powers;
+    double norm;
+    int ii;
+
+    powers = gen_fvect(numdata);
+    for (ii = 0; ii < numdata; ii++)
+        powers[ii] = POWER(data[ii].r, data[ii].i);
+    norm = 1.0 / sqrt(median(powers, numdata)/log(2.0));
+    vect_free(powers);
+    for (ii = 0; ii < numdata; ii++) {
+        data[ii].r *= norm;
+        data[ii].i *= norm;
+    }
+}
+
+
+void pows(ffdotpows *ffdot, fcomplex** result)
+{
+	int ii;
+	float powargr, powargi;
+	ffdot->powers = gen_fmatrix(ffdot->numzs, ffdot->numrs);
+	for (ii = 0; ii < (ffdot->numzs * ffdot->numrs); ii++)
+		ffdot->powers[0][ii] = POWER(result[0][ii].r, result[0][ii].i);
+}
 
 ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
                                double fullrlo, double fullrhi,
@@ -922,19 +961,20 @@ ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
            data[ii].i *= norm;
        }
    } else if (obs->norm_type == 0) {
-       //  old-style block median normalization
-       float *powers;
-       double norm;
-
-       powers = gen_fvect(numdata);
-       for (ii = 0; ii < numdata; ii++)
-           powers[ii] = POWER(data[ii].r, data[ii].i);
-       norm = 1.0 / sqrt(median(powers, numdata)/log(2.0));
-       vect_free(powers);
-       for (ii = 0; ii < numdata; ii++) {
-           data[ii].r *= norm;
-           data[ii].i *= norm;
-       }
+	   med_norm(data, numdata);
+//	   //  old-style block median normalization
+//       float *powers;
+//       double norm;
+//
+//       powers = gen_fvect(numdata);
+//       for (ii = 0; ii < numdata; ii++)
+//           powers[ii] = POWER(data[ii].r, data[ii].i);
+//       norm = 1.0 / sqrt(median(powers, numdata)/log(2.0));
+//       vect_free(powers);
+//       for (ii = 0; ii < numdata; ii++) {
+//           data[ii].r *= norm;
+//           data[ii].i *= norm;
+//       }
    } else {
        //  new-style running double-tophat local-power normalization
        float *powers, *loc_powers;
@@ -970,9 +1010,11 @@ ffdotpows *subharm_ffdot_plane(int numharm, int harmnum,
 
    /* Convert the amplitudes to normalized powers */
 
-   ffdot->powers = gen_fmatrix(ffdot->numzs, ffdot->numrs);
-   for (ii = 0; ii < (ffdot->numzs * ffdot->numrs); ii++)
-      ffdot->powers[0][ii] = POWER(result[0][ii].r, result[0][ii].i);
+   pows(ffdot, result);
+//   ffdot->powers = gen_fmatrix(ffdot->numzs, ffdot->numrs);
+//   for (ii = 0; ii < (ffdot->numzs * ffdot->numrs); ii++)
+//      ffdot->powers[0][ii] = POWER(result[0][ii].r, result[0][ii].i);
+
    vect_free(result[0]);
    vect_free(result);
    return ffdot;

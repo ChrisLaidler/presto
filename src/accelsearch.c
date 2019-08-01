@@ -38,12 +38,154 @@ static void print_percent_complete(int current, int number, char *what, int rese
    }
 }
 
+GSList* stage_cand(Cmdline *cmd, accelobs *obs)
+{
+   GSList *cands = NULL;
+   subharminfo **subharminfs;
+
+   printf("Generating correlation kernels:\n");
+   subharminfs = create_subharminfos(obs);
+
+   double startr = obs->rlo, lastr = 0, nextr = 0;
+   ffdotpows *fundamental;
+//   int ii = 0;
+
+   while (startr + ACCEL_USELEN * ACCEL_DR < obs->highestbin) {
+      /* Search the fundamental */
+      print_percent_complete(startr - obs->rlo,
+                             obs->highestbin - obs->rlo, "search", 0);
+//      printf("\nStep %4i\n", ii++);
+
+      nextr = startr + ACCEL_USELEN * ACCEL_DR;
+      lastr = nextr - ACCEL_DR;
+      fundamental = subharm_ffdot_plane(1, 1, startr, lastr,
+                                        &subharminfs[0][0], obs);
+      cands = search_ffdotpows(fundamental, 1, obs, cands);
+
+      if (obs->numharmstages > 1) {   /* Search the subharmonics */
+         int stage, harmtosum, harm;
+         ffdotpows *subharmonic;
+
+         // Copy the fundamental's ffdot plane to the full in-core one
+         if (obs->inmem){
+             if (cmd->otheroptP)
+                 fund_to_ffdotplane_trans(fundamental, obs);
+             else
+                 fund_to_ffdotplane(fundamental, obs);
+         }
+         for (stage = 1; stage < obs->numharmstages; stage++) {
+            harmtosum = 1 << stage;
+            for (harm = 1; harm < harmtosum; harm += 2) {
+                if (obs->inmem) {
+                    if (cmd->otheroptP)
+                        inmem_add_ffdotpows_trans(fundamental, obs, harmtosum, harm);
+                    else
+                        inmem_add_ffdotpows(fundamental, obs, harmtosum, harm);
+                } else {
+                    subharmonic = subharm_ffdot_plane(harmtosum, harm, startr, lastr, &subharminfs[stage][harm - 1], obs);
+                    if (cmd->otheroptP)
+                        add_ffdotpows_ptrs(fundamental, subharmonic, harmtosum, harm);
+                    else
+                        add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
+                    free_ffdotpows(subharmonic);
+                }
+            }
+            cands = search_ffdotpows(fundamental, harmtosum, obs, cands);
+         }
+      }
+      free_ffdotpows(fundamental);
+      startr = nextr;
+   }
+   print_percent_complete(obs->highestbin - obs->rlo,
+                          obs->highestbin - obs->rlo, "search", 0);
+
+   free_subharminfos(obs, subharminfs);
+
+   return cands;
+}
+
+void write_opt(GSList *cands, accelobs *obs, infodata* idata, fourierprops *props, int numcands)
+{
+	   /* Write the fundamentals to the output text file */
+
+	   output_fundamentals(props, cands, obs, idata);
+
+	   /* Write the harmonics to the output text file */
+
+	   output_harmonics(cands, obs, idata);
+
+	   /* Write the fundamental fourierprops to the cand file */
+
+	   obs->workfile = chkfopen(obs->candnm, "wb");
+	   chkfwrite(props, sizeof(fourierprops), numcands, obs->workfile);
+	   fclose(obs->workfile);
+	   free(props);
+	   printf("\n\n");
+}
+
+void stage_opt(GSList *cands, Cmdline *cmd, accelobs *obs, infodata* idata)
+{                            /* Candidate list trimming and optimization */
+   int numcands;
+   GSList *listptr;
+   accelcand *cand;
+   fourierprops *props;
+   int ii;
+
+   numcands = g_slist_length(cands);
+
+   if (numcands) {
+
+      /* Sort the candidates according to the optimized sigmas */
+
+      cands = sort_accelcands(cands);
+
+      /* Eliminate (most of) the harmonically related candidates */
+      if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
+          eliminate_harmonics(cands, &numcands);
+
+      /* Now optimize each candidate and its harmonics */
+
+      print_percent_complete(0, 0, NULL, 1);
+      listptr = cands;
+     for (ii = 0; ii < numcands; ii++) {
+         print_percent_complete(ii, numcands, "optimization", 0);
+         cand = (accelcand *) (listptr->data);
+         optimize_accelcand(cand, obs);
+         listptr = listptr->next;
+      }
+      print_percent_complete(ii, numcands, "optimization", 0);
+
+      /* Calculate the properties of the fundamentals */
+
+      props = (fourierprops *) malloc(sizeof(fourierprops) * numcands);
+      listptr = cands;
+      for (ii = 0; ii < numcands; ii++) {
+         cand = (accelcand *) (listptr->data);
+         /* In case the fundamental harmonic is not significant,  */
+         /* send the originally determined r and z from the       */
+         /* harmonic sum in the search.  Note that the derivs are */
+         /* not used for the computations with the fundamental.   */
+         calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
+         /* Override the error estimates based on power */
+         props[ii].rerr = (float) (ACCEL_DR) / cand->numharm;
+         props[ii].zerr = (float) (ACCEL_DZ) / cand->numharm;
+         listptr = listptr->next;
+      }
+
+      write_opt(cands, obs, idata, props, numcands);
+
+   } else {
+      printf("No candidates above sigma = %.2f were found.\n\n", obs->sigma);
+   }
+}
+
+
 int main(int argc, char *argv[])
 {
    int ii;
    double ttim, utim, stim, tott;
    struct tms runtimes;
-   subharminfo **subharminfs;
+//   subharminfo **subharminfs;
    accelobs obs;
    infodata idata;
    GSList *cands = NULL;
@@ -109,8 +251,7 @@ int main(int argc, char *argv[])
 
    /* Generate the correlation kernels */
 
-   printf("Generating correlation kernels:\n");
-   subharminfs = create_subharminfos(&obs);
+
    printf("Done generating kernels.\n\n");
    printf("Starting the search.\n");
    /* Don't use the *.txtcand files on short in-memory searches */
@@ -121,130 +262,134 @@ int main(int argc, char *argv[])
 
    /* Start the main search loop */
 
-   {
-      double startr = obs.rlo, lastr = 0, nextr = 0;
-      ffdotpows *fundamental;
-
-      while (startr + ACCEL_USELEN * ACCEL_DR < obs.highestbin) {
-         /* Search the fundamental */
-         print_percent_complete(startr - obs.rlo,
-                                obs.highestbin - obs.rlo, "search", 0);
-         nextr = startr + ACCEL_USELEN * ACCEL_DR;
-         lastr = nextr - ACCEL_DR;
-         fundamental = subharm_ffdot_plane(1, 1, startr, lastr,
-                                           &subharminfs[0][0], &obs);
-         cands = search_ffdotpows(fundamental, 1, &obs, cands);
-
-         if (obs.numharmstages > 1) {   /* Search the subharmonics */
-            int stage, harmtosum, harm;
-            ffdotpows *subharmonic;
-
-            // Copy the fundamental's ffdot plane to the full in-core one
-            if (obs.inmem){
-                if (cmd->otheroptP)
-                    fund_to_ffdotplane_trans(fundamental, &obs);
-                else
-                    fund_to_ffdotplane(fundamental, &obs);
-            }
-            for (stage = 1; stage < obs.numharmstages; stage++) {
-               harmtosum = 1 << stage;
-               for (harm = 1; harm < harmtosum; harm += 2) {
-                   if (obs.inmem) {
-                       if (cmd->otheroptP)
-                           inmem_add_ffdotpows_trans(fundamental, &obs, harmtosum, harm);
-                       else
-                           inmem_add_ffdotpows(fundamental, &obs, harmtosum, harm);
-                   } else {
-                       subharmonic = subharm_ffdot_plane(harmtosum, harm, startr, lastr,
-                                                         &subharminfs[stage][harm - 1],
-                                                         &obs);
-                       if (cmd->otheroptP)
-                           add_ffdotpows_ptrs(fundamental, subharmonic, harmtosum, harm);
-                       else
-                           add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
-                       free_ffdotpows(subharmonic);
-                   }
-               }
-               cands = search_ffdotpows(fundamental, harmtosum, &obs, cands);
-            }
-         }
-         free_ffdotpows(fundamental);
-         startr = nextr;
-      }
-      print_percent_complete(obs.highestbin - obs.rlo,
-                             obs.highestbin - obs.rlo, "search", 0);
-   }
+   cands = stage_cand(cmd, &obs);
+//   {
+//      double startr = obs.rlo, lastr = 0, nextr = 0;
+//      ffdotpows *fundamental;
+//
+//      while (startr + ACCEL_USELEN * ACCEL_DR < obs.highestbin) {
+//         /* Search the fundamental */
+//         print_percent_complete(startr - obs.rlo,
+//                                obs.highestbin - obs.rlo, "search", 0);
+//         nextr = startr + ACCEL_USELEN * ACCEL_DR;
+//         lastr = nextr - ACCEL_DR;
+//         fundamental = subharm_ffdot_plane(1, 1, startr, lastr,
+//                                           &subharminfs[0][0], &obs);
+//         cands = search_ffdotpows(fundamental, 1, &obs, cands);
+//
+//         if (obs.numharmstages > 1) {   /* Search the subharmonics */
+//            int stage, harmtosum, harm;
+//            ffdotpows *subharmonic;
+//
+//            // Copy the fundamental's ffdot plane to the full in-core one
+//            if (obs.inmem){
+//                if (cmd->otheroptP)
+//                    fund_to_ffdotplane_trans(fundamental, &obs);
+//                else
+//                    fund_to_ffdotplane(fundamental, &obs);
+//            }
+//            for (stage = 1; stage < obs.numharmstages; stage++) {
+//               harmtosum = 1 << stage;
+//               for (harm = 1; harm < harmtosum; harm += 2) {
+//                   if (obs.inmem) {
+//                       if (cmd->otheroptP)
+//                           inmem_add_ffdotpows_trans(fundamental, &obs, harmtosum, harm);
+//                       else
+//                           inmem_add_ffdotpows(fundamental, &obs, harmtosum, harm);
+//                   } else {
+//                       subharmonic = subharm_ffdot_plane(harmtosum, harm, startr, lastr,
+//                                                         &subharminfs[stage][harm - 1],
+//                                                         &obs);
+//                       if (cmd->otheroptP)
+//                           add_ffdotpows_ptrs(fundamental, subharmonic, harmtosum, harm);
+//                       else
+//                           add_ffdotpows(fundamental, subharmonic, harmtosum, harm);
+//                       free_ffdotpows(subharmonic);
+//                   }
+//               }
+//               cands = search_ffdotpows(fundamental, harmtosum, &obs, cands);
+//            }
+//         }
+//         free_ffdotpows(fundamental);
+//         startr = nextr;
+//      }
+//      print_percent_complete(obs.highestbin - obs.rlo,
+//                             obs.highestbin - obs.rlo, "search", 0);
+//      free_subharminfos(&obs, subharminfs);
+//   }
 
    printf("\n\nDone searching.  Now optimizing each candidate.\n\n");
-   free_subharminfos(&obs, subharminfs);
-
-   {                            /* Candidate list trimming and optimization */
-      int numcands;
-      GSList *listptr;
-      accelcand *cand;
-      fourierprops *props;
 
 
-      numcands = g_slist_length(cands);
+   stage_opt(cands, cmd, &obs, &idata);
+//   {                            /* Candidate list trimming and optimization */
+//      int numcands;
+//      GSList *listptr;
+//      accelcand *cand;
+//      fourierprops *props;
+//
+//
+//      numcands = g_slist_length(cands);
+//
+//      if (numcands) {
+//
+//         /* Sort the candidates according to the optimized sigmas */
+//
+//         cands = sort_accelcands(cands);
+//
+//         /* Eliminate (most of) the harmonically related candidates */
+//         if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
+//             eliminate_harmonics(cands, &numcands);
+//
+//         /* Now optimize each candidate and its harmonics */
+//
+//         print_percent_complete(0, 0, NULL, 1);
+//         listptr = cands;
+//         for (ii = 0; ii < numcands; ii++) {
+//            print_percent_complete(ii, numcands, "optimization", 0);
+//            cand = (accelcand *) (listptr->data);
+//            optimize_accelcand(cand, &obs);
+//            listptr = listptr->next;
+//         }
+//         print_percent_complete(ii, numcands, "optimization", 0);
+//
+//         /* Calculate the properties of the fundamentals */
+//
+//         props = (fourierprops *) malloc(sizeof(fourierprops) * numcands);
+//         listptr = cands;
+//         for (ii = 0; ii < numcands; ii++) {
+//            cand = (accelcand *) (listptr->data);
+//            /* In case the fundamental harmonic is not significant,  */
+//            /* send the originally determined r and z from the       */
+//            /* harmonic sum in the search.  Note that the derivs are */
+//            /* not used for the computations with the fundamental.   */
+//            calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
+//            /* Override the error estimates based on power */
+//            props[ii].rerr = (float) (ACCEL_DR) / cand->numharm;
+//            props[ii].zerr = (float) (ACCEL_DZ) / cand->numharm;
+//            listptr = listptr->next;
+//         }
+//
+//         /* Write the fundamentals to the output text file */
+//
+//         output_fundamentals(props, cands, &obs, &idata);
+//
+//         /* Write the harmonics to the output text file */
+//
+//         output_harmonics(cands, &obs, &idata);
+//
+//         /* Write the fundamental fourierprops to the cand file */
+//
+//         obs.workfile = chkfopen(obs.candnm, "wb");
+//         chkfwrite(props, sizeof(fourierprops), numcands, obs.workfile);
+//         fclose(obs.workfile);
+//         free(props);
+//         printf("\n\n");
+//      } else {
+//         printf("No candidates above sigma = %.2f were found.\n\n", obs.sigma);
+//      }
+//   }
 
-      if (numcands) {
-
-         /* Sort the candidates according to the optimized sigmas */
-
-         cands = sort_accelcands(cands);
-
-         /* Eliminate (most of) the harmonically related candidates */
-         if ((cmd->numharm > 1) && !(cmd->noharmremoveP))
-             eliminate_harmonics(cands, &numcands);
-
-         /* Now optimize each candidate and its harmonics */
-
-         print_percent_complete(0, 0, NULL, 1);
-         listptr = cands;
-         for (ii = 0; ii < numcands; ii++) {
-            print_percent_complete(ii, numcands, "optimization", 0);
-            cand = (accelcand *) (listptr->data);
-            optimize_accelcand(cand, &obs);
-            listptr = listptr->next;
-         }
-         print_percent_complete(ii, numcands, "optimization", 0);
-
-         /* Calculate the properties of the fundamentals */
-
-         props = (fourierprops *) malloc(sizeof(fourierprops) * numcands);
-         listptr = cands;
-         for (ii = 0; ii < numcands; ii++) {
-            cand = (accelcand *) (listptr->data);
-            /* In case the fundamental harmonic is not significant,  */
-            /* send the originally determined r and z from the       */
-            /* harmonic sum in the search.  Note that the derivs are */
-            /* not used for the computations with the fundamental.   */
-            calc_props(cand->derivs[0], cand->r, cand->z, 0.0, props + ii);
-            /* Override the error estimates based on power */
-            props[ii].rerr = (float) (ACCEL_DR) / cand->numharm;
-            props[ii].zerr = (float) (ACCEL_DZ) / cand->numharm;
-            listptr = listptr->next;
-         }
-
-         /* Write the fundamentals to the output text file */
-
-         output_fundamentals(props, cands, &obs, &idata);
-
-         /* Write the harmonics to the output text file */
-
-         output_harmonics(cands, &obs, &idata);
-
-         /* Write the fundamental fourierprops to the cand file */
-
-         obs.workfile = chkfopen(obs.candnm, "wb");
-         chkfwrite(props, sizeof(fourierprops), numcands, obs.workfile);
-         fclose(obs.workfile);
-         free(props);
-         printf("\n\n");
-      } else {
-         printf("No candidates above sigma = %.2f were found.\n\n", obs.sigma);
-      }
-   }
 
    /* Finish up */
 
@@ -258,8 +403,7 @@ int main(int argc, char *argv[])
    utim = runtimes.tms_utime / (double) CLK_TCK;
    stim = runtimes.tms_stime / (double) CLK_TCK;
    ttim = utim + stim;
-   printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n",
-          ttim, utim, stim);
+   printf("    CPU time: %.3f sec (User: %.3f sec, System: %.3f sec)\n", ttim, utim, stim);
    printf("  Total time: %.3f sec\n\n", tott);
 
    printf("Final candidates in binary format are in '%s'.\n", obs.candnm);
