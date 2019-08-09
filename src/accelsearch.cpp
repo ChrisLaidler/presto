@@ -1041,17 +1041,22 @@ int main(int argc, char *argv[])
   freeCuSearch(cuSrch);
 
   // Debug stuff
-  for ( int i = 0; i < gSpec->noDevices; i++)
+  if (gSpec != NULL)
   {
-    CUDA_SAFE_CALL(cudaSetDevice(gSpec->devId[i]), "ERROR in cudaSetDevice");
-    CUDA_SAFE_CALL(cudaDeviceReset(), "Error in device reset.");
-  }
+    for ( int i = 0; i < gSpec->noDevices; i++)
+    {
+      CUDA_SAFE_CALL(cudaSetDevice(gSpec->devId[i]), "ERROR in cudaSetDevice");
+      CUDA_SAFE_CALL(cudaDeviceReset(), "Error in device reset.");
+    }
 
 #ifdef NVVP // Stop profiler
   cudaProfilerStop();
 #endif
 
   cudaDeviceReset();
+
+  }
+
 #endif
 
   free_accelobs(&obs);
