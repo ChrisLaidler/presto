@@ -2667,7 +2667,8 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
   }
 
   // Ensure the GPU context have been initialised
-  compltCudaContext(gSpec);
+  if (gSpec)
+    compltCudaContext(gSpec);
 
   srch->noHarmStages		= sSpec->noHarmStages;
   srch->noGenHarms		= ( 1<<(srch->noHarmStages-1) );
