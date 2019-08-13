@@ -493,7 +493,7 @@ optPlnSiz 16 8
 #	4       		# Detail	- Info on what task is being done - ie, zero memory, kernel calls etc.
 #	5       		# Debug		- Full debug information - CUDA Events etc.
 #	6       		# Super		- Details on the values of actual variables
-#	7			# Excessive!
+#	7			# Excessive!	- 
 DBG_LEV			0
 
 #FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
