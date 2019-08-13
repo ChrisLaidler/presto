@@ -239,14 +239,16 @@ __host__ __device__ inline double fmod_t ( double  x, double y )
 __host__ __device__ inline float  round_t ( float  x )
 {
   //return rintf(x);
-  //return roundf(x);
-  return rintf(x);	// roundf() maps to an 8-instruction sequence on the device, whereas rintf() maps to a single instruction
+  return roundf(x);
+  //return llrintf(x);
+  //return llrintf(x);	// roundf() maps to an 8-instruction sequence on the device, whereas rintf() maps to a single instruction
 }
-__host__ __device__ inline double round_t ( double  x )
+__host__ __device__ inline double round_t ( double x )
 {
   //return rint(x);
-  //return round(x);
-  return rint(x);	// roundf() maps to an 8-instruction sequence on the device, whereas rintf() maps to a single instruction
+  return round(x);
+  //return llrint(x);
+  //return llrint(x);	// roundf() maps to an 8-instruction sequence on the device, whereas rintf() maps to a single instruction
 }
 
 __host__ __device__ inline int lround_t ( float  x )
