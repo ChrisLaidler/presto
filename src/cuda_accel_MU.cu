@@ -221,7 +221,7 @@ void multiplyBatch(cuFFdotBatch* batch)
 	// Time batch multiply
 	timeEvents( batch->multInit, batch->multComp, &batch->compTime[NO_STKS*COMP_GEN_MULT], "Batch multiplication");
 
-	// Stack multiply
+	// Time stack multiply
 	for (int stack = 0; stack < batch->noStacks; stack++)
 	{
 	  cuFfdotStack* cStack = &batch->stacks[stack];

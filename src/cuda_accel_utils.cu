@@ -2253,7 +2253,7 @@ confSpecs* defaultConfig()
   {
     conf->gen->flags	|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
     conf->gen->flags	|= FLAG_ITLV_ROW    ;
-    conf->gen->flags	|= FLAG_CENTER      ;	// Centre and align the usable part of the planes
+    conf->gen->flags	|= FLAG_CENTER      ;	// Center and align the usable part of the planes
     conf->gen->flags	|= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
 #ifdef WITH_SAS_COUNT
