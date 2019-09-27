@@ -154,7 +154,6 @@ extern "C"
 #define 		WITH_OPT_BLK_HRM		///< This is good as an alternative to the shuffle kernel (can be used on older hardware)
 
 #define 		WITH_OPT_PTS_HRM		///< This is usual the best kernel
-#define 		WITH_OPT_PTS_NRM		///< I found this is generally worse than harmonics
 
 
 /******************************************* Defines ****************************************************/
@@ -171,7 +170,7 @@ extern "C"
 #define		MAX_GPUS		32		///< The maximum number GPU's
 #define		CORRECT_MULT		1		///< Generate the kernel values the correct way and do the
 #define		NO_OPT_LEVS		7		///< The number of optimisation planes/steps
-#define 	OPT_INP_BUF   		25		///< Buffer sections of the input FT with this many bins
+#define 	OPT_INP_BUF		25		///< Buffer sections of the input FT with this many bins
 #define		OPT_LOC_PNT_NO		16
 
 
