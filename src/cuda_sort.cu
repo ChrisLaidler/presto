@@ -83,41 +83,41 @@ __device__ /*inline*/ T bitonicSort3x_warp(T val, const int laneId)
 {
   if ( noSorted < 2  && noEls >= 2 )  // 2   .
   {
-    val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
+    val = shflSwap<T>(val, 0x01, bit(laneId, 0));
   }
 
   if ( noSorted < 4  && noEls >= 4 )  // 4   .
   {
-    val = shflSwap<T>(val, 0x03, bfe(laneId, 1));
+    val = shflSwap<T>(val, 0x03, bit(laneId, 1));
 
-    val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
+    val = shflSwap<T>(val, 0x01, bit(laneId, 0));
   }
 
   if ( noSorted < 8  && noEls >= 8 )  // 8   .
   {
-    val = shflSwap<T>(val, 0x07, bfe(laneId, 2));
+    val = shflSwap<T>(val, 0x07, bit(laneId, 2));
 
-    val = shflSwap<T>(val, 0x02, bfe(laneId, 1));
-    val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
+    val = shflSwap<T>(val, 0x02, bit(laneId, 1));
+    val = shflSwap<T>(val, 0x01, bit(laneId, 0));
   }
 
   if ( noSorted < 16 && noEls >= 16 ) // 16  .
   {
-    val = shflSwap<T>(val, 0x0F, bfe(laneId, 3));
+    val = shflSwap<T>(val, 0x0F, bit(laneId, 3));
 
-    val = shflSwap<T>(val, 0x04, bfe(laneId, 2));
-    val = shflSwap<T>(val, 0x02, bfe(laneId, 1));
-    val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
+    val = shflSwap<T>(val, 0x04, bit(laneId, 2));
+    val = shflSwap<T>(val, 0x02, bit(laneId, 1));
+    val = shflSwap<T>(val, 0x01, bit(laneId, 0));
   }
 
   if ( noSorted < 32 && noEls >= 32 ) // 32  .
   {
-    val = shflSwap<T>(val, 0x1F, bfe(laneId, 4));
+    val = shflSwap<T>(val, 0x1F, bit(laneId, 4));
 
-    val = shflSwap<T>(val, 0x08, bfe(laneId, 3));
-    val = shflSwap<T>(val, 0x04, bfe(laneId, 2));
-    val = shflSwap<T>(val, 0x02, bfe(laneId, 1));
-    val = shflSwap<T>(val, 0x01, bfe(laneId, 0));
+    val = shflSwap<T>(val, 0x08, bit(laneId, 3));
+    val = shflSwap<T>(val, 0x04, bit(laneId, 2));
+    val = shflSwap<T>(val, 0x02, bit(laneId, 1));
+    val = shflSwap<T>(val, 0x01, bit(laneId, 0));
   }
 
   return val;
@@ -182,11 +182,11 @@ __device__ /*inline*/ void bitonicSort3x_warp_regs(T* val, const int laneId)
     {
       for ( int i = 0; i < NoArr; i++)
       {
-	val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-	val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-	val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-	val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-	val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+	val[i] = shflSwap<T>(val[i], 0xF0, bit(laneId, 4));
+	val[i] = shflSwap<T>(val[i], 0x08, bit(laneId, 3));
+	val[i] = shflSwap<T>(val[i], 0x04, bit(laneId, 2));
+	val[i] = shflSwap<T>(val[i], 0x02, bit(laneId, 1));
+	val[i] = shflSwap<T>(val[i], 0x01, bit(laneId, 0));
       }
     }
   }
@@ -230,11 +230,11 @@ __device__ /*inline*/ void bitonicSort3x_warp_regs(T* val, const int laneId)
 
       for ( int i = 0; i < NoArr; i++)
       {
-	val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-	val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-	val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-	val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-	val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+	val[i] = shflSwap<T>(val[i], 0xF0, bit(laneId, 4));
+	val[i] = shflSwap<T>(val[i], 0x08, bit(laneId, 3));
+	val[i] = shflSwap<T>(val[i], 0x04, bit(laneId, 2));
+	val[i] = shflSwap<T>(val[i], 0x02, bit(laneId, 1));
+	val[i] = shflSwap<T>(val[i], 0x01, bit(laneId, 0));
       }
     }
   }
@@ -293,11 +293,11 @@ __device__ /*inline*/ void bitonicSort3x_warp_regs(T* val, const int laneId)
 
       for ( int i = 0; i < NoArr; i++)
       {
-	val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-	val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-	val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-	val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-	val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+	val[i] = shflSwap<T>(val[i], 0xF0, bit(laneId, 4));
+	val[i] = shflSwap<T>(val[i], 0x08, bit(laneId, 3));
+	val[i] = shflSwap<T>(val[i], 0x04, bit(laneId, 2));
+	val[i] = shflSwap<T>(val[i], 0x02, bit(laneId, 1));
+	val[i] = shflSwap<T>(val[i], 0x01, bit(laneId, 0));
       }
     }
   }
@@ -394,7 +394,7 @@ __device__ void bitonicSort3x_regs_SM(T *data, T *val)
 	      for ( int a = 0; a < NoArr; a++)
 	      {
 		int idx = wId*32*NoArr + a*32 + laneId;
-		int bit = bfe(idx, bPos);
+		int bit = bit(idx, bPos);
 		int otherIdx = idx ^ (pow2-1);
 		T otherV =  data[otherIdx];
 		val[a] = val[a] < otherV == !bit ? val[a] : otherV;
@@ -428,7 +428,7 @@ __device__ void bitonicSort3x_regs_SM(T *data, T *val)
 		  for ( int a = 0; a < NoArr; a++)
 		  {
 		    int idx = wId*32*NoArr + a*32 + laneId;
-		    int bit = bfe(idx, bPos2);
+		    int bit = bit(idx, bPos2);
 		    int otherIdx = idx ^ (mLen/2);
 
 		    T otherV =  data[otherIdx];
@@ -483,11 +483,11 @@ __device__ void bitonicSort3x_regs_SM(T *data, T *val)
 #pragma unroll
 		  for ( int i = 0; i < NoArr; i++)
 		  {
-		    val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-		    val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-		    val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-		    val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-		    val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+		    val[i] = shflSwap<T>(val[i], 0xF0, bit(laneId, 4));
+		    val[i] = shflSwap<T>(val[i], 0x08, bit(laneId, 3));
+		    val[i] = shflSwap<T>(val[i], 0x04, bit(laneId, 2));
+		    val[i] = shflSwap<T>(val[i], 0x02, bit(laneId, 1));
+		    val[i] = shflSwap<T>(val[i], 0x01, bit(laneId, 0));
 		  }
 		}
 
@@ -569,7 +569,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 	{
 	  __syncthreads(); // SM Writes
 
-	  int bit = bfe(wId, bPos);
+	  int bit = bit(wId, bPos);
 	  int writeIdx = wId*32 + laneId;
 	  int readIdx  = (wId ^ (wPos-1)) * 32 + laneId ^ 31;
 #pragma unroll
@@ -604,7 +604,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 	    {
 	      __syncthreads(); // SM Writes
 
-	      int bit = bfe(wId, bPos2);
+	      int bit = bit(wId, bPos2);
 	      int writIdx = wId*32 + laneId;
 	      int readIdx = ( wId ^ (wPos2)) * 32 + laneId;
 
@@ -656,11 +656,11 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 #pragma unroll
 	      for ( int i = 0; i < NoArr; i++)
 	      {
-		val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-		val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-		val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-		val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-		val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+		val[i] = shflSwap<T>(val[i], 0xF0, bit(laneId, 4));
+		val[i] = shflSwap<T>(val[i], 0x08, bit(laneId, 3));
+		val[i] = shflSwap<T>(val[i], 0x04, bit(laneId, 2));
+		val[i] = shflSwap<T>(val[i], 0x02, bit(laneId, 1));
+		val[i] = shflSwap<T>(val[i], 0x01, bit(laneId, 0));
 	      }
 	    }
 	  }
@@ -3097,7 +3097,7 @@ __device__ void bitonicSort_SM(T *data )
 	      for ( int a = 0; a < NoArr; a++)
 	      {
 		int idx = wId*32*NoArr + a*32 + laneId;
-		int bit = bfe(idx, bPos);
+		int bit = bit(idx, bPos);
 		int otherIdx = idx ^ (pow2-1);
 		T otherV =  data[otherIdx];
 		val[a] = val[a] < otherV == !bit ? val[a] : otherV;
@@ -3134,7 +3134,7 @@ __device__ void bitonicSort_SM(T *data )
 		for ( int a = 0; a < NoArr; a++)
 		{
 		  int idx = wId*32*NoArr + a*32 + laneId;
-		  int bit = bfe(idx, bPos2);
+		  int bit = bit(idx, bPos2);
 		  int otherIdx = idx ^ (mLen/2);
 
 		  T otherV =  data[otherIdx];
@@ -3189,11 +3189,11 @@ __device__ void bitonicSort_SM(T *data )
 #pragma unroll
 		for ( int i = 0; i < NoArr; i++)
 		{
-		  val[i] = shflSwap<T>(val[i], 0xF0, bfe(laneId, 4));
-		  val[i] = shflSwap<T>(val[i], 0x08, bfe(laneId, 3));
-		  val[i] = shflSwap<T>(val[i], 0x04, bfe(laneId, 2));
-		  val[i] = shflSwap<T>(val[i], 0x02, bfe(laneId, 1));
-		  val[i] = shflSwap<T>(val[i], 0x01, bfe(laneId, 0));
+		  val[i] = shflSwap<T>(val[i], 0xF0, bit(laneId, 4));
+		  val[i] = shflSwap<T>(val[i], 0x08, bit(laneId, 3));
+		  val[i] = shflSwap<T>(val[i], 0x04, bit(laneId, 2));
+		  val[i] = shflSwap<T>(val[i], 0x02, bit(laneId, 1));
+		  val[i] = shflSwap<T>(val[i], 0x01, bit(laneId, 0));
 		}
 	      }
 

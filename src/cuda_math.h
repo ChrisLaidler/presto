@@ -363,7 +363,7 @@ __device__ static float atomicMin(float* address, float val)
 /** Extract k-th bit from i
  *
  */
-__device__ inline int bfe(int i, int k)
+__device__ inline int bit(int i, int k)
 {
   int ret;
   asm("bfe.u32 %0, %1, %2, 1;" : "=r"(ret) : "r"(i), "r"(k));
