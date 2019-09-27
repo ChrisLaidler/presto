@@ -892,7 +892,7 @@ void processBatchResults(cuFFdotBatch* batch)
       {
 	int* blockCounts = (int*)((char*)thrdDat->retData + batch->cndDataSize);
 	tSum = 0;
-	
+
 	for ( int i = 0; i < rVal->noBlocks; i++)
 	{
 	  tSum += blockCounts[i];

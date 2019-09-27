@@ -621,7 +621,6 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
   cand->hirs   = gen_dvect(cand->numharm);
   cand->hizs   = gen_dvect(cand->numharm);
   norm	       = gen_dvect(cand->numharm);
-
   r_offset     = (int*) malloc(sizeof(int)*cand->numharm);
   data         = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
   cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
@@ -635,7 +634,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
       {
         r_offset[ii]   = obs->lobin;
         data[ii]       = obs->fft;
-        norm[ii]	= 0;
+        norm[ii]       = 0;
       }
       max_rz_arr_harmonics(data,
           cand->numharm,
@@ -673,7 +672,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
       cand->power = 0;
       for( ii=0; ii<cand->numharm; ii++ )
       {
-        cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;;
+        cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;
       }
       cand->r     = r+obs->lobin;
       cand->z     = z;
@@ -832,70 +831,66 @@ void output_fundamentals(fourierprops * props, GSList * list,
     width = widths;
     error = errors;
     cand = (accelcand *) (listptr->data);
-    //if ( ii == 16 )
-    {
-      calc_rzwerrs(props + ii, obs->T, &errs);
+    calc_rzwerrs(props + ii, obs->T, &errs);
 
-      {                         /* Calculate the coherently summed power */
-        double coherent_r = 0.0, coherent_i = 0.0;
-        double phs0, phscorr, amp;
-        rderivs harm;
+    {                         /* Calculate the coherently summed power */
+      double coherent_r = 0.0, coherent_i = 0.0;
+      double phs0, phscorr, amp;
+      rderivs harm;
 
-        /* These phase calculations assume the fundamental is best */
-        /* Better to irfft them and check the amplitude */
-        phs0 = cand->derivs[0].phs;
-        for (jj = 0; jj < cand->numharm; jj++) {
-          harm = cand->derivs[jj];
-          if (obs->nph > 0.0)
-            amp = sqrt(harm.pow / obs->nph);
-          else
-            amp = sqrt(harm.pow / harm.locpow);
-          phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
-          coherent_r += amp * cos(harm.phs + phscorr);
-          coherent_i += amp * sin(harm.phs + phscorr);
-        }
-        coherent_pow = coherent_r * coherent_r + coherent_i * coherent_i;
+      /* These phase calculations assume the fundamental is best */
+      /* Better to irfft them and check the amplitude */
+      phs0 = cand->derivs[0].phs;
+      for (jj = 0; jj < cand->numharm; jj++) {
+        harm = cand->derivs[jj];
+        if (obs->nph > 0.0)
+          amp = sqrt(harm.pow / obs->nph);
+        else
+          amp = sqrt(harm.pow / harm.locpow);
+        phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
+        coherent_r += amp * cos(harm.phs + phscorr);
+        coherent_i += amp * sin(harm.phs + phscorr);
       }
-
-      sprintf(tmpstr, "%-4d", ii + 1);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%.2f", cand->sigma);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%.2f", cand->power);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%.2f", coherent_pow);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%d", cand->numharm);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      write_val_with_err(obs->workfile, errs.p * 1000.0, errs.perr * 1000.0,
-          *error++, *width++);
-      write_val_with_err(obs->workfile, errs.f, errs.ferr, *error++, *width++);
-      write_val_with_err(obs->workfile, props[ii].r, props[ii].rerr,
-          *error++, *width++);
-      write_val_with_err(obs->workfile, errs.fd, errs.fderr, *error++, *width++);
-      write_val_with_err(obs->workfile, props[ii].z, props[ii].zerr,
-          *error++, *width++);
-      accel = props[ii].z * SOL / (obs->T * obs->T * errs.f);
-      accelerr = props[ii].zerr * SOL / (obs->T * obs->T * errs.f);
-      write_val_with_err(obs->workfile, accel, accelerr, *error++, *width++);
-      fprintf(obs->workfile, "  %.20s\n", notes + ii * 20);
-      fflush(obs->workfile);
+      coherent_pow = coherent_r * coherent_r + coherent_i * coherent_i;
     }
+
+    sprintf(tmpstr, "%-4d", ii + 1);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%.2f", cand->sigma);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%.2f", cand->power);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%.2f", coherent_pow);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%d", cand->numharm);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+    write_val_with_err(obs->workfile, errs.p * 1000.0, errs.perr * 1000.0,
+        *error++, *width++);
+    write_val_with_err(obs->workfile, errs.f, errs.ferr, *error++, *width++);
+    write_val_with_err(obs->workfile, props[ii].r, props[ii].rerr,
+        *error++, *width++);
+    write_val_with_err(obs->workfile, errs.fd, errs.fderr, *error++, *width++);
+    write_val_with_err(obs->workfile, props[ii].z, props[ii].zerr,
+        *error++, *width++);
+    accel = props[ii].z * SOL / (obs->T * obs->T * errs.f);
+    accelerr = props[ii].zerr * SOL / (obs->T * obs->T * errs.f);
+    write_val_with_err(obs->workfile, accel, accelerr, *error++, *width++);
+    fprintf(obs->workfile, "  %.20s\n", notes + ii * 20);
+    fflush(obs->workfile);
     listptr = listptr->next;
 
   }

@@ -727,7 +727,7 @@ double power_for_sigma(double sigma, int numsum, double numtrials)
       exit(1);
    }
 
-   // Chris Laidler: fixed as the assumption of 2 sigma in not really high enough to justify using the
+   // Chris Laidler: fixed as the assumption of 2 sigma is not really high enough to justify using the
    if ( q > 0.001 )
    {
      q = 1 - pow((1-q),1/numtrials);

@@ -1336,9 +1336,6 @@ __global__ void ffdotPlnByBlk_ker3(void* powers, float2* fft, int noHarms, int h
 		((float*)powers)[iy*oStride + ix*noHarms + hIdx ] = POWERCU(ans_real[blk], ans_imag[blk]);
 	      }
 	    }
-
-
-
 	  }
 	  else
 	  {
