@@ -23,19 +23,20 @@
 #define ExternC
 #endif
 
+#ifdef CBL
+#include "log.h"
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-#define __float128 long double
 #include "accel.h"
 #ifdef __cplusplus
 }
 #endif
 
-#ifdef CBL
-#include "log.h"
-#endif
+
 
 
 

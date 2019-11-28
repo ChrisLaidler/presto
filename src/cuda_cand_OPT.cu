@@ -39,10 +39,8 @@
 
 extern "C"
 {
-#define __float128 long double
 #include "accel.h"
 }
-
 
 
 #define		NM_BEST		0

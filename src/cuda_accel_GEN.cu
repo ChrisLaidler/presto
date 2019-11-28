@@ -87,9 +87,13 @@
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 
+#ifdef CBL
+#include <unistd.h>
+#include "log.h"
+#endif
+
 extern "C"
 {
-#define __float128 long double
 #include "accel.h"
 }
 
@@ -105,10 +109,7 @@ extern "C"
 #include "cuda_accel_MU.h"
 #include "cuda_cand_OPT.h"
 
-#ifdef CBL
-#include <unistd.h>
-#include "log.h"
-#endif
+
 
 __device__ __constant__ int		HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
 __device__ __constant__ int		STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
@@ -196,7 +197,7 @@ void setPlaneBounds(confSpecsGen* conf, cuHarmInfo* hInfs, int noHarms, ImPlane 
     }
     hInf->noZ       	= round(fabs(hInf->zEnd - hInf->zStart) / conf->zRes) + 1;
 
-    infoMSG(6,6,"Harm: %2i  z: %7.2f to %7.2f  noZ %4i \n", i, hInf->zStart, hInf->zEnd, hInf->noZ );
+    infoMSG(6,6,"Harm: %2i  z: %7.2f to %7.2f  noZ %4i \n", i+1, hInf->zStart, hInf->zEnd, hInf->noZ );
   }
 }
 

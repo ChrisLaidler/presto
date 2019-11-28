@@ -1781,7 +1781,7 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
       if ( freeRam * 0.95 < memuse )
       {
 	// Lets not kill the computer
-	printf("Not enough memory for in-mem plane there is only %.2f GB.\n", freeRam / gb);
+	printf("Not enough host memory for in-mem plane there is only %.2f GB.\n", freeRam / gb);
 	printf("Using standard accelsearch.\n\n");
 	obs->inmem = 0;
 	obs->ffdotplane = NULL;

@@ -31,7 +31,6 @@
 
 extern "C"
 {
-#define __float128 long double
 #include "accel.h"
 }
 
@@ -64,7 +63,6 @@ typedef enum {
   IM_TOP,
   IM_BOT,
 } ImPlane;
-
 
 
 typedef struct iList

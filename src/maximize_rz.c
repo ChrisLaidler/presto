@@ -139,9 +139,10 @@ static double power_call_rz_harmonics(double rz[])
   double powargr, powargi;
   fcomplex ans;
 
-  for( i=1; i<= max_num_harmonics; i++ )
-  {
-    rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
+    for(i=1; i<=max_num_harmonics; i++) {
+       rz_interp(maxdata_harmonics[i-1], nummaxdata, 
+               (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, 
+               max_kern_half_width, &ans);
     total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
   }
   return -total_power;

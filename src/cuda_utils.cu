@@ -8,6 +8,7 @@
  */
 
 #include "cuda_utils.h"
+#include <stdarg.h>
 
 #if _WIN32
 #include <windows.h>
