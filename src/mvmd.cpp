@@ -49,7 +49,7 @@ double MVMD(double k, double phase, double a, double* bess)
 
   double numerator    = exp(k*cosTerm) - expTerm;
 
-  if ( isinf(numerator) )
+  if ( std::isinf(numerator) )
   {
     fprintf(stderr, "ERROR: numerator in MVMD is infinity.\n");
     exit(EXIT_FAILURE);
@@ -57,7 +57,7 @@ double MVMD(double k, double phase, double a, double* bess)
 
   double denominator  = bess_l - expTerm;
 
-  if ( isinf(denominator) )
+  if ( std::isinf(denominator) )
   {
     fprintf(stderr, "ERROR: denominator in MVMD is infinity.\n");
     exit(EXIT_FAILURE);
@@ -81,7 +81,7 @@ double calcFWHM(double k)
 {
   double t1 = cosh(k);
 
-  if ( isinf(t1) )
+  if ( std::isinf(t1) )
   {
     fprintf(stderr, "ERROR: %s cannot handle a k value of %.6f.\n", __FUNCTION__, k);
     exit(EXIT_FAILURE);
