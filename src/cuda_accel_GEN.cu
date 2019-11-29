@@ -2670,8 +2670,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       if ( !(kernel->flags & CU_FFT_SEP_PLN) )
       {
-#if CUDART_VERSION >= 6050                                      // CUFFT callbacks only implemented in CUDA 6.5
+#if CUDART_VERSION >= 6050					// CUFFT callbacks only implemented in CUDA 6.5
 	copyCUFFT_CBs(kernel);
+	// Set the CUFFT load and store callback if necessary  .
+	for (int i = 0; i < kernel->noStacks; i++)		// Loop through Stacks
+	{
+	  cuFfdotStack* cStack = &kernel->stacks[i];
+	  setCB(kernel, cStack);
+	}
 #endif
       }
     }
@@ -3147,14 +3153,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
 #if CUDART_VERSION >= 6050                              // CUFFT callbacks only implemented in CUDA 6.5
       copyCUFFT_CBs(batch);
+      // Set the CUFFT load and store callback if necessary  .
+      for (int i = 0; i < batch->noStacks; i++)           // Loop through Stacks
+      {
+  	cuFfdotStack* cStack = &batch->stacks[i];
+  	setCB(batch, cStack);
+      }
 #endif
-    }
-
-    // Set the CUFFT load and store callback if necessary  .
-    for (int i = 0; i < batch->noStacks; i++)           // Loop through Stacks
-    {
-	cuFfdotStack* cStack = &batch->stacks[i];
-	setCB(batch, cStack);
     }
   }
 
