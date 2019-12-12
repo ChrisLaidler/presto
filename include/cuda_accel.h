@@ -23,19 +23,20 @@
 #define ExternC
 #endif
 
+#ifdef CBL
+#include "log.h"
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-#define __float128 long double
 #include "accel.h"
 #ifdef __cplusplus
 }
 #endif
 
-#ifdef CBL
-#include "log.h"
-#endif
+
 
 
 
@@ -133,7 +134,6 @@ extern "C"
 #define			MIN_SAS_COLUMN	1		///< Not in use yet - min columns for sas kernels
 #define			MAX_SAS_COLUMN	32		///< Not in use yet - max columns for sas kernels
 
-
 #define 		WITH_SAS_00			///< Compile with test SAS kernel - Version 0 - DEBUG ONLY: Memory reads and writes only - sliced
 
 #define			WITH_SAS_31			///< Compile with main SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
@@ -141,6 +141,7 @@ extern "C"
 #define			WITH_SAS_IM			///< Compile with main in-memory SAS kernel - (required) - This is currently the only sum & search kernel for the standard search
 
 //#define 		WITH_SAS_CPU			///< Compile with CPU Sum and search - (deprecated) - This is way to slow!
+
 
 ////////	Candidate
 #define  		WITH_SAS_COUNT			///< Allow counting of candidates in sum & search kernel - Not advisable on older ( CC < 5 ) cards

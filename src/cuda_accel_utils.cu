@@ -88,12 +88,13 @@
 #include <cufft.h>
 #include <algorithm>
 
-#include <thrust/sort.h>
-#include <thrust/device_vector.h>
+#ifdef CBL
+#include <unistd.h>
+#include "log.h"
+#endif
 
 extern "C"
 {
-#define __float128 long double
 #include "accel.h"
 }
 
@@ -110,10 +111,7 @@ extern "C"
 #include "cuda_cand_OPT.h"
 #include "cuda_response.h"
 
-#ifdef CBL
-#include <unistd.h>
-#include "log.h"
-#endif
+
 
 int    globalInt01    = 0;
 int    globalInt02    = 0;

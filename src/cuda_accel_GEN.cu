@@ -87,9 +87,13 @@
 #include <thrust/sort.h>
 #include <thrust/device_vector.h>
 
+#ifdef CBL
+#include <unistd.h>
+#include "log.h"
+#endif
+
 extern "C"
 {
-#define __float128 long double
 #include "accel.h"
 }
 
@@ -105,10 +109,7 @@ extern "C"
 #include "cuda_accel_MU.h"
 #include "cuda_cand_OPT.h"
 
-#ifdef CBL
-#include <unistd.h>
-#include "log.h"
-#endif
+
 
 __device__ __constant__ int		HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height  in stage order
 __device__ __constant__ int		STRIDE_HARM[MAX_HARM_NO];		///< Plane  stride  in stage order
@@ -196,7 +197,7 @@ void setPlaneBounds(confSpecsGen* conf, cuHarmInfo* hInfs, int noHarms, ImPlane 
     }
     hInf->noZ       	= round(fabs(hInf->zEnd - hInf->zStart) / conf->zRes) + 1;
 
-    infoMSG(6,6,"Harm: %2i  z: %7.2f to %7.2f  noZ %4i \n", i, hInf->zStart, hInf->zEnd, hInf->noZ );
+    infoMSG(6,6,"Harm: %2i  z: %7.2f to %7.2f  noZ %4i \n", i+1, hInf->zStart, hInf->zEnd, hInf->noZ );
   }
 }
 
@@ -571,8 +572,8 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
       int runtimeVersion = 0;
       CUDA_SAFE_CALL( cudaDriverGetVersion (&driverVersion),  "Failed to get driver version using cudaDriverGetVersion");
       CUDA_SAFE_CALL( cudaRuntimeGetVersion(&runtimeVersion), "Failed to get run time version using cudaRuntimeGetVersion");
-      printf("  CUDA Runtime Version: %02d.%02d \n", runtimeVersion / 1000, (runtimeVersion % 100) / 10);
-      printf("  CUDA Driver Version:  %02d.%02d \n", driverVersion / 1000, (driverVersion % 100) / 10);
+      printf("  CUDA Runtime Version: %02d.%d \n", runtimeVersion / 1000, (runtimeVersion % 100) / 10);
+      printf("  CUDA Driver Version:  %02d.%d \n", driverVersion / 1000, (driverVersion % 100) / 10);
     }
 
     PROF // Profiling  .
@@ -2669,8 +2670,14 @@ int initKernel(cuFFdotBatch* kernel, cuFFdotBatch* master, cuSearch*   cuSrch, i
     {
       if ( !(kernel->flags & CU_FFT_SEP_PLN) )
       {
-#if CUDART_VERSION >= 6050                                      // CUFFT callbacks only implemented in CUDA 6.5
+#if CUDART_VERSION >= 6050					// CUFFT callbacks only implemented in CUDA 6.5
 	copyCUFFT_CBs(kernel);
+	// Set the CUFFT load and store callback if necessary  .
+	for (int i = 0; i < kernel->noStacks; i++)		// Loop through Stacks
+	{
+	  cuFfdotStack* cStack = &kernel->stacks[i];
+	  setCB(kernel, cStack);
+	}
 #endif
       }
     }
@@ -3146,14 +3153,13 @@ int initBatch(cuFFdotBatch* batch, cuFFdotBatch* kernel, int no, int of)
     {
 #if CUDART_VERSION >= 6050                              // CUFFT callbacks only implemented in CUDA 6.5
       copyCUFFT_CBs(batch);
+      // Set the CUFFT load and store callback if necessary  .
+      for (int i = 0; i < batch->noStacks; i++)           // Loop through Stacks
+      {
+  	cuFfdotStack* cStack = &batch->stacks[i];
+  	setCB(batch, cStack);
+      }
 #endif
-    }
-
-    // Set the CUFFT load and store callback if necessary  .
-    for (int i = 0; i < batch->noStacks; i++)           // Loop through Stacks
-    {
-	cuFfdotStack* cStack = &batch->stacks[i];
-	setCB(batch, cStack);
     }
   }
 
