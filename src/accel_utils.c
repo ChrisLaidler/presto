@@ -29,23 +29,32 @@
 
 #if __linux
 #include <sys/sysinfo.h>
-/** Get the amount of free RAM in bytes
+/** Get an estimate of how much memory is available, without having to use swap space.
  *
  */
-unsigned long getFreeRam()
+unsigned long getAvailableRam()
 {
   long cach;
+  long value;
 
   FILE *fp;
   char buf[1024];
   char rr[1024];
   fp = fopen("/proc/meminfo", "r");
   int i;
-  for(i = 0; i <= 3; i++) {
-    fgets(buf, 1024, fp);
+  while( fgets(buf, 1024, fp) ) {
+    sscanf(buf,"%s %li kB", rr, &value);
+    if ( strcmp(rr,"MemAvailable:") == 0 )
+    {
+      return value * 1000;
+    }
+    else if ( strcmp(rr,"Cached:") == 0 )
+    {
+      cach = value * 1000;
+    }
   }
-  sscanf(buf,"%s %li kB", rr, &cach);
 
+  // Available memory not in /proc/meminfo so try and estimate from sys_info
   struct sysinfo sys_info;
   if(sysinfo(&sys_info) != 0)
   {
@@ -56,12 +65,12 @@ unsigned long getFreeRam()
   {
     unsigned long vv = sys_info.freeram + sys_info.bufferram ;
     vv *= sys_info.mem_unit;
-    vv += cach * 1000; // Add chaged mem (Kb -> B )
+    vv += cach;
     return vv;
   }
 }
 #else
-uint64_t getFreeRam()
+uint64_t getAvailableRam()
 {
   fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
@@ -1568,9 +1577,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      unsigned long freeRam = getFreeRam();
+      unsigned long availableRam = getAvailableRam();
 
-      if ( freeRam * 0.9 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
+      if ( availableRam * 0.9 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
       {
         FILE *datfile;
         long long filelen;
@@ -1772,16 +1781,15 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     // Need the extra ACCEL_USELEN since we generate the plane in blocks
     memuse = sizeof(float) * (obs->highestbin + ACCEL_USELEN) \
         * obs->numbetween * obs->numz;
-    printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
+    printf("Full f-∂f plane would need %.2f GiB: ", (float)memuse / gb);
 
     if ( /*memuse < MAXRAMUSE || */ cmd->inmemP) {  // DBG REM NB: Put this back
 #ifdef CUDA
-      //size_t freeRam = getFreeRam();
-      unsigned long freeRam = getFreeRam();
-      if ( freeRam * 0.95 < memuse )
+      unsigned long availableRam = getAvailableRam();
+      if ( availableRam * 0.95 < memuse )
       {
 	// Lets not kill the computer
-	printf("Not enough host memory for in-mem plane there is only %.2f GB.\n", freeRam / gb);
+	printf("Not enough host memory for in-mem plane there is only %.2f GiB.\n", availableRam / gb);
 	printf("Using standard accelsearch.\n\n");
 	obs->inmem = 0;
 	obs->ffdotplane = NULL;
