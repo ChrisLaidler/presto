@@ -5065,7 +5065,7 @@ void finish_Search(cuFFdotBatch* batch)
   }
 }
 
-int genPlane(cuSearch* cuSrch, char* msg)
+ACC_ERR_CODE genPlane(cuSearch* cuSrch, char* msg)
 {
   infoMSG(2,2,"\nCandidate generation");
 
@@ -5317,6 +5317,8 @@ int genPlane(cuSearch* cuSrch, char* msg)
     cuSrch->timings[TIME_GPU_PLN] += (end.tv_sec - start01.tv_sec) * 1e6 + (end.tv_usec - start01.tv_usec);
     cuSrch->timings[TIME_GEN_WAIT] += (end.tv_sec - start02.tv_sec) * 1e6 + (end.tv_usec - start02.tv_usec);
   }
+
+  return ret;
 }
 
 /** Generate initial candidates using a pre-initialised search structure  .
@@ -5386,12 +5388,12 @@ GSList* generateCandidatesGPU(cuSearch* cuSrch)
       {
 	setInMemPlane(cuSrch, IM_TOP);
 	sprintf(srcTyp, "Generating top half in-mem GPU plane");
-	genPlane(cuSrch, srcTyp);
+	ERROR_MSG(genPlane(cuSrch, srcTyp), "ERROR: Generating top half of the in-memory GPU plane.");
 	inmemSumAndSearch(cuSrch);
 
 	setInMemPlane(cuSrch, IM_BOT);
 	sprintf(srcTyp, "Generating bottom half in-mem GPU plane");
-	genPlane(cuSrch, srcTyp);
+	ERROR_MSG(genPlane(cuSrch, srcTyp), "ERROR: Generating bottom half of the in-memory GPU plane.");
 	inmemSumAndSearch(cuSrch);
       }
       else						// Entire plane at once  .
