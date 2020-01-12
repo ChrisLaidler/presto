@@ -476,14 +476,14 @@ double candidate_sigma_cu(double poww, int numharm, long long numindep)
     }
     else
     {
-      logQ = logQChi2_i(k / 2.0, gamP / 2.0 ) ;
+      logQ = logQChi2_i(k / 2.0, gamP / 2.0 );
     }
 
     // Correct q for number of trials
     logQ    += log( (double)numindep );
 
     double l = sqrt(-2.0*logQ);
-    sigc     = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) ) ;
+    sigc     = l - ( 2.515517 + l * (0.802853 + l * 0.010328) ) / ( 1.0 + l * (1.432788 + l * (0.189269 + l * 0.001308)) );
 
     return sigc;
   }
@@ -501,8 +501,8 @@ double candidate_sigma_cu(double poww, int numharm, long long numindep)
       cdfgam_d<16>(poww, &gpu_p, &gpu_q );
     else
     {
-      gpu_p = boost::math::gamma_p<double>(k / 2.0, gamP / 2.0 ) ;
-      gpu_q = boost::math::gamma_q<double>(k / 2.0, gamP / 2.0 ) ;
+      gpu_p = boost::math::gamma_p<double>(k / 2.0, gamP / 2.0 );
+      gpu_q = boost::math::gamma_q<double>(k / 2.0, gamP / 2.0 );
     }
 
     // Correct q for number of trials

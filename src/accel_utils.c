@@ -29,23 +29,32 @@
 
 #if __linux
 #include <sys/sysinfo.h>
-/** Get the amount of free RAM in bytes
+/** Get an estimate of how much memory is available, without having to use swap space.
  *
  */
-unsigned long getFreeRam()
+unsigned long getAvailableRam()
 {
   long cach;
+  long value;
 
   FILE *fp;
   char buf[1024];
   char rr[1024];
   fp = fopen("/proc/meminfo", "r");
   int i;
-  for(i = 0; i <= 3; i++) {
-    fgets(buf, 1024, fp);
+  while( fgets(buf, 1024, fp) ) {
+    sscanf(buf,"%s %li kB", rr, &value);
+    if ( strcmp(rr,"MemAvailable:") == 0 )
+    {
+      return value * 1000;
+    }
+    else if ( strcmp(rr,"Cached:") == 0 )
+    {
+      cach = value * 1000;
+    }
   }
-  sscanf(buf,"%s %li kB", rr, &cach);
 
+  // Available memory not in /proc/meminfo so try and estimate from sys_info
   struct sysinfo sys_info;
   if(sysinfo(&sys_info) != 0)
   {
@@ -56,12 +65,12 @@ unsigned long getFreeRam()
   {
     unsigned long vv = sys_info.freeram + sys_info.bufferram ;
     vv *= sys_info.mem_unit;
-    vv += cach * 1000; // Add chaged mem (Kb -> B )
+    vv += cach;
     return vv;
   }
 }
 #else
-uint64_t getFreeRam()
+uint64_t getAvailableRam()
 {
   fprintf(stderr, "ERROR: getFreeRam not enabled on this system.");
 }
@@ -621,7 +630,6 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
   cand->hirs   = gen_dvect(cand->numharm);
   cand->hizs   = gen_dvect(cand->numharm);
   norm	       = gen_dvect(cand->numharm);
-
   r_offset     = (int*) malloc(sizeof(int)*cand->numharm);
   data         = (fcomplex**) malloc(sizeof(fcomplex*)*cand->numharm);
   cand->derivs = (rderivs *)  malloc(sizeof(rderivs) * cand->numharm);
@@ -635,7 +643,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
       {
         r_offset[ii]   = obs->lobin;
         data[ii]       = obs->fft;
-        norm[ii]	= 0;
+        norm[ii]       = 0;
       }
       max_rz_arr_harmonics(data,
           cand->numharm,
@@ -673,7 +681,7 @@ void optimize_accelcand(accelcand * cand, accelobs * obs, int nn)
       cand->power = 0;
       for( ii=0; ii<cand->numharm; ii++ )
       {
-        cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;;
+        cand->power += cand->derivs[ii].pow/cand->derivs[ii].locpow;
       }
       cand->r     = r+obs->lobin;
       cand->z     = z;
@@ -832,70 +840,66 @@ void output_fundamentals(fourierprops * props, GSList * list,
     width = widths;
     error = errors;
     cand = (accelcand *) (listptr->data);
-    //if ( ii == 16 )
-    {
-      calc_rzwerrs(props + ii, obs->T, &errs);
+    calc_rzwerrs(props + ii, obs->T, &errs);
 
-      {                         /* Calculate the coherently summed power */
-        double coherent_r = 0.0, coherent_i = 0.0;
-        double phs0, phscorr, amp;
-        rderivs harm;
+    {                         /* Calculate the coherently summed power */
+      double coherent_r = 0.0, coherent_i = 0.0;
+      double phs0, phscorr, amp;
+      rderivs harm;
 
-        /* These phase calculations assume the fundamental is best */
-        /* Better to irfft them and check the amplitude */
-        phs0 = cand->derivs[0].phs;
-        for (jj = 0; jj < cand->numharm; jj++) {
-          harm = cand->derivs[jj];
-          if (obs->nph > 0.0)
-            amp = sqrt(harm.pow / obs->nph);
-          else
-            amp = sqrt(harm.pow / harm.locpow);
-          phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
-          coherent_r += amp * cos(harm.phs + phscorr);
-          coherent_i += amp * sin(harm.phs + phscorr);
-        }
-        coherent_pow = coherent_r * coherent_r + coherent_i * coherent_i;
+      /* These phase calculations assume the fundamental is best */
+      /* Better to irfft them and check the amplitude */
+      phs0 = cand->derivs[0].phs;
+      for (jj = 0; jj < cand->numharm; jj++) {
+        harm = cand->derivs[jj];
+        if (obs->nph > 0.0)
+          amp = sqrt(harm.pow / obs->nph);
+        else
+          amp = sqrt(harm.pow / harm.locpow);
+        phscorr = phs0 - fmod((jj + 1.0) * phs0, TWOPI);
+        coherent_r += amp * cos(harm.phs + phscorr);
+        coherent_i += amp * sin(harm.phs + phscorr);
       }
-
-      sprintf(tmpstr, "%-4d", ii + 1);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%.2f", cand->sigma);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%.2f", cand->power);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%.2f", coherent_pow);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      sprintf(tmpstr, "%d", cand->numharm);
-      center_string(ctrstr, tmpstr, *width++);
-      error++;
-      fprintf(obs->workfile, "%s  ", ctrstr);
-
-      write_val_with_err(obs->workfile, errs.p * 1000.0, errs.perr * 1000.0,
-          *error++, *width++);
-      write_val_with_err(obs->workfile, errs.f, errs.ferr, *error++, *width++);
-      write_val_with_err(obs->workfile, props[ii].r, props[ii].rerr,
-          *error++, *width++);
-      write_val_with_err(obs->workfile, errs.fd, errs.fderr, *error++, *width++);
-      write_val_with_err(obs->workfile, props[ii].z, props[ii].zerr,
-          *error++, *width++);
-      accel = props[ii].z * SOL / (obs->T * obs->T * errs.f);
-      accelerr = props[ii].zerr * SOL / (obs->T * obs->T * errs.f);
-      write_val_with_err(obs->workfile, accel, accelerr, *error++, *width++);
-      fprintf(obs->workfile, "  %.20s\n", notes + ii * 20);
-      fflush(obs->workfile);
+      coherent_pow = coherent_r * coherent_r + coherent_i * coherent_i;
     }
+
+    sprintf(tmpstr, "%-4d", ii + 1);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%.2f", cand->sigma);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%.2f", cand->power);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%.2f", coherent_pow);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+
+    sprintf(tmpstr, "%d", cand->numharm);
+    center_string(ctrstr, tmpstr, *width++);
+    error++;
+    fprintf(obs->workfile, "%s  ", ctrstr);
+    write_val_with_err(obs->workfile, errs.p * 1000.0, errs.perr * 1000.0,
+        *error++, *width++);
+    write_val_with_err(obs->workfile, errs.f, errs.ferr, *error++, *width++);
+    write_val_with_err(obs->workfile, props[ii].r, props[ii].rerr,
+        *error++, *width++);
+    write_val_with_err(obs->workfile, errs.fd, errs.fderr, *error++, *width++);
+    write_val_with_err(obs->workfile, props[ii].z, props[ii].zerr,
+        *error++, *width++);
+    accel = props[ii].z * SOL / (obs->T * obs->T * errs.f);
+    accelerr = props[ii].zerr * SOL / (obs->T * obs->T * errs.f);
+    write_val_with_err(obs->workfile, accel, accelerr, *error++, *width++);
+    fprintf(obs->workfile, "  %.20s\n", notes + ii * 20);
+    fflush(obs->workfile);
     listptr = listptr->next;
 
   }
@@ -1573,9 +1577,9 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     {
 
 #ifdef CUDA
-      unsigned long freeRam = getFreeRam();
+      unsigned long availableRam = getAvailableRam();
 
-      if ( freeRam * 0.9 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
+      if ( availableRam * 0.9 > obs->numbins*sizeof(fcomplex) ) // In this case we need not really use mmap  .
       {
         FILE *datfile;
         long long filelen;
@@ -1777,16 +1781,15 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
     // Need the extra ACCEL_USELEN since we generate the plane in blocks
     memuse = sizeof(float) * (obs->highestbin + ACCEL_USELEN) \
         * obs->numbetween * obs->numz;
-    printf("Full f-∂f plane would need %.2f GB: ", (float)memuse / gb);
+    printf("Full f-∂f plane would need %.2f GiB: ", (float)memuse / gb);
 
     if ( /*memuse < MAXRAMUSE || */ cmd->inmemP) {  // DBG REM NB: Put this back
 #ifdef CUDA
-      //size_t freeRam = getFreeRam();
-      unsigned long freeRam = getFreeRam();
-      if ( freeRam * 0.95 < memuse )
+      unsigned long availableRam = getAvailableRam();
+      if ( availableRam * 0.95 < memuse )
       {
 	// Lets not kill the computer
-	printf("Not enough memory for in-mem plane there is only %.2f GB.\n", freeRam / gb);
+	printf("Not enough host memory for in-mem plane there is only %.2f GiB.\n", availableRam / gb);
 	printf("Using standard accelsearch.\n\n");
 	obs->inmem = 0;
 	obs->ffdotplane = NULL;

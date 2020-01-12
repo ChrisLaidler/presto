@@ -892,7 +892,7 @@ void processBatchResults(cuFFdotBatch* batch)
       {
 	int* blockCounts = (int*)((char*)thrdDat->retData + batch->cndDataSize);
 	tSum = 0;
-	
+
 	for ( int i = 0; i < rVal->noBlocks; i++)
 	{
 	  tSum += blockCounts[i];
@@ -1047,14 +1047,13 @@ void getResults(cuFFdotBatch* batch)
 
 	  PROF // Profiling  .
 	  {
-	    NV_RANGE_POP("Get results");
+	    NV_RANGE_POP("Spin");
 	  }
 	}
 
 	// NB: This marks the output as busy, the data hasn't been copied but nothing should touch it from this point, there will still be a synchronisation to make sure the data is copied before work is done one it.
 	infoMSG(6,6,"Marking pinned memory as busy (%p).\n", &rVal->outBusy);
 	rVal->outBusy = true;
-
       }
     }
 

@@ -163,7 +163,6 @@ int main(int argc, char *argv[])
     // Initialise CUDA context
     contextInit	+= initCudaContext(gSpec);
   }
-
 #endif
 
   /* Create the accelobs structure */

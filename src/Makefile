@@ -282,8 +282,8 @@ ifeq ($(WITHCBL),yes)
   $(info • Compileing with Chris utility libraries)
 
   # Include and link information for FreeType
-  FTCFLG     	 = $(shell freetype-config --cflags)
-  FTLINK     	 = $(shell freetype-config --libs)
+  FTCFLG     	 = $(shell pkg-config --cflags freetype2)
+  FTLINK     	 = $(shell pkg-config --libs freetype2)
 
   LNDARR     	+= -L$(SRC)/libs/build/lib -lndarray$(POSTFIX) -lcblutil$(POSTFIX) -lpngwriter $(PNGLINK) $(FTLINK)
   INDARR     	+= -I$(SRC)/libs/build/include/ $(FTCFLG)

@@ -134,14 +134,15 @@ static int* maxr_offset;
 
 static double power_call_rz_harmonics(double rz[])
 {
-  int i;
-  double total_power = 0.;
-  double powargr, powargi;
-  fcomplex ans;
+    int i;
+    double total_power = 0.;
+    double powargr, powargi;
+    fcomplex ans;
 
-  for( i=1; i<= max_num_harmonics; i++ )
-  {
-    rz_interp(maxdata_harmonics[i-1], nummaxdata, (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, max_kern_half_width, &ans);
+    for(i=1; i<=max_num_harmonics; i++) {
+       rz_interp(maxdata_harmonics[i-1], nummaxdata, 
+               (maxr_offset[i-1]+rz[0])*i-maxr_offset[i-1], rz[1] * ZSCALE * i, 
+               max_kern_half_width, &ans);
     total_power += POWER(ans.r, ans.i)/maxlocpow[i-1];
   }
   return -total_power;
@@ -197,6 +198,8 @@ void optemiseDerivs(fcomplex * data[], int num_harmonics, int r_offset[], int nu
 /* maximizes the power.                                     */
 void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], int numdata, double rin, double zin, double *rout, double *zout, rderivs derivs[], double power[], double norm[])
 {
+#define zBuff 4
+
    double y[3], x[3][2], step = 0.4;
    float *locpow;
    int numeval;
@@ -207,14 +210,10 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    maxr_offset = r_offset;
    maxdata_harmonics = data;
 
-
    //FIXME: z needs to be multiplied by i everywhere
    for (i=1;i<=num_harmonics;i++) {
-     if ( norm[i-1] <= 0 )
        locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+rin)*i-r_offset[i-1], zin*i, 0.0);
-     else
-       locpow[i-1] = norm[i-1];
-     maxlocpow[i-1]=locpow[i-1];
+       maxlocpow[i-1]=locpow[i-1];
    }
    nummaxdata = numdata;
    max_num_harmonics = num_harmonics;
@@ -225,7 +224,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    /* the true value of z is a little larger than z.  This    */
    /* keeps a little more accuracy.                           */
 
-   max_kern_half_width = z_resp_halfwidth(fabs(zin*num_harmonics) + 4.0, LOWACC);
+   max_kern_half_width = z_resp_halfwidth(fabs(zin*num_harmonics) + zBuff, LOWACC);
 
    /* Initialize the starting simplex */
 
@@ -278,11 +277,7 @@ void max_rz_arr_harmonics(fcomplex* data[], int num_harmonics, int r_offset[], i
    *rout = x[0][0];
    *zout = x[0][1] * ZSCALE;
    for (i=1; i<=num_harmonics; i++) {
-       if ( norm[i-1] <= 0 )
-	 locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
-       else
-	 locpow[i-1] = norm[i-1];
-
+       locpow[i-1] = get_localpower3d(data[i-1], numdata, (r_offset[i-1]+*rout)*i-r_offset[i-1], (*zout)*i, 0.0);
        x[0][0] = (r_offset[i-1]+*rout)*i-r_offset[i-1];
        x[0][1] = *zout/ZSCALE * i;
        maxdata = data[i-1];
