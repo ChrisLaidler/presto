@@ -747,7 +747,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 
       if ( !(kernel->flags & FLAG_SS_INMEM) && (kernel->flags & FLAG_CUFFT_CB_INMEM) )
       {
-	fprintf(stderr, "WARNING: Can't use inmem callback with out of memory search. Disabling in-mem callback.\n");
+//	fprintf(stderr, "WARNING: Can't use inmem callback with out of memory search. Disabling in-mem callback.\n");
 	kernel->flags &= ~FLAG_CUFFT_CB_INMEM;
       }
 
@@ -2962,13 +2962,13 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
 
     if ( kernel->flags & CU_FFT_SEP_PLN )		// Set CUFFT callbacks
     {
-       SAFE_CALL(copy_CuFFT_load_CBs(kernel),  "ERROR: Copying symbols for cuFFT callback");
-       SAFE_CALL(copy_CuFFT_store_CBs(kernel), "ERROR: Copying symbols for cuFFT callback");
+      SAFE_CALL(copy_CuFFT_load_CBs(plan),  "ERROR: Copying symbols for cuFFT callback");
+      SAFE_CALL(copy_CuFFT_store_CBs(plan), "ERROR: Copying symbols for cuFFT callback");
 
       // Set the CUFFT load and store callback if necessary  .
       for (int i = 0; i < plan->noStacks; i++)		// Loop through Stacks
       {
-  	cuFfdotStack* cStack = &plan->stacks[i];
+	cuFfdotStack* cStack = &plan->stacks[i];
 	SAFE_CALL(set_CuFFT_load_CBs(plan, cStack),  "ERROR; setting load cuFFT callback values");
 	SAFE_CALL(set_CuFFT_store_CBs(plan, cStack), "ERROR; setting store cuFFT callback values");
       }
