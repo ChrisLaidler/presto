@@ -653,18 +653,18 @@ gpuSpecs* readGPUcmd(Cmdline *cmd)
 
   for ( int dev = 0 ; dev < gpul->noDevices; dev++ ) // Loop over devices  .
   {
-    if ( dev >= cmd->nbatchC )
-      gpul->noCgPlans[dev]	= cmd->nbatch[cmd->nbatchC-1];
+    if ( dev >= cmd->numgenC )
+      gpul->noCgPlans[dev]	= cmd->numgen[cmd->numgenC-1];
     else
-      gpul->noCgPlans[dev]	= cmd->nbatch[dev];
+      gpul->noCgPlans[dev]	= cmd->numgen[dev];
 
-    if ( dev >= cmd->nstepsC )
-      gpul->noSegments[dev]	= cmd->nsteps[cmd->nbatchC-1];
+    if ( dev >= cmd->numsegC )
+      gpul->noSegments[dev]	= cmd->numseg[cmd->numgenC-1];
     else
-      gpul->noSegments[dev]	= cmd->nsteps[dev];
+      gpul->noSegments[dev]	= cmd->numseg[dev];
 
     if ( dev >= cmd->numoptC )
-      gpul->noCoPlans[dev]	= cmd->numopt[cmd->nbatchC-1];
+      gpul->noCoPlans[dev]	= cmd->numopt[cmd->numgenC-1];
     else
       gpul->noCoPlans[dev]	= cmd->numopt[dev];
 

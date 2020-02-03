@@ -14,22 +14,22 @@ typedef struct s_Cmdline {
   char gpuP;
   int *gpu;
   int gpuC;
-  /***** -nbatch: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value. */
-  char nbatchP;
-  int *nbatch;
-  int nbatchC;
-  /***** -nsteps: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the aplication to determine a good value. */
-  char nstepsP;
-  int *nsteps;
-  int nstepsC;
-  /***** -numopt: A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value. */
-  char numoptP;
-  int *numopt;
-  int numoptC;
+  /***** -numgen: A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the application to determine a good value. */
+  char numgenP;
+  int *numgen;
+  int numgenC;
+  /***** -numseg: A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the application to determine a good value. */
+  char numsegP;
+  int *numseg;
+  int numsegC;
   /***** -width: The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 32 and represent the width in 1000's of the closes power of two. */
   char widthP;
   int width;
   int widthC;
+  /***** -numopt: A list of the number of candidates to process on each CUDA device, Each candidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the application to determine a good value. */
+  char numoptP;
+  int *numopt;
+  int numoptC;
   /***** -lsgpu: List all available CUDA GPU's and exit */
   char lsgpuP;
   /***** -cpu: Do a CPU search */

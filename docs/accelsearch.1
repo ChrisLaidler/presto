@@ -11,7 +11,7 @@
 .\" it edited by clig, remove the respective pair of cligPart-lines.
 .\"
 .\" cligPart TITLE
-.TH "accelsearch" 1 "24Feb17" "Clig-manuals" "Programmer's Manual"
+.TH "accelsearch" 1 "03Feb20" "Clig-manuals" "Programmer's Manual"
 .\" cligPart TITLE end
 
 .\" cligPart NAME
@@ -23,10 +23,10 @@ accelsearch \- Search an FFT or short time series for pulsars using a Fourier do
 .SH SYNOPSIS
 .B accelsearch
 [-gpu [gpu]]
-[-nbatch [nbatch]]
-[-nsteps [nsteps]]
-[-numopt [numopt]]
+[-numgen [numgen]]
+[-numseg [numseg]]
 [-width width]
+[-numopt [numopt]]
 [-lsgpu]
 [-cpu]
 [-ncpus ncpus]
@@ -56,22 +56,16 @@ infile
 A list of CUDA device ID's, specifying the GPU's to use. If no items are specified all GPU's will be used. Device id's can be found with: accelseach -lsgpu,
 .br
 0...32 Int values between 0 and 32.
-.IP -nbatch
-A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value.,
+.IP -numgen
+A list of the number of batches of f-∂f planes to process on each CUDA device, Each batch is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the application to determine a good value.,
 .br
 0...32 Int values between 0 and 5.
 .br
 Default: `0'
-.IP -nsteps
-A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the aplication to determine a good value.,
+.IP -numseg
+A list of the number of f-∂f planes each batch on each CUDA device is to process. Listed in the same order as -gpu. If only one value is specified it will be used for all batches. 0 Means the application to determine a good value.,
 .br
 0...32 Int values between 0 and 12.
-.br
-Default: `0'
-.IP -numopt
-A list of the number of canidates to process on each CUDA device, Each canidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the aplication to determine a good value.,
-.br
-0...32 Int values between 0 and 7.
 .br
 Default: `0'
 .IP -width
@@ -80,6 +74,12 @@ The width of the larges f-∂f plane. Values should be one of 1, 2, 4, 8, 16 or 
 1 Int value between 1 and 65536.
 .br
 Default: `4'
+.IP -numopt
+A list of the number of candidates to process on each CUDA device, Each candidate is run in its own thread and allows concurrency. Listed in the same order as -gpu. If only one value is specified it will be used for all GPUs. 0 Means the application to determine a good value.,
+.br
+0...32 Int values between 0 and 7.
+.br
+Default: `0'
 .IP -lsgpu
 List all available CUDA GPU's and exit.
 .IP -cpu
