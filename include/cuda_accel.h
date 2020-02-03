@@ -36,7 +36,7 @@ extern "C"
 }
 #endif
 
-#include "cuda_compex.h"
+#include "complex.h"
 
 
 
