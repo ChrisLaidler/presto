@@ -11,16 +11,16 @@
 #include "cuda_accel.h"
 
 
-ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int no = 0 );
+acc_err opt_accelcand(accelcand* cand, cuCoPlan* opt, int no = 0 );
 
 ExternC int  ffdotPln(float* powers, fcomplex* fft, int loR, int noBins, int noHarms, double centR, double centZ, double rSZ, double zSZ, int noR, int noZ, int halfwidth, float* fac);
 
-cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf );
+cuCoPlan* initOptimiser(cuSearch* sSrch, cuCoPlan* opt, gpuInf* gInf );
 
-ACC_ERR_CODE freeOptimiser(cuOpt* opt);
+acc_err freeOptimiser(cuCoPlan* opt);
 
-ACC_ERR_CODE pln_max_pnt( cuRzHarmPlane* pln, initCand* cand );
+acc_err pln_max_pnt( cuRzHarmPlane* pln, initCand* cand );
 
-ACC_ERR_CODE pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound );
+acc_err pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound );
 
 #endif

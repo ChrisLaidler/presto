@@ -56,7 +56,7 @@ __global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmW
 
     const int hrm = hIdx+1;
 
-    FOLD // Determine half width
+    FOLD // Determine half-width
     {
       halfW = getHw<T>(z*hrm, hw.val[hIdx]);
     }
@@ -116,9 +116,9 @@ __global__ void ffdotPln_ker3(float* powers, float2* fft, int noHarms, int harmW
 #endif
 
 template<typename T>
-ACC_ERR_CODE ffdotPln_CPU(cuPlnGen* plnGen, cuRzHarmPlane* pln)
+acc_err ffdotPln_CPU(cuPlnGen* plnGen, cuRzHarmPlane* pln)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
@@ -211,9 +211,9 @@ ACC_ERR_CODE ffdotPln_CPU(cuPlnGen* plnGen, cuRzHarmPlane* pln)
  * @param name    A text pointer to put the name into
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE getKerName(cuPlnGen* plnGen, char* name)
+acc_err getKerName(cuPlnGen* plnGen, char* name)
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
 
   if      ( plnGen->flags & FLAG_OPT_BLK_HRM )
     sprintf(name,"%s","BLK_HRM" );
@@ -232,9 +232,9 @@ ACC_ERR_CODE getKerName(cuPlnGen* plnGen, char* name)
  * @param plnGen  The plane to read the flags from
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE setPlnGenTypeFromFlags( cuPlnGen* plnGen )
+acc_err setPlnGenTypeFromFlags( cuPlnGen* plnGen )
 {
-  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
+  acc_err	 err		= ACC_ERR_NONE;
 
   if ( plnGen && plnGen->pln )
   {
@@ -281,9 +281,9 @@ ACC_ERR_CODE setPlnGenTypeFromFlags( cuPlnGen* plnGen )
  * @param plnGen
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE zeroPln( cuPlnGen* plnGen )
+acc_err zeroPln( cuPlnGen* plnGen )
 {
-  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
+  acc_err	 err		= ACC_ERR_NONE;
 
   if ( plnGen && plnGen->pln && plnGen->pln->d_data )
   {
@@ -318,9 +318,9 @@ ACC_ERR_CODE zeroPln( cuPlnGen* plnGen )
  * @param cOps		A pointer to an array of minimum length of the number of harmonics, the results will be written to this array
  * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_cOps_harms( cuPlnGen* plnGen, unsigned long long* cOps)
+acc_err ffdotPln_cOps_harms( cuPlnGen* plnGen, unsigned long long* cOps)
 {
-  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
+  acc_err	 err		= ACC_ERR_NONE;
   cuRzHarmPlane* pln 		= plnGen->pln;
 
   if ( !cOps )
@@ -368,9 +368,9 @@ ACC_ERR_CODE ffdotPln_cOps_harms( cuPlnGen* plnGen, unsigned long long* cOps)
  * @param cOps		A pointer to a value where the result will be written to
  * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps)
+acc_err ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps)
 {
-  ACC_ERR_CODE	 err		= ACC_ERR_NONE;
+  acc_err	 err		= ACC_ERR_NONE;
   cuRzHarmPlane* pln 		= plnGen->pln;
 
   if ( !cOps )
@@ -408,10 +408,10 @@ ACC_ERR_CODE ffdotPln_cOps( cuPlnGen* plnGen, unsigned long long* cOps)
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 template<typename T>
-ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
+acc_err ffdotPln_ker( cuPlnGen* plnGen )
 {
-  ACC_ERR_CODE	 err	= ACC_ERR_NONE;
-  confSpecsOpt*	 conf	= plnGen->conf;
+  acc_err	 err	= ACC_ERR_NONE;
+  confSpecsCO*	 conf	= plnGen->conf;
   cuRespPln* 	 rpln 	= plnGen->responsePln;
   cuRzHarmPlane* pln 	= plnGen->pln;
   cuHarmInput*	 input	= plnGen->input;
@@ -744,7 +744,7 @@ ACC_ERR_CODE ffdotPln_ker( cuPlnGen* plnGen )
  * @param newInp  Set to 1 if new input is needed
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE chkInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp)
+acc_err chkInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp)
 {
   return chkInput_pln(plnGen->input, plnGen->pln, fft, newInp);
 }
@@ -757,9 +757,9 @@ ACC_ERR_CODE chkInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp)
  * @param fft     The FFT data that will make up the input
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE prepInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
+acc_err prepInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   double rSize = MAX(plnGen->pln->rSize, 20);
   double zSize = MAX(plnGen->pln->zSize, 20*plnGen->conf->zScale);
@@ -770,14 +770,14 @@ ACC_ERR_CODE prepInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
   return err;
 }
 
-/** Set the per harmonic half width using plane accuracy
+/** Set the per harmonic half-width using plane accuracy
  *
  * @param plnGen  The plane to check
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE setHalfWidth_ffdotPln( cuPlnGen* plnGen )
+acc_err setHalfWidth_ffdotPln( cuPlnGen* plnGen )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   // Check input
   if ( plnGen->accu == 0 )
@@ -788,11 +788,11 @@ ACC_ERR_CODE setHalfWidth_ffdotPln( cuPlnGen* plnGen )
   {
     if ( plnGen->accu == LOWACC )
     {
-      infoMSG(4,4,"Half width: standard accuracy");
+      infoMSG(4,4,"Half-width: standard accuracy");
     }
     else
     {
-      infoMSG(4,4,"Half width: high accuracy");
+      infoMSG(4,4,"Half-width: high accuracy");
     }
 
     // Initialise values to 0
@@ -831,9 +831,9 @@ ACC_ERR_CODE setHalfWidth_ffdotPln( cuPlnGen* plnGen )
  * @param fft     The FFT data that will make up the input
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
+acc_err cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   infoMSG(4,4,"1D async memory copy H2D");
 
@@ -845,13 +845,13 @@ ACC_ERR_CODE cpyInput_ffdotPln( cuPlnGen* plnGen, fftInfo* fft )
   return err;
 }
 
-ACC_ERR_CODE setTypeFlag( cuPlnGen* plnGen, float nothing )
+acc_err setTypeFlag( cuPlnGen* plnGen, float nothing )
 {
   plnGen->flags &= ~FLAG_DOUBLE;
   return ACC_ERR_NONE;
 }
 
-ACC_ERR_CODE setTypeFlag( cuPlnGen* plnGen, double nothing )
+acc_err setTypeFlag( cuPlnGen* plnGen, double nothing )
 {
   plnGen->flags |= FLAG_DOUBLE;
   return ACC_ERR_NONE;
@@ -866,10 +866,10 @@ ACC_ERR_CODE setTypeFlag( cuPlnGen* plnGen, double nothing )
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 template<typename T>
-ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
+acc_err prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
-  confSpecsOpt*	conf		= plnGen->conf;
+  acc_err	err		= ACC_ERR_NONE;
+  confSpecsCO*	conf		= plnGen->conf;
 
   infoMSG(4,4,"Prep plain generator.\n");
 
@@ -1003,9 +1003,9 @@ ACC_ERR_CODE prep_Opt( cuPlnGen* plnGen, fftInfo* fft )
  * @param fft
  * @return
  */
-ACC_ERR_CODE ffdotPln_cpyResultsD2H( cuPlnGen* plnGen, fftInfo* fft )
+acc_err ffdotPln_cpyResultsD2H( cuPlnGen* plnGen, fftInfo* fft )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   FOLD // Copy data back to host  .
   {
@@ -1028,9 +1028,9 @@ ACC_ERR_CODE ffdotPln_cpyResultsD2H( cuPlnGen* plnGen, fftInfo* fft )
  * @param fft
  * @return
  */
-ACC_ERR_CODE ffdotPln_ensurePln( cuPlnGen* plnGen, fftInfo* fft )
+acc_err ffdotPln_ensurePln( cuPlnGen* plnGen, fftInfo* fft )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   FOLD // A blocking synchronisation to ensure results are ready to be proceeded by the host  .
   {
@@ -1066,9 +1066,9 @@ ACC_ERR_CODE ffdotPln_ensurePln( cuPlnGen* plnGen, fftInfo* fft )
  * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
 template<typename T>
-ACC_ERR_CODE ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
+acc_err ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   infoMSG(4,4,"Generate plane ff section, Centred on (%.6f, %.6f) with %2i harmonics.\n", plnGen->pln->centR, plnGen->pln->centZ, plnGen->pln->noHarms );
 
@@ -1105,9 +1105,9 @@ ACC_ERR_CODE ffdotPln( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
  * @param newInp  Set to 1 if new input is needed
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE input_plnGen( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
+acc_err input_plnGen( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   // Check input
   int newInp_l;
@@ -1136,9 +1136,9 @@ ACC_ERR_CODE input_plnGen( cuPlnGen* plnGen, fftInfo* fft, int* newInp )
  * @param fft	  FFT data structure
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor, int target_noCol)
+acc_err ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDivisor, int target_noCol)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   pln->blkCnt	= 1;
   pln->blkWidth	= 1;
@@ -1285,7 +1285,7 @@ ACC_ERR_CODE ffdotPln_calcCols( cuRzHarmPlane* pln, int64_t flags, int colDiviso
  * @param newInp	Set to 1 if new input is needed
  * @return		ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp)
+acc_err chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, int* newInp)
 {
   return  chkInput(input, pln->centR, pln->centZ, pln->rSize, pln->zSize, pln->noHarms, newInp);
 }
@@ -1297,9 +1297,9 @@ ACC_ERR_CODE chkInput_pln(cuHarmInput* input, cuRzHarmPlane* pln, fftInfo* fft, 
  * @param gInf
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf)
+acc_err stridePln(cuRzHarmPlane* pln, gpuInf* gInf)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   infoMSG(6,6,"Aligning plane to device memory.\n" );
 
@@ -1383,9 +1383,9 @@ ACC_ERR_CODE stridePln(cuRzHarmPlane* pln, gpuInf* gInf)
  * @param f2
  * @return	ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
+acc_err ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
@@ -1507,11 +1507,11 @@ ACC_ERR_CODE ffdotPln_writePlnToFile(cuRzHarmPlane* pln, FILE *f2)
  * @param name	File name excluding extension
  * @return	ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name,  const char* prams )
+acc_err ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* name,  const char* prams )
 {
   infoMSG(4,4,"Plot ffdot plane section.\n");
 
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
   char tName[1024];
   sprintf(tName,"%s/%s.csv", dir, name);
   FILE *f2 = fopen(tName, "w");
@@ -1554,9 +1554,9 @@ ACC_ERR_CODE ffdotPln_plotPln( cuRzHarmPlane* pln, const char* dir, const char* 
   return err;
 }
 
-ACC_ERR_CODE addPlnToTree(candTree* tree, cuRzHarmPlane* pln)
+acc_err addPlnToTree(candTree* tree, cuRzHarmPlane* pln)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
@@ -1730,7 +1730,7 @@ cuRzHarmPlane* dupPln( cuRzHarmPlane* orrpln )
  * @param pln	The pointer of the plane to free
  * @return	ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE freePln(cuRzHarmPlane* pln)
+acc_err freePln(cuRzHarmPlane* pln)
 {
   infoMSG(3,3,"Free plane data structure.\n");
 
@@ -1761,7 +1761,7 @@ ACC_ERR_CODE freePln(cuRzHarmPlane* pln)
   return ACC_ERR_NONE;
 }
 
-cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
+cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsCO* conf, gpuInf* gInf)
 {
   infoMSG(3,3,"Initialise a GPU rz plane generator.\n");
 
@@ -1861,8 +1861,8 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
 	//zMaxMax	= MAX(zMaxMax, sSrch->sSpec->zMax * 34 + 50 );  	// TODO: This is 34th harmonic of the fundamental plane. This may be a bit high!
       }
 
-      maxNoR		= maxDim*1.5;					// The maximum number of r points, in the generated plane. The extra is to cater for block kernels which can auto increase
-      maxNoZ 		= maxDim;					// The maximum number of z points, in the generated plane
+      maxNoR	= maxDim*1.5;							// The maximum number of r points, in the generated plane. The extra is to cater for block kernels which can auto increase
+      maxNoZ 	= maxDim;							// The maximum number of z points, in the generated plane
     }
 
     // Allocate input memory
@@ -1878,9 +1878,9 @@ cuPlnGen* initPlnGen(int maxHarms, float zMax, confSpecsOpt* conf, gpuInf* gInf)
   return plnGen;
 }
 
-ACC_ERR_CODE freePlnGen(cuPlnGen* plnGen)
+acc_err freePlnGen(cuPlnGen* plnGen)
 {
-  ACC_ERR_CODE err	= ACC_ERR_NONE;
+  acc_err err	= ACC_ERR_NONE;
 
   err += freePln(plnGen->pln);
 
@@ -1889,14 +1889,14 @@ ACC_ERR_CODE freePlnGen(cuPlnGen* plnGen)
   return err;
 }
 
-ACC_ERR_CODE snapPlane(cuRzHarmPlane* pln)
+acc_err snapPlane(cuRzHarmPlane* pln)
 {
   return centerPlane(pln, pln->centR, pln->centZ, true );
 }
 
-ACC_ERR_CODE centerPlane(cuRzHarmPlane* pln, double r, double z, bool snap )
+acc_err centerPlane(cuRzHarmPlane* pln, double r, double z, bool snap )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   if ( pln->rSize && pln->zSize && pln->noR && pln->noZ )
   {
@@ -1939,9 +1939,9 @@ ACC_ERR_CODE centerPlane(cuRzHarmPlane* pln, double r, double z, bool snap )
   return err;
 }
 
-ACC_ERR_CODE centerPlaneOnCand(cuRzHarmPlane* pln, initCand* cand, bool snap)
+acc_err centerPlaneOnCand(cuRzHarmPlane* pln, initCand* cand, bool snap)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   if ( pln && cand )
   {
@@ -1957,8 +1957,8 @@ ACC_ERR_CODE centerPlaneOnCand(cuRzHarmPlane* pln, initCand* cand, bool snap)
   return err;
 }
 
-template ACC_ERR_CODE ffdotPln_ker<float >( cuPlnGen* plnGen );
-template ACC_ERR_CODE ffdotPln_ker<double>( cuPlnGen* plnGen );
+template acc_err ffdotPln_ker<float >( cuPlnGen* plnGen );
+template acc_err ffdotPln_ker<double>( cuPlnGen* plnGen );
 
-template ACC_ERR_CODE ffdotPln<float >( cuPlnGen* plnGen, fftInfo* fft, int* newInput );
-template ACC_ERR_CODE ffdotPln<double>( cuPlnGen* plnGen, fftInfo* fft, int* newInput );
+template acc_err ffdotPln<float >( cuPlnGen* plnGen, fftInfo* fft, int* newInput );
+template acc_err ffdotPln<double>( cuPlnGen* plnGen, fftInfo* fft, int* newInput );

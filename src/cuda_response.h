@@ -1,7 +1,7 @@
 #ifndef CUTIL_CORR_H
 #define CUTIL_CORR_H
 
-#include "cuda_accel.h"
+//#include "cuda_accel.h"
 #include "cuda_accel_utils.h"
 
 #define Z_LIM_F		1e-5			// Got this through testing - this is the Z value below which inaccuracy creep in for double
@@ -52,62 +52,25 @@
 #define FOLD if(1)
 #endif
 
-#ifdef		OPT_LOC_32
+#ifndef Fout
+#define Fout if(0)
+#endif
 
-#define		OPT_MAX_LOC_HARMS	32
-typedef		int32  optLocInt_t;
-typedef		long32 optLocLong_t;
-typedef		int32  optLocFloat_t;
+#ifdef	OPT_LOC_32
+
+#define	OPT_MAX_LOC_HARMS	32
+typedef	int32  optLocInt_t;
+typedef	long32 optLocLong_t;
+typedef	int32  optLocFloat_t;
 
 #else
 
-#define		OPT_MAX_LOC_HARMS	16
-typedef		int16  optLocInt_t;
-typedef		long16 optLocLong_t;
-typedef		int16  optLocFloat_t;
+#define	OPT_MAX_LOC_HARMS	16
+typedef	int16  optLocInt_t;
+typedef	long16 optLocLong_t;
+typedef	int16  optLocFloat_t;
 
-#endif
-
-//#ifdef DEBUG
-//
-//#define DEVIS 1
-//#define REPS 1
-//
-//#else
-
-// DBG testing parameters
-#define DEVIS 5
-#define REPS 20
-
-//#define DEVIS 1
-//#define REPS 1
-
-#define OPS_P_REP (DEVIS*REPS)
-
-struct kerStruct
-{
-  double	devGOps;
-  int		reps;
-  float		repScale;
-
-  int		iList[3];
-  float		fList[3];
-  double	dList[3];
-
-  dim3		dimBlock;
-  dim3		dimGrid;
-
-  void*		h_buffer1;
-  void*		d_buffer1;
-
-  void*		h_buffer2;
-  void*		d_buffer2;
-
-  void*		h_buffer3;
-  void*		d_buffer3;
-};
-
-//#endif
+#endif	// OPT_LOC_32
 
 /////////////////////////////////
 
@@ -229,6 +192,45 @@ __global__ void ffdotPlnByBlk_ker3(void* powers, float2* fft, int noHarms, int h
 
 /////////////////////////////////
 
+//#ifdef DEBUG
+//
+//#define DEVIS 1
+//#define REPS 1
+//
+//#else
+
+// DBG testing parameters
+#define DEVIS 10
+#define REPS 20
+
+//#define DEVIS 1
+//#define REPS 1
+
+#define OPS_P_REP (DEVIS*REPS)
+
+struct kerStruct
+{
+  double	devGOps;
+  int		reps;
+  float		repScale;
+
+  int		iList[3];
+  float		fList[3];
+  double	dList[3];
+
+  dim3		dimBlock;
+  dim3		dimGrid;
+
+  void*		h_buffer1;
+  void*		d_buffer1;
+
+  void*		h_buffer2;
+  void*		d_buffer2;
+
+  void*		h_buffer3;
+  void*		d_buffer3;
+};
+
 template<typename T>
 __global__ void k_finterpin(kerStruct inf);			// DBG - prototype
 
@@ -246,5 +248,7 @@ __global__ void k_fresnEval(T* input, T2* output );		// DBG - prototype
 
 //__global__ void k_fresnEval_f(float* input, float2* output);	// DBG - prototype
 //__global__ void k_fresnEval_d(double* input, double2* output );	// DBG - prototype
+
+//#endif
 
 #endif // CUTIL_CORR_H

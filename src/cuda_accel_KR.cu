@@ -57,7 +57,7 @@ __global__ void typeChangeKer(readT* read, writeT* write, size_t stride, size_t 
  * @param fftlen
  */
 template<typename genT, typename storeT>
-__global__ void init_kernels(storeT* response, double zStart, double zEnd, int noZ, int width, int half_width, int rSteps)
+__global__ void init_kernels(storeT* response, double zStart, double zEnd, int noZ, int width, int half_width, int rRes)
 {
   int cx, cy;							/// The x and y index of this thread in the array
   int rx = -1;							/// The x index of the value in the kernel
@@ -77,7 +77,7 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
     else
       z = zStart;
 
-    if      ( half_width == 0  )				// Standard low accuracy half width
+    if      ( half_width == 0  )				// Standard low accuracy half-width
     {
       half_width    = cu_z_resp_halfwidth_low<genT>(z);
     }
@@ -95,20 +95,20 @@ __global__ void init_kernels(storeT* response, double zStart, double zEnd, int n
       //half_width    = cu_z_resp_halfwidth((double) z);
     }
 
-    int noResp	= half_width * rSteps;				// The number of response variables per side
+    int noResp	= half_width * rRes;				// The number of response variables per side
     genT offset	= 0;						// The distance of the response value from 0
 
     // Calculate the kernel index for this thread (centred on zero inverted and wrapped)
     if		( cx < noResp )
     {
       // Beginning of array ( left half of response values mirrored about zero, cos of convolution)
-      offset = cx / (genT)rSteps;
+      offset = cx / (genT)rRes;
       rx = 1;
     }
     else if	(cx >= width - noResp )
     {
       // End of array ( right half of response values mirrored about zero, cos of convolution)
-      offset = ( cx - width ) / (genT)rSteps;
+      offset = ( cx - width ) / (genT)rRes;
       rx = 1;
     }
 
@@ -150,7 +150,7 @@ int createStackKernel(cuFfdotStack* cStack)
   if ( cStack->flags & FLAG_KER_MAX )
   {
     // Use one halfwidth for the entire kernel
-    halfWidth = cStack->harmInf->kerStart / 2.0;
+    halfWidth = cStack->harmInf->plnStart / 2.0;
   }
   else
   {
@@ -229,13 +229,13 @@ static int copyKerDoubleToFloat(cuKernel* doubleKer, cuKernel* floatKer, cudaStr
   return 0;
 }
 
-void createBatchKernels(cuFFdotBatch* batch, void* buffer)
+void createBatchKernels(cuCgPlan* plan, void* buffer)
 {
   cuKernel orrKernels[MAX_STACKS];
 
   char msg[1024];
 
-  infoMSG(4,4,"Initialise the multiplication kernels.\n");
+  infoMSG(4,4,"Initialise the convolution kernels.\n");
 
   // Run message
   CUDA_SAFE_CALL(cudaGetLastError(), "Before creating GPU kernels");
@@ -248,13 +248,13 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       orrKernels[i].d_kerData = NULL;
     }
 
-    if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
+    if ( (plan->flags & FLAG_KER_DOUBFFT) && !(plan->flags & FLAG_DOUBLE) )
     {
       infoMSG(5,5,"Allocating temporary double precision memory for FFT to work on.\n");
 
-      for (int i = 0; i < batch->noStacks; i++)
+      for (int i = 0; i < plan->noStacks; i++)
       {
-	cuFfdotStack* cStack = &batch->stacks[i];
+	cuFfdotStack* cStack = &plan->stacks[i];
 
 	// Backup original kernel
 	memcpy(&orrKernels[i], cStack->kernels, sizeof(cuKernel)); // Copy the cStack kernel struct over the temp one
@@ -270,13 +270,13 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   PROF // Profiling  create timing events  .
   {
-    if ( batch->flags & FLAG_PROF )
+    if ( plan->flags & FLAG_PROF )
     {
       // NOTE: Timing kernel creation is tricky, no events have been allocated so do it here
 
-      for (int i = 0; i< batch->noStacks; i++)
+      for (int i = 0; i< plan->noStacks; i++)
       {
-	cuFfdotStack* cStack  = &batch->stacks[i];
+	cuFfdotStack* cStack  = &plan->stacks[i];
 
 	// in  events (with timing)
 	CUDA_SAFE_CALL(cudaEventCreate(&cStack->normInit),    		"Creating input normalisation event");
@@ -296,9 +296,9 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       NV_RANGE_PUSH("Calc stack response");
     }
 
-    for (int i = 0; i < batch->noStacks; i++)
+    for (int i = 0; i < plan->noStacks; i++)
     {
-      cuFfdotStack* cStack = &batch->stacks[i];
+      cuFfdotStack* cStack = &plan->stacks[i];
 
       // Call the CUDA kernels
       createStackKernel(cStack);
@@ -312,14 +312,14 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_PROF )
+    if ( plan->flags & FLAG_PROF )
     {
-      for (int stack = 0; stack < batch->noStacks; stack++)
+      for (int stack = 0; stack < plan->noStacks; stack++)
       {
-	cuFfdotStack* cStack = &batch->stacks[stack];
+	cuFfdotStack* cStack = &plan->stacks[stack];
 
 	// Sum & Search kernel
-	timeEvents( cStack->normInit, cStack->normComp, &batch->cuSrch->timings[COMP_RESP],   "Response value calculation");
+	timeEvents( cStack->normInit, cStack->normComp, &plan->cuSrch->timings[COMP_RESP],   "Response value calculation");
       }
     }
   }
@@ -333,11 +333,11 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       NV_RANGE_PUSH("FFT kernels");
     }
 
-    for (int i = 0; i < batch->noStacks; i++)
+    for (int i = 0; i < plan->noStacks; i++)
     {
-      cuFfdotStack* cStack = &batch->stacks[i];
+      cuFfdotStack* cStack = &plan->stacks[i];
 
-      if ( (batch->flags & FLAG_KER_DOUBFFT) || (batch->flags & FLAG_DOUBLE) )
+      if ( (plan->flags & FLAG_KER_DOUBFFT) || (plan->flags & FLAG_DOUBLE) )
       {
 	FOLD // Create the plan  .
 	{
@@ -388,7 +388,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
 	  CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *)cStack->kernels->d_kerData, (cufftDoubleComplex *) cStack->kernels->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
-	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the convolution kernels.");
 
 	  PROF // Profiling  .
 	  {
@@ -486,7 +486,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
 	  CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->initStream),  "Error associating a CUFFT plan with multStream.");
 	  CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->kernels->d_kerData, (cufftComplex *) cStack->kernels->d_kerData, CUFFT_FORWARD), "FFT'ing the kernel data. [cufftExecC2C]");
-	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+	  CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the convolution kernels.");
 
 	  PROF // Profiling  .
 	  {
@@ -526,7 +526,7 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
       }
     }
 
-    CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the multiplication kernels.");
+    CUDA_SAFE_CALL(cudaGetLastError(), "FFT'ing the convolution kernels.");
 
     PROF // Profiling  .
     {
@@ -536,14 +536,14 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_PROF )
+    if ( plan->flags & FLAG_PROF )
     {
-      for (int stack = 0; stack < batch->noStacks; stack++)
+      for (int stack = 0; stack < plan->noStacks; stack++)
       {
-	cuFfdotStack* cStack = &batch->stacks[stack];
+	cuFfdotStack* cStack = &plan->stacks[stack];
 
 	// Sum & Search kernel
-	timeEvents( cStack->normInit, cStack->normComp, &batch->cuSrch->timings[COMP_KERFFT],   "FFT kernels");
+	timeEvents( cStack->normInit, cStack->normComp, &plan->cuSrch->timings[COMP_KERFFT],   "FFT kernels");
 
 	// Done timing this stack so destroy the events
 
@@ -558,13 +558,13 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer)
 
   FOLD // Copy double FFT'ed data back to the float kernel  .
   {
-    if ( (batch->flags & FLAG_KER_DOUBFFT) && !(batch->flags & FLAG_DOUBLE) )
+    if ( (plan->flags & FLAG_KER_DOUBFFT) && !(plan->flags & FLAG_DOUBLE) )
     {
       infoMSG(5,5,"Copy double FFT'ed data back to the float kernel.\n");
 
-      for (int i = 0; i < batch->noStacks; i++)
+      for (int i = 0; i < plan->noStacks; i++)
       {
-	cuFfdotStack* cStack = &batch->stacks[i];
+	cuFfdotStack* cStack = &plan->stacks[i];
 
 	// The stack kernel is the double (we allocated it new memory, and the original is in the temp storage
 	copyKerDoubleToFloat( cStack->kernels, &orrKernels[i], cStack->initStream );

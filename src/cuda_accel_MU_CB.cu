@@ -1,3 +1,17 @@
+/** @file cuda_accel_MU_CB.cu
+ *  @brief The implementation of the stack multiplication kernel v3
+ *
+ *  @author Chris Laidler
+ *  @bug No known bugs.
+ *
+ *
+ *  Change Log
+ *
+ *  [2.02.17] [2020-02-03]
+ *    A major refactor for release
+ *
+ */
+
 #include "cuda_accel_MU.h"
 
 //====================================== Constant variables  ===============================================\\
@@ -5,81 +19,6 @@
 #if	CUDART_VERSION >= 6050
 
 #ifdef	WITH_MUL_PRE_CALLBACK	// Pre Callbacks (mult)  .
-__device__ cufftCallbackLoadC  d_loadConst          = CB_RetConst;
-__device__ cufftCallbackLoadC  d_loadRead           = CB_RetValue;
-__device__ cufftCallbackLoadC  d_loadInp            = CB_readInp;
-__device__ cufftCallbackLoadC  d_loadInp0           = CB_readInp0;
-__device__ cufftCallbackLoadC  d_loadInp1           = CB_readInp1;
-__device__ cufftCallbackLoadC  d_loadInp2           = CB_readInp2;
-__device__ cufftCallbackLoadC  d_loadInp3           = CB_readInp3;
-__device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
-#endif	// WITH_MUL_PRE_CALLBACK
-
-#ifdef	WITH_POW_POST_CALLBACK	// Post Callbacks (power)  .
-#ifdef	WITH_SINGLE_RESCISION_POWERS
-__device__ cufftCallbackStoreC d_storePow_f         = CB_PowerOut_f;
-__device__ cufftCallbackStoreC d_inmemRow_f         = CB_InmemOutRow_f;
-__device__ cufftCallbackStoreC d_inmemPln_f         = CB_InmemOutPln_f;
-#endif	// WITH_SINGLE_RESCISION_POWERS
-#if 	CUDART_VERSION >= 7050
-#ifdef	WITH_HALF_RESCISION_POWERS
-__device__ cufftCallbackStoreC d_storePow_h         = CB_PowerOut_h;
-__device__ cufftCallbackStoreC d_inmemRow_h         = CB_InmemOutRow_h;
-__device__ cufftCallbackStoreC d_inmemPln_h         = CB_InmemOutPln_h;
-#endif	// WITH_HALF_RESCISION_POWERS
-#endif	// CUDART_VERSION >= 7050
-#endif	// WITH_POW_POST_CALLBACK
-
-#endif	// CUDART_VERSION >= 6050
-
-//========================================== Functions  ====================================================\\
-
-
-__device__ int calcInMemIdx_ROW( size_t offset )
-{
-  const int hw  = PSTART_STAGE[0];
-  const int st  = STRIDE_STAGE[0];
-  const int al  = ALEN ;
-  int col       = ( offset % st ) - hw * ACCEL_NUMBETWEEN ;
-
-  if ( col < 0 || col >= al )
-    return (-1);
-
-  const int ns  = NO_STEPS;
-
-  int row       =   offset  / ( st * ns ) ;
-  int step      = ( offset  % ( st * ns ) ) / st;
-
-  size_t plnOff = row * PLN_STRIDE + step * al + col;
-
-  return (plnOff);
-}
-
-__device__ int calcInMemIdx_PLN( size_t offset )
-{
-  const int hw  = PSTART_STAGE[0];
-  const int st  = STRIDE_STAGE[0];
-  const int al  = ALEN ;
-  int col       = ( offset % st ) - hw * ACCEL_NUMBETWEEN ;
-
-  if ( col < 0 || col >= al )
-    return (-1);
-
-  const int ht  = HEIGHT_STAGE[0];
-
-  int row       = offset  /   st;
-  int step      = row     /   ht;
-  row           = row     %   ht;  // Plane interleaved!
-
-  size_t plnOff = row * PLN_STRIDE + step * al + col;
-
-  return (plnOff);
-}
-
-
-#if CUDART_VERSION >= 6050        // CUFFT callbacks only implemented in CUDA 6.5  .
-
-#ifdef WITH_MUL_PRE_CALLBACK	// Pre Callbacks (mult)  .
 
 /** CUFFT callback kernel to simply return constant value  .
  */
@@ -132,7 +71,7 @@ __device__ cufftComplex CB_readInp( void *dataIn, size_t offset, void *callerInf
 
 /** CUFFT callback kernel to simply read data  .
  *
- * @param batch
+ * @param plan
  * @param cStack
  */
 __device__ cufftComplex CB_readInp0( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
@@ -165,7 +104,7 @@ __device__ cufftComplex CB_readInp0( void *dataIn, size_t offset, void *callerIn
 
 /** CUFFT callback kernel to simply read data  .
  *
- * @param batch
+ * @param plan
  * @param cStack
  */
 __device__ cufftComplex CB_readInp1( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
@@ -193,7 +132,7 @@ __device__ cufftComplex CB_readInp1( void *dataIn, size_t offset, void *callerIn
 
 /** CUFFT callback kernel to simply read data  .
  *
- * @param batch
+ * @param plan
  * @param cStack
  */
 __device__ cufftComplex CB_readInp2( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
@@ -221,7 +160,7 @@ __device__ cufftComplex CB_readInp2( void *dataIn, size_t offset, void *callerIn
 
 /** CUFFT callback kernel to simply read data  .
  *
- * @param batch
+ * @param plan
  * @param cStack
  */
 __device__ cufftComplex CB_readInp3( void *dataIn, size_t offset, void *callerInfo, void *sharedPtr)
@@ -254,13 +193,13 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
   stackInfo *inf  = (stackInfo*)callerInfo;
 
   int fIdx        = inf->famIdx;
-  int noSteps     = inf->noSteps;
+  int noSegments  = inf->noSegments;
   int noPlanes    = inf->noPlanes;
   int stackStrd   = STRIDE_HARM[fIdx];
   int width       = WIDTH_HARM[fIdx];
 
-  int strd        = stackStrd * noSteps ;                 /// Stride taking into account steps)
-  int gRow        = offset / strd;                        /// Row (ignoring steps)
+  int strd        = stackStrd * noSegments ;              /// Stride taking into account segments)
+  int gRow        = offset / strd;                        /// Row (ignoring segments)
   int col         = offset % stackStrd;                   /// 2D column
   int top         = 0;                                    /// The top of the plane
   int pHeight     = 0;
@@ -277,24 +216,24 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
     }
   }
 
-  int row         = offset / stackStrd - pHeight*noSteps;
+  int row         = offset / stackStrd - pHeight*noSegments;
   int pIdx        = fIdx + pln;
   int plnHeight   = HEIGHT_HARM[pIdx];
-  int step;
+  int segment;
 
   if ( inf->flags & FLAG_ITLV_ROW )
   {
-    step  = row % noSteps;
-    row   = row / noSteps;
+    segment	= row % noSegments;
+    row		= row / noSegments;
   }
   else
   {
-    step = row / plnHeight;
-    row  = row % plnHeight;
+    segment	= row / plnHeight;
+    row		= row % plnHeight;
   }
 
   cufftComplex ker = ((cufftComplex*)(KERNEL_HARM[pIdx]))[row*stackStrd + col];           //
-  cufftComplex inp = ((cufftComplex*)inf->d_iData)[(pln*noSteps+step)*stackStrd + col];   //
+  cufftComplex inp = ((cufftComplex*)inf->d_iData)[(pln*noSegments+segment)*stackStrd + col];   //
 
   // Do the multiplication
   cufftComplex out;
@@ -310,368 +249,84 @@ __device__ cufftComplex CB_MultiplyInput( void *dataIn, size_t offset, void *cal
   return out;
 }
 
+__device__ cufftCallbackLoadC  d_loadConst          = CB_RetConst;
+__device__ cufftCallbackLoadC  d_loadRead           = CB_RetValue;
+__device__ cufftCallbackLoadC  d_loadInp            = CB_readInp;
+__device__ cufftCallbackLoadC  d_loadInp0           = CB_readInp0;
+__device__ cufftCallbackLoadC  d_loadInp1           = CB_readInp1;
+__device__ cufftCallbackLoadC  d_loadInp2           = CB_readInp2;
+__device__ cufftCallbackLoadC  d_loadInp3           = CB_readInp3;
+__device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
+
 #endif	// WITH_MUL_PRE_CALLBACK
 
-#ifdef	WITH_POW_POST_CALLBACK	// Post Callbacks (power)  .
-
-#ifdef	WITH_SINGLE_RESCISION_POWERS
-
-/** CUFFT callback kernel to calculate and store float powers after the FFT  .
- */
-__device__ void CB_PowerOut_f( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y ;
-
-  // Write result (offsets are the same)
-  ((float*)dataOut)[offset] = power;
-}
-
-/** CUFFT callback kernel to calculate and store float powers in the in-memory plane, after the FFT  .
- *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
- *
- */
-__device__ void CB_InmemOutRow_f( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  int plnOff = calcInMemIdx_ROW(offset);
-
-  if ( plnOff == -1 )
-  {
-    // This element is in the contaminated ends
-    return;
-  }
-
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y ;
-
-  // Write result (offsets are the same)
-  ((float*)dataOut)[ plnOff ] = power;
-}
-
-/** CUFFT callback kernel to calculate and store float powers in the in-memory plane, after the FFT  .
- *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
- *
- */
-__device__ void CB_InmemOutPln_f( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  int plnOff = calcInMemIdx_PLN(offset);
-
-  if ( plnOff == -1 )
-  {
-    // This element is in the contaminated ends
-    return;
-  }
-
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y ;
-
-  // Write result (offsets are the same)
-  ((float*)dataOut)[ plnOff ] = power;
-}
-
-#endif	// WITH_SINGLE_RESCISION_POWERS
-
-#if	CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)	// Half precision CUFFT power call back  .
-
-/** CUFFT callback kernel to calculate and store half powers after the FFT  .
- */
-__device__ void CB_PowerOut_h( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y;
-
-  // Write result (offsets are the same)
-  ((half*)dataOut)[offset] = __float2half(power);
-}
-
-/** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
- *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
- *  Assumes row interleaved data
- *
- */
-__device__ void CB_InmemOutRow_h( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  int plnOff = calcInMemIdx_ROW(offset);
-
-  if ( plnOff == -1 )
-  {
-    // This element is in the contaminated ends
-    return;
-  }
-
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y ;
-
-  // Write result (offsets are the same)
-  ((half*)dataOut)[plnOff] = __float2half(power);
-}
-
-/** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
- *  CallerInfo is passed as the address of the first element of the first step in the inmem plane
- *  Assumes plane interleaved data
- *
- */
-__device__ void CB_InmemOutPln_h( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
-{
-  int plnOff = calcInMemIdx_PLN(offset);
-
-  if ( plnOff == -1 )
-  {
-    // This element is in the contaminated ends
-    return;
-  }
-
-  // Calculate power
-  float power = element.x*element.x + element.y*element.y ;
-
-  // Write result (offsets are the same)
-  ((half*)dataOut)[plnOff] = __float2half(power);
-}
-
-#endif	// CUDART_VERSION >= 7050 && WITH_HALF_RESCISION_POWERS
-
-#endif	// WITH_POW_POST_CALLBACK
+#endif	//CUDART_VERSION
 
 /** Load the CUFFT callbacks  .
  */
-void copyCUFFT_CBs(cuFFdotBatch* batch)
+acc_err copy_CuFFT_load_CBs(cuCgPlan* plan)
 {
-  PROF // Profiling  .
-  {
-    NV_RANGE_PUSH("CUFFT callbacks");
-  }
+  acc_err ret = ACC_ERR_NONE;
 
-  if ( batch->flags & FLAG_MUL_CB )
+  if ( plan->flags & FLAG_MUL_CB )
   {
+    PROF // Profiling  .
+    {
+      NV_RANGE_PUSH("CUFFT load callbacks");
+    }
+
     infoMSG(5,5,"Set inp CB function.");
 
 #ifdef 	WITH_MUL_PRE_CALLBACK	// Pre Callbacks (mult)  .
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadConst,        sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadRead,         sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr, d_loadInp,          sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream ),   "Getting constant memory address.");
+#else	// WITH_MUL_PRE_CALLBACK
+    EXIT_DIRECTIVE("WITH_MUL_PRE_CALLBACK");
+#endif	// WITH_MUL_PRE_CALLBACK
 
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr0, d_loadInp0,        sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr1, d_loadInp1,        sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr2, d_loadInp2,        sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-    //CUDA_SAFE_CALL(cudaMemcpyFromSymbol( &batch->h_ldCallbackPtr3, d_loadInp3,        sizeof(cufftCallbackLoadC)),   "Getting constant memory address.");
-
-    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream ),   "Getting constant memory address.");
-#else
-    fprintf(stderr, "ERROR: Not compiled with multiplication through CUFFT callbacks enabled. \n");
-    exit(EXIT_FAILURE);
-#endif
-  }
-
-  if ( batch->flags & FLAG_CUFFT_CB_OUT )
-  {
-#ifdef WITH_POW_POST_CALLBACK
-    infoMSG(5,5,"Set out CB function.");
-
-    if ( batch->flags & FLAG_POW_HALF )
+    PROF // Profiling  .
     {
-#ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDART_VERSION >= 7050
-      if ( batch->flags & FLAG_CUFFT_CB_INMEM )
-      {
-	// Store powers to inmem plane
-	if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
-	{
-	  // TODO: Check if I explicitly synchronise before these values get used
-	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-	}
-#ifdef WITH_ITLV_PLN
-	else                                  // Plane interleaved
-	{
-	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-	}
-#else	//WITH_ITLV_PLN
-	else
-	{
-	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-	  exit(EXIT_FAILURE);
-	}
-#endif	// WITH_ITLV_PLN
-      }
-      else
-      {
-	// Calculate powers and write to powers half precision plane
-	CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
-      }
-#else	// CUDART_VERSION
-      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-      exit(EXIT_FAILURE);
-#endif	//CUDART_VERSION
-#else	// WITH_HALF_RESCISION_POWERS
-      EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
-#endif	// WITH_HALF_RESCISION_POWERS
+      NV_RANGE_POP("CUFFT load callbacks");
     }
-    else
-    {
-#ifdef	WITH_SINGLE_RESCISION_POWERS
-      if ( batch->flags & FLAG_CUFFT_CB_INMEM )
-      {
-	// Store powers to inmem plane
-	if ( batch->flags & FLAG_ITLV_ROW )    // Row interleaved
-	{
-	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-	}
-#ifdef WITH_ITLV_PLN
-	else                                  // Plane interleaved
-	{
-	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_inmemPln_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),  "Getting constant memory address.");
-	}
-#else	// WITH_ITLV_PLN
-	else
-	{
-	  fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-	  exit(EXIT_FAILURE);
-	}
-#endif	// WITH_ITLV_PLN
-      }
-      else
-      {
-	// Calculate powers and write to powers half single plane
-	CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &batch->h_stCallbackPtr, d_storePow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, batch->stacks->initStream),     "Getting constant memory address.");
-      }
-#else	// WITH_SINGLE_RESCISION_POWERS
-      EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
-#endif	// WITH_SINGLE_RESCISION_POWERS
-    }
-#else	// WITH_POW_POST_CALLBACK
-      EXIT_DIRECTIVE("WITH_POW_POST_CALLBACK");
-#endif	// WITH_POW_POST_CALLBACK
   }
 
-  PROF // Profiling  .
-  {
-    NV_RANGE_POP("CUFFT callbacks");
-  }
+  return ret;
 }
 
-#endif  // CUDART_VERSION >= 6050
-
-/** Get a pointer to the location of the first element of the output of the CUFFT  .
- *
- */
-void* getCBwriteLocation(cuFFdotBatch* batch, cuFfdotStack* cStack)
-{
-  void* dst = NULL;
-
-  if ( batch->flags &    FLAG_CUFFT_CB_INMEM )
-  {
-#if CUDART_VERSION >= 6050
-    rVals* rVal   = &(*batch->rAraays)[batch->rActive][0][0];
-
-    if ( batch->flags &  FLAG_POW_HALF )
-    {
-#if CUDART_VERSION >= 7050
-      dst    = ((half*)batch->cuSrch->d_planeFull) + rVal->step * batch->accelLen;              // A pointer to the location of the first step in the in-mem plane
-#else
-      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
-      exit(EXIT_FAILURE);
-#endif
-    }
-    else
-    {
-      dst    = ((float*)batch->cuSrch->d_planeFull) + rVal->step * batch->accelLen;             // A pointer to the location of the first step in the in-mem plane
-    }
-#else
-    fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
-    exit(EXIT_FAILURE);
-#endif
-  }
-  else
-  {
-    dst     = cStack->d_planePowr;
-  }
-
-  infoMSG(7,7,"CUFFT output %p", dst);
-  return (dst);
-}
 
 /** Set CUFFT store FFT callback  .
  *
  */
-void setCB(cuFFdotBatch* batch, cuFfdotStack* cStack)
+acc_err set_CuFFT_load_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
 {
-  if ( batch->flags & FLAG_CUFFT_CB_OUT )
-  {
-    infoMSG(5,5,"Set CB powers output\n");
+  acc_err ret = ACC_ERR_NONE;
 
-#if CUDART_VERSION >= 6050
-
-    if ( batch->flags & FLAG_DOUBLE )
-    {
-#if CUDART_VERSION >= 9000
-      // This is a hack!
-      CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_ST_COMPLEX_DOUBLE), "Error clearing CUFFT store callback.");
-#endif
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX_DOUBLE, NULL ),"Error assigning CUFFT store callback.");
-    }
-    else
-    {
-#if CUDART_VERSION >= 9000
-      // This is a hack!
-      CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_ST_COMPLEX), "Error clearing CUFFT store callback.");
-#endif
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, NULL ),"Error assigning CUFFT store callback.");
-    }
-#else
-    fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
-    exit(EXIT_FAILURE);
-#endif
-  }
-
-  if ( batch->flags & FLAG_MUL_CB )
+  if ( plan->flags & FLAG_MUL_CB )
   {
     infoMSG(5,5,"Set CB input\n");
 
 #ifdef 	WITH_MUL_PRE_CALLBACK
-    if ( batch->flags & FLAG_DOUBLE )
+    if ( plan->flags & FLAG_DOUBLE )
     {
-#if CUDART_VERSION >= 9000
+#if	CUDART_VERSION >= 9000
       // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_LD_COMPLEX_DOUBLE), "Error clearing CUFFT load callback.");
-#endif
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX_DOUBLE, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
+#endif // CUDART_VERSION
+      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&plan->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX_DOUBLE, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     }
     else
     {
-#if CUDART_VERSION >= 9000
+#if	CUDART_VERSION >= 9000
       // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_LD_COMPLEX), "Error clearing CUFFT load callback.");
-#endif
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
+#endif	//CUDART_VERSION
+      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&plan->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     }
-
-//    Testing input FFT callback
-//
-//    FOLD // Set load FFT callback  .
-//    {
-//      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
-//      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_iData ),"Error assigning CUFFT load callback.");
-//      //size_t siz = cStack->height * cStack->width * batch->noSteps;
-//      //float2* ennd = cStack->d_planeMult + siz ;
-//      //CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&ennd ),"Error assigning CUFFT load callback.");
-//
-//      if      ( cStack->stkIdx == 0 )
-//	CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr0, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_iData ),"Error assigning CUFFT load callback.");
-//      else if ( cStack->stkIdx == 1 )
-//	CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr1, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_iData ),"Error assigning CUFFT load callback.");
-//      else if ( cStack->stkIdx == 2 )
-//	CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr2, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_iData ),"Error assigning CUFFT load callback.");
-//      else if ( cStack->stkIdx == 3 )
-//	CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&batch->h_ldCallbackPtr3, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_iData ),"Error assigning CUFFT load callback.");
-//      else
-//      {
-//	fprintf(stderr,"ERROR: %s bad stkIdx.\n", __FUNCTION__);
-//	exit(EXIT_FAILURE);
-//      }
-//    }
-#else
+#else	// WITH_MUL_PRE_CALLBACK
     fprintf(stderr, "ERROR: Not compiled with multiplication through CUFFT callbacks enabled. \n");
     exit(EXIT_FAILURE);
 #endif	// WITH_MUL_PRE_CALLBACK
   }
+
+  return ret;
 }
 

@@ -11,7 +11,7 @@
  *    Working version un-numbed
  *
  *  [0.0.01] [2017-02-24]
- *     Added preprocessor directives for steps and chunks
+ *     Added preprocessor directives for segments and chunks
  *
  */
  
@@ -19,15 +19,15 @@
 
 #ifdef WITH_MUL_31
 
-/** Multiplication kernel - Multiply an entire batch with convolution kernel  .
+/** Multiplication kernel - Multiply an entire plan with convolution kernel  .
  * Each thread loops down a column of the planes and multiplies input with kernel and writes result to plane
  */
-template<int64_t FLAGS, int noSteps>
+template<int64_t FLAGS, int noSegments>
 __global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ float2* datas, __restrict__ float2* ffdot, int noPlanes)
 {
   const int ix = blockIdx.x * CNV_DIMX * CNV_DIMY + CNV_DIMX * threadIdx.y + threadIdx.x;
 
-  float2 input[noSteps];
+  float2 input[noSegments];
 
   // Stride
   ffdot   += ix;
@@ -51,18 +51,18 @@ __global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ 
       const int plnStride = plnHeight*stride;
 #endif
 
-      // read input for each step into registers
-      for (int step = 0; step < noSteps; step++)			// Loop over planes  .
+      // read input for each segment into registers
+      for (int sIdx = 0; sIdx < noSegments; sIdx++)			// Loop over planes  .
       {
-        input[step]       = datas[step*stride];
+        input[sIdx]       = datas[sIdx*stride];
 
         // Normalise
-        input[step].x    /= (float) stride ;
-        input[step].y    /= (float) stride ;
+        input[sIdx].x    /= (float) stride ;
+        input[sIdx].y    /= (float) stride ;
       }
 
       // Stride input data
-      datas              += stride*noSteps;
+      datas              += stride*noSegments;
 
       for (int planeY = y0; planeY < y1; planeY++)			// Loop over individual plane  .
       {
@@ -71,7 +71,7 @@ __global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ 
         {
           if      ( FLAGS & FLAG_ITLV_ROW )
           {
-            off1  = pHeight + planeY*noSteps*stride;
+            off1  = pHeight + planeY*noSegments*stride;
           }
 #ifdef WITH_ITLV_PLN
           else
@@ -82,11 +82,11 @@ __global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ 
         }
 
         // Multiply and write data
-        for (int step = 0; step < noSteps; step++)			// Loop over steps  .
+        for (int sIdx = 0; sIdx < noSegments; sIdx++)			// Loop over segments  .
         {
           //
           float2 out;
-          float2 ipd = input[step];
+          float2 ipd = input[sIdx];
 
           // Calculate index
           int idx = 0;
@@ -94,12 +94,12 @@ __global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ 
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
             {
-              idx  = off1 + step * stride;
+              idx  = off1 + sIdx * stride;
             }
 #ifdef WITH_ITLV_PLN
             else
             {
-              idx  = off1 + step * plnStride;
+              idx  = off1 + sIdx * plnStride;
             }
 #endif
           }
@@ -124,120 +124,120 @@ __global__ void mult31_k(const __restrict__ float2* kernels, const __restrict__ 
       }
 
       // Track plane offset
-      pHeight += noSteps*plnHeight*stride;
+      pHeight += noSegments*plnHeight*stride;
     }
   }
 }
 
 template<int64_t FLAGS>
-__host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch)
+__host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuCgPlan* plan)
 {
-  switch (batch->noSteps)
+  switch (plan->noSegments)
   {
-#if MIN_STEPS <= 1  and MAX_STEPS >= 1
+#if MIN_SEGMENTS <= 1  and MAX_SEGMENTS >= 1
     case 1:
     {
-      mult31_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 2  and MAX_STEPS >= 2
+#if MIN_SEGMENTS <= 2  and MAX_SEGMENTS >= 2
     case 2:
     {
-      mult31_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 3  and MAX_STEPS >= 3
+#if MIN_SEGMENTS <= 3  and MAX_SEGMENTS >= 3
     case 3:
     {
-      mult31_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 4  and MAX_STEPS >= 4
+#if MIN_SEGMENTS <= 4  and MAX_SEGMENTS >= 4
     case 4:
     {
-      mult31_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 5  and MAX_STEPS >= 5
+#if MIN_SEGMENTS <= 5  and MAX_SEGMENTS >= 5
     case 5:
     {
-      mult31_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 6  and MAX_STEPS >= 6
+#if MIN_SEGMENTS <= 6  and MAX_SEGMENTS >= 6
     case 6:
     {
-      mult31_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 7  and MAX_STEPS >= 7
+#if MIN_SEGMENTS <= 7  and MAX_SEGMENTS >= 7
     case 7:
     {
-      mult31_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 8  and MAX_STEPS >= 8
+#if MIN_SEGMENTS <= 8  and MAX_SEGMENTS >= 8
     case 8:
     {
-      mult31_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+#if MIN_SEGMENTS <= 9  and MAX_SEGMENTS >= 9
     case 9:
     {
-      mult31_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+#if MIN_SEGMENTS <= 10 and MAX_SEGMENTS >= 10
     case 10:
     {
-      mult31_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+#if MIN_SEGMENTS <= 11 and MAX_SEGMENTS >= 11
     case 11:
     {
-      mult31_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+#if MIN_SEGMENTS <= 12 and MAX_SEGMENTS >= 12
     case 12:
     {
-      mult31_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((float2*)batch->d_kerData, (float2*)batch->d_iData, (float2*)batch->d_planeMult, batch->noGenHarms);
+      mult31_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((float2*)plan->d_kerData, (float2*)plan->d_iData, (float2*)plan->d_planeCplx, plan->noGenHarms);
       break;
     }
 #endif
 
     default:
     {
-      if      ( batch->noSteps < MIN_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
-      else if ( batch->noSteps > MAX_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      if      ( plan->noSegments < MIN_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # segments (%i) less than the compiled minimum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
+      else if ( plan->noSegments > MAX_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # segments (%i) greater than the compiled maximum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
       else
-	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+	fprintf(stderr, "ERROR: %s has not been templated for %i segments.\n", __FUNCTION__, plan->noSegments);
 
       exit(EXIT_FAILURE);
     }
@@ -246,7 +246,7 @@ __host__  void mult31_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 
 #endif	// WITH_MUL_31
 
-__host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch)
+__host__  void mult31(cudaStream_t multStream, cuCgPlan* plan)
 {
 #ifdef WITH_MUL_31
 
@@ -255,14 +255,14 @@ __host__  void mult31(cudaStream_t multStream, cuFFdotBatch* batch)
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  dimGrid.x = ceil(batch->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
-  dimGrid.y = batch->mulSlices;
+  dimGrid.x = ceil(plan->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
+  dimGrid.y = plan->mulSlices;
 
-  if      ( batch->flags & FLAG_ITLV_ROW )
-    mult31_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch);
+  if      ( plan->flags & FLAG_ITLV_ROW )
+    mult31_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, plan);
 #ifdef WITH_ITLV_PLN
   else
-    mult31_s<0>(dimGrid, dimBlock, 0, multStream, batch);
+    mult31_s<0>(dimGrid, dimBlock, 0, multStream, plan);
 #else
   else
   {

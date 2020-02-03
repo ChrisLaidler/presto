@@ -89,10 +89,10 @@ KER_FFT_PRECISION 	SINGLE
 # INP_NORM:
 # 	CPU     		# Do the input Normalisation on the CPU - This is usually the best option, the task is short enough that the CPU may as well do it (unless Z-Max is very small  ( < ~10 )
 #	GPU     		# Do the input Normalisation on the GPU using an in-place Shared Memory sort
-#	GPU_SM     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort
-#	GPU_SM_MIN     		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort - Minimise SM use
+#	GPU_SM  		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort
+#	GPU_SM_MIN		# DEBUG: Do the input Normalisation on the GPU using an in-place Shared Memory sort - Minimise SM use
 #	GPU_OS			# DEBUG: Do the input Normalisation on the GPU using a custom novel order statistic algorithm
-# D	AUTO      		# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
+# D	AUTO			# Automatically chose, This will usually use the CPU but may use the GPU if z-max is small
 INP_NORM		AUTO
 
 
@@ -137,7 +137,7 @@ INP_FFT			AUTO
 cuMedianBuffSz		0
 
 
-########################### Convolve ###########################
+########################### Multiply ###########################
 
 # Which type of multiplication to do.
 # MUL_KER:
@@ -168,13 +168,6 @@ MUL_SLICES		0
 # D	0       		# Let the application decide
 #	int     		# A number <= 8
 MUL_CHUNK		0
-
-
-# How to do convolution
-#CONVOLVE:
-# D	SEP     		# Do the multiplication and iFFT "separately"   ie all multiplications followed by all iFFT's
-#	CONT    		# Do the multiplication and iFFT "together"     ie multiply and iFFT each stack one after the other
-#CONVOLVE		SEP
 
 
 # Which order to process stacks
@@ -219,7 +212,7 @@ IN_MEM_POWERS		AUTO
 
 # If performing a in-mem GPU search store powers in half precision (allows doing twice as large in-mem searches)
 # POWER_PRECISION:
-#	HALF			# Force half precision powers - much faster a good very good option! (requires CUDA 7.5 or greater)
+#	HALF			# Force half precision powers - much faster a good, very good option! (requires CUDA 7.5 or greater)
 #	SINGLE			# Force single precision powers
 #	DOUBLE			# Not yet implemented - Not sure if this is really necessary
 # D	AUTO			# Let the application decide - Will usually result in half
@@ -240,7 +233,7 @@ SS_KER			AA
 
 # Count initial candidates in Sum & Search kernel
 # SS_COUNT:
-#	0			# Do not count candidates
+#	0			# Do not count candidates - Use this if you're card is older than compute capability < 5.0
 # D	1			# Count candidates in the kernel allows opting out of some CPU work
 SS_COUNT		1
 
@@ -309,7 +302,6 @@ CAND_DELAY		A
 #FLAG_STORE_ALL 		# [Not yet implemented]	Don't fiddle with this this is for future use
 #FLAG_STORE_EXP 		# [Not yet implemented]	Don't fiddle with this this is for future use
 
-
 # How to store initial candidates
 # CAND_STORAGE:
 # D	ARR     		# Use an array		(Fast access, but requires more CPU memory)
@@ -317,16 +309,16 @@ CAND_DELAY		A
 #	QUAD    		# Use a quad tree	(Better all round - But not yet properly implemented)
 CAND_STORAGE		ARR
 
-# The resolution of the canidate array
+# The resolution of the candidate array
 # This is only used if the CAND_STORAGE is set to ARR
 # This can generally be a smaller number say 0.5 or 0.25 a smaller number will use less host memory to store initial candidates
 # If two initial candidates with similar values are found the one with the higher sigma will over writ the other
 #
 # ARR_RES: (A float value)
-#	0.25:			# This will generate a canidate array with 1 bin per 4 input FT bins
-# D	0.5:			# This will generate a canidate array with 1 bin per 2 input FT bins
-#	1:			# This will generate a canidate array with 1 bin per 1 input FT bin - You shouldn't really have to go lager than this
-#	2:			# This will generate a canidate array with 2 bin per 1 input FT bin ( this is generally the resolution the search is done at see: R_RESOLUTION )
+#	0.25:			# This will generate a candidate array with 1 bin per 4 input FT bins
+# D	0.5:			# This will generate a candidate array with 1 bin per 2 input FT bins
+#	1:			# This will generate a candidate array with 1 bin per 1 input FT bin - You shouldn't really have to go lager than this
+#	2:			# This will generate a candidate array with 2 bin per 1 input FT bin ( this is generally the resolution the search is done at see: R_RESOLUTION )
 ARR_RES			0.5
 
 ######################### Optimisation ###########################
@@ -387,7 +379,6 @@ OPT_NELDER_MEAD_DELTA	1e-8
 # D	THREAD			# Do CPU component of optimisation in a separate CPU thread - This is generally a good idea
 #	SEQ			# Do CPU component of optimisation in a the same CPU thread - Not a good idea
 #OPT_PROCESS		SEQ
-
 
 
 
@@ -486,23 +477,23 @@ optPlnSiz 16 8
 
 # The level of debug messages to print 0 -> non  more with increasing number
 # DBG_LEV:
-# D	0       		# None
-#	1       		# Stage info	- Initialisation - Candidate generation - Candidate optimisation
-#	2       		# Component	- Naming the components
-#	3       		# Component info- Details on the components, Input FT - Multiplication - Power calculation - sum & search - etc....
-#	4       		# Detail	- Info on what task is being done - ie, zero memory, kernel calls etc.
-#	5       		# Debug		- Full debug information - CUDA Events etc.
-#	6       		# Super		- Details on the values of actual variables
-#	7			# Excessive!	- 
+# D	0				# None
+#	1				# Stage info	- Initialisation - Candidate generation - Candidate optimisation
+#	2				# Component	- Naming the components
+#	3				# Component info- Details on the components, Input FT - Multiplication - Power calculation - sum & search - etc....
+#	4				# Detail	- Info on what task is being done - ie, zero memory, kernel calls etc.
+#	5				# Debug		- Full debug information - CUDA Events etc.
+#	6				# Super		- Details on the values of actual variables
+#	7				# Excessive!	- 
 DBG_LEV			0
 
-#FLAG_DPG_UNOPT			# [ Debug ]	Use saved initial search values
-#FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
-#FLAG_DPG_PRNT_CAND		# [ Debug ]     Print CSV of candidates at various stages
-#FLAG_DPG_PLT_POWERS 		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
-#FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes - This takes much longer than generating them!
-#FLAG_DBG_TEST		0
+# FLAG_DPG_UNOPT  		# [ Debug ]	Use saved initial search values
+# FLAG_DBG_SKIP_OPT		# [ Debug ]	Don't do optimisation
+# FLAG_DPG_PRNT_CAND		# [ Debug ]     Print CSV of candidates at various stages
+# FLAG_DPG_PLT_POWERS 		# [ Debug ]	Plot powers should only be done using FLAG_DBG_SYNCH
+# FLAG_DPG_PLT_OPT		# [ Debug ]	Plot optimisation planes - This takes much longer than generating them!
+# FLAG_DBG_TEST			0
 
-#FLAG_DBG_SYNCH  		# [ Debug ]	Perform a synchronous search
-#FLAG_DBG_PROFILING		# [ Debug ]	Perform advanced profiling and timing the search
+# FLAG_DBG_SYNCH  		# [ Debug ]	Disable the asynchronous pipeline - This is for Debug and timing only!
+# FLAG_DBG_PROFILING		# [ Debug ]	Perform advanced profiling and timing the search
 

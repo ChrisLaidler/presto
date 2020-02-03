@@ -283,7 +283,26 @@ __host__ __device__ inline float sqMod4( float x)
 
   return x;
 
+//  asm("{"
+//      " .reg .u32 r1;"                // temp reg,
+//      " .reg .f32 f1, f2;"            // temp reg t1,
+//      " and.b32  r1, %1, 2139095040;" // Exponent bits
+//      " shr.b32  r1, r1, 23;"         // Shift to relevant spot
+//      " sub.s32  r1, 151, r1;"        // r1 = 24 - ( exp - 127 ) -  Remove base - shift 24 bits for mantissa length
+//      " shr.b32  f2, %1, r1;"         // f2 = x  >> sft
+//      " shl.b32 f1, f2,	r1;"          // f2 = f2 << sft
+//      " sub.f32 f2, %1,	f1;"          // b = x - a
+//      " fma.rn.f32 f1,	2.0, f1, f2;" // a = 2*a+b
+//      " mul.f32 %0, f1, f2;"          // a = a*b
+//      "}"
+//      : "=f"(x)
+//      : "f"(x)	);
+//
+//  return x;
+
 #else
+  // Host code
+
   int nptr, sft, rep;
   float a, b;
   float man	= frexpf ( x, &nptr );
@@ -301,25 +320,26 @@ __host__ __device__ inline double sqMod4( double x)
 {
 #ifdef  __CUDA_ARCH__
 
-  asm("{" 									// use braces to limit scope
-      " .reg .u32 r1;"								// temp reg,
-      " .reg .f64 f1, f2;"							// temp reg t1,
-      " .reg .u32 hi, lo;"							// temp reg,
-      " mov.b64 		{hi, lo}, %1			;"
-      " and.b32 		r1,	lo,	2146435072	;"		// Exponent bits
-      " shr.b32 		r1,	r1,	20		;"		// Shift to relevant spot
-      " sub.s32 		r1,	1076,	r1		;"		// r1 = 53 - ( exp - 1023 ) -  Remove base - shift 53 bits for mantissa length
-      " shr.b64 		f2,	%1,	r1		;"		// f2 = x  >> sft
-      " shl.b64 		f1,	f2,	r1		;"		// f2 = f2 << sft
-      " sub.f64 		f2,	%1,	f1		;"		// b = x - a
-      " fma.rn.f64		f1,	2.0,	f1,	f2	;"		// a = 2*a+b
-      " mul.f64			%0,	f1,	f2		;"		// a = a*b
+  asm("{"
+      " .reg .u32 r1;"                // temp reg,
+      " .reg .f64 f1, f2;"            // temp reg t1,
+      " .reg .u32 hi, lo;"            // temp reg,
+      " mov.b64 {hi, lo}, %1;"
+      " and.b32 r1, lo,	2146435072;"  // Exponent bits
+      " shr.b32 r1, r1,	20;"          // Shift to relevant spot
+      " sub.s32 r1, 1076, r1;"        // r1 = 53 - ( exp - 1023 ) -  Remove base - shift 53 bits for mantissa length
+      " shr.b64 f2, %1,	r1;"          // f2 = x  >> sft
+      " shl.b64 f1, f2,	r1;"          // f2 = f2 << sft
+      " sub.f64 f2, %1,	f1;"          // b = x - a
+      " fma.rn.f64 f1, 2.0, f1, f2;"  // a = 2*a+b
+      " mul.f64 %0, f1, f2;"          // a = a*b
       "}"
       : "=d"(x)
       : "d"(x)	);
 
   return x;
 #else
+  // Host code
   int nptr, sft;
   double a, b;
   double man	= frexp ( x, &nptr );
@@ -370,6 +390,25 @@ __device__ inline int bit(int i, int k)
   return ret;
 }
 
+/** Extract some bits from a value
+ *
+ */
+__device__ inline uint bfe(uint bits, uint start, uint length)
+{
+  uint ret;
+  asm("bfe.u32 %0, %1, %2, %3 ;" : "=r"(ret) : "r"(bits), "r"(start), "r"(length) );
+//  asm("bfe.u32 %0, %1, 30, 5	;" : "=r"(ret) : "r"(bits), "r"(start), "r"(length));
+  return ret;
+}
+
+__device__ inline unsigned long long bfe64(unsigned long long bits, uint start, uint length)
+{
+  unsigned long long ret;
+  asm("bfe.u64 %0, %1, %2, %3 ;" : "=l"(ret) : "l"(bits), "r"(start), "r"(length) );
+//  asm("bfe.u32 %0, %1, 30, 5	;" : "=r"(ret) : "r"(bits), "r"(start), "r"(length));
+  return ret;
+}
+
 /** Find most significant non-sign bit from i.
  *
  */
@@ -378,6 +417,50 @@ __device__ inline int bfind(int i)
   int ret;
   asm("bfind.s32 %0, %1;" : "=r"(ret) : "r"(i));
   return ret;
+}
+
+/** Bit reveres
+ *
+ */
+__device__ inline int brev(int i)
+{
+  int ret;
+  asm("brev.b32 %0, %1;" : "=r"(ret) : "r"(i) );
+  return ret;
+}
+
+/** Bit reveres
+ *
+ */
+__device__ inline int brev(int i, int last)
+{
+  asm("{" 									// use braces to limit scope
+      ".reg .u32 r1, r2;					"		// temp register to hold intermediate value
+      " brev.b32 		r1,	%1			;"		// Flip bits
+      " sub.s32 		r2,	32,	%2		;"		// r2 = 32 - last
+      " shr.u32			%0,	r1,     r2		;"		// Right shift
+//      " bfe.u32 		%0,	r1,	31,	%2	;"		// extract the relevant bits (from the other end)
+      "}"
+      : "=r"(i) : "r"(i), "r"(last) );
+  return i;
+
+//  int ret;
+//  asm("brev.b32 %0, %1" : "=r"(ret) : "r"(i) );
+//  return ret>>(32-last);
+}
+
+template<typename T>
+__inline__ __device__
+T warpReduceSum(T val) {
+  for (int offset = 32/2; offset > 0; offset /= 2)
+  {
+#if CUDART_VERSION >= 9000
+    val += __shfl_down_sync(0xffffffff, val, offset);
+#else
+    val += __shfl_down(val, offset);
+#endif
+  }
+  return val;
 }
 
 #endif

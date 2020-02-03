@@ -9,7 +9,7 @@ __device__ void scaleAndSpread(float2* data, int stride, int noRespPerBin, const
 {
   //const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
-  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+  const int bSz = NAS_NTRD;					/// Block size
 
   for ( int batch = batches-1; batch >= 0; batch--)
   {
@@ -57,9 +57,9 @@ __global__ void normAndSpread_SM(float2* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
-  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+  const int bSz = NAS_NTRD;					/// Block size
 
-  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+  const int batches 	= ( noEls + (NAS_NTRD - 1 ) ) / (NAS_NTRD) ; // int round up done at compile time ;)
   float     factor      = 1.0f;
 
   // Stride input data
@@ -109,9 +109,9 @@ __global__ void normAndSpread_SM_MIN(float2* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
-  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+  const int bSz = NAS_NTRD;					/// Block size
 
-  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+  const int batches 	= ( noEls + (NAS_NTRD - 1 ) ) / (NAS_NTRD) ;
   float     factor      = 1.0f;
 
   // Stride input data
@@ -159,9 +159,9 @@ __global__ void normAndSpread_OS(float2* data, int stride, int noRespPerBin)
 {
   const int bid = blockIdx.y  * gridDim.x  + blockIdx.x;	/// Block ID (flat index)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;	/// Thread ID in block (flat index)
-  const int bSz = ( NAS_DIMX*NAS_DIMY);				/// Block size
+  const int bSz = NAS_NTRD;					/// Block size
 
-  const int batches 	= ( noEls + (NAS_DIMX*NAS_DIMY - 1 ) ) / ( NAS_DIMX*NAS_DIMY) ;
+  const int batches 	= ( noEls + (NAS_NTRD - 1 ) ) / (NAS_NTRD) ;
   float     factor      = 1.0f;
 
   // Stride input data
@@ -325,28 +325,28 @@ void normAndSpread_w(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t stream, c
  * calls the function in the template tree
  *
  */
-__host__ void normAndSpread(cudaStream_t stream, cuFFdotBatch* batch, uint stack )
+__host__ void normAndSpread(cudaStream_t stream, cuCgPlan* plan, uint stack )
 {
   dim3 dimBlock, dimGrid;
-  cuFfdotStack* cStack = &batch->stacks[stack];
+  cuFfdotStack* cStack = &plan->stacks[stack];
 
   // Blocks of 1024 threads ( the maximum number of threads per block )
   dimBlock.x = NAS_DIMX;
   dimBlock.y = NAS_DIMY;
   dimBlock.z = 1;
 
-  // One block per harmonic, thus we can sort input powers in Shared memory
-  dimGrid.x = cStack->noInStack * batch->noSteps;
+  // One block per plane of the stack, thus we can sort input powers in Shared memory
+  dimGrid.x = cStack->noInStack * plan->noSegments;
   dimGrid.y = 1;
 
-  if ( batch->conf->normType != 0 )
+  if ( plan->conf->normType != 0 )
   {
-    fprintf(stderr, "ERROR: GPU normalisation can only perform old-style block median normalisation of the step input.\n");
+    fprintf(stderr, "ERROR: GPU normalisation can only perform old-style block median normalisation of the segment input.\n");
     exit(EXIT_FAILURE);
   }
 
-  rVals* rVal 	= &(*batch->rAraays)[batch->rActive][0][cStack->startIdx];
-  int numData	= rVal->numdata;		// NB: This assumes all steps have the same numdata
+  rVals* rVal 	= &(*plan->rAraays)[plan->rActive][0][cStack->startIdx];
+  int numData	= rVal->numdata;		// NB: This assumes all segments have the same numdata
 
   // Call the templated kernel chain
   normAndSpread_w(dimGrid, dimBlock, 0, stream, cStack, numData );

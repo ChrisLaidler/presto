@@ -20,15 +20,16 @@
  */
 
 #include "cuda_accel_MU.h"
+#include "cuda_accel_FFT.h"
 
 //========================================== Functions  ====================================================\\
 
 /** Multiplication kernel - One plane at a time  .
  * Each thread reads one input value and loops down over the kernels
  *
- * This should only be called by multiplyBatch, to check active iteration and time events
+ * This should only be called by cg_multiply, to check active iteration and time events
  */
-static void multiplyPlane(cuFFdotBatch* batch)
+static void multiply_Plane(cuCgPlan* plan)
 {
   dim3 dimGrid, dimBlock;
 
@@ -37,9 +38,9 @@ static void multiplyPlane(cuFFdotBatch* batch)
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  for (int stack = 0; stack < batch->noStacks; stack++)              // Loop through Stacks
+  for (int stack = 0; stack < plan->noStacks; stack++)              // Loop through Stacks
   {
-    cuFfdotStack* cStack = &batch->stacks[stack];
+    cuFfdotStack* cStack = &plan->stacks[stack];
 
     FOLD // Synchronisation  .
     {
@@ -51,19 +52,19 @@ static void multiplyPlane(cuFFdotBatch* batch)
       infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "ifftComp");
       CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp, 0),      "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
-      if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
+      if ( (plan->retType & CU_STR_PLN) && !(plan->flags & FLAG_CUFFT_CB_OUT) )
       {
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "candCpyComp");
-	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, plan->candCpyComp, 0),  "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
       }
 
-      if ( batch->flags & FLAG_SYNCH )
+      if ( plan->flags & FLAG_SYNCH )
       {
 	// Wait for all the input FFT's to complete
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp (stacks)");
-	for (int ss = 0; ss< batch->noStacks; ss++)
+	for (int ss = 0; ss< plan->noStacks; ss++)
 	{
-	  cuFfdotStack* cStack2 = &batch->stacks[ss];
+	  cuFfdotStack* cStack2 = &plan->stacks[ss];
 	  CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0),  "Waiting for event inpFFTinitComp");
 	}
 
@@ -78,7 +79,7 @@ static void multiplyPlane(cuFFdotBatch* batch)
 
     PROF // Profiling  .
     {
-      if ( batch->flags & FLAG_PROF )
+      if ( plan->flags & FLAG_PROF )
       {
 	infoMSG(5,5,"Event %s in %s.\n", "multInit", "multStream");
 	CUDA_SAFE_CALL(cudaEventRecord(cStack->multInit, cStack->multStream),"Recording event: multInit");
@@ -87,7 +88,7 @@ static void multiplyPlane(cuFFdotBatch* batch)
 
     FOLD // call kernel(s)  .
     {
-      mult11(cStack->multStream, batch, cStack);
+      mult11(cStack->multStream, plan, cStack);
     }
 
     FOLD // Synchronisation  .
@@ -105,11 +106,11 @@ static void multiplyPlane(cuFFdotBatch* batch)
  *
  * This should only be called by multiplyBatch, to check active iteration and time events
  *
- * @param batch
+ * @param plan
  * @param cStack
  * @param pStack
  */
-static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL)
+static void multiply_Stack(cuCgPlan* plan, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL)
 {
   infoMSG(3,3,"Multiply stack %i \n", cStack->stackIdx);
 
@@ -124,27 +125,27 @@ static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStac
     // iFFT has its own data so can start once iFFT is complete
     CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack->ifftComp,    0),   "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 
-    if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
+    if ( (plan->retType & CU_STR_PLN) && !(plan->flags & FLAG_CUFFT_CB_OUT) )
     {
       infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "candCpyComp");
 
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
+      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, plan->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // Multiplication will change the plane
     }
 
-    if ( batch->flags & FLAG_SYNCH )
+    if ( plan->flags & FLAG_SYNCH )
     {
       // Wait for all the input FFT's to complete
-      for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
+      for (int synchIdx = 0; synchIdx < plan->noStacks; synchIdx++)
       {
 	infoMSG(5,5,"Synchronise stream %s on %s - stack %i.\n", "multStream", "inpFFTinitComp", synchIdx);
 
-	cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
+	cuFfdotStack* cStack2 = &plan->stacks[synchIdx];
 	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->multStream, cStack2->inpFFTinitComp, 0), "Stream wait on event inpFFTinitComp.");
       }
 
       // Wait for iFFT to finish - In-mem search - I found that GPU compute interferes with D2D copy so wait for it to finish
       infoMSG(5,5,"Synchronise stream %s on %s.\n", "inptStream", "ifftMemComp");
-      cudaStreamWaitEvent(cStack->inptStream, batch->stacks->ifftMemComp, 0);
+      cudaStreamWaitEvent(cStack->inptStream, plan->stacks->ifftMemComp, 0);
 
       // Wait for the previous multiplication to complete
       if ( pStack != NULL )
@@ -158,7 +159,7 @@ static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStac
 
   PROF // Profiling  .
   {
-    if ( batch->flags & FLAG_PROF )
+    if ( plan->flags & FLAG_PROF )
     {
       infoMSG(5,5,"Event %s in %s.\n", "multInit", "multStream");
       CUDA_SAFE_CALL(cudaEventRecord(cStack->multInit, cStack->multStream),"Recording event: multInit");
@@ -170,22 +171,22 @@ static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStac
     if      ( cStack->flags & FLAG_MUL_00 )
     {
       infoMSG(4,4,"Kernel call mult00\n");
-      mult00(cStack->multStream, batch, cStack);
+      mult00(cStack->multStream, plan, cStack);
     }
     else if ( cStack->flags & FLAG_MUL_21 )
     {
       infoMSG(4,4,"Kernel call mult21\n");
-      mult21(cStack->multStream, batch, cStack);
+      mult21(cStack->multStream, plan, cStack);
     }
     else if ( cStack->flags & FLAG_MUL_22 )
     {
       infoMSG(4,4,"Kernel call mult22\n");
-      mult22(cStack->multStream, batch, cStack);
+      mult22(cStack->multStream, plan, cStack);
     }
     else if ( cStack->flags & FLAG_MUL_23 )
     {
       infoMSG(4,4,"Kernel call mult23\n");
-      mult23(cStack->multStream, batch, cStack);
+      mult23(cStack->multStream, plan, cStack);
     }
     else
     {
@@ -204,71 +205,83 @@ static void multiplyStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStac
   }
 }
 
-/** Call all the multiplication kernels for batch  .
- *
- * @param batch
- */
-void multiplyBatch(cuFFdotBatch* batch)
+void time_multiply_CgPlan(cuCgPlan* plan)
 {
   PROF // Profiling - Time previous components  .
   {
-    if ( (batch->flags & FLAG_PROF) )
+    if ( (plan->flags & FLAG_PROF) )
     {
-      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+      if ( (*plan->rAraays)[plan->rActive+1][0][0].numrs )
       {
 	infoMSG(5,5,"Time previous components");
 
-	// Time batch multiply
-	timeEvents( batch->multInit, batch->multComp, &batch->compTime[NO_STKS*COMP_GEN_MULT], "Batch multiplication");
-
-	// Stack multiply
-	for (int stack = 0; stack < batch->noStacks; stack++)
+	if ( plan->flags & FLAG_MUL_BATCH ) // Time batch multiplication
 	{
-	  cuFfdotStack* cStack = &batch->stacks[stack];
+	  timeEvents(plan->multInit, plan->multComp, &plan->compTime[NO_STKS*COMP_GEN_MULT], "Batch multiplication");
+	}
 
-	  timeEvents( cStack->multInit, cStack->multComp, &batch->compTime[NO_STKS*COMP_GEN_MULT + stack ],  "Stack multiplication");
+	if ( ( plan->flags & FLAG_MUL_PLN ) || ( plan->flags & FLAG_MUL_STK ) ) // Time stack multiplication
+	{
+	  for (int stack = 0; stack < plan->noStacks; stack++)
+	  {
+	    cuFfdotStack* cStack = &plan->stacks[stack];
+
+	    timeEvents( cStack->multInit, cStack->multComp, &plan->compTime[NO_STKS*COMP_GEN_MULT + stack ],  "Stack multiplication");
+	  }
 	}
       }
     }
   }
+}
 
-  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+/** Call all the convolution kernels for CG plan  .
+ *
+ * @param plan
+ */
+void cg_multiply(cuCgPlan* plan)
+{
+  PROF // Profiling - Time previous components  .
   {
-    infoMSG(2,2,"Multiply Batch - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+    time_multiply_CgPlan(plan);
+  }
+
+  if ( (*plan->rAraays)[plan->rActive][0][0].numrs )
+  {
+    infoMSG(2,2,"Multiply CG pan - Iteration %3i.", (*plan->rAraays)[plan->rActive][0][0].iteration);
 
     PROF // Profiling  .
     {
       NV_RANGE_PUSH("Multiply");
     }
 
-    if      ( batch->flags & FLAG_MUL_BATCH )  // Do the multiplications on an entire family   .
+    if      ( plan->flags & FLAG_MUL_BATCH )  // Do the multiplications on an entire family   .
     {
       FOLD // Synchronisation  .
       {
 	// Synchronise input data preparation for all stacks
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "inpFFTinitComp (stacks)");
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "ifftComp (stacks)");
-	for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
+	for (int synchIdx = 0; synchIdx < plan->noStacks; synchIdx++)
 	{
-	  cuFfdotStack* cStack = &batch->stacks[synchIdx];
+	  cuFfdotStack* cStack = &plan->stacks[synchIdx];
 
-	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->inpFFTinitComp, 0),     "Waiting for input data to be FFT'ed.");    // Need input data
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(plan->multStream, cStack->inpFFTinitComp, 0),     "Waiting for input data to be FFT'ed.");    // Need input data
 
 	  // iFFT has its own data so can start once iFFT is complete
-	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, cStack->ifftComp, 0),     "Waiting for iFFT.");  // This will overwrite the plane so search must be compete
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(plan->multStream, cStack->ifftComp, 0),     "Waiting for iFFT.");  // This will overwrite the plane so search must be compete
 	}
 
-	if ( !(batch->flags & FLAG_CUFFT_CB_OUT) )
+	if ( !(plan->flags & FLAG_CUFFT_CB_OUT) )
 	{
 	  // Have to wait for search to finish reading data
 	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "searchComp");
-	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->searchComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(plan->multStream, plan->searchComp, 0),    "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
 	}
 
-	if ( (batch->retType & CU_STR_PLN) && !(batch->flags & FLAG_CUFFT_CB_OUT) )
+	if ( (plan->retType & CU_STR_PLN) && !(plan->flags & FLAG_CUFFT_CB_OUT) )
 	{
 	  infoMSG(5,5,"Synchronise stream %s on %s.\n", "multStream", "candCpyComp");
-	  CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->multStream, batch->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
+	  CUDA_SAFE_CALL(cudaStreamWaitEvent(plan->multStream, plan->candCpyComp, 0),   "Waiting for GPU to be ready to copy data to device.");   // Multiplication will change the plane
 	}
       }
 
@@ -276,14 +289,14 @@ void multiplyBatch(cuFFdotBatch* batch)
       {
 	PROF // Profiling  .
 	{
-	  if ( batch->flags & FLAG_PROF )
+	  if ( plan->flags & FLAG_PROF )
 	  {
 	    infoMSG(5,5,"Event %s in %s.\n", "multInit", "multStream");
-	    CUDA_SAFE_CALL(cudaEventRecord(batch->multInit, batch->multStream),"Recording event: multInit");
+	    CUDA_SAFE_CALL(cudaEventRecord(plan->multInit, plan->multStream),"Recording event: multInit");
 	  }
 	}
 
-	mult31(batch->multStream, batch);
+	mult31(plan->multStream, plan);
 
 	// Run message
 	CUDA_SAFE_CALL(cudaGetLastError(), "At kernel launch");
@@ -292,31 +305,31 @@ void multiplyBatch(cuFFdotBatch* batch)
       FOLD // Synchronisation  .
       {
 	infoMSG(5,5,"Event %s in %s.\n", "multComp", "multStream");
-	CUDA_SAFE_CALL(cudaEventRecord(batch->multComp, batch->multStream),"Recording event: multComp");
+	CUDA_SAFE_CALL(cudaEventRecord(plan->multComp, plan->multStream),"Recording event: multComp");
       }
     }
-    else if ( batch->flags & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
+    else if ( plan->flags & FLAG_MUL_STK   )  // Do the multiplications one stack  at a time  .
     {
       cuFfdotStack* pStack = NULL;  // Previous stack
 
-      for (int ss = 0; ss < batch->noStacks; ss++)
+      for (int ss = 0; ss < plan->noStacks; ss++)
       {
 	int stkIdx;
 	cuFfdotStack* cStack;
 
 	FOLD // Chose stack to use  .
 	{
-	  if ( batch->flags & FLAG_STK_UP )
-	    stkIdx = batch->noStacks - 1 - ss;
+	  if ( plan->flags & FLAG_STK_UP )
+	    stkIdx = plan->noStacks - 1 - ss;
 	  else
 	    stkIdx = ss;
 
-	  cStack = &batch->stacks[stkIdx];
+	  cStack = &plan->stacks[stkIdx];
 	}
 
 	FOLD // Multiply  .
 	{
-	  if ( batch->flags & FLAG_MUL_CB )
+	  if ( plan->flags & FLAG_MUL_CB )
 	  {
 #ifdef WITH_MUL_PRE_CALLBACK
 	    // Just synchronise, the iFFT will do the multiplication once the multComp event has been recorded
@@ -332,28 +345,20 @@ void multiplyBatch(cuFFdotBatch* batch)
 	  }
 	  else
 	  {
-	    multiplyStack(batch, cStack, pStack);
-	  }
-	}
-
-	FOLD // IFFT if integrated convolution  .
-	{
-	  if ( batch->flags & FLAG_CONV )
-	  {
-	    IFFTStack(batch, cStack, pStack);
+	    multiply_Stack(plan, cStack, pStack);
 	  }
 	}
 
 	pStack = cStack;
       }
     }
-    else if ( batch->flags & FLAG_MUL_PLN   )  // Do the multiplications one plane  at a time  .
+    else if ( plan->flags & FLAG_MUL_PLN   )  // Do the multiplications one plane  at a time  .
     {
-      multiplyPlane(batch);
+      multiply_Plane(plan);
     }
     else
     {
-      fprintf(stderr, "ERROR: multiplyBatch not templated for this type of multiplication.\n");
+      fprintf(stderr, "ERROR: multiplyCgPlan not templated for this type of multiplication.\n");
       exit(EXIT_FAILURE);
     }
 
@@ -364,385 +369,17 @@ void multiplyBatch(cuFFdotBatch* batch)
   }
 }
 
-/** A simple function to call the plane CUFFT plan  .
- *
- * This is a separate function so one can be called by a omp critical and another not
- */
-static void callPlaneCUFTT(cuFFdotBatch* batch, cuFfdotStack* cStack)
-{
-  PROF // Profiling  .
-  {
-    if ( batch->flags & FLAG_PROF )
-    {
-      infoMSG(5,5,"Event %s in %s.\n", "ifftInit", "fftPStream");
-      CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftInit, cStack->fftPStream),"Recording event: ifftInit");
-    }
-  }
-
-  FOLD // Call the FFT  .
-  {
-    infoMSG(5,5,"Call CUFFT kernel");
-
-    void* dst = getCBwriteLocation(batch, cStack);
-
-    CUFFT_SAFE_CALL(cufftSetStream(cStack->plnPlan, cStack->fftPStream),  "Error associating a CUFFT plan with multStream.");
-
-    infoMSG(7,7,"CUFFT input  %p", cStack->d_planeMult);
-
-    if ( batch->flags & FLAG_DOUBLE )
-      CUFFT_SAFE_CALL(cufftExecZ2Z(cStack->plnPlan, (cufftDoubleComplex *) cStack->d_planeMult, (cufftDoubleComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
-    else
-      CUFFT_SAFE_CALL(cufftExecC2C(cStack->plnPlan, (cufftComplex *) cStack->d_planeMult, (cufftComplex *) dst, CUFFT_INVERSE),"Error executing CUFFT plan.");
-  }
-
-  FOLD // Synchronisation  .
-  {
-    infoMSG(5,5,"Event %s in %s.\n", "ifftComp", "fftPStream");
-    CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftComp, cStack->fftPStream),"Recording event: ifftInit");
-
-    // If using power calculate call back with the inmem plane
-    if ( batch->flags & FLAG_CUFFT_CB_INMEM )
-    {
-#if CUDART_VERSION >= 6050
-      infoMSG(5,5,"Event %s in %s.\n", "ifftMemComp", "fftPStream");
-      CUDA_SAFE_CALL(cudaEventRecord(cStack->ifftMemComp, cStack->fftPStream),"Recording event: ifftInit");
-#endif
-    }
-  }
-}
-
-/**  iFFT a specific stack  .
- *
- * @param batch
- * @param cStack
- * @param pStack
- */
-void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack)
-{
-  infoMSG(3,3,"iFFT Stack %i\n", cStack->stackIdx);
-
-  PROF // Profiling - Time previous components  .
-  {
-    if ( (batch->flags & FLAG_PROF) )
-    {
-      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
-      {
-	infoMSG(5,5,"Time previous components");
-
-	timeEvents( cStack->ifftInit, cStack->ifftComp, &batch->compTime[NO_STKS*COMP_GEN_IFFT + cStack->stackIdx ],  "Stack iFFT");
-      }
-    }
-  }
-
-  FOLD // Synchronisation  .
-  {
-    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "multComp (stack and batch)");
-    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftComp");
-
-    // Wait for multiplication to finish
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->multComp,      0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->multComp,       0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-
-    // Wait for previous iFFT to finish
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftComp,      0), "Waiting for GPU to be ready to copy data to device.");
-    if ( batch->flags & FLAG_SS_INMEM  )
-    {
-      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftMemComp");
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack->ifftMemComp, 0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-    }
-
-    // Wait for previous search to finish
-    infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "searchComp");
-    CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->searchComp,     0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-
-    if ( (batch->retType & CU_STR_PLN) && (batch->flags & FLAG_CUFFT_CB_OUT) ) // This has been deprecated!
-    {
-      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "candCpyComp");
-      CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, batch->candCpyComp,  0), "Waiting for GPU to be ready to copy data to device.");  // This will overwrite the plane so search must be compete
-    }
-
-    if ( batch->flags & FLAG_SYNCH )
-    {
-      // Wait for all the multiplications to complete
-      infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "multComp (neighbours)");
-      for (int synchIdx = 0; synchIdx < batch->noStacks; synchIdx++)
-      {
-	cuFfdotStack* cStack2 = &batch->stacks[synchIdx];
-	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, cStack2->multComp, 0), "Waiting for event ifftComp.");
-      }
-
-      // Wait for the previous fft to complete
-      if ( pStack != NULL )
-      {
-	infoMSG(5,5,"Synchronise stream %s on %s.\n", "fftPStream", "ifftComp (previous stack synch)");
-	CUDA_SAFE_CALL(cudaStreamWaitEvent(cStack->fftPStream, pStack->ifftComp, 0), "Waiting for event ifftComp.");
-      }
-    }
-
-  }
-
-  FOLD // Call the inverse CUFFT  .
-  {
-    infoMSG(4,4,"Call the iFFT\n");
-
-    if ( cStack->flags & CU_FFT_SEP_PLN )
-    {
-      callPlaneCUFTT(batch, cStack);
-    }
-    else
-    {
-#pragma omp critical
-      callPlaneCUFTT(batch, cStack);
-    }
-  }
-
-  FOLD // Plot  .
-  {
-#ifdef CBL
-    if ( batch->flags & FLAG_DPG_PLT_POWERS )
-    {
-      FOLD // Synchronisation  .
-      {
-	infoMSG(4,4,"Blocking synchronisation on %s", "ifftMemComp" );
-
-	CUDA_SAFE_CALL(cudaEventSynchronize(cStack->ifftMemComp), "At a blocking synchronisation. This is probably a error in one of the previous asynchronous CUDA calls.");
-      }
-
-      FOLD // Get data  .
-      {
-	float* outVals = (float*)malloc(batch->plnDataSize);
-	void*  tmpRow  = malloc(batch->inpDataSize);
-	ulong sz  = 0;
-
-	for ( int plainNo = 0; plainNo < cStack->noInStack; plainNo++ )
-	{
-	  cuHarmInfo* cHInfo	= &cStack->harmInf[plainNo];		// The current harmonic we are working on
-	  void*       tmpRow	= malloc(batch->inpDataSize);
-	  cuFFdot*    plan	= &cStack->planes[plainNo];		// The current plane
-
-	  int harm = cStack->startIdx+plainNo;
-
-	  for ( int step = 0; step < batch->noSteps; step ++)		// Loop over steps
-	  {
-	    rVals* rVal = &(((*batch->rAraays)[batch->rActive])[step][harm]);
-
-	    if ( rVal->numdata )
-	    {
-	      char tName[1024];
-	      sprintf(tName, "/home/chris/accel/Powers_setp_%05i_h_%02i.csv", rVal->step, harm );
-	      FILE *f2 = fopen(tName, "w");
-
-	      fprintf(f2,"Harm plane\n");
-	      fprintf(f2,"centR: %.23f\n", (rVal->drhi-rVal->drlo)/2.0);
-	      fprintf(f2,"centZ: %.23f\n", abs(cHInfo->zEnd-cHInfo->zStart)/2.0);
-	      fprintf(f2,"rSize: %.23f\n", (rVal->drhi-rVal->drlo));
-	      fprintf(f2,"zSize: %.23f\n", abs(cHInfo->zEnd-cHInfo->zStart));
-	      fprintf(f2,"noZ: %.i\n",     (int)cHInfo->noZ);
-	      fprintf(f2,"noR: %.i\n",     (int)rVal->numrs);
-	      fprintf(f2,"Harms: %i\n",    1);
-
-	      fprintf(f2,"Type: power\n");
-	      fprintf(f2,"Layout: Harmonics\n");
-
-	      fprintf(f2,"Harm %i", 1);
-
-	      for ( int i = 0; i < rVal->numrs; i++)
-	      {
-		double r = rVal->drlo + i / (double)batch->conf->noResPerBin;
-		fprintf(f2,"\t%.17e", r );
-	      }
-	      fprintf(f2,"\n");
-
-	      // Copy pain from GPU
-	      for( int y = 0; y < cHInfo->noZ; y++ )
-	      {
-		void *powers;
-		int offset;
-		int elsz;
-
-		FOLD // Get the row as floats
-		{
-		  if      ( batch->flags & FLAG_ITLV_ROW )
-		  {
-		    offset = (y*batch->noSteps + step)*cStack->strideCmplx   + cHInfo->kerStart ;
-		  }
-#ifdef WITH_ITLV_PLN
-		  else
-		  {
-		    offset  = (y + step*cHInfo->noZ)*cStack->strideCmplx   + cHInfo->kerStart ;
-		  }
-#else
-		  else
-		  {
-		    fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
-		    exit(EXIT_FAILURE);
-		  }
-#endif
-
-		  if      ( batch->flags & FLAG_POW_HALF )
-		  {
-#ifdef	WITH_HALF_RESCISION_POWERS
-#if 	CUDART_VERSION >= 7050   // Half precision getter and setter  .
-		    powers =  &((half*)      plan->d_planePowr)[offset];
-		    elsz   = sizeof(half);
-		    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
-
-		    for ( int i = 0; i < rVal->numrs; i++)
-		    {
-		      outVals[i] = half2float(((ushort*)tmpRow)[i]);
-		    }
-#else	// CUDART_VERSION
-		    fprintf(stderr, "ERROR: Half precision can only be used with CUDA 7.5 or later! Reverting to single precision!\n");
-		    exit(EXIT_FAILURE);
-#endif	// CUDART_VERSION
-#else	// WITH_HALF_RESCISION_POWERS
-		    EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
-#endif	// WITH_HALF_RESCISION_POWERS
-		  }
-		  else if ( batch->flags & FLAG_CUFFT_CB_POW )
-		  {
-#ifdef	WITH_SINGLE_RESCISION_POWERS
-		    powers =  &((float*)     plan->d_planePowr)[offset];
-		    elsz   = sizeof(float);
-		    CUDA_SAFE_CALL(cudaMemcpy(outVals, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
-
-#else	// WITH_SINGLE_RESCISION_POWERS
-		    EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
-#endif	// WITH_SINGLE_RESCISION_POWERS
-		  }
-		  else
-		  {
-#ifdef	WITH_COMPLEX_POWERS
-		    fcomplexcu *cmplxData;
-
-		    powers =  &((fcomplexcu*) plan->d_planePowr)[offset];
-		    elsz   = sizeof(cmplxData);
-		    CUDA_SAFE_CALL(cudaMemcpy(tmpRow, powers, (rVal->numrs)*elsz,   cudaMemcpyDeviceToHost), "Failed to copy input data from device.");
-
-		    for ( int i = 0; i < rVal->numrs; i++)
-		    {
-		      outVals[i] = POWERC(((fcomplexcu*)tmpRow)[i]);
-		    }
-
-#else	// WITH_COMPLEX_POWERS
-		    EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
-#endif	// WITH_COMPLEX_POWERS
-		  }
-		}
-
-		FOLD // Write line to csv  .
-		{
-		  double z = cHInfo->zStart + (cHInfo->zEnd-cHInfo->zStart)/(double)(cHInfo->noZ-1)*y;
-		  if (cHInfo->noZ == 1 )
-		    z = 0;
-		  fprintf(f2,"%.17e", z);
-
-		  for ( int i = 0; i < rVal->numrs; i++)
-		  {
-		    fprintf(f2,"\t%.17e", outVals[i] );
-		  }
-		  fprintf(f2,"\n");
-		}
-	      }
-
-	      fclose(f2);
-
-	      FOLD // Make image  .
-	      {
-		infoMSG(4,4,"Image %s\n", tName );
-
-		PROF // Profiling  .
-		{
-		  NV_RANGE_PUSH("Image");
-		}
-
-		char cmd[1024];
-		sprintf(cmd,"python $PRESTO/python/plt_ffd.py %s  -r 2 -s 50 -a 0.9  > /dev/null 2>&1", tName);
-		infoMSG(6,6,"%s", cmd);
-		int ret = system(cmd);
-		if ( ret )
-		{
-		  fprintf(stderr,"ERROR: Problem running potting python script.");
-		}
-
-		PROF // Profiling  .
-		{
-		  NV_RANGE_POP("Image");
-		}
-	      }
-
-	      sz += cStack->strideCmplx;
-	    }
-	  }
-	}
-      }
-    }
-#endif
-  }
-}
-
-/** iFFT all stack of a batch  .
- *
- * If using the FLAG_CONV flag no iFFT is done as this should have been done by the multiplication
- *
- */
-void IFFTBatch(cuFFdotBatch* batch)
-{
-  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
-  {
-    if ( !( (batch->flags & FLAG_CONV) && (batch->flags & FLAG_MUL_STK) ) )
-    {
-      infoMSG(2,2,"iFFT Batch - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_PUSH("IFFT");
-      }
-
-      cuFfdotStack* pStack = NULL;  // Previous stack
-
-      for (int ss = 0; ss < batch->noStacks; ss++)
-      {
-	int stkIdx;
-	cuFfdotStack* cStack;
-
-	FOLD // Chose stack to use  .
-	{
-	  if ( batch->flags & FLAG_STK_UP )
-	    stkIdx = batch->noStacks - 1 - ss;
-	  else
-	    stkIdx = ss;
-
-	  cStack = &batch->stacks[stkIdx];
-	}
-
-	FOLD // IFFT  .
-	{
-	  IFFTStack(batch, cStack, pStack);
-	}
-
-	pStack = cStack;
-      }
-
-      PROF // Profiling  .
-      {
-	NV_RANGE_POP("IFFT");
-      }
-    }
-  }
-}
-
 /** Multiply and iFFT the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plane
  */
-void convolveBatch(cuFFdotBatch* batch)
+void cg_convolve(cuCgPlan* plan)
 {
   // Multiply
-  multiplyBatch(batch);
+  cg_multiply(plan);
 
   // IFFT
-  IFFTBatch(batch);
+  cg_iFFT(plan);
 }
 
 

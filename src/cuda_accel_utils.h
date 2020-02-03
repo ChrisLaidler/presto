@@ -18,8 +18,9 @@
 #include <omp.h>
 #endif
 
-#include "cuda_accel.h"
+//#include "cuda_accel.h"
 #include "cuda_utils.h"
+#include "cuda_math.h"
 #include "cuda_math.h"
 
 
@@ -34,27 +35,27 @@ extern "C"
 #include "accel.h"
 }
 
-#define MAX_GPU_MEM	3400000000						///< This is a TMP REM: GTX 970 memory hack.  REALLY NVIDIA, YOU SUCK!!!
+#define MAX_GPU_MEM	3400000000		///< This is a TMP REM: GTX 970 memory hack.  REALLY NVIDIA, YOU SUCK!!!
 
-#define CNV_DIMX        16                    // X Thread Block
-#define CNV_DIMY        8                     // Y Thread Block
+#define CNV_DIMX        16			// X Thread Block
+#define CNV_DIMY        8			// Y Thread Block
 
 /**  Details of the Normalise and spread kernel  .
  * Should be as large as possible usually 32x32
  * NOTE: If compiled in debug mode it may be necessary to drop NAS_DIMY to 16
  *       else you may get Error "too many resources requested for launch"
  */
-#define NAS_DIMX        32                    // Normalise and spread X dimension
-#define NAS_DIMY        32                    // Normalise and spread Y dimension
-#define NAS_NTRD        (NAS_DIMX*NAS_DIMY)   // Normalise and spread thread per block
+#define NAS_DIMX        32			// Normalise and spread X dimension
+#define NAS_DIMY        32			// Normalise and spread Y dimension
+#define NAS_NTRD        (NAS_DIMX*NAS_DIMY)	// Normalise and spread thread per block
 
 #define MAX_CANDS_PER_BLOCK 6000000
 
 #define BLOCKSIZE       16
 #define BLOCK1DSIZE     BLOCKSIZE*BLOCKSIZE
 
-#define BS_DIM          1024    // compute 3.x +
-//#define BS_DIM          576   // compute 2.x
+#define BS_DIM          1024			// compute 3.x +
+//#define BS_DIM          576			// compute 2.x
 
 #define MAX_SAS_BLKS	1024
 
@@ -345,7 +346,7 @@ typedef struct f08
 
 typedef struct fMax
 {
-     float arry[MAX_STEPS];
+     float arry[MAX_SEGMENTS];
 } fMax;
 
 
@@ -357,7 +358,7 @@ extern __device__ __constant__ int	HEIGHT_HARM[MAX_HARM_NO];		///< Plane  height
 extern __device__ __constant__ int	STRIDE_HARM[MAX_HARM_NO];		///< Plane  strides   in family
 extern __device__ __constant__ int	WIDTH_HARM[MAX_HARM_NO];		///< Plane  strides   in family
 extern __device__ __constant__ void*	KERNEL_HARM[MAX_HARM_NO];		///< Kernel pointers  in family
-extern __device__ __constant__ int	KERNEL_OFF_HARM[MAX_HARM_NO];		///< The offset of the first row of each plane in thier respective kernels
+extern __device__ __constant__ int	KERNEL_OFF_HARM[MAX_HARM_NO];		///< The offset of the first row of each plane in their respective kernels
 
 //--------------------  Details in stage order  ------------------------\\
 
@@ -365,13 +366,13 @@ extern __device__ __constant__ float	POWERCUT_STAGE[MAX_HARM_NO];		///<
 extern __device__ __constant__ float	NUMINDEP_STAGE[MAX_HARM_NO];		///<
 extern __device__ __constant__ int	HEIGHT_STAGE[MAX_HARM_NO];		///< Plane heights in stage order
 extern __device__ __constant__ int	STRIDE_STAGE[MAX_HARM_NO];		///< Plane strides in stage order
-extern __device__ __constant__ int	PSTART_STAGE[MAX_HARM_NO];		///< Plane half width in stage order
+extern __device__ __constant__ int	PSTART_STAGE[MAX_HARM_NO];		///< Plane half-width in stage order
 
 //-------------------  In-mem constant values  -------------------------\\
 
 extern __device__ __constant__ void*	PLN_START;				///< A pointer to the start of the in-mem plane
 extern __device__ __constant__ uint	PLN_STRIDE;				///< The strided in units of the in-mem plane
-extern __device__ __constant__ int	NO_STEPS;				///< The number of steps used in the search  -  NB: this is specific to the batch not the search, but its only used in the inmem search!
+extern __device__ __constant__ int	NO_SEGMENTS;				///< The number of segments used in the search  -  NB: this is specific to the CG plan not the search, but its only used in the inmem search!
 extern __device__ __constant__ int	ALEN;					///< CUDA copy of the accelLen used in the search
 
 //-------------------  Other constant values  --------------------------\\
@@ -487,7 +488,7 @@ __host__ __device__ static inline int cu_z_resp_halfwidth_high(T z)
  *
  * @param z	The z (acceleration) for the relevant halfwidth
  * @param def	If a halfwidth has been supplied this is its value, multiple value could be given here
- * @return	The half width for the given z
+ * @return	The half-width for the given z
  */
 template<typename T>
 __host__ __device__ static inline int getHw(float z, int val)
@@ -528,7 +529,7 @@ __host__ __device__ static inline double cu_calc_required_r(double harm_fract, d
 }
 
 /* Return an index for a Fourier Freq given an array that */
-/* has stepsize ACCEL_DR and low freq 'lor'.              */
+/* has segmentsize ACCEL_DR and low freq 'lor'.              */
 __host__ __device__ static inline float cu_index_from_r(float r, float lor)
 {
   return /* (int) */((r - lor) * (float)ACCEL_RDR /* + 1e-6 */);
@@ -552,7 +553,7 @@ __host__ __device__ static inline T cu_calc_required_z(T harm_fract, T zfull, T 
 
 /** Calculate the index for a given z value of a f-∂f plane  .
  *
- *  Return an index offset for a Fourier Fdot given the step size and
+ *  Return an index offset for a Fourier Fdot given the segment size and
  *  start location
  *
  * @param z
@@ -572,7 +573,7 @@ __host__ __device__ static inline int cu_calc_fftlen(T harm_fract, T max_zfull, 
 {
   int bins_needed, end_effects;
 
-  bins_needed = accelLen * harm_fract + 2;
+  bins_needed = accelLen * harm_fract;
   float subZ = cu_calc_required_z<T>(harm_fract, max_zfull, dz);
   int halfwidth = cu_z_resp_halfwidth(subZ, accuracy );
   end_effects = 2 * noResPerBin * halfwidth ;
@@ -637,6 +638,12 @@ __device__ inline float getPowerAsFloat(fcomplexcu* adress, uint offset)
   return POWERC(adress[offset]);
 }
 
+__device__ inline float getPower(cufftComplex value, float nothing)
+{
+  // note nothing is just for
+  return (value.x*value.x + value.y*value.y);
+}
+
 __device__ inline float getPowerAsFloat(float2* adress, uint offset)
 {
   return POWERF(adress[offset]);
@@ -666,10 +673,16 @@ __device__ inline float getFloat(half value)
   return __half2float(value);
 }
 
+__device__ inline half getPower(cufftComplex value, half nothing)
+{
+  return __float2half(value.x*value.x + value.y*value.y);
+}
+
 __device__ inline float getPowerAsFloat(half* adress, uint offset)
 {
   return __half2float(adress[offset]);
 }
+
 #endif
 
 #endif  // CUDART_VERSION >= 7050
@@ -680,32 +693,32 @@ __device__ inline float getPowerAsFloat(half* adress, uint offset)
 /////////////////////////////////////// Utility prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 // TODO: Write up headings
-int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* format, ...);
+int __printErrors( acc_err value, const char* file, int lineNo, const char* format, ...);
 
 searchSpecs* duplicate(searchSpecs* sSpec);
-confSpecsGen* duplicate(confSpecsGen* conf);
-confSpecsOpt* duplicate(confSpecsOpt* conf);
+confSpecsCG* duplicate(confSpecsCG* conf);
+confSpecsCO* duplicate(confSpecsCO* conf);
 confSpecs* duplicate(confSpecs* conf);
 gpuSpecs* duplicate(gpuSpecs* gSpec);
 
 bool compare(searchSpecs* sSpec1, searchSpecs* sSpec2);
-bool compare(confSpecsGen* conf1, confSpecsGen* conf2);
-bool compare(confSpecsOpt* conf1, confSpecsOpt* conf2);
+bool compare(confSpecsCG* conf1, confSpecsCG* conf2);
+bool compare(confSpecsCO* conf1, confSpecsCO* conf2);
 bool compare(fftInfo* fft1, fftInfo* fft2);
 bool compare(gpuSpecs* gSpec1, gpuSpecs* gSpec2);
 bool compare(cuSearch* search, searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, fftInfo* fftInf);
 
 
-ACC_ERR_CODE remOptFlag(cuPlnGen* pln, int64_t flag);
-ACC_ERR_CODE setOptFlag(cuPlnGen* pln, int64_t flag);
-ACC_ERR_CODE setOptFlag(cuOpt* opt, int64_t flag);
-ACC_ERR_CODE remOptFlag(cuOpt* opt, int64_t flag);
-ACC_ERR_CODE remOptFlag(cuOptInfo* oInf, int64_t flag);
-ACC_ERR_CODE setOptFlag(cuOptInfo* oInf, int64_t flag);
-ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag);
-ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag);
-ACC_ERR_CODE setOptFlag(confSpecsOpt* opt, int64_t flag);
-ACC_ERR_CODE remOptFlag(confSpecsOpt* opt, int64_t flag);
+acc_err remOptFlag(cuPlnGen* pln, int64_t flag);
+acc_err setOptFlag(cuPlnGen* pln, int64_t flag);
+acc_err setOptFlag(cuCoPlan* opt, int64_t flag);
+acc_err remOptFlag(cuCoPlan* opt, int64_t flag);
+acc_err remOptFlag(cuCoInfo* oInf, int64_t flag);
+acc_err setOptFlag(cuCoInfo* oInf, int64_t flag);
+acc_err remOptFlag(cuSearch* cuSrch, int64_t flag);
+acc_err setOptFlag(cuSearch* cuSrch, int64_t flag);
+acc_err setOptFlag(confSpecsCO* opt, int64_t flag);
+acc_err remOptFlag(confSpecsCO* opt, int64_t flag);
 
 
 float half2float(const ushort h);
@@ -717,8 +730,8 @@ void intSrchThrd(cuSearch* srch);
 
 /** Set the iteration the following components will act on  .
  *
- * A batch has multiple memory locations for the various components
- * When run in asynchronous mode, a single batch can hold data from previous iterations at
+ * A CG plan has multiple memory locations for the various components
+ * When run in asynchronous mode, a single CG plan can hold data from previous iterations at
  * various stage of processing.
  *
  * You really need to know what you are doing if you want to use this!
@@ -726,19 +739,19 @@ void intSrchThrd(cuSearch* srch);
  * If in doubt just leave it at zero, this will be semi synchronous behaviour.
  *
  */
-void setActiveIteration(cuFFdotBatch* batch, int rIdx = 0);
+void setActiveIteration(cuCgPlan* plan, int rIdx = 0);
 
 /** Cycle the arrays of r-values  .
  *
- * @param batch
+ * @param plan
  */
-void cycleRlists(cuFFdotBatch* batch);
+void cycleRlists(cuCgPlan* plan);
 
 /** Cycle the arrays of r-values  .
  *
- * @param batch
+ * @param plan
  */
-void cycleOutput(cuFFdotBatch* batch);
+void cycleOutput(cuCgPlan* plan);
 
 /** Select the GPU to use  .
  * @param device The device to use
@@ -751,9 +764,6 @@ int cu_calc_fftlen(double harm_fract, int max_zfull, uint accelLen, presto_inter
 
 void printContext();
 
-/** Write CUFFT call backs to device  .
- */
-void copyCUFFT_CBs(cuFFdotBatch* batch);
 
 /** Create the stacks to do the  .
  *
@@ -764,31 +774,31 @@ void copyCUFFT_CBs(cuFFdotBatch* batch);
  */
 cuHarmInfo* createStacks(int numharmstages, int zmax, accelobs* obs);
 
-/** Initialise the pointers of the stacks data structures of a batch  .
+/** Initialise the pointers of the stacks data structures of a CG plan  .
  *
- * This assumes the various memory blocks of the batch have been created
+ * This assumes the various memory blocks of the plan have been created
  *
- * @param batch
+ * @param plan
  */
-void setStkPointers(cuFFdotBatch* batch);
+void setStkPointers(cuCgPlan* plan);
 
-/** Initialise the pointers of the planes data structures of a batch  .
+/** Initialise the pointers of the planes data structures of a CG plan  .
  *
  * This assumes the stack pointers have already been setup
  *
- * @param batch
+ * @param plan
  */
-void setPlanePointers(cuFFdotBatch* batch);
+void setPlanePointers(cuCgPlan* plan);
 
-/** Initialise the pointers of the stacks and planes data structures of a batch  .
+/** Initialise the pointers of the stacks and planes data structures of a CG plan  .
  *
- * This assumes the various memory blocks of the batch have been created
+ * This assumes the various memory blocks of the CG plan have been created
  *
- * @param batch
+ * @param plan
  */
-void setBatchPointers(cuFFdotBatch* batch);
+void setBatchPointers(cuCgPlan* plan);
 
-void setKernelPointers(cuFFdotBatch* batch);
+void setKernelPointers(cuCgPlan* plan);
 
 /** Print a integer in binary  .
  *
@@ -800,13 +810,12 @@ void printBitString(uint val);
  *
  * @param kernel  .
  */
-void freeKernel(cuFFdotBatch* kernel);
-
+void freeKernel(cuCgPlan* kernel);
 
 
 /////////////////////////////////////// Kernel prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-void createBatchKernels(cuFFdotBatch* batch, void* buffer);
+void createBatchKernels(cuCgPlan* plan, void* buffer);
 
 /** Create one GPU kernel. One kernel the size of the largest plane  .
  *
@@ -815,36 +824,37 @@ void createBatchKernels(cuFFdotBatch* batch, void* buffer);
  */
 int createStackKernel(cuFfdotStack* cStack);
 
-/** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
+/** Calculate the segment size from a width if the width is < 100 it is skate to be the closest power of two  .
  *
  * @param width
  * @param zmax
  * @return
  */
-uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin);
+//uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin);
 
-/** Calculate the optimal step size from a desired plane width
+/** Calculate the optimal segment size from a desired plane width
  *
- * This calculates the optimal step size from a desired plane width.
+ * This calculates the optimal segment size from a desired plane width.
  * This applies the rule that the second plane should fall in the second stack (if there is more than one plane in the family).
  * If you want to ignore this rule just set noHarms to one.
  *
- * If hamrDevis is true, the step size will be scaled down until it is divisible by the number of harmonics, as is need by the SS10 Kernel.
+ * If hamrDevis is true, the segment size will be scaled down until it is divisible by the number of harmonics, as is need by the SS10 Kernel.
  *
- * If the width is greater than 100 it it is assumed the user is manually specifying the step size.
- * This should only be used for DEBUG purposes, if hamrDevis is set to true the "manual" step size WILL be scaled back.
+ * If the width is greater than 100 it it is assumed the user is manually specifying the segment size.
+ * This should only be used for DEBUG purposes, if hamrDevis is set to true the "manual" segment size WILL be scaled back.
  *
- * @param width		The width, if < 100 plane width in k, if not assumed to be the actual step size.
+ * @param width		The width, if < 100 plane width in k, if not assumed to be the actual segment size.
  * @param zmax		The zmax of the plane (should be divisible by zRes)
  * @param noHarms	The number of harmonics being summed
  * @param accuracy	LOWACC or HIGHACC - Determines the size and shape of the response function
  * @param noResPerBin	The number of r per FT bin, must be an integer, defaults to 2 (interbinning)
  * @param zRes		The z resolution (defaults to 2)
- * @param hamrDevis	Weather to make the step size divisible by the number of harmonics summed, as is need by the GPU SS10 kernel
- * @return 		The step optimal size
+ * @param hamrDevis	Weather to make the segment size divisible by the number of harmonics summed, as is need by the GPU SS10 kernel
+ * @return 		The segment optimal size
  */
-uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes, bool hamrDevis);
+//uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes, bool hamrDevis);
 
+uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes, int segDevis = 1, int startDevis = 1);
 
 ///////////////////////////////////////// Init prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
@@ -852,17 +862,17 @@ void setSrchSize(searchSpecs* SrchSz, int halfWidth, int noHarms = 1, int alighn
 
 float cuGetMedian(float *data, uint len);
 
-void setGenRVals(cuFFdotBatch* batch);
+void setGenRVals(cuCgPlan* plan);
 
-void setSearchRVals(cuFFdotBatch* batch, double searchRLow, long len);
+void setSearchRVals(cuCgPlan* plan, double searchRLow, long len);
 
-void prepInputCPU(cuFFdotBatch* batch);
+void prepInputCPU(cuCgPlan* plan);
 
-void copyInputToDevice(cuFFdotBatch* batch);
+void copyInputToDevice(cuCgPlan* plan);
 
-void prepInputGPU(cuFFdotBatch* batch);
+void prepInputGPU(cuCgPlan* plan);
 
-void prepInput(cuFFdotBatch* batch);
+void cg_prepInput(cuCgPlan* plan);
 
 /** Initialise input data for a f-∂f plane(s)  ready for multiplication  .
  * This:
@@ -871,76 +881,83 @@ void prepInput(cuFFdotBatch* batch);
  *  FFT it ready for multiplication
  *
  * @param planes      The planes
- * @param searchRLow  The index of the low  R bin (1 value for each step)
- * @param searchRHi   The index of the high R bin (1 value for each step)
+ * @param searchRLow  The index of the low  R bin (1 value for each segment)
+ * @param searchRHi   The index of the high R bin (1 value for each segment)
  * @param fft         The fft
  */
-ACC_ERR_CODE prepInput(initCand* cand, cuPlnGen* pln, double sz, int *newInp = NULL);
+acc_err prepInput(initCand* cand, cuPlnGen* pln, double sz, int *newInp = NULL);
 
 
 
 ////////////////////////////////////// Multiplication Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-int setConstVals_Fam_Order( cuFFdotBatch* batch );
+int setConstVals_Fam_Order( cuCgPlan* plan );
 
-int setStackVals( cuFFdotBatch* batch );
-
-/** Multiply and inverse FFT the complex f-∂f plane using FFT callback  .
- * @param planes
- */
-void multiplyBatchCUFFT(cuFFdotBatch* batch );
+int setStackVals( cuCgPlan* plan );
 
 /** Multiply the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
  * This writes to the complex f-∂f plane
  *
- * If FLAG_CONV flag is set and doing stack multiplications, the iFFT will be called directly after the multiplication for each stack
- */
-void multiplyBatch(cuFFdotBatch* batch );
+  */
+void cg_multiply(cuCgPlan* plan );
 
-/**  iFFT a specific stack  .
- *
- * @param batch
- * @param cStack
- * @param pStack
- */
-void IFFTStack(cuFFdotBatch* batch, cuFfdotStack* cStack, cuFfdotStack* pStack = NULL);
 
-/**  iFFT all stack of a batch  .
- *
- * If using the FLAG_CONV flag no iFFT is done as this should have been done by the multiplication
- *
- * This assumes the input data is ready and on the device
- * This creates a complex f-∂f plane
- */
-void IFFTBatch(cuFFdotBatch* batch );
-
-void copyToInMemPln(cuFFdotBatch* batch );
 
 /** Multiply and inverse FFT the complex f-∂f plane  .
  * This assumes the input data is ready and on the device
  * This creates a complex f-∂f plane
  */
-void convolveBatch(cuFFdotBatch* batch );
+void cg_convolve(cuCgPlan* plan );
 
 
+////////////////////////////////////////////// FFT \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+/**  iFFT all stack of a CG plan  .
+ *
+ * This assumes the input data is ready and on the device
+ * This creates a complex f-∂f plane
+ */
+void cg_iFFT(cuCgPlan* plan );
+
+
+/** Write CUFFT call backs to device  .
+ */
+acc_err copy_CuFFT_load_CBs(cuCgPlan* plan);
+
+/** Write CUFFT call backs to device  .
+ */
+acc_err copy_CuFFT_store_CBs(cuCgPlan* plan);
+
+/** Write CUFFT call backs to device  .
+ */
+acc_err set_CuFFT_load_CBs(cuCgPlan* plan, cuFfdotStack* cStack);
+
+/** Write CUFFT call backs to device  .
+ */
+acc_err set_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack);
+
+
+///////////////////////////////////////////// Powers \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+void cg_copyToInMemPln(cuCgPlan* plan );
 
 //////////////////////////////////// Sum and search Prototypes \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-int setConstVals( cuFFdotBatch* stkLst );
+int setConstVals( cuCgPlan* stkLst );
 
-void processBatchResults(cuFFdotBatch* batch );
+void cg_processResults(cuCgPlan* plan );
 
-void getResults(cuFFdotBatch* batch );
+void cg_getResults(cuCgPlan* plan );
 
-void sumAndSearch(cuFFdotBatch* batch );
+void cg_sumAndSearch(cuCgPlan* plan );
 
-void sumAndSearchOrr(cuFFdotBatch* batch);
+void sumAndSearchOrr(cuCgPlan* plan);
 
 /** A function to call a kernel to harmonically sum a plan and return the max of each column  .
  *
  */
-void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
+void sumAndMax(cuCgPlan* planes, long long *numindep, float* powers);
 
 
 
@@ -948,7 +965,7 @@ void sumAndMax(cuFFdotBatch* planes, long long *numindep, float* powers);
 
 void opt_genResponse(cuRespPln* pln, cudaStream_t stream);
 
-ACC_ERR_CODE freeHarmInput(cuHarmInput* inp);
+acc_err freeHarmInput(cuHarmInput* inp);
 
 cuHarmInput* duplicateHostInput(cuHarmInput* orr);
 
@@ -962,6 +979,19 @@ double candidate_sigma_cu(double poww, int numharm, long long numindep);
 //////////////////////////////////////// Some other stuff \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 
+void* get_pointer(cuCgPlan* plan, int stkIdx, PLN_MEM type=NONE, int plainNo=0, int segment=0, int col=0, int z_idx=0);
+
+void* get_pointer(cuCgPlan* plan, cuFfdotStack* cStack, PLN_MEM type=NONE, int plainNo=0, int segmnet=0, int col=0, int z_idx=0);
+
+/** Add bits to a 64 bit value
+ *
+ * @param bits        The bits to edit
+ * @param value       The value/bits to add
+ * @param start       The amount to left shift the value by
+ * @param mask        The mask of the final values
+ * @return            Error code - ACC_ERR_OVERFLOW
+ */
+acc_err add_to_bits(ulong* bits, ulong value, ulong start, ulong mask);
 
 ////////////////////////////////// defines for templated functions \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 

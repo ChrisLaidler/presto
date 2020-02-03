@@ -10,16 +10,16 @@
 #include "cuda_utils.h"
 #include "candTree.h"
 
-void createFFTPlans(cuFFdotBatch* batch, presto_fft_type type);
+void createFFTPlans(cuCgPlan* plan, presto_fft_type type);
 
-void createRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays );
+void createRvals(cuCgPlan* plan, rVals** rLev1, rVals**** rAraays );
 
 int setConstStkInfo(stackInfo* h_inf, int noStacks,  cudaStream_t stream);
 
-void freeRvals(cuFFdotBatch* batch, rVals** rLev1, rVals**** rAraays );
+void freeRvals(cuCgPlan* plan, rVals** rLev1, rVals**** rAraays );
 
-void freeCuAccel(cuPlnInfo* mInf);
+void freeCuAccel(cuCgInfo* mInf);
 
-bool compare(cuFFdotBatch* batch, confSpecsGen* conf);
+bool compare(cuCgPlan* plan, confSpecsCG* conf);
 
 #endif	// CUDA_ACCEL_GEN

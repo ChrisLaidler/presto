@@ -11,7 +11,7 @@
  *    Working version un-numbed
  *
  *  [0.0.01] [2017-02-24]
- *     Added preprocessor directives for steps and chunks
+ *     Added preprocessor directives for segments and chunks
  *
  */
  
@@ -19,11 +19,11 @@
 
 #ifdef WITH_MUL_21
 
-/** Multiplication kernel - Multiply a stack with a kernel - multi-step - Loop ( Y - Pln - step )  .
+/** Multiplication kernel - Multiply a stack with a kernel - multi-segment - Loop ( Y - Pln - segment )  .
  * Each thread loops down a column of the plane
  * Reads the input and multiplies it with the kernel and writes result to plane
  */
-template<int64_t FLAGS, int noSteps, int noPlns>
+template<int64_t FLAGS, int noSegments, int noPlns>
 __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __restrict__ inpData, float2* __restrict__ ffdot, const int width, const int stride, const int firstPlane )
 {
   const int bidx = threadIdx.y * CNV_DIMX + threadIdx.x;		/// Block ID - flat index
@@ -32,7 +32,7 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
   if ( tid < width )  // Valid thread  .
   {
     const int   kerHeight = HEIGHT_HARM[firstPlane];			// The size of the kernel
-    float2      inpDat[noPlns][noSteps];				// Set of input data for this thread/column
+    float2      inpDat[noPlns][noSegments];				// Set of input data for this thread/column
 
     int     lDepth  = ceilf(kerHeight/(float)gridDim.y);
     int     y0      = lDepth*blockIdx.y;
@@ -47,14 +47,14 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
 
     FOLD // Read all input data  .
     {
-      for ( int step = 0; step < noSteps; step++ )
+      for ( int sIdx = 0; sIdx < noSegments; sIdx++ )
       {
         for ( int pln = 0; pln < noPlns; pln++ )			// Loop through the planes  .
         {
-          float2 ipd             = inpData[ (int)(pln*noSteps*stride + step*stride) ];
-          ipd.x                 /= (float) width;
-          ipd.y                 /= (float) width;
-          inpDat[pln][step]      = ipd;
+          float2 ipd			= inpData[ (int)(pln*noSegments*stride + sIdx*stride) ];
+          ipd.x				/= (float) width;
+          ipd.y				/= (float) width;
+          inpDat[pln][sIdx]	= ipd;
         }
       }
     }
@@ -86,7 +86,7 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
           {
             if      ( FLAGS & FLAG_ITLV_ROW )
             {
-              off1  = pHeight + planeY*noSteps*stride;
+              off1  = pHeight + planeY*noSegments*stride;
             }
 #ifdef WITH_ITLV_PLN
             else
@@ -96,7 +96,7 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
 #endif
           }
 
-          for ( int step = 0; step < noSteps; ++step )			// Loop over steps .
+          for ( int sIdx = 0; sIdx < noSegments; ++sIdx )		// Loop over segments .
           {
             int idx;
 
@@ -104,19 +104,19 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
             {
               if      ( FLAGS & FLAG_ITLV_ROW )
               {
-                idx  = off1 + step * stride;
+                idx  = off1 + sIdx * stride;
               }
 #ifdef WITH_ITLV_PLN
               else
               {
-                idx  = off1 + step * ns2;
+                idx  = off1 + sIdx * ns2;
               }
 #endif
             }
 
             FOLD // Multiply  .
             {
-              float2 ipd = inpDat[pln][step];
+              float2 ipd = inpDat[pln][sIdx];
               float2 out;
 
 #if CORRECT_MULT
@@ -133,14 +133,14 @@ __global__ void mult21_k(const float2* __restrict__ kernels, const float2* __res
           }
         }
 
-        pHeight += plnHeight * noSteps * stride;			// Set striding value for next plane
+        pHeight += plnHeight * noSegments * stride;			// Set striding value for next plane
       }
     }
   }
 }
 
-template<int64_t FLAGS, int noSteps>
-__host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+template<int64_t FLAGS, int noSwgments>
+__host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuCgPlan* plan, cuFfdotStack* cStack)
 {
   int offset            = cStack->startIdx;
 
@@ -148,47 +148,47 @@ __host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
   {
     case 1:
     {
-      mult21_k<FLAGS,noSteps,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 2:
     {
-      mult21_k<FLAGS,noSteps,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 3:
     {
-      mult21_k<FLAGS,noSteps,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 4:
     {
-      mult21_k<FLAGS,noSteps,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 5:
     {
-      mult21_k<FLAGS,noSteps,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 6:
     {
-      mult21_k<FLAGS,noSteps,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 7:
     {
-      mult21_k<FLAGS,noSteps,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 8:
     {
-      mult21_k<FLAGS,noSteps,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     case 9:
     {
-      mult21_k<FLAGS,noSteps,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, offset);
+      mult21_k<FLAGS,noSwgments,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, offset);
       break;
     }
     default:
@@ -200,114 +200,114 @@ __host__  void mult21_p(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 }
 
 template<int64_t FLAGS>
-__host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+__host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuCgPlan* plan, cuFfdotStack* cStack)
 {
-  switch (batch->noSteps)
+  switch (plan->noSegments)
   {
-#if MIN_STEPS <= 1  and MAX_STEPS >= 1
+#if MIN_SEGMENTS <= 1  and MAX_SEGMENTS >= 1
     case 1:
     {
-      mult21_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,1>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 2  and MAX_STEPS >= 2
+#if MIN_SEGMENTS <= 2  and MAX_SEGMENTS >= 2
     case 2:
     {
-      mult21_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,2>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 3  and MAX_STEPS >= 3
+#if MIN_SEGMENTS <= 3  and MAX_SEGMENTS >= 3
     case 3:
     {
-      mult21_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,3>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 4  and MAX_STEPS >= 4
+#if MIN_SEGMENTS <= 4  and MAX_SEGMENTS >= 4
     case 4:
     {
-      mult21_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,4>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 5  and MAX_STEPS >= 5
+#if MIN_SEGMENTS <= 5  and MAX_SEGMENTS >= 5
     case 5:
     {
-      mult21_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,5>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 6  and MAX_STEPS >= 6
+#if MIN_SEGMENTS <= 6  and MAX_SEGMENTS >= 6
     case 6:
     {
-      mult21_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,6>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 7  and MAX_STEPS >= 7
+#if MIN_SEGMENTS <= 7  and MAX_SEGMENTS >= 7
     case 7:
     {
-      mult21_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,7>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 8  and MAX_STEPS >= 8
+#if MIN_SEGMENTS <= 8  and MAX_SEGMENTS >= 8
     case 8:
     {
-      mult21_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,8>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+#if MIN_SEGMENTS <= 9  and MAX_SEGMENTS >= 9
     case 9:
     {
-      mult21_p<FLAGS,9>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,9>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+#if MIN_SEGMENTS <= 10 and MAX_SEGMENTS >= 10
     case 10:
     {
-      mult21_p<FLAGS,10>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,10>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+#if MIN_SEGMENTS <= 11 and MAX_SEGMENTS >= 11
     case 11:
     {
-      mult21_p<FLAGS,11>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,11>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+#if MIN_SEGMENTS <= 12 and MAX_SEGMENTS >= 12
     case 12:
     {
-      mult21_p<FLAGS,12>(dimGrid, dimBlock, i1, multStream, batch, cStack);
+      mult21_p<FLAGS,12>(dimGrid, dimBlock, i1, multStream, plan, cStack);
       break;
     }
 #endif
 
     default:
     {
-      if      ( batch->noSteps < MIN_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
-      else if ( batch->noSteps > MAX_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      if      ( plan->noSegments < MIN_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # segments (%i) less than the compiled minimum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
+      else if ( plan->noSegments > MAX_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # segments (%i) greater than the compiled maximum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
       else
-	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+	fprintf(stderr, "ERROR: %s has not been templated for %i segments.\n", __FUNCTION__, plan->noSegments);
 
       exit(EXIT_FAILURE);
     }
@@ -316,7 +316,7 @@ __host__  void mult21_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 
 #endif
 
-__host__  void mult21(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+__host__  void mult21(cudaStream_t multStream, cuCgPlan* plan, cuFfdotStack* cStack)
 {
 #ifdef WITH_MUL_21
 
@@ -328,11 +328,11 @@ __host__  void mult21(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = cStack->mulSlices;
 
-  if      ( batch->flags & FLAG_ITLV_ROW )
-    mult21_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+  if      ( plan->flags & FLAG_ITLV_ROW )
+    mult21_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, plan, cStack);
 #ifdef WITH_ITLV_PLN
   else
-    mult21_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+    mult21_s<0>(dimGrid, dimBlock, 0, multStream, plan, cStack);
 #else
   else
   {

@@ -65,7 +65,7 @@ T pow(double r, double z, int numharm, cuHarmInput* inp, int hw = HIGHACC)
 
   for( int hIdx = 1; hIdx <= numharm; hIdx++ )
   {
-    // Determine half width
+    // Determine half-width
     halfW = getHw<T>(z*hIdx, hw);
 
     rz_convolution_cu<T, float2>(&((float2*)inp->h_inp)[(hIdx-1)*inp->stride], inp->loR[hIdx-1], inp->stride, r*hIdx, z*hIdx, halfW, &real, &imag);
@@ -106,7 +106,7 @@ T pow(accelcand* cand, cuHarmInput* inp, int hw = HIGHACC)
  * @param newInp  Set to 1 if new input is needed
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE chkInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int* newInp )
+acc_err chkInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int* newInp )
 {
   return  chkInput(input, cand->r, cand->z, rSize, zSize, cand->numharm, newInp);
 }
@@ -119,7 +119,7 @@ ACC_ERR_CODE chkInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, do
  * @param fft     The FFT data that will make up the input
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE prepInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int64_t flags )
+acc_err prepInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int64_t flags )
 {
   return loadHostHarmInput(input, fft, cand->r, cand->z, rSize, zSize, cand->numharm, flags, NULL );
 }
@@ -132,7 +132,7 @@ ACC_ERR_CODE prepInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, d
  * @param fft     The FFT data that will make up the input
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE prepInput_cand( accelcand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int64_t flags )
+acc_err prepInput_cand( accelcand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int64_t flags )
 {
   return loadHostHarmInput(input, fft, cand->r, cand->z, rSize, zSize, cand->numharm, flags, NULL );
 }
@@ -147,9 +147,9 @@ ACC_ERR_CODE prepInput_cand( accelcand* cand, cuHarmInput* input, fftInfo* fft, 
  * @param newInp  Set to 1 if new input is needed
  * @return        ACC_ERR_NONE on success or a collection of error values if full or partial failure
  */
-ACC_ERR_CODE prepInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int* newInp, int64_t flags )
+acc_err prepInput_cand( initCand* cand, cuHarmInput* input, fftInfo* fft, double rSize, double zSize, int* newInp, int64_t flags )
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   // Check input
   int newInp_l;
@@ -419,9 +419,9 @@ candTree* opt_cont(candTree* oTree, cuPlnGen* pln, container* cont, fftInfo* fft
   return NULL;
 }
 
-ACC_ERR_CODE pln_max_pnt( cuRzHarmPlane* pln, initCand* cand )
+acc_err pln_max_pnt( cuRzHarmPlane* pln, initCand* cand )
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
@@ -505,9 +505,9 @@ ACC_ERR_CODE pln_max_pnt( cuRzHarmPlane* pln, initCand* cand )
   return err;
 }
 
-ACC_ERR_CODE pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound )
+acc_err pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound )
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
@@ -595,14 +595,14 @@ ACC_ERR_CODE pln_max_wAve( cuRzHarmPlane* pln, initCand* cand, double bound )
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, int plt = -1, int nn = 0, int lv = 0 )
+acc_err optRefinePosPln(initCand* cand, cuCoPlan* plan, int noP, double scale, int plt = -1, int nn = 0, int lv = 0 )
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
   int newInput = 0;
 
-  fftInfo*	fft	= opt->cuSrch->fft;
-  confSpecsOpt*	conf	= opt->conf;
-  cuRzHarmPlane* pln	= opt->plnGen->pln;
+  fftInfo*	fft	= plan->cuSrch->fft;
+  confSpecsCO*	conf	= plan->conf;
+  cuRzHarmPlane* pln	= plan->plnGen->pln;
 
   // Number of harmonics to check, I think this could go up to 32!
   int maxHarms	= MAX(cand->numharm, conf->optMinLocHarms);
@@ -620,7 +620,7 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
     // Override the candidate number of harmonics (this must be done after centring the plane)
     pln->noHarms	= maxHarms;
 
-    err += ffdotPln<T>(opt->plnGen, fft, &newInput);
+    err += ffdotPln<T>(plan->plnGen, fft, &newInput);
 
     if ( newInput ) // Create the section of ff plane  .
     {
@@ -635,10 +635,10 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
       {
   	infoMSG(5,5,"Time components");
 
-  	// Time batch multiply
-  	timeEvents( opt->plnGen->inpInit,  opt->plnGen->inpCmp,  &opt->compTime[COMP_OPT_H2D], "Copy H2D");
-  	timeEvents( opt->plnGen->compInit, opt->plnGen->compCmp, &opt->compTime[COMP_OPT_PLN1+lv], "Optimisation plane calculations");
-  	timeEvents( opt->plnGen->outInit,  opt->plnGen->outCmp,  &opt->compTime[COMP_OPT_D2H], "Copy D2H");
+  	// Time CO plan components
+  	timeEvents( plan->plnGen->inpInit,  plan->plnGen->inpCmp,  &plan->compTime[COMP_OPT_H2D], "Copy H2D");
+  	timeEvents( plan->plnGen->compInit, plan->plnGen->compCmp, &plan->compTime[COMP_OPT_PLN1+lv], "Optimisation plane calculations");
+  	timeEvents( plan->plnGen->outInit,  plan->plnGen->outCmp,  &plan->compTime[COMP_OPT_D2H], "Copy D2H");
       }
     }
   }
@@ -695,9 +695,9 @@ ACC_ERR_CODE optRefinePosPln(initCand* cand, cuOpt* opt, int noP, double scale, 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
+acc_err optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
 
   infoMSG(3,3,"Simplex refine position - lvl %i  size %.4e by %.4e \n", lv+1, rSize, zSize);
 
@@ -903,9 +903,9 @@ ACC_ERR_CODE optInitCandPosSim(initCand* cand, cuHarmInput* inp, double rSize = 
  * @return
  */
 template<typename T>
-ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
+acc_err optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize = 1.0, double zSize = 1.0, int hw = HIGHACC, int maxReps = 100, double bound = 1e-7, int nn = 0, int lv = 0, int plt = 0 )
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
 
   initCand tCand;
   tCand.numharm	= cand->numharm;
@@ -928,34 +928,34 @@ ACC_ERR_CODE optInitCandPosSim(accelcand* cand, cuHarmInput* inp, double rSize =
  * If oPln has been pre initialised the device ID and Idx are used!
  *
  */
-cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
+cuCoPlan* initOptimiser(cuSearch* sSrch, cuCoPlan* plan, gpuInf* gInf )
 {
-  confSpecsOpt*	conf	= sSrch->conf->opt;
+  confSpecsCO*	conf	= sSrch->conf->opt;
 
   infoMSG(3,3,"Initialising optimiser.\n");
 
   int	maxHarms	= MAX(sSrch->noSrchHarms, conf->optMinLocHarms);
   
-  if (!opt)
+  if (!plan)
   {
     infoMSG(5,5,"Allocating new optimiser\n");
-    opt = new cuOpt;
-    memset(opt, 0, sizeof(cuOpt));
+    plan = new cuCoPlan;
+    memset(plan, 0, sizeof(cuCoPlan));
   }
 
   FOLD // Create all sub structures  .
   {
-    opt->cuSrch		= sSrch;					// Set the pointer t the search specifications
-    opt->conf		= conf;						// Should this rather be a duplicate?
-    opt->gInf 		= gInf;
-    opt->flags		= conf->flags;					// Copy the global optimisation flags to this instance
+    plan->cuSrch	= sSrch;					// Set the pointer t the search specifications
+    plan->conf		= conf;						// Should this rather be a duplicate?
+    plan->gInf 		= gInf;
+    plan->flags		= conf->flags;					// Copy the global optimisation flags to this instance
 
     if      ( conf->flags & FLAG_OPT_NM )
     {
       int zMaxMax = sSrch->sSpec->zMax + 50;
       MAXX(zMaxMax, 50*maxHarms);
 
-      opt->input	= initHarmInput(40, zMaxMax, maxHarms, gInf);
+      plan->input	= initHarmInput(40, zMaxMax, maxHarms, gInf);
     }
     else if ( conf->flags & FLAG_OPT_SWARM )
     {
@@ -964,19 +964,19 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
     }
     else // Default use planes
     {
-      opt->plnGen	= initPlnGen(maxHarms, sSrch->sSpec->zMax, conf, gInf);
-      opt->input	= opt->plnGen->input;
+      plan->plnGen	= initPlnGen(maxHarms, sSrch->sSpec->zMax, conf, gInf);
+      plan->input	= plan->plnGen->input;
     }
   }
 
   FOLD // Allocate struct specify memory  .
   {
     int sz = sizeof(long long)*(COMP_OPT_MAX) ;
-    opt->compTime       = (long long*)malloc(sz);
-    memset(opt->compTime,    0, sz);
+    plan->compTime       = (long long*)malloc(sz);
+    memset(plan->compTime,    0, sz);
   }
 
-  return opt;
+  return plan;
 }
 
 /** Free individual optimiser
@@ -984,21 +984,21 @@ cuOpt* initOptimiser(cuSearch* sSrch, cuOpt* opt, gpuInf* gInf )
  * @param opt	The optimisers
  * @return
  */
-ACC_ERR_CODE freeOptimiser(cuOpt* opt)
+acc_err freeOptimiser(cuCoPlan* plan)
 {
-  ACC_ERR_CODE err	= ACC_ERR_NONE;
-  confSpecsOpt*	conf	= opt->conf;
+  acc_err err	= ACC_ERR_NONE;
+  confSpecsCO*	conf	= plan->conf;
 
-  err += freePlnGen(opt->plnGen);
+  err += freePlnGen(plan->plnGen);
 
   if ( conf->flags & FLAG_OPT_NM )
-    err += freeHarmInput(opt->input);
+    err += freeHarmInput(plan->input);
   else
-    opt->input = NULL;
+    plan->input = NULL;
 
-  freeNull(opt->compTime);
+  freeNull(plan->compTime);
 
-  freeNull(opt);
+  freeNull(plan);
 
   return err;
 }
@@ -1011,14 +1011,14 @@ ACC_ERR_CODE freeOptimiser(cuOpt* opt)
  *
  * @return
  */
-ACC_ERR_CODE initOptimisers(cuSearch* sSrch )
+acc_err initOptimisers(cuSearch* sSrch )
 {
-  ACC_ERR_CODE err = ACC_ERR_NONE;
+  acc_err err = ACC_ERR_NONE;
 
   infoMSG(2,2,"Initialise all optimisers.\n");
 
-  sSrch->oInf = new cuOptInfo;
-  memset(sSrch->oInf, 0, sizeof(cuOptInfo));
+  sSrch->oInf = new cuCoInfo;
+  memset(sSrch->oInf, 0, sizeof(cuCoInfo));
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering initOptimisers.");
 
@@ -1033,33 +1033,33 @@ ACC_ERR_CODE initOptimisers(cuSearch* sSrch )
 
     FOLD // Determine the number of optimisers to make
     {
-      sSrch->oInf->noOpts = 0;
+      sSrch->oInf->noCoPlans = 0;
       for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
       {
-	if ( sSrch->gSpec->noDevOpt[dev] <= 0 )
+	if ( sSrch->gSpec->noCoPlans[dev] <= 0 )
 	{
 	  // Use the default of 4
-	  sSrch->gSpec->noDevOpt[dev] = 4;
+	  sSrch->gSpec->noCoPlans[dev] = 4;
 
-	  infoMSG(5,5,"Using the default %i optimisers per GPU.\n", sSrch->gSpec->noDevOpt[dev]);
+	  infoMSG(5,5,"Using the default %i optimisers per GPU.\n", sSrch->gSpec->noCoPlans[dev]);
 	}
-	sSrch->oInf->noOpts += sSrch->gSpec->noDevOpt[dev];
+	sSrch->oInf->noCoPlans += sSrch->gSpec->noCoPlans[dev];
       }
     }
 
-    infoMSG(5,5,"Initialising %i optimisers on %i devices.\n", sSrch->oInf->noOpts, sSrch->gSpec->noDevices);
+    infoMSG(5,5,"Initialising %i optimisers on %i devices.\n", sSrch->oInf->noCoPlans, sSrch->gSpec->noDevices);
 
     // Initialise the individual optimisers
-    sSrch->oInf->opts = (cuOpt*)malloc(sSrch->oInf->noOpts*sizeof(cuOpt));
-    memset(sSrch->oInf->opts, 0, sSrch->oInf->noOpts*sizeof(cuOpt));
+    sSrch->oInf->coPlans = (cuCoPlan*)malloc(sSrch->oInf->noCoPlans*sizeof(cuCoPlan));
+    memset(sSrch->oInf->coPlans, 0, sSrch->oInf->noCoPlans*sizeof(cuCoPlan));
 
     int idx = 0;
     for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
     {
-      for ( int oo = 0 ; oo < sSrch->gSpec->noDevOpt[dev]; oo++ )
+      for ( int oo = 0 ; oo < sSrch->gSpec->noCoPlans[dev]; oo++ )
       {
-	initOptimiser(sSrch, &sSrch->oInf->opts[idx], &sSrch->gSpec->devInfo[dev] );
-	sSrch->oInf->opts[idx].pIdx = idx;
+	initOptimiser(sSrch, &sSrch->oInf->coPlans[idx], &sSrch->gSpec->devInfo[dev] );
+	sSrch->oInf->coPlans[idx].pIdx = idx;
 
 	idx++;
       }
@@ -1079,27 +1079,27 @@ ACC_ERR_CODE initOptimisers(cuSearch* sSrch )
  * @param sSrch
  * @return
  */
-ACC_ERR_CODE freeOptimisers(cuSearch* sSrch )
+acc_err freeOptimisers(cuSearch* sSrch )
 {
-  ACC_ERR_CODE err	= ACC_ERR_NONE;
+  acc_err err	= ACC_ERR_NONE;
 
   infoMSG(4,4,"Freeing all optimisers.\n");
 
   if ( sSrch->oInf )
   {
-    if ( sSrch->oInf->opts )
+    if ( sSrch->oInf->coPlans )
     {
       int idx = 0;
       for ( int dev = 0 ; dev < sSrch->gSpec->noDevices; dev++ ) // Loop over devices  .
       {
-	for ( int oo = 0 ; oo < sSrch->gSpec->noDevOpt[dev]; oo++ )
+	for ( int oo = 0 ; oo < sSrch->gSpec->noCoPlans[dev]; oo++ )
 	{
-	  freeOptimiser(&sSrch->oInf->opts[idx] );
+	  freeOptimiser(&sSrch->oInf->coPlans[idx] );
 	  idx++;
 	}
       }
 
-      freeNull(sSrch->oInf->opts);
+      freeNull(sSrch->oInf->coPlans);
     }
 
     freeNull(sSrch->oInf);
@@ -1148,7 +1148,7 @@ void* optCandDerivs(accelcand* cand, cuSearch* srch )
   struct timeval start, end;    // Profiling variables
 
   fftInfo*	fft	= srch->fft;
-  confSpecsOpt*	conf	= srch->conf->opt;
+  confSpecsCO*	conf	= srch->conf->opt;
   searchSpecs*	sSpec	= srch->sSpec;
 
   FOLD // Update fundamental values to the optimised ones  .
@@ -1318,11 +1318,11 @@ void* cpuProcess(void* ptr)
 {
   struct timeval start, end;    // Profiling variables
 
-  ACC_ERR_CODE	err	= ACC_ERR_NONE;
+  acc_err	err	= ACC_ERR_NONE;
   candSrch*	res	= (candSrch*)ptr;
   cuSearch*	srch	= res->cuSrch;
   accelcand*	cand	= res->cand;
-  confSpecsOpt*	conf	= srch->conf->opt;
+  confSpecsCO*	conf	= srch->conf->opt;
 
   // Yes we use two different types of candidates =/
   initCand iCand;
@@ -1406,16 +1406,16 @@ void* cpuProcess(void* ptr)
 /** Optimise derivatives of a candidate Using the CPU  .
  * This usually spawns a separate CPU thread to do the sigma calculations
  */
-ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, double res = 0.001, int candNo = -1)
+acc_err processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp = NULL, double res = 0.001, int candNo = -1)
 {
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   infoMSG(2,2,"Calc Cand Derivatives. r: %.6f  z: %.6f  harm: %i  power: %.2f \n", cand->r, cand->z, cand->numharm, cand->power);
 
   candSrch*     thrdDat  = new candSrch;
   memset(thrdDat, 0, sizeof(candSrch));
 
-  confSpecsOpt*	conf	= srch->conf->opt;
+  confSpecsCO*	conf	= srch->conf->opt;
 
   thrdDat->cand		= cand;
   thrdDat->cuSrch	= srch;
@@ -1468,19 +1468,19 @@ ACC_ERR_CODE processCandDerivs(accelcand* cand, cuSearch* srch, cuHarmInput* inp
  * @param pln		The plane data structure to use for the GPU position refinement
  * @param candNo	The index of the candidate being optimised
  */
-ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
+acc_err optInitCandLocPlns(initCand* cand, cuCoPlan* plan, int candNo )
 {
   infoMSG(2,2,"Refine location by plain\n");
 
-  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+  acc_err	err		= ACC_ERR_NONE;
 
   PROF // Profiling  .
   {
     NV_RANGE_PUSH("Plns");
   }
 
-  confSpecsOpt*	conf	= opt->conf;
-  cuRzHarmPlane* pln	= opt->plnGen->pln;
+  confSpecsCO*	conf	= plan->conf;
+  cuRzHarmPlane* pln	= plan->plnGen->pln;
 
 #ifdef CBL // DBG - Thesis output
   char tName[1024];
@@ -1526,9 +1526,9 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
       lrep		= 0;
       depth		= 1;
 
-      if ( opt->plnGen->accu != conf->optPlnAccu[lvl])
+      if ( plan->plnGen->accu != conf->optPlnAccu[lvl])
       {
-	opt->plnGen->accu	= conf->optPlnAccu[lvl];
+	plan->plnGen->accu	= conf->optPlnAccu[lvl];
 	cand->power		= 0;			// Reset cand power as we are now using a different half-width
       }
 
@@ -1551,14 +1551,14 @@ ACC_ERR_CODE optInitCandLocPlns(initCand* cand, cuOpt* opt, int candNo )
 	    infoMSG(3,3,"Generate double precision plane - lvl %i  depth: %i  iteration %2i  size: %6.4f  dimension: %4i\n", lvl+1, depth, lrep, sz, noP );
 
 	    // Double precision
-	    optRefinePosPln<double>(cand, opt, noP, sz,  rep++, candNo, lvl + 1 );
+	    optRefinePosPln<double>(cand, plan, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
 	  else if ( precision == CU_FLOAT  )
 	  {
 	    infoMSG(3,3,"Generate single precision plane - lvl %i  depth: %i  iteration %2i  size: %6.4f  dimension: %4i\n", lvl+1, depth, lrep, sz, noP );
 
 	    // Standard single precision
-	    optRefinePosPln<float>(cand, opt, noP, sz,  rep++, candNo, lvl + 1 );
+	    optRefinePosPln<float>(cand, plan, noP, sz,  rep++, candNo, lvl + 1 );
 	  }
 	  else
 	  {
@@ -1707,11 +1707,11 @@ initCand dupCand(accelcand* cand)
  * @param pln
  * @param nn
  */
-ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
+acc_err opt_accelcand(accelcand* cand, cuCoPlan* plan, int candNo)
 {
-  ACC_ERR_CODE	err	= ACC_ERR_NONE;
+  acc_err	err	= ACC_ERR_NONE;
 
-  confSpecsOpt*	conf	= opt->conf;
+  confSpecsCO*	conf	= plan->conf;
   char Txt[128];
 
   PROF // Profiling  .
@@ -1744,29 +1744,29 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
       }
     }
 
-    if      ( opt->flags & FLAG_OPT_NM    )
+    if      ( plan->flags & FLAG_OPT_NM    )
     {
       double sz = 15;	// This size could be a configurable parameter
-      prepInput_cand( &iCand, opt->input, opt->cuSrch->fft, sz, sz*conf->zScale, NULL, opt->flags );
-      optInitCandPosSim<double>(&iCand, opt->input, 0.5, 0.5*conf->zScale, LOWACC, 1000, 1e-7 );
+      prepInput_cand( &iCand, plan->input, plan->cuSrch->fft, sz, sz*conf->zScale, NULL, plan->flags );
+      optInitCandPosSim<double>(&iCand, plan->input, 0.5, 0.5*conf->zScale, LOWACC, 1000, 1e-7 );
 
       resolved  = 1e-5 ;
     }
-    else if ( opt->flags & FLAG_OPT_SWARM )
+    else if ( plan->flags & FLAG_OPT_SWARM )
     {
       fprintf(stderr,"ERROR: Particle swarm optimisation has been removed.\n");
       exit(EXIT_FAILURE);
     }
     else // Default use planes
     {
-      err += optInitCandLocPlns(&iCand, opt, candNo);
+      err += optInitCandLocPlns(&iCand, plan, candNo);
 
-      resolved = opt->plnGen->pln->rSize / (opt->plnGen->pln->noR-1) * 0.1;
+      resolved = plan->plnGen->pln->rSize / (plan->plnGen->pln->noR-1) * 0.1;
 
 #ifdef CBL
 //      if ( conf->flags & FLAG_DPG_CAND_PLN )
 //      {
-//	nmLog.csvWrite("res", "%5e",  opt->plnGen->pln->rSize/(opt->plnGen->pln->noR-1));
+//	nmLog.csvWrite("res", "%5e",  opt->plnGen->pln->rSize/(plan->plnGen->pln->noR-1));
 //      }
 #endif
 
@@ -1783,7 +1783,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
 	// Thread (omp) safe add to timing value
 #pragma omp atomic
-	opt->cuSrch->timings[COMP_OPT_REFINE_1] += v1;
+	plan->cuSrch->timings[COMP_OPT_REFINE_1] += v1;
       }
     }
   }
@@ -1796,7 +1796,7 @@ ACC_ERR_CODE opt_accelcand(accelcand* cand, cuOpt* opt, int candNo)
 
   FOLD // Optimise derivatives  .
   {
-    err += processCandDerivs(cand, opt->cuSrch, opt->input, resolved, candNo);
+    err += processCandDerivs(cand, plan->cuSrch, plan->input, resolved, candNo);
   }
 
   PROF // Profiling  .
@@ -1853,7 +1853,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
   }
   else
   {
-    omp_set_num_threads(cuSrch->oInf->noOpts);
+    omp_set_num_threads(cuSrch->oInf->noCoPlans);
   }
 #pragma omp parallel
 #endif	// !DEBUG && WITHOMP
@@ -1868,9 +1868,9 @@ int optList(GSList *listptr, cuSearch* cuSrch)
     tid = omp_get_thread_num();
 #endif	// WITHOMP
 
-    cuOpt* opt = &(cuSrch->oInf->opts[tid]);
+    cuCoPlan* plan = &(cuSrch->oInf->coPlans[tid]);		///< A CO plan
 
-    setDevice(opt->gInf->devid) ;
+    setDevice(plan->gInf->devid) ;
 
     // Make sure all initialisation and other stuff on the device is complete
     CUDA_SAFE_CALL(cudaDeviceSynchronize(), "Synchronising device before candidate generation");
@@ -1884,9 +1884,9 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	if ( cuSrch->conf->opt->flags & FLAG_SYNCH )
 #endif
 	{
-	  tid 		= ii % cuSrch->oInf->noOpts ;
-	  opt 		= &(cuSrch->oInf->opts[tid]);
-	  setDevice(opt->gInf->devid);
+	  tid 		= ii % cuSrch->oInf->noCoPlans ;
+	  plan 		= &(cuSrch->oInf->coPlans[tid]);
+	  setDevice(plan->gInf->devid);
 	}
 
 	FOLD // Calculate candidate  .
@@ -1925,7 +1925,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	*candINT = *candGPU; // TMP Duplicate candidate for comparison later
 	*candCPU = *candGPU; // TMP Duplicate candidate for comparison later
 
-	opt_accelcand(candGPU, opt, ti);
+	opt_accelcand(candGPU, plan, ti);
 
 #pragma omp atomic
 	comp++;
@@ -1934,7 +1934,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	{
 #ifdef CBL
 
-	  ACC_ERR_CODE	err		= ACC_ERR_NONE;
+	  acc_err	err		= ACC_ERR_NONE;
 
 	  //void rz_interp(fcomplex* data, int numdata, double r, double z, int kern_half_width, fcomplex * ans);
 
@@ -1983,7 +1983,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	    for( int ii=0; ii< candCPU->numharm; ii++ )
 	    {
 	      r_offset[ii]   = 0;
-	      data[ii]       = opt->cuSrch->fft->data;
+	      data[ii]       = plan->cuSrch->fft->data;
 	    }
 
 	    FOLD // Original CPU optimisation
@@ -1993,14 +1993,14 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	      max_rz_arr_harmonics(data,
 		  candCPU->numharm,
 		  r_offset,
-		  opt->cuSrch->fft->noBins,
+		  plan->cuSrch->fft->noBins,
 		  candCPU->r,
 		  candCPU->z,
 		  &r,
 		  &z,
 		  candCPU->derivs,
 		  candCPU->pows,
-		  opt->input->norm);
+		  plan->input->norm);
 	      candCPU->r = r;
 	      candCPU->z = z;
 	      candCPU->power = 0;
@@ -2011,18 +2011,18 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	    else // My new NM optimisation  .
 	    {
 	      double sz = 15;	// This size could be a configurable parameter
-	      prepInput_cand( candCPU, opt->input, opt->cuSrch->fft, sz, sz*opt->conf->zScale, opt->flags );
+	      prepInput_cand( candCPU, plan->input, plan->cuSrch->fft, sz, sz*plan->conf->zScale, plan->flags );
 
-	      optInitCandPosSim<double>(candCPU, opt->input, 0.4,   0.4*opt->conf->zScale, LOWACC,  1000, 1e-7 );
+	      optInitCandPosSim<double>(candCPU, plan->input, 0.4,   0.4*plan->conf->zScale, LOWACC,  1000, 1e-7 );
 
-	      optInitCandPosSim<double>(candCPU, opt->input, 0.01, 0.01*opt->conf->zScale, HIGHACC, 100, 1e-10  );
+	      optInitCandPosSim<double>(candCPU, plan->input, 0.01, 0.01*plan->conf->zScale, HIGHACC, 100, 1e-10  );
 	    }
 
 	    FOLD // Calculate powers  .
 	    {
-	      pow<double>(candINT, opt->input);
-	      pow<double>(candCPU, opt->input);
-	      pow<double>(candGPU, opt->input);
+	      pow<double>(candINT, plan->input);
+	      pow<double>(candCPU, plan->input);
+	      pow<double>(candGPU, plan->input);
 
 	      int noStages	= log2((double)candGPU->numharm);
 	      long long numindep	= cuSrch->numindep[noStages];
@@ -2071,8 +2071,8 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
 	    Fout // Do a high accuracy plane  to find the true maximum
 	    {
-	      confSpecsOpt*conf		= opt->conf;
-	      cuRzHarmPlane* pln	= opt->plnGen->pln;
+	      confSpecsCO*conf		= plan->conf;
+	      cuRzHarmPlane* pln	= plan->plnGen->pln;
 
 	      initCand iCand = dupCand(candGPU);
 
@@ -2117,7 +2117,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 
 	      //opt->plnGen->flags |= FLAG_OPT_CPU_PLN;
 
-	      ffdotPln<double>(opt->plnGen, opt->cuSrch->fft);
+	      ffdotPln<double>(plan->plnGen, plan->cuSrch->fft);
 	      ffdotPln_plotPln( pln, "/home/chris/accel/", pltNm, pthNm );
 
 	      //opt->plnGen->flags &= ~FLAG_OPT_CPU_PLN;
@@ -2154,7 +2154,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 //	    }
 	  }
 
-	  if ( (opt->conf->flags & FLAG_DPG_CAND_PLN) ) // Write CSV & plot output  .
+	  if ( (plan->conf->flags & FLAG_DPG_CAND_PLN) ) // Write CSV & plot output  .
 	  {
 	    char tName[1024];
 	    sprintf(tName, "/home/chris/accel/OPT_%03i.csv", ti);
@@ -2175,7 +2175,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 	      fclose(f2);
 	    }
 
-	    if ( prnt || (opt->conf->flags & FLAG_DPG_PLT_OPT) ) // Make image  .
+	    if ( prnt || (plan->conf->flags & FLAG_DPG_PLT_OPT) ) // Make image  .
 	    {
 	      infoMSG(5,5,"Image %s\n", tName);
 
@@ -2202,7 +2202,7 @@ int optList(GSList *listptr, cuSearch* cuSrch)
 #endif // CBL
 	}
 
-	if ( msgLevel == 0 && !(opt->conf->flags & FLAG_DPG_CAND_PLN) )
+	if ( msgLevel == 0 && !(plan->conf->flags & FLAG_DPG_CAND_PLN) )
 	{
 	  printf("\rGPU optimisation %5.1f%% complete   ", comp / (float)numcands * 100.0f );
 	  fflush(stdout);

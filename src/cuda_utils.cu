@@ -286,7 +286,7 @@ void __cuSafeCall(cudaError_t cudaStat, const char *file, const int line, const 
   }
 }
 
-ACC_ERR_CODE __cuErrCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...)
+acc_err __cuErrCall(cudaError_t cudaStat, const char *file, const int line, const char* format, ...)
 {
   if (cudaStat != cudaSuccess)
   {
@@ -670,3 +670,4 @@ int setDevice(int device)
 
   return dev;
 }
+

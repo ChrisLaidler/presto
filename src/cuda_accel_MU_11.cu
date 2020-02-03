@@ -59,7 +59,7 @@ __global__ void mult11(float2 *ffdot, uint width, uint kerStride, uint plnStride
 
 #endif
 
-__host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+__host__  void mult11(cudaStream_t multStream, cuCgPlan* plan, cuFfdotStack* cStack)
 {
 #ifdef WITH_MUL_11
   dim3 dimGrid, dimBlock;
@@ -80,28 +80,28 @@ __host__  void mult11(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
 
     uint plnStride = 0;
 
-    for (int step = 0; step < batch->noSteps; step++)		// Loop through Steps
+    for (int sIdx = 0; sIdx < plan->noSegments; sIdx++)		// Loop through segments
     {
-      d_iData = (float2*)cPlane->d_iData + cStack->strideCmplx * step;
+      d_iData = (float2*)cPlane->d_iData + cStack->strideCmplx * sIdx;
 
-      if      ( batch->flags & FLAG_ITLV_ROW )
+      if      ( plan->flags & FLAG_ITLV_ROW )
       {
 	// Shift stride 
-	if ( batch->flags & FLAG_DOUBLE )
-	  d_planeData   = (double2*)cPlane->d_planeMult + step * cStack->strideCmplx;
+	if ( plan->flags & FLAG_DOUBLE )
+	  d_planeData   = (double2*)cPlane->d_planeCplx + sIdx * cStack->strideCmplx;
 	else
-	  d_planeData   = (float2*) cPlane->d_planeMult + step * cStack->strideCmplx;
+	  d_planeData   = (float2*) cPlane->d_planeCplx + sIdx * cStack->strideCmplx;
 
-	plnStride = cStack->strideCmplx*batch->noSteps;
+	plnStride = cStack->strideCmplx*plan->noSegments;
       }
 #ifdef WITH_ITLV_PLN
       else
       {
 	// Shift by plane height
-	if ( batch->flags & FLAG_DOUBLE )
-	  d_planeData   = (double2*)cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
+	if ( plan->flags & FLAG_DOUBLE )
+	  d_planeData   = (double2*)cPlane->d_planeCplx + sIdx * cHInfo->noZ * cStack->strideCmplx;
 	else
-	  d_planeData   = (float2*) cPlane->d_planeMult + step * cHInfo->noZ * cStack->strideCmplx;
+	  d_planeData   = (float2*) cPlane->d_planeCplx + sIdx * cHInfo->noZ * cStack->strideCmplx;
 
 	plnStride = cStack->strideCmplx;
       }

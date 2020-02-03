@@ -18,7 +18,7 @@
  *     Added capability to optionally do count
  *
  *  [0.0.03] [2017-02-24]
- *     Added preprocessor directives for steps and chunks
+ *     Added preprocessor directives for segments and chunks
  */
 
 #include "cuda_accel_SS.h"
@@ -34,7 +34,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 {
   //
   const int tidx	= threadIdx.y * SSIM_X     + threadIdx.x;	///< Thread index within in the block
-  const int sid		= blockIdx.x  * SSIMBS     + tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
+  const int sid		= blockIdx.x  * SSIMBS     + tidx;		///< The index in the segment where 0 is the first 'good' column in the fundamental plane
   const int zeroHeight	= HEIGHT_STAGE[0];				///< The height of the fundamental plane
 
   int		inds      [noHarms];					///< x-indices of for each harmonic
@@ -69,7 +69,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
     {
       FOLD 	// Calculate the x indices or create a pointer offset by the correct amount  .
       {
-	for ( int harm = 0; harm < noHarms; harm++ )			// Loop over harmonics (batch) in this stage  .
+	for ( int harm = 0; harm < noHarms; harm++ )			// Loop over harmonics (plan) in this stage  .
 	{
 	  // TODO: check if float has large enough "integer" precision
 	  int  ix	= lroundf( idx*FRAC_STAGE[harm] ) - firstBin;
@@ -100,9 +100,9 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 	    int start = STAGE[stage][0] ;
 	    int end   = STAGE[stage][1] ;
 
-	    FOLD // Create a section of summed powers one for each step  .
+	    FOLD // Create a section of summed powers one for each segment  .
 	    {
-	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (batch) in this stage  .
+	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (plan) in this stage  .
 	      {
 		int     ix1   = inds[harm] ;
 
@@ -195,7 +195,7 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 
     __syncthreads();			// Make sure cnt has been zeroed
 
-    if ( conts)			// Increment block specific counts in SM  .
+    if ( conts)				// Increment block specific counts in SM  .
     {
       atomicAdd(&cnt, conts);
     }
@@ -212,16 +212,16 @@ __global__ void searchINMEM_k(T* read, int iStride, int oStride, int firstBin, i
 }
 
 template<typename T, const int noStages, const int noHarms>
-__host__ void searchINMEM_c(cuFFdotBatch* batch )
+__host__ void searchINMEM_c(cuCgPlan* plan )
 {
   dim3 dimBlock, dimGrid;
 
-  rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
+  rVals* rVal = &(*plan->rAraays)[plan->rActive][0][0];
 
   FOLD // Check if we can use the specific data types in the kernel  .
   {
     // Check the length of the addressable
-    double lastBin_d  = batch->cuSrch->sSpec->searchRLow*batch->conf->noResPerBin + batch->cuSrch->inmemStride ;
+    double lastBin_d  = plan->cuSrch->sSpec->searchRLow*plan->conf->noResPerBin + plan->cuSrch->inmemStride ;
     double maxUint    = std::numeric_limits<int>::max();
     if ( maxUint <= lastBin_d )
     {
@@ -229,7 +229,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
       exit(EXIT_FAILURE);
     }
 
-    lastBin_d        = batch->cuSrch->inmemStride * batch->hInfos->noZ;
+    lastBin_d        = plan->cuSrch->inmemStride * plan->hInfos->noZ;
     double maxInt    = std::numeric_limits<unsigned long long>::max();
     if ( maxInt <= lastBin_d )
     {
@@ -239,20 +239,20 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 
   }
 
-  int firstBin  = batch->cuSrch->sSpec->searchRLow * batch->conf->noResPerBin ;
-  int start     = rVal->drlo * batch->conf->noResPerBin ;
+  int firstBin  = plan->cuSrch->sSpec->searchRLow * plan->conf->noResPerBin ;
+  int start     = rVal->drlo * plan->conf->noResPerBin ;
   int end       = start + rVal->numrs;
   int noBins    = end - start;
   int* d_cnts	= NULL;
 
   infoMSG(6,6,"%i harms summed - r from %i to %i (%i)\n", noHarms, start, end, noBins);
 
-  infoMSG(7,7,"Saving results in %p  counts in %p", batch->d_outData1, d_cnts);
+  infoMSG(7,7,"Saving results in %p  counts in %p", plan->d_outData1, d_cnts);
 
   dimBlock.x    = SSIM_X;
   dimBlock.y    = SSIM_Y;
 
-  dimGrid.y     = batch->ssSlices;
+  dimGrid.y     = plan->ssSlices;
   dimGrid.x     = ceil(noBins / (float) SSIMBS );
 
   rVal->noBlocks = dimGrid.x * dimGrid.y;
@@ -264,18 +264,18 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
   }
 
 #ifdef WITH_SAS_COUNT
-  if ( batch->flags & FLAG_SS_COUNT)
+  if ( plan->flags & FLAG_SS_COUNT)
   {
-    d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+    d_cnts	= (int*)((char*)plan->d_outData1 + plan->candDataSize);
   }
 #endif
 
-  switch ( batch->ssChunk )
+  switch ( plan->ssChunk )
   {
 #if MIN_SAS_CHUNK <= 1  and MAX_SAS_CHUNK >= 1
     case 1 :
     {
-      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,1><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -283,7 +283,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 2  and MAX_SAS_CHUNK >= 2
     case 2 :
     {
-      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,2><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -291,7 +291,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 3  and MAX_SAS_CHUNK >= 3
     case 3 :
     {
-      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,3><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -299,7 +299,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 4  and MAX_SAS_CHUNK >= 4
     case 4 :
     {
-      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,4><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -307,7 +307,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 5  and MAX_SAS_CHUNK >= 5
     case 5 :
     {
-      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,5><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -315,7 +315,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 6  and MAX_SAS_CHUNK >= 6
     case 6 :
     {
-      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,6><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -323,7 +323,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 7  and MAX_SAS_CHUNK >= 7
     case 7 :
     {
-      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,7><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -331,7 +331,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 8  and MAX_SAS_CHUNK >= 8
     case 8 :
     {
-      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,8><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -339,7 +339,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 9  and MAX_SAS_CHUNK >= 9
     case 9 :
     {
-      searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,9><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -347,7 +347,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 10  and MAX_SAS_CHUNK >= 10
     case 10 :
     {
-      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,10><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -355,7 +355,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 11  and MAX_SAS_CHUNK >= 11
     case 11 :
     {
-      searchINMEM_k<T,noStages,noHarms,11><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,11><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -363,7 +363,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 12  and MAX_SAS_CHUNK >= 12
     case 12 :
     {
-      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,12><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -371,7 +371,7 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 13  and MAX_SAS_CHUNK >= 13
     case 13 :
     {
-      searchINMEM_k<T,noStages,noHarms,13><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,13><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
@@ -379,19 +379,19 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 #if MIN_SAS_CHUNK <= 14  and MAX_SAS_CHUNK >= 14
     case 14 :
     {
-      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, batch->srchStream >>>((T*)batch->cuSrch->d_planeFull, batch->cuSrch->inmemStride, batch->strideOut, firstBin, start, end, (candPZs*)batch->d_outData1, d_cnts );
+      searchINMEM_k<T,noStages,noHarms,14><<<dimGrid,  dimBlock, 0, plan->srchStream >>>((T*)plan->cuSrch->d_planeFull, plan->cuSrch->inmemStride, plan->strideOut, firstBin, start, end, (candPZs*)plan->d_outData1, d_cnts );
       break;
     }
 #endif
 
     default:
     {
-      if ( batch->ssChunk < MIN_SAS_CHUNK )
-	fprintf(stderr, "ERROR: In %s, chunk size (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
-      else if ( batch->ssChunk > MAX_SAS_CHUNK )
-	fprintf(stderr, "ERROR: In %s, chunk size (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
+      if ( plan->ssChunk < MIN_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) less than the compiled minimum %i.\n", __FUNCTION__, plan->ssChunk, MIN_SAS_CHUNK );
+      else if ( plan->ssChunk > MAX_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) greater than the compiled maximum %i.\n", __FUNCTION__, plan->ssChunk, MIN_SAS_CHUNK );
       else
-	fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
+	fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, plan->ssChunk);
 
       exit(EXIT_FAILURE);
     }
@@ -399,35 +399,35 @@ __host__ void searchINMEM_c(cuFFdotBatch* batch )
 }
 
 template<typename T >
-__host__ void searchINMEM_p(cuFFdotBatch* batch )
+__host__ void searchINMEM_p(cuCgPlan* plan )
 {
-  const int noStages = batch->cuSrch->noHarmStages;
+  const int noStages = plan->cuSrch->noHarmStages;
 
   switch (noStages)
   {
     case 1 :
     {
-      searchINMEM_c<T,1,1>(batch);
+      searchINMEM_c<T,1,1>(plan);
       break;
     }
     case 2 :
     {
-      searchINMEM_c<T,2,2>(batch);
+      searchINMEM_c<T,2,2>(plan);
       break;
     }
     case 3 :
     {
-      searchINMEM_c<T,3,4>(batch);
+      searchINMEM_c<T,3,4>(plan);
       break;
     }
     case 4 :
     {
-      searchINMEM_c<T,4,8>(batch);
+      searchINMEM_c<T,4,8>(plan);
       break;
     }
     case 5 :
     {
-      searchINMEM_c<T,5,16>(batch);
+      searchINMEM_c<T,5,16>(plan);
       break;
     }
     default:
@@ -440,47 +440,49 @@ __host__ void searchINMEM_p(cuFFdotBatch* batch )
 
 #endif	// WITH_SAS_IM
 
-__host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
+__host__ void cg_sum_and_search_inmem(cuCgPlan* plan )
 {
 #ifdef WITH_SAS_IM
   PROF // Profiling - Time previous components  .
   {
-    if ( (batch->flags & FLAG_PROF) )
+    NV_RANGE_PUSH("In-mem SAS");
+
+    if ( (plan->flags & FLAG_PROF) )
     {
-      if ( (*batch->rAraays)[batch->rActive+1][0][0].numrs )
+      if ( (*plan->rAraays)[plan->rActive+1][0][0].numrs )
       {
 	infoMSG(5,5,"Time previous components");
 
 	// Inmem Sum and Search kernel
-	timeEvents( batch->searchInit, batch->searchComp, &batch->compTime[NO_STKS*COMP_GEN_SS],   "Search kernel");
+	timeEvents( plan->searchInit, plan->searchComp, &plan->compTime[NO_STKS*COMP_GEN_SS],   "Search kernel");
       }
     }
   }
 
-  if ( (*batch->rAraays)[batch->rActive][0][0].numrs )
+  if ( (*plan->rAraays)[plan->rActive][0][0].numrs )
   {
-    infoMSG(2,2,"In-mem sum and search - Iteration %3i.", (*batch->rAraays)[batch->rActive][0][0].iteration);
+    infoMSG(2,2,"In-mem sum and search - Iteration %3i.", (*plan->rAraays)[plan->rActive][0][0].iteration);
 
     FOLD // Synchronisation  .
     {
-      if      ( batch->flags & FLAG_SS_INMEM )
+      if      ( plan->flags & FLAG_SS_INMEM )
       {
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "searchComp");
-	CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, batch->searchComp, 0),  "Waiting on event searchComp");
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(plan->srchStream, plan->searchComp, 0),  "Waiting on event searchComp");
       }
       else
       {
 	infoMSG(5,5,"Synchronise stream %s on %s.\n", "srchStream", "candCpyComp");
-	CUDA_SAFE_CALL(cudaStreamWaitEvent(batch->srchStream, batch->candCpyComp, 0), "Waiting on event candCpyComp");
+	CUDA_SAFE_CALL(cudaStreamWaitEvent(plan->srchStream, plan->candCpyComp, 0), "Waiting on event candCpyComp");
       }
     }
 
     PROF // Profiling event  .
     {
-      if ( batch->flags & FLAG_PROF )
+      if ( plan->flags & FLAG_PROF )
       {
 	infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchInit", "srchStream");
-	CUDA_SAFE_CALL(cudaEventRecord(batch->searchInit,  batch->srchStream),        "Recording event: searchInit");
+	CUDA_SAFE_CALL(cudaEventRecord(plan->searchInit,  plan->srchStream),        "Recording event: searchInit");
       }
     }
 
@@ -488,11 +490,11 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     {
       infoMSG(3,3,"S&S Kernel\n");
 
-      if ( batch->flags & FLAG_POW_HALF  )
+      if ( plan->flags & FLAG_POW_HALF  )
       {
 #ifdef	WITH_HALF_RESCISION_POWERS
 #if 	CUDART_VERSION >= 7050
-	searchINMEM_p<half>(batch);
+	searchINMEM_p<half>(plan);
 #else	// CUDART_VERSION
 	fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	exit(EXIT_FAILURE);
@@ -504,7 +506,7 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
       else
       {
 #ifdef	WITH_SINGLE_RESCISION_POWERS
-	searchINMEM_p<float>(batch);
+	searchINMEM_p<float>(plan);
 #else	// WITH_SINGLE_RESCISION_POWERS
 	EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
 #endif	// WITH_SINGLE_RESCISION_POWERS
@@ -516,8 +518,13 @@ __host__ void add_and_search_IMMEM(cuFFdotBatch* batch )
     FOLD // Synchronisation  .
     {
       infoMSG(5,5,"cudaEventRecord %s in stream %s.\n", "searchComp", "srchStream");
-      CUDA_SAFE_CALL(cudaEventRecord(batch->searchComp,  batch->srchStream),"Recording event: searchComp");
+      CUDA_SAFE_CALL(cudaEventRecord(plan->searchComp,  plan->srchStream),"Recording event: searchComp");
     }
+  }
+
+  PROF // Profiling  .
+  {
+    NV_RANGE_POP("In-mem SAS");
   }
 
 #else	// WITH_SAS_IM

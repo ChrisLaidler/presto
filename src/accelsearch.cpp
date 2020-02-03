@@ -861,7 +861,7 @@ int main(int argc, char *argv[])
 	{
 	  char pres[] =  "%15.06f";
 
-	  int batch, stack;
+	  int planIdx, stack;
 	  float sums[COMP_GEN_END];
 	  for ( int i = 0; i < COMP_GEN_END; i++)
 	    sums[i] = 0;
@@ -888,9 +888,9 @@ int main(int argc, char *argv[])
 
 	  if ( !useUnopt )
 	  {
-	    cuFFdotBatch*   batches = &cuSrch->pInf->batches[0];
+	    cuCgPlan*   cgPlans = &cuSrch->pInf->cgPlans[0];
 
-	    printf("\n --== Batches ==-- \n");
+	    printf("\n --== CG Plans ==-- \n");
 
 	    FOLD // Heading  .
 	    {
@@ -898,9 +898,9 @@ int main(int argc, char *argv[])
 
 	      sprintf(heads[COMP_GEN_H2D],		"Copy H2D");
 
-	      if      ( batches->flags & CU_NORM_GPU_SM )
+	      if      ( cgPlans->flags & CU_NORM_GPU_SM )
 		sprintf(heads[COMP_GEN_NRM],		"Norm GPU SM");
-	      else if ( batches->flags & CU_NORM_GPU_OS )
+	      else if ( cgPlans->flags & CU_NORM_GPU_OS )
 		sprintf(heads[COMP_GEN_NRM],		"Norm GPU RDIX");
 	      else
 		sprintf(heads[COMP_GEN_NRM],		"Norm CPU");
@@ -911,7 +911,7 @@ int main(int argc, char *argv[])
 
 	      sprintf(heads[COMP_GEN_MEM],		"Input Mem");
 
-	      if ( batches->flags & CU_INPT_FFT_CPU )
+	      if ( cgPlans->flags & CU_INPT_FFT_CPU )
 		sprintf(heads[COMP_GEN_FFT],		"Inp FFT CPU");
 	      else
 		sprintf(heads[COMP_GEN_FFT],		"Inp FFT GPU");
@@ -935,24 +935,24 @@ int main(int argc, char *argv[])
 	      printf("\n");
 	    }
 
-	    for (batch = 0; batch < cuSrch->pInf->noBatches; batch++)
+	    for (planIdx = 0; planIdx < cuSrch->pInf->noCgPlans; planIdx++)
 	    {
-	      printf("Batch\t%02i\n",batch);
+	      printf("Plan\t%02i\n",planIdx);
 
-	      batches = &cuSrch->pInf->batches[batch];
+	      cgPlans = &cuSrch->pInf->cgPlans[planIdx];
 
 	      float	bsums[COMP_GEN_END];
 	      for ( int i = 0; i < COMP_GEN_END; i++)
 		bsums[i] = 0;
 
-	      for (stack = 0; stack < (int)cuSrch->pInf->batches[batch].noStacks; stack++)
+	      for (stack = 0; stack < (int)cuSrch->pInf->cgPlans[planIdx].noStacks; stack++)
 	      {
 
 		printf("Stack\t%02i\t", stack);
 
 		for ( int i = 0; i < COMP_GEN_END; i++)
 		{
-		  float val = batches->compTime[i*batches->noStacks+stack];
+		  float val = cgPlans->compTime[i*cgPlans->noStacks+stack];
 		  val *= 1e-6; // Convert to s
 		  printf("%15.06f\t", val );
 		  bsums[i] += val;
@@ -960,7 +960,7 @@ int main(int argc, char *argv[])
 		printf("\n");
 	      }
 
-	      if ( cuSrch->pInf->noBatches > 1 )
+	      if ( cuSrch->pInf->noCgPlans > 1 )
 	      {
 		printf("\t\t");
 		for ( int i = 0; i < COMP_GEN_END; i++)

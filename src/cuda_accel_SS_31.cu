@@ -18,7 +18,7 @@
  *     Added capability to optionally do count
  *     
  *  [0.0.03] [2017-02-24]
- *     Added preprocessor directives for steps and chunks
+ *     Added preprocessor directives for segments and chunks
  *
  *  [2017-05-05]
  *	Kernel optimisations with a focus on reducing register use
@@ -33,32 +33,32 @@
 #define SS31BS		(SS31_X*SS31_Y)
 
 
-__device__ inline int getOffset(const int stage, const int step, const int strd1, const int oStride, const int sid)
+__device__ inline int getOffset(const int stage, const int sIdx, const int strd1, const int oStride, const int sid)
 {
-  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*ALEN + sid ;		// 1 - This is the original method that "packs" the steps into contiguous sections
-  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + step*oStride + sid ;	// 2
+  return stage*gridDim.y*strd1 + blockIdx.y*strd1 + sIdx*ALEN + sid ;		// 1 - This is the original method that "packs" the segments into contiguous sections
+  //return stage*gridDim.y*strd1 + blockIdx.y*strd1 + sIdx*oStride + sid ;	// 2
 }
 
 #ifdef WITH_SAS_31
 
-/** Sum and Search - loop down - column max - multi-step - step outer .
+/** Sum and Search - loop down - column max - multi-segment - segment outer .
  *
  * The first thread (sid 0) loops down the first "good" column of the plane and sums and searches
  * It writes its results to the 0 spot in the results array
  * The strided padding at the end of the array can be use to count per block counts
  *
- * @param width		The width of a single step (this is usually accellen)
+ * @param width		The width of a single segment (this is usually accellen)
  * @param d_cands	Address of device output memory
- * @param oStride	The stride (in candPZs) of the output memory (this is a per step stride) there is a funky diagram to show how the output memory is laid out
+ * @param oStride	The stride (in candPZs) of the output memory (this is a per segment stride) there is a funky diagram to show how the output memory is laid out
  *
  * @param powersArr
  */
-template<typename T, int64_t FLAGS, const int noStages, const int noHarms, typename pArr, const int cunkSize, const int noSteps>
+template<typename T, int64_t FLAGS, const int noStages, const int noHarms, typename pArr, const int cunkSize, const int noSegments>
 __global__ void
-add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr powersArr, int* d_counts)
+sum_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr powersArr, int* d_counts)
 {
   const int tidx	= threadIdx.y * SS31_X     +  threadIdx.x;	///< Thread index within in the block
-  const int sid		= blockIdx.x  * SS31BS     +  tidx;		///< The index in the step where 0 is the first 'good' column in the fundamental plane
+  const int sid		= blockIdx.x  * SS31BS     +  tidx;		///< The index in the segment where 0 is the first 'good' column in the fundamental plane
 
 #ifdef WITH_SAS_COUNT	// Zero SM  .
   const int bidx	= blockIdx.y * gridDim.x   +  blockIdx.x;	///< Block index
@@ -76,8 +76,8 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
     const int zeroHeight  = HEIGHT_STAGE[0];
 
     // This is why the parameters need to be templated
-    candPZs	candLists	[noStages][noSteps];			///< Best candidates found thus far - This "waists" registers as the short is padded up, I tried separate arrays but that was slower
-    float	powers		[cunkSize][noSteps];			///< Registers to hold values to increase mem cache hits
+    candPZs	candLists	[noStages][noSegments];			///< Best candidates found thus far - This "waists" registers as the short is padded up, I tried separate arrays but that was slower
+    float	powers		[cunkSize][noSegments];			///< Registers to hold values to increase mem cache hits
 
     FOLD // Prep - Initialise the x indices & set candidates to 0  .
     {
@@ -93,14 +93,14 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
       FOLD  // Set the local and return candidate powers to zero  .
       {
-	int xStride = noSteps*oStride ;
+	int xStride = noSegments*oStride ;
 
 	for ( int stage = 0; stage < noStages; stage++ )
 	{
-	  for ( int step = 0; step < noSteps; step++)			// Loop over steps  .
+	  for ( int sIdx = 0; sIdx < noSegments; sIdx++)		// Loop over segments  .
 	  {
-	    candLists[stage][step].value = 0 ;
-	    d_cands[getOffset(stage, step, xStride, oStride, sid) ].value = 0;
+	    candLists[stage][sIdx].value = 0 ;
+	    d_cands[getOffset(stage, sIdx, xStride, oStride, sid) ].value = 0;
 	  }
 	}
       }
@@ -118,9 +118,9 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 	{
 	  for( int yPlus = 0; yPlus < cunkSize ; yPlus++ )		// Loop over powers  .
 	  {
-	    for ( int step = 0; step < noSteps; step++ )		// Loop over steps  .
+	    for ( int sIdx = 0; sIdx < noSegments; sIdx++ )		// Loop over segments  .
 	    {
-	      powers[yPlus][step]	= 0 ;
+	      powers[yPlus][sIdx]	= 0 ;
 	    }
 	  }
 	}
@@ -132,12 +132,12 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 	    short start = STAGE[stage][0] ;
 	    short end   = STAGE[stage][1] ;
 
-	    FOLD // Create a section of summed powers one for each step  .
+	    FOLD // Create a section of summed powers one for each segment  .
 	    {
-	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (batch) in this stage  .
+	      for ( int harm = start; harm <= end; harm++ )		// Loop over harmonics (plan) in this stage  .
 	      {
 		short	iyP	= -1;					///< yIndex of the last power read from DRAM
-		T	pow[noSteps];					///< A buffer of the previous powers
+		T	pow[noSegments];				///< A buffer of the previous powers
 
 		for( short yPlus = 0; yPlus < cunkSize; yPlus++ )	// Loop over the chunk  .
 		{
@@ -146,7 +146,7 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
 		  if ( (iyP != iy1) )					// Only read power if it is not the same as the previous  .
 		  {
-		    for ( int step = 0; step < noSteps; step++)		// Loop over steps  .
+		    for ( int sIdx = 0; sIdx < noSegments; sIdx++)	// Loop over segments  .
 		    {
 		      FOLD // Calculate index  .
 		      {
@@ -154,19 +154,19 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 			if        ( FLAGS & FLAG_ITLV_ROW )
 #endif
 			{
-			  iy2     = ( iy1 * noSteps + step ) * STRIDE_STAGE[harm];
+			  iy2     = ( iy1 * noSegments + sIdx ) * STRIDE_STAGE[harm];
 			}
 #ifdef WITH_ITLV_PLN
 			else
 			{
-			  iy2     = ( iy1 + step * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
+			  iy2     = ( iy1 + sIdx * HEIGHT_STAGE[harm] ) * STRIDE_STAGE[harm] ;
 			}
 #endif
 		      }
 
 		      FOLD // Read powers  .
 		      {
-			pow[step] = ((T*)powersArr[harm])[iy2];
+			pow[sIdx] = ((T*)powersArr[harm])[iy2];
 		      }
 		    }
 
@@ -175,9 +175,9 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
 		  FOLD // Accumulate powers  .
 		  {
-		    for ( short step = 0; step < noSteps; step++)	// Loop over steps  .
+		    for ( short sIdx = 0; sIdx < noSegments; sIdx++)	// Loop over segments  .
 		    {
-		      powers[yPlus][step] += getFloat(pow[step]);
+		      powers[yPlus][sIdx] += getFloat(pow[sIdx]);
 		    }
 		  }
 		}
@@ -186,7 +186,7 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
 	    FOLD // Search set of powers  .
 	    {
-	      for ( short step = 0; step < noSteps; step++)		// Loop over steps  .
+	      for ( short sIdx = 0; sIdx < noSegments; sIdx++)		// Loop over segments  .
 	      {
 		float pow;
 		float maxP = POWERCUT_STAGE[stage];
@@ -194,7 +194,7 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
 		for( short yPlus = 0; yPlus < cunkSize ; yPlus++ )	// Loop over section  .
 		{
-		  pow = powers[yPlus][step];
+		  pow = powers[yPlus][sIdx];
 
 		  if  ( pow > maxP )
 		  {
@@ -210,11 +210,11 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
 		if  (  maxP > POWERCUT_STAGE[stage] )
 		{
-		  if ( maxP > candLists[stage][step].value )
+		  if ( maxP > candLists[stage][sIdx].value )
 		  {
 		    // This is our new max!
-		    candLists[stage][step].value	= maxP;
-		    candLists[stage][step].z		= maxI;
+		    candLists[stage][sIdx].value	= maxP;
+		    candLists[stage][sIdx].z		= maxI;
 		  }
 		}
 	      }
@@ -226,16 +226,16 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 
     FOLD // Write results back to DRAM and calculate sigma if needed  .
     {
-      int xStride = noSteps*oStride ;
+      int xStride = noSegments*oStride ;
 
       for ( int stage = 0 ; stage < noStages; stage++)			// Loop over stages  .
       {
-	for ( int step = 0; step < noSteps; step++)			// Loop over steps  .
+	for ( int sIdx = 0; sIdx < noSegments; sIdx++)			// Loop over segments  .
 	{
-	  if  ( candLists[stage][step].value > POWERCUT_STAGE[stage] )
+	  if  ( candLists[stage][sIdx].value > POWERCUT_STAGE[stage] )
 	  {
 	    // Write to DRAM
-	    d_cands[getOffset(stage, step, xStride, oStride, sid) ] = candLists[stage][step];
+	    d_cands[getOffset(stage, sIdx, xStride, oStride, sid) ] = candLists[stage][sIdx];
 
 #ifdef WITH_SAS_COUNT	// Count thread cands  .
 	    conts++;
@@ -251,9 +251,11 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
   {
     // NOTE: Could do an initial warp level recurse here but not really necessary
 
+    conts = warpReduceSum<int>(conts);
+
     __syncthreads();			// Make sure cnt has been zeroed
 
-    if ( conts)				// Increment block specific counts in SM  .
+    if ( (__lidd() == 1) && conts)	// Increment block specific counts in SM  .
     {
       atomicAdd(&cnt, conts);
     }
@@ -269,131 +271,131 @@ add_and_searchCU31_k(const uint width, candPZs* d_cands, const int oStride, pArr
 }
 
 template< typename T, int64_t FLAGS, int noStages, const int noHarms, typename pArr, const int cunkSize>
-__host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void sum_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuCgPlan* plan )
 {
   pArr   powers;
   int* d_cnts	= NULL;
 
   for (int i = 0; i < noHarms; i++)
   {
-    int sIdx        = batch->cuSrch->sIdx[i];
-    powers.val[i]   = batch->planes[sIdx].d_planePowr;
+    int sIdx        = plan->cuSrch->sIdx[i];
+    powers.val[i]   = plan->planes[sIdx].d_planePowr;
   }
 
 #ifdef WITH_SAS_COUNT
-  if ( batch->flags & FLAG_SS_COUNT)
+  if ( plan->flags & FLAG_SS_COUNT)
   {
-    d_cnts	= (int*)((char*)batch->d_outData1 + batch->cndDataSize);
+    d_cnts	= (int*)((char*)plan->d_outData1 + plan->candDataSize);
   }
 #endif
 
-  switch (batch->noSteps)
+  switch (plan->noSegments)
   {
 
-#if MIN_STEPS <= 1  and MAX_STEPS >= 1
+#if MIN_SEGMENTS <= 1  and MAX_SEGMENTS >= 1
     case 1:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,1><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 1><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 2  and MAX_STEPS >= 2
+#if MIN_SEGMENTS <= 2  and MAX_SEGMENTS >= 2
     case 2:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,2><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 2><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 3  and MAX_STEPS >= 3
+#if MIN_SEGMENTS <= 3  and MAX_SEGMENTS >= 3
     case 3:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,3><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 3><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 4  and MAX_STEPS >= 4
+#if MIN_SEGMENTS <= 4  and MAX_SEGMENTS >= 4
     case 4:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,4><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 4><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 5  and MAX_STEPS >= 5
+#if MIN_SEGMENTS <= 5  and MAX_SEGMENTS >= 5
     case 5:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,5><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 5><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 6  and MAX_STEPS >= 6
+#if MIN_SEGMENTS <= 6  and MAX_SEGMENTS >= 6
     case 6:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,6><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 6><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 7  and MAX_STEPS >= 7
+#if MIN_SEGMENTS <= 7  and MAX_SEGMENTS >= 7
     case 7:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,7><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 7><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 8  and MAX_STEPS >= 8
+#if MIN_SEGMENTS <= 8  and MAX_SEGMENTS >= 8
     case 8:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,8><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 8><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+#if MIN_SEGMENTS <= 9  and MAX_SEGMENTS >= 9
     case 9:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,9><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 9><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+#if MIN_SEGMENTS <= 10 and MAX_SEGMENTS >= 10
     case 10:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,10><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 10><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+#if MIN_SEGMENTS <= 11 and MAX_SEGMENTS >= 11
     case 11:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,11><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize, 11><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+#if MIN_SEGMENTS <= 12 and MAX_SEGMENTS >= 12
     case 12:
     {
-      add_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,12><<<dimGrid,  dimBlock, 0, stream >>>(batch->accelLen, (candPZs*)batch->d_outData1, batch->strideOut, powers, d_cnts);
+      sum_and_searchCU31_k< T, FLAGS, noStages, noHarms, pArr, cunkSize,12><<<dimGrid,  dimBlock, 0, stream >>>(plan->accelLen, (candPZs*)plan->d_outData1, plan->strideOut, powers, d_cnts);
       break;
     }
 #endif
 
     default:
     {
-      if      ( batch->noSteps < MIN_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
-      else if ( batch->noSteps > MAX_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      if      ( plan->noSegments < MIN_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # segments (%i) less than the compiled minimum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
+      else if ( plan->noSegments > MAX_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # segments (%i) greater than the compiled maximum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
       else
-	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+	fprintf(stderr, "ERROR: %s has not been templated for %i segments.\n", __FUNCTION__, plan->noSegments);
 
       exit(EXIT_FAILURE);
     }
@@ -401,14 +403,14 @@ __host__ void add_and_searchCU31_s(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 }
 
 template< typename T, int64_t FLAGS, int noStages, const int noHarms, typename pArr>
-__host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void sum_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuCgPlan* plan )
 {
-  switch ( batch->ssChunk )
+  switch ( plan->ssChunk )
   {
 #if MIN_SAS_CHUNK <= 1  and MAX_SAS_CHUNK >= 1
     case 1 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 1>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 1>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -416,7 +418,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 2  and MAX_SAS_CHUNK >= 2
     case 2 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 2>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 2>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -424,7 +426,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 3  and MAX_SAS_CHUNK >= 3
     case 3 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 3>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 3>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -432,7 +434,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 4  and MAX_SAS_CHUNK >= 4
     case 4 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 4>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 4>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -440,7 +442,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 5  and MAX_SAS_CHUNK >= 5
     case 5 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 5>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 5>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -448,7 +450,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 6  and MAX_SAS_CHUNK >= 6
     case 6 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 6>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 6>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -456,7 +458,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 7  and MAX_SAS_CHUNK >= 7
     case 7 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 7>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 7>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -464,7 +466,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 8  and MAX_SAS_CHUNK >= 8
     case 8 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 8>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 8>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -472,7 +474,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 9  and MAX_SAS_CHUNK >= 9
     case 9 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 9>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 9>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -480,7 +482,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 10 and MAX_SAS_CHUNK >= 10
     case 10 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 10>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 10>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -488,7 +490,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 11 and MAX_SAS_CHUNK >= 11
     case 11 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 11>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 11>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -496,7 +498,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 12 and MAX_SAS_CHUNK >= 12
     case 12 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 12>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 12>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -504,7 +506,7 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 13 and MAX_SAS_CHUNK >= 13
     case 13 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 13>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 13>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
@@ -512,19 +514,19 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 #if MIN_SAS_CHUNK <= 14 and MAX_SAS_CHUNK >= 14
     case 14 :
     {
-      add_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 14>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_s< T, FLAGS, noStages, noHarms, pArr, 14>(dimGrid, dimBlock, stream, plan);
       break;
     }
 #endif
 
     default:
     {
-      if ( batch->ssChunk < MIN_SAS_CHUNK )
-	fprintf(stderr, "ERROR: In %s, chunk size (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
-      else if ( batch->ssChunk > MAX_SAS_CHUNK )
-	fprintf(stderr, "ERROR: In %s, chunk size (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->ssChunk, MIN_SAS_CHUNK );
+      if ( plan->ssChunk < MIN_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) less than the compiled minimum %i.\n", __FUNCTION__, plan->ssChunk, MIN_SAS_CHUNK );
+      else if ( plan->ssChunk > MAX_SAS_CHUNK )
+	fprintf(stderr, "ERROR: In %s, chunk size (%i) greater than the compiled maximum %i.\n", __FUNCTION__, plan->ssChunk, MIN_SAS_CHUNK );
       else
-	fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, batch->ssChunk);
+	fprintf(stderr, "ERROR: %s has not been templated for %i chunk size.\n", __FUNCTION__, plan->ssChunk);
 
       exit(EXIT_FAILURE);
     }
@@ -532,35 +534,35 @@ __host__ void add_and_searchCU31_c(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 }
 
 template<typename T, int64_t FLAGS >
-__host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void sum_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuCgPlan* plan )
 {
-  const int noStages = batch->noHarmStages;
+  const int noStages = plan->noHarmStages;
 
   switch (noStages)
   {
     case 1 :
     {
-      add_and_searchCU31_c< T, FLAGS, 1, 1, ptr01>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_c< T, FLAGS, 1, 1, ptr01>(dimGrid, dimBlock, stream, plan);
       break;
     }
     case 2 :
     {
-      add_and_searchCU31_c< T, FLAGS, 2, 2, ptr02>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_c< T, FLAGS, 2, 2, ptr02>(dimGrid, dimBlock, stream, plan);
       break;
     }
     case 3 :
     {
-      add_and_searchCU31_c< T, FLAGS, 3, 4, ptr04>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_c< T, FLAGS, 3, 4, ptr04>(dimGrid, dimBlock, stream, plan);
       break;
     }
     case 4 :
     {
-      add_and_searchCU31_c< T, FLAGS, 4, 8, ptr08>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_c< T, FLAGS, 4, 8, ptr08>(dimGrid, dimBlock, stream, plan);
       break;
     }
     case 5 :
     {
-      add_and_searchCU31_c< T, FLAGS, 5, 16, ptr16>(dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_c< T, FLAGS, 5, 16, ptr16>(dimGrid, dimBlock, stream, plan);
       break;
     }
     default:
@@ -570,20 +572,20 @@ __host__ void add_and_searchCU31_p(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 }
 
 template<typename T>
-__host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void sum_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t stream, cuCgPlan* plan )
 {
-  const int64_t FLAGS = batch->flags;
+  const int64_t FLAGS = plan->flags;
 
   FOLD // Call flag template  .
   {
     if      ( FLAGS & FLAG_ITLV_ROW )
     {
-      add_and_searchCU31_p<T, FLAG_ITLV_ROW>    (dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_p<T, FLAG_ITLV_ROW>    (dimGrid, dimBlock, stream, plan);
     }
 #ifdef WITH_ITLV_PLN
     else
     {
-      add_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, batch);
+      sum_and_searchCU31_p<T, 0>                (dimGrid, dimBlock, stream, plan);
     }
 #else
     else
@@ -597,32 +599,32 @@ __host__ void add_and_searchCU31_f(dim3 dimGrid, dim3 dimBlock, cudaStream_t str
 
 #endif	// WITH_SAS_31
 
-__host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
+__host__ void sum_and_searchCU31( cudaStream_t stream, cuCgPlan* plan )
 {
 #ifdef 	WITH_SAS_31
 
   dim3 dimBlock, dimGrid;
 
-  rVals* rVal = &(*batch->rAraays)[batch->rActive][0][0];
+  rVals* rVal = &(*plan->rAraays)[plan->rActive][0][0];
 
   dimBlock.x		= SS31_X;
   dimBlock.y		= SS31_Y;
 
   float bw		= SS31BS;
-  float ww		= batch->strideOut / ( bw );
+  float ww		= plan->strideOut / ( bw );
 
   dimGrid.x		= ceil(ww);
-  dimGrid.y		= batch->ssSlices;
+  dimGrid.y		= plan->ssSlices;
 
   rVal->noBlocks	= dimGrid.x * dimGrid.y;
 
-  FOLD // Check first step for divisibility  .
+  FOLD // Check first segment for divisibility  .
   {
-    // Note: Could do all steps?
-    double devisNo	= batch->noGenHarms;
-    for ( int step = 0; step < batch->noSteps; step++)
+    // Note: Could do all segments?
+    double devisNo	= plan->noGenHarms;
+    for ( int sIdx = 0; sIdx < plan->noSegments; sIdx++)
     {
-      rVals* rVal2 = &(*batch->rAraays)[batch->rActive][step][0];
+      rVals* rVal2 = &(*plan->rAraays)[plan->rActive][sIdx][0];
 
       double firsrR	= rVal2->drlo;
       double rem = fmod(firsrR, devisNo);
@@ -641,13 +643,13 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     exit(EXIT_FAILURE);
   }
 
-  infoMSG(7,7," SAS 3.1 - no ThreadBlocks %i  width %i  stride %i  remainder: %i ", dimBlock.x * dimBlock.y, batch->accelLen, batch->strideOut,  (batch->strideOut-batch->accelLen)*2);
+  infoMSG(7,7," SAS 3.1 - no ThreadBlocks %i  width %i  stride %i  remainder: %i ", dimBlock.x * dimBlock.y, plan->accelLen, plan->strideOut,  (plan->strideOut-plan->accelLen)*2);
 
-  if      ( batch->flags & FLAG_POW_HALF	)	// CUFFT callbacks using half powers  .
+  if      ( plan->flags & FLAG_POW_HALF	)		// CUFFT callbacks using half powers  .
   {
 #ifdef	WITH_HALF_RESCISION_POWERS
 #if 	CUDART_VERSION >= 7050
-    add_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, batch );
+    sum_and_searchCU31_f<half>        (dimGrid, dimBlock, stream, plan );
 #else	// CUDART_VERSION
     fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
     exit(EXIT_FAILURE);
@@ -656,10 +658,10 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
     EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_HALF_RESCISION_POWERS
   }
-  else if ( batch->flags & FLAG_CUFFT_CB_POW	)	// CUFFT callbacks use float powers  .
+  else if ( plan->flags & FLAG_CUFFT_CB_POW	)	// CUFFT callbacks use float powers  .
   {
 #ifdef	WITH_SINGLE_RESCISION_POWERS
-    add_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, batch );
+    sum_and_searchCU31_f<float>       (dimGrid, dimBlock, stream, plan );
 #else	// WITH_SINGLE_RESCISION_POWERS
     EXIT_DIRECTIVE("WITH_HALF_RESCISION_POWERS");
 #endif	// WITH_SINGLE_RESCISION_POWERS
@@ -667,7 +669,7 @@ __host__ void add_and_searchCU31( cudaStream_t stream, cuFFdotBatch* batch )
   else							// NO CUFFT callbacks so use complex values  .
   {
 #ifdef	WITH_COMPLEX_POWERS
-    add_and_searchCU31_f<float2>      (dimGrid, dimBlock, stream, batch );
+    sum_and_searchCU31_f<float2>      (dimGrid, dimBlock, stream, plan );
 #else	// WITH_COMPLEX_POWERS
     EXIT_DIRECTIVE("WITH_COMPLEX_POWERS");
 #endif	// WITH_COMPLEX_POWERS

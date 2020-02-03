@@ -365,7 +365,7 @@ __host__ __device__ void fresnl(idxT x, T* cc, T* ss)
  * This function calculates the applicable Fourier interpolation coefficient at a specific distance from a point.
  *
  * This function takes as parameters, previously calculated values.
- * These are the trigonometric values that are phase related to the reference point in unit steps in r from the point
+ * These are the trigonometric values that are phase related to the reference point in unit segments in r from the point
  * These values are pre-divided by PI
  * and need only be scaled by distance
  *
@@ -942,7 +942,7 @@ __host__ __device__ inline void rz_convolution_cu(const dataT* inputData, long l
  * @param r                   The R value of the first point to do the interpolation at
  * @param z                   The Z value of the to do the interpolation at
  * @param blkWidth            The width of the blocks in bins
- * @param kern_half_width     The half width of the points to use in the interpolation
+ * @param kern_half_width     The half-width of the points to use in the interpolation
  */
 template<typename T, typename dataIn>
 __host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long loR, long inStride, double r, T z, int kern_half_width, T* outReal, T* outImag, int blkWidth, int noBlk)
@@ -1046,7 +1046,7 @@ __host__ __device__ inline void rz_convolution_cu(const dataIn* inputData, long 
  * @param r                   The R value of the first point to do the interpolation at
  * @param z                   The Z value of the to do the interpolation at
  * @param blkWidth            The width of the blocks in bins
- * @param kern_half_width     The half width of the points to use in the interpolation
+ * @param kern_half_width     The half-width of the points to use in the interpolation
  */
 template<typename T, int noColumns>
 __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, const long inStride, const double r, const float z, const int kern_half_width, T* realSum, T* imagSum, const int colWidth, const int ic, const int cIdx)
@@ -1114,7 +1114,7 @@ __device__ inline void rz_convolution_sfl(float2* inputData, const long loR, con
 	  // I have found they are highly cached, so much so that no manual caching or sharing with shuffle is not needed!
 	  // However evidently, there can be bank conflicts in cache so I adjust the per thread offset with "bank" - Differing cooperatives will access the same bank, but most lightly the same value so no conflict
 	  float2 inp = inputData[i + idx ];
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  T resCRea_c = __shfl_sync(0xffffffff, resReal, idx, noColumns );
 	  T resImag_c = __shfl_sync(0xffffffff, resImag, idx, noColumns );
 #else
@@ -1168,7 +1168,7 @@ __global__ void ffdotPlnByShfl_ker(void* powers, float2* fft, int noHarms, int h
     double	r	= (firstR + ic/(double)(noR-1) * rSZ )*hrm;	// NOTE: This will fail if noR == 1
     T		z	= (firstZ - iy/(double)(noZ-1) * zSZ )*hrm;	// NOTE: This will fail if noZ == 1
 
-    FOLD // Determine half width
+    FOLD // Determine half-width
     {
       halfW = getHw<T>(z, hw.val[hIdx]);
     }
@@ -1285,7 +1285,7 @@ __global__ void ffdotPlnByBlk_ker3(void* powers, float2* fft, int noHarms, int h
     {
       int halfW;
 
-      FOLD // Determine half width
+      FOLD // Determine half-width
       {
 	halfW = getHw<T>(z, hw.val[hIdx]);
       }

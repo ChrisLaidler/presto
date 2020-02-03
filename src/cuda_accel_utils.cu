@@ -3,7 +3,7 @@
  *
  *  This contains the various utility functions for the CUDA accelsearch
  *  These include:
- *    Determining plane - widths and step size and accellen
+ *    Determining plane - widths and segment size and accellen
  *    Generating kernel structures
  *    Generating plane structures
  *
@@ -31,7 +31,7 @@
  *    Added a new fag to allow separate treatment of input and plane FFT's (separate vs single)
  *    Caged createFFTPlans to allow creating the FFT plans for input and plane separately
  *    Reorder stream creation in initKernel
- *    Synchronous runs now default to one batch and separate FFT's
+ *    Synchronous runs now default to one plan and separate FFT's
  *    Added ZBOUND_NORM flag to specify bound to swap over to CPU input normalisation
  *    Added ZBOUND_INP_FFT flag to specify bound to swap over to CPU FFT's for input
  *    Added 3 generic debug flags ( FLAG_DPG_TEST_1, FLAG_DPG_TEST_2, FLAG_DPG_TEST_3 )
@@ -48,29 +48,29 @@
  *    Reorder in-mem async to slightly faster (3 way)
  *
  *  [0.0.03] [2017-02-10]
- *    Multi batch async fixed finishing off search
+ *    Multi plan async fixed finishing off search
  *
  *  [0.0.03] [2017-02-16]
  *    Separated candidate and optimisation CPU threading
  *
  *  [0.0.03] [2017-02-24]
- *     Added preprocessor directives for steps and chunks
+ *     Added preprocessor directives for segments and chunks
  *
  *  [0.0.03] [2017-03-04]
- *     Work on automatic step, batch and chunk selection
+ *     Work on automatic segment, plan and chunk selection
  *
  *  [0.0.03] [2017-03-09]
  *     Added slicing exit for testing
  *
  *  [0.0.03] [2017-03-25]
  *  Improved multiplication chunk handling
- *  Added temporary output of chunks and step size
+ *  Added temporary output of chunks and segment size
  *  Clamp SAS chunks to SAS slice width
  *
  *  [2017-03-30]
  *  	Fix in-mem plane size estimation to be more accurate
  *  	Added function to calculate in-mem plane size
- *  	Re worked the search size data structure and the manner number of steps is calculated
+ *  	Re worked the search size data structure and the manner number of segments is calculated
  *  	Converted some debug messages sizes from GiB to GB and MiB to MB
  *  	Added separate candidate array resolution - Deprecating FLAG_STORE_EXP
  *
@@ -160,7 +160,7 @@ int cnttt = 0;
 
 ///////////////////////// Function prototypes ////////////////////////////////////
 
-int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char* format, ...)
+int __printErrors( acc_err value, const char* file, int lineNo, const char* format, ...)
 {
   if (value)
   {
@@ -266,6 +266,11 @@ int __printErrors( ACC_ERR_CODE value, const char* file, int lineNo, const char*
       sprintf(msg1, "%s     %#08X - Invalid size.\n", msg2, ACC_ERR_SIZE );
     }
 
+    if (value & ACC_ERR_DEPRICATED )
+    {
+      value &= (~ACC_ERR_SIZE);
+      sprintf(msg1, "%s     %#08X - Depricated.\n", msg2, ACC_ERR_DEPRICATED );
+    }
 
 
     if (value )
@@ -285,49 +290,7 @@ void setDebugMsgLevel(int lvl)
   msgLevel = lvl;
 }
 
-/** Calculate an optimal accellen given a width  .
- *
- * @param width		The width of the plane (usually a power of two) if width < 100 the closes power of 2 to width*1000 will be used ie 8 -> 8024
- * @param zmax		The highest z value being searched for
- * @param accuracy	The accuracy of the kernel
- * @param noResPerBin	The resolution 2 -> interbinning
- * @return
- * If width is not a power of two it will be rounded up to the nearest power of two
- */
-uint optAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin)
-{
-  double halfwidth	= cu_z_resp_halfwidth<double>(zmax, accuracy); /// The halfwidth of the maximum zmax, to calculate step size
-  double pow2		= pow(2 , round(log2(width)) );
-  uint oAccelLen	= floor(pow2 - 2 - 2 * halfwidth * noResPerBin );	// NOTE: I think the extra ( - 2 ) in here is not needed?
-
-  infoMSG(6,6,"For a width %.0f and z-max %.1f with spacing %i, Halfwidth is %.0f and step size is %u. \n", pow2, zmax, noResPerBin, halfwidth, oAccelLen );
-  return oAccelLen;
-}
-
-/** Calculate the step size from a width if the width is < 100 it is scaled to be the closest power of two  .
- *
- * @param width		The width of the plane (usually a power of two) if width < 100 the closes power of 2 to width*1000 will be used ie 8 -> 8024
- * @param zmax		The highest z value being searched for
- * @param accuracy	The accuracy of the kernel
- * @param noResPerBin	The resolution 2 -> interbinning
- * @return		The step size
- */
-uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noResPerBin)
-{
-  int accelLen;
-
-  if ( width > 100 )
-  {
-    accelLen = width;
-  }
-  else
-  {
-    accelLen = optAccellen(width*1000.0, zmax, accuracy, noResPerBin) ;
-  }
-  return accelLen;
-}
-
-/** Calculate the step size from a width if the width is < 100 it is skate to be the closest power of two  .
+/** Calculate the segment size from a width if the width is < 100 it is skate to be the closest power of two  .
  *
  * @param width		The width of the plane (usually a power of two) if width < 100 the closes power of 2 to width*1000 will be used ie 8 -> 8024
  * @param zmax		The highest z value being searched for
@@ -336,31 +299,41 @@ uint calcAccellen(float width, float zmax, presto_interp_acc accuracy, int noRes
  * @param noResPerBin	The resolution 2 -> interbinning
  * @param zRes		The resolution of the z values
  * @param hamrDevis	Make sure the width is divisible by the number of harmonics (needed for CUDA sum and search)
- * @return		The step size
+ * @return		The segment size
  */
-uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes, bool hamrDevis)
+uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accuracy, int noResPerBin, float zRes, int segDevis, int startDevis)
 {
-  infoMSG(5,5,"Calculating step size\n");
+  infoMSG(5,5,"Calculating segment size\n");
 
   uint	accelLen, oAccelLen1, oAccelLen2;
-
-  oAccelLen1  = calcAccellen(width, zmax, accuracy, noResPerBin);
-  infoMSG(6,6,"Initial optimal step size %i for a fundamental plane of width %.0f with z-max %.1f \n", oAccelLen1, width, zmax);
+  int halfwidth, start, planeWidth;
+//  oAccelLen1  = calcAccellen(width, zmax, accuracy, noResPerBin);
+//  infoMSG(6,6,"Initial optimal segment size %i for a fundamental plane of width %.0f with z-max %.1f \n", oAccelLen1, width, zmax);
 
   if ( width > 100 )				// The user specified the exact width they want to use for accellen  .
   {
-    accelLen  = oAccelLen1;
-    infoMSG(6,6,"User specified step size %.0f - using: %i \n", width, oAccelLen1);
+    accelLen  = width;
+    infoMSG(6,6,"User specified segment size %.0f - using: %i \n", width, oAccelLen1);
   }
   else						// Determine accellen by, examining the accellen at the second stack  .
   {
+    uint oAccelLen1, oAccelLen2;
+
+    halfwidth		= cu_z_resp_halfwidth<double>(zmax, accuracy);				// The halfwidth of the maximum zmax, to calculate segment size
+    start		= ceil((halfwidth*noResPerBin)/(float)startDevis)*startDevis;
+    planeWidth		= pow(2 , round(log2(width*1000.0)) );
+    oAccelLen1		= floor(planeWidth - 2*start );
+
     if ( noHarms > 1 )				// Working with a family of planes
     {
       float halfZ	= cu_calc_required_z<double>(0.5, zmax, zRes);
-      oAccelLen2	= calcAccellen(width*0.5, halfZ, accuracy, noResPerBin);
+      halfwidth		= cu_z_resp_halfwidth<double>(halfZ, accuracy);				// The halfwidth of the maximum zmax, to calculate segment size
+      start		= ceil((halfwidth*noResPerBin)/(float)startDevis)*startDevis;
+      planeWidth	= pow(2 , round(log2(width*1000.0*0.5)) );
+      oAccelLen2	= floor(planeWidth - 2*start );	
       accelLen		= MIN(oAccelLen2*2, oAccelLen1);
 
-      infoMSG(6,6,"Second optimal step size %i from half plane step size of %i.\n", accelLen, oAccelLen2);
+      infoMSG(6,6,"Second optimal segment size %i from half plane segment size of %i.\n", accelLen, oAccelLen2);
     }
     else
     {
@@ -384,13 +357,9 @@ uint calcAccellen(float width, float zmax, int noHarms, presto_interp_acc accura
 
   FOLD						// Ensure divisibility  .
   {
-    float devisNo = 2;				// Divisible by 2, not sure why, its not noResPerBin its 2?
-
-    if ( hamrDevis )				// Adjust to be divisible by number of harmonics  .
-    {
-      devisNo = noResPerBin*noHarms;
-    }
-    accelLen = floor( accelLen/devisNo ) * (devisNo);
+    // Sometimes adjust to be divisible by number of harmonics  .
+    segDevis *= noResPerBin;
+    accelLen = floor(accelLen/(float)segDevis)*(segDevis);
 
     infoMSG(6,6,"Divisible %i.\n", accelLen);
   }
@@ -623,7 +592,7 @@ void initGPUs(gpuSpecs* gSpec)
   }
 }
 
-gpuSpecs* getGpuSpec(int devID, int batch, int steps, int opts)
+gpuSpecs* getGpuSpec(int devID, int noCgPlans, int noSegments, int noCoPlans)
 {
   infoMSG(3,3,"Get GPU specifications for device %i.\n", devID);
 
@@ -644,9 +613,9 @@ gpuSpecs* getGpuSpec(int devID, int batch, int steps, int opts)
     gSpec->noDevices		= 1;
     gSpec->devId[0]		= devID;
 
-    gSpec->noDevBatches[0]	= batch;
-    gSpec->noDevSteps[0]	= steps;
-    gSpec->noDevOpt[0]		= opts;
+    gSpec->noCgPlans[0]		= noCgPlans;
+    gSpec->noSegments[0]	= noSegments;
+    gSpec->noCoPlans[0]		= noCoPlans;
   }
 
   return gSpec;
@@ -685,19 +654,19 @@ gpuSpecs* readGPUcmd(Cmdline *cmd)
   for ( int dev = 0 ; dev < gpul->noDevices; dev++ ) // Loop over devices  .
   {
     if ( dev >= cmd->nbatchC )
-      gpul->noDevBatches[dev]	= cmd->nbatch[cmd->nbatchC-1];
+      gpul->noCgPlans[dev]	= cmd->nbatch[cmd->nbatchC-1];
     else
-      gpul->noDevBatches[dev]	= cmd->nbatch[dev];
+      gpul->noCgPlans[dev]	= cmd->nbatch[dev];
 
     if ( dev >= cmd->nstepsC )
-      gpul->noDevSteps[dev]	= cmd->nsteps[cmd->nbatchC-1];
+      gpul->noSegments[dev]	= cmd->nsteps[cmd->nbatchC-1];
     else
-      gpul->noDevSteps[dev]	= cmd->nsteps[dev];
+      gpul->noSegments[dev]	= cmd->nsteps[dev];
 
     if ( dev >= cmd->numoptC )
-      gpul->noDevOpt[dev]	= cmd->numopt[cmd->nbatchC-1];
+      gpul->noCoPlans[dev]	= cmd->numopt[cmd->nbatchC-1];
     else
-      gpul->noDevOpt[dev]	= cmd->numopt[dev];
+      gpul->noCoPlans[dev]	= cmd->numopt[dev];
 
   }
 
@@ -734,11 +703,11 @@ bool singleFlag ( int64_t*  flags, const char* str1, const char* str2, int64_t f
   return false;
 }
 
-/** Read accel search details from the text file
+/** Read accel search configuration from the text file
  *
  * @param sSpec
  */
-void readAccelDefalts(confSpecs *conf)
+void readAccelTextConfig(confSpecs *conf)
 {
   int64_t*  genFlags = &(conf->gen->flags);
   int64_t*  optFlags = &(conf->opt->flags);
@@ -853,7 +822,7 @@ void readAccelDefalts(confSpecs *conf)
 	singleFlag ( genFlags, str1, str2, FLAG_Z_SPLIT, "", "0", lineno, fName );
       }
 
-      else if ( strCom(line, "RESULTS_RING" ) )			// The size of the per batch results ring buffer
+      else if ( strCom(line, "RESULTS_RING" ) )			// The size of the per plan results ring buffer
       {
 	int no1;
 	int read1 = sscanf(line, "%s %i %s", str1, &no1, str2 );
@@ -1207,11 +1176,6 @@ void readAccelDefalts(confSpecs *conf)
 	}
       }
 
-      else if ( strCom("CONVOLVE", str1 ) )
-      {
-	singleFlag ( genFlags, str1, str2, FLAG_CONV, "SEP", "CONT", lineno, fName );
-      }
-
       else if ( strCom("STACK", str1 ) )
       {
 	singleFlag ( genFlags, str1, str2, FLAG_STK_UP, "UP", "DN", lineno, fName );
@@ -1504,7 +1468,7 @@ void readAccelDefalts(confSpecs *conf)
       {
 	if ( strCom(str2, "A"   ) )
 	{
-	  conf->gen->ssStepSize = 0;
+	  conf->gen->ssSegmentSize = 0;
 	}
 	else
 	{
@@ -1512,7 +1476,7 @@ void readAccelDefalts(confSpecs *conf)
 	  int read1 = sscanf(str2, "%i", &no  );
 	  if ( read1 == 1 )
 	  {
-	    conf->gen->ssStepSize = no;
+	    conf->gen->ssSegmentSize = no;
 	  }
 	  else
 	  {
@@ -2201,6 +2165,16 @@ searchSpecs* sSpecsFromObs(Cmdline *cmd, accelobs* obs, confSpecs* conf)
 
   conf->gen->zMax	= cu_calc_required_z<double>(1, fabs(sSpec->zMax), conf->gen->zRes);
 
+  if ( obs->inmem )				// Use the command line to select in-mem search, NOTE: this is over ridden by what ever is in the DEFAULTS file (best to comment out this line then!)
+  {
+    if ( conf->gen->flags & FLAG_SS_ALL )
+    {
+      printf("WARNING, command line \"-inmem\" overriding what is in the configuration text file.\n");
+    }
+    conf->gen->flags	&= ~FLAG_SS_ALL;
+    conf->gen->flags	|= FLAG_SS_INMEM;
+  }
+
 //  REM
 //  if ( conf->gen->flags & (FLAG_SS_31 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
 //  {
@@ -2239,45 +2213,40 @@ confSpecs* defaultConfig()
   confSpecs* conf = new(confSpecs);
   memset(conf, 0, sizeof(confSpecs));
 
-  conf->gen = new(confSpecsGen);
-  memset(conf->gen, 0, sizeof(confSpecsGen));
+  conf->gen = new(confSpecsCG);
+  memset(conf->gen, 0, sizeof(confSpecsCG));
 
-  conf->opt = new(confSpecsOpt);
-  memset(conf->opt, 0, sizeof(confSpecsOpt));
+  conf->opt = new(confSpecsCO);
+  memset(conf->opt, 0, sizeof(confSpecsCO));
 
   CUDA_SAFE_CALL(cudaGetLastError(), "Entering readSrchSpecs.");
 
   FOLD // Defaults for accel search  .
   {
     conf->gen->flags	|= FLAG_KER_DOUBGEN ;	// Generate the kernels using double precision math (still stored as floats though)
-    conf->gen->flags	|= FLAG_ITLV_ROW    ;
+    conf->gen->flags	|= FLAG_ITLV_ROW    ;	// Interle4ave rows of the rr planes - the plane interleaving has now been deprecated
     conf->gen->flags	|= FLAG_CENTER      ;	// Centre and align the usable part of the planes
     conf->gen->flags	|= CU_FFT_SEP_INP   ;	// Input is small and separate FFT plans wont take up too much memory
 
-#ifdef WITH_SAS_COUNT
+#ifdef	WITH_SAS_COUNT
     conf->gen->flags	|= FLAG_SS_COUNT    ;	// Enable counting results in sum & search kernels
-#endif
+#endif	// WITH_SAS_COUNT
 
     // NOTE: I found using the strait ring buffer memory is fastest - If the data is very noisy consider using FLAG_CAND_MEM_PRE
-#ifndef DEBUG
+#ifndef	DEBUG
     conf->gen->flags	|= FLAG_CAND_THREAD ;	// Multithreading really slows down debug so only turn it on by default for release mode, NOTE: This can be over ridden in the defaults file
-    conf->opt->flags	|= FLAG_OPT_THREAD  ;	// Do CPU component of optimization in a separate thread - A very good idea
-#endif
+    conf->opt->flags	|= FLAG_OPT_THREAD  ;	// Do CPU component of optimisation in a separate thread - A very good idea
+#endif	// DEBUG
 
 #ifdef	WITH_POW_POST_CALLBACK
-#if CUDART_VERSION >= 6050
-    conf->gen->flags	|= FLAG_CUFFT_CB_POW;	// CUFFT callback to calculate powers, very efficient so on by default
+#if 	CUDART_VERSION >= 6050
+    conf->gen->flags	|= FLAG_CUFFT_CB_OUT;	// CUFFT callback to calculate powers, very efficient so on by default in all cases
 #endif	// CUDART_VERSION
 #endif	// WITH_POW_POST_CALLBACK
 
-#if CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)
-    conf->gen->flags	|= FLAG_POW_HALF;
-#endif
-
-//    if ( obs->inmem )				// Use the command line to select in-mem search, NOTE: this is over ridden by what ever is in the DEFAULTS file (best to comment out this line then!)
-//    {
-//      sSpec.flags	|= FLAG_SS_INMEM;
-//    }
+#if	CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)
+    conf->gen->flags	|= FLAG_POW_HALF;	// Store powers in half-precision - this significantly cuts down on memory use and reads and writes so is very good
+#endif	// CUDART_VERSION
 
     conf->gen->flags	|= FLAG_STAGES;
 
@@ -2288,24 +2257,26 @@ confSpecs* defaultConfig()
     conf->gen->retType	|= CU_STR_ARR;		// Candidate storage structure
 
     conf->gen->noResPerBin	= 2;		// Inter-binning
-    conf->gen->candRRes		= 0.5;		// 1 Candidate per 2 bins
+    conf->gen->candRRes		= 0.5;		// 1 Candidate per 2 bins (saves space in the candidate array)
     conf->gen->zRes		= 2;
     conf->gen->zMax		= 200;
     conf->gen->ringLength	= 5;		// Just a good number
     conf->gen->cndProcessDelay	= 2;		// Queue at least one full iteration in the pipeline before copying and processing results of "previous" iteration
     conf->gen->planeWidth	= 8;		// A good default for newer GPU's
 
-    conf->gen->normType		= 0;
+    conf->gen->normType		= 0;		// Currently there is no other option
     conf->gen->inputNormzBound	= -1;		// Default to not uses, only used if specified in the defaults file
     conf->gen->inputFFFTzBound	= -1;		// Default to not uses, only used if specified in the defaults file
 
-    conf->gen->ssStepSize	= 32768;	// TODO: Check this, to small may be inefficient too large can make the IM plane to large
+    conf->gen->ssSegmentSize	= 32768;	// TODO: Check this, to small may be inefficient too large can make the IM plane to large
 
-    // Default: Auto chose best!
+    // Default: Automatically chose best!
     conf->gen->mulSlices	= 0;
     conf->gen->mulChunk		= 0;
     conf->gen->ssSlices		= 0;
     conf->gen->ssChunk		= 0;
+
+////// Candidate Optimisation \\\\\\
 
     conf->opt->zScale		= 4;
     conf->opt->optResolution	= 16;
@@ -2316,7 +2287,7 @@ confSpecs* defaultConfig()
     conf->opt->optMinRepHarms	= 1;
     conf->opt->nelderMeadDelta	= 1e-8;		// The distance between min and max NP points at which to stop the search
     conf->opt->nelderMeadReps	= 100;		// By default do a short NM optimisation
-    
+
     conf->opt->flags		|= FLAG_OPT_NRM_MEDIAN1D;	// Optimisation normalisation type
     //conf->opt->flags		|= FLAG_OPT_BLK_HRM;		// This will now auto select
     //conf->opt->flags		|= FLAG_OPT_PTS_HRM;		// This will now auto select
@@ -2368,8 +2339,8 @@ confSpecs* getConfig()
 
   confSpecs* conf = defaultConfig();
 
-  // Now read the
-  readAccelDefalts(conf);
+  // Now read the config text file
+  readAccelTextConfig(conf);
 
   return conf;
 }
@@ -2436,17 +2407,17 @@ searchSpecs* duplicate(searchSpecs* sSpec)
   return dup;
 }
 
-confSpecsGen* duplicate(confSpecsGen* conf)
+confSpecsCG* duplicate(confSpecsCG* conf)
 {
-  confSpecsGen* dup = new confSpecsGen;
-  memcpy(dup, conf, sizeof(confSpecsGen));
+  confSpecsCG* dup = new confSpecsCG;
+  memcpy(dup, conf, sizeof(confSpecsCG));
   return dup;
 }
 
-confSpecsOpt* duplicate(confSpecsOpt* conf)
+confSpecsCO* duplicate(confSpecsCO* conf)
 {
-  confSpecsOpt* dup = new confSpecsOpt;
-  memcpy(dup, conf, sizeof(confSpecsOpt));
+  confSpecsCO* dup = new confSpecsCO;
+  memcpy(dup, conf, sizeof(confSpecsCO));
   return dup;
 }
 
@@ -2494,7 +2465,7 @@ bool compare(searchSpecs* sSpec1, searchSpecs* sSpec2)
   return true;
 }
 
-bool compare(confSpecsGen* conf1, confSpecsGen* conf2)
+bool compare(confSpecsCG* conf1, confSpecsCG* conf2)
 {
   if ( conf1 == conf2 )
     return true;
@@ -2514,7 +2485,7 @@ bool compare(confSpecsGen* conf1, confSpecsGen* conf2)
   if (conf1->planeWidth != conf2->planeWidth )
     return false;
 
-  if (conf1->ssStepSize != conf2->ssStepSize )
+  if (conf1->ssSegmentSize != conf2->ssSegmentSize )
     return false;
 
   if (conf1->zMax != conf2->zMax )
@@ -2553,7 +2524,7 @@ bool compare(confSpecsGen* conf1, confSpecsGen* conf2)
   return true;
 }
 
-bool compare(confSpecsOpt* conf1, confSpecsOpt* conf2)
+bool compare(confSpecsCO* conf1, confSpecsCO* conf2)
 {
   if ( conf1 == conf2 )
     return true;
@@ -2616,13 +2587,13 @@ bool compare(gpuSpecs* gSpec1, gpuSpecs* gSpec2)
     if ( gSpec1->devId[devNo] != gSpec1->devId[devNo] )
       return false;
 
-    if ( gSpec1->noDevBatches[devNo] != gSpec1->noDevBatches[devNo] )
+    if ( gSpec1->noCgPlans[devNo] != gSpec1->noCgPlans[devNo] )
       return false;
 
-    if ( gSpec1->noDevOpt[devNo] != gSpec1->noDevOpt[devNo] )
+    if ( gSpec1->noCoPlans[devNo] != gSpec1->noCoPlans[devNo] )
       return false;
 
-    if ( gSpec1->noDevSteps[devNo] != gSpec1->noDevSteps[devNo] )
+    if ( gSpec1->noSegments[devNo] != gSpec1->noSegments[devNo] )
       return false;
   }
 
@@ -2688,6 +2659,7 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
     // Calculate appropriate z-max
     int numz = round(conf->gen->zMax / conf->gen->zRes) * 2 + 1;
     float adjust = 0;
+    float sigma_drop = 0;
 
     FOLD // Calculate power cutoff and number of independent values  .
     {
@@ -2714,11 +2686,14 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
 	    float dp = pow(10, floor(noP)-4 );  		// "Last" significant value
 
 	    adjust = -dp*(1<<ii);				// Subtract one significant "value" for each harmonic
+	    float sig_inital = candidate_sigma(srch->powerCut[ii], (1<<ii), srch->numindep[ii]);
 	    srch->powerCut[ii] += adjust;
+	    float sig_after = candidate_sigma(srch->powerCut[ii], (1<<ii), srch->numindep[ii]);
+	    sigma_drop = sig_inital - sig_after;
 	  }
 	}
 
-	infoMSG(6,6,"Stage %i numindep %12lli  threshold power %9.7f  adjusted %9.7f  \n", ii, srch->numindep[ii], srch->powerCut[ii], adjust);
+	infoMSG(6,6,"Stage %i numindep %12lli  threshold power %9.7f  adjusted %9.7f (%9.4f sigma)  \n", ii, srch->numindep[ii], srch->powerCut[ii], adjust, sigma_drop);
       }
     }
   }
@@ -2740,14 +2715,14 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
 
 cuSearch* initSearchInfCMD(Cmdline *cmd, accelobs* obs, gpuSpecs* gSpec)
 {
-  confSpecs*	conf	= getConfig();
-  fftInfo*	fft	= fftFromObs(obs);
-  searchSpecs*	sSpec	= sSpecsFromObs(cmd, obs, conf);
+  confSpecs*	conf	= getConfig();				// Get configuration  - defaults then text fine then command line
+  fftInfo*	fft	= fftFromObs(obs);			// Details of the actual DFT data
+  searchSpecs*	sSpec	= sSpecsFromObs(cmd, obs, conf);	// What of the DFT to search
 
   return initSearchInf(sSpec, conf, gSpec, fft);
 }
 
-ACC_ERR_CODE remOptFlag(cuPlnGen* plnGen, int64_t flag)
+acc_err remOptFlag(cuPlnGen* plnGen, int64_t flag)
 {
   if ( plnGen )
     plnGen->flags &= ~flag;
@@ -2759,7 +2734,7 @@ ACC_ERR_CODE remOptFlag(cuPlnGen* plnGen, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-ACC_ERR_CODE setOptFlag(cuPlnGen* plnGen, int64_t flag)
+acc_err setOptFlag(cuPlnGen* plnGen, int64_t flag)
 {
   if ( plnGen )
     plnGen->flags |=  flag;
@@ -2771,7 +2746,7 @@ ACC_ERR_CODE setOptFlag(cuPlnGen* plnGen, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-ACC_ERR_CODE setOptFlag(cuOpt* opt, int64_t flag)
+acc_err setOptFlag(cuCoPlan* opt, int64_t flag)
 {
   if ( opt )
   {
@@ -2787,7 +2762,7 @@ ACC_ERR_CODE setOptFlag(cuOpt* opt, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-ACC_ERR_CODE remOptFlag(cuOpt* opt, int64_t flag)
+acc_err remOptFlag(cuCoPlan* opt, int64_t flag)
 {
   if ( opt )
   {
@@ -2803,52 +2778,52 @@ ACC_ERR_CODE remOptFlag(cuOpt* opt, int64_t flag)
   return ACC_ERR_NONE;
 }
 
-ACC_ERR_CODE remOptFlag(cuOptInfo* oInf, int64_t flag)
+acc_err remOptFlag(cuCoInfo* oInf, int64_t flag)
 {
   if ( !oInf )
   {
     fprintf(stderr, "ERROR: Null pointer");
     return ACC_ERR_NULL;
   }
-  if ( !oInf->opts )
+  if ( !oInf->coPlans )
   {
     fprintf(stderr, "ERROR: Null pointer");
     return ACC_ERR_NULL;
   }
 
-  ACC_ERR_CODE ret = ACC_ERR_NONE;
-  for ( int i =0; i < oInf->noOpts; i++ )
+  acc_err ret = ACC_ERR_NONE;
+  for ( int i =0; i < oInf->noCoPlans; i++ )
   {
-    ret += remOptFlag(&oInf->opts[i], flag);
+    ret += remOptFlag(&oInf->coPlans[i], flag);
   }
 
   return ret;
 }
 
-ACC_ERR_CODE setOptFlag(cuOptInfo* oInf, int64_t flag)
+acc_err setOptFlag(cuCoInfo* oInf, int64_t flag)
 {
   if ( !oInf )
   {
     fprintf(stderr, "ERROR: Null pointer");
     return ACC_ERR_NULL;
   }
-  if ( !oInf->opts )
+  if ( !oInf->coPlans )
   {
     fprintf(stderr, "ERROR: Null pointer");
     return ACC_ERR_NULL;
   }
 
-  ACC_ERR_CODE ret = ACC_ERR_NONE;
-  for ( int i =0; i < oInf->noOpts; i++ )
+  acc_err ret = ACC_ERR_NONE;
+  for ( int i =0; i < oInf->noCoPlans; i++ )
   {
-    ret += setOptFlag(&oInf->opts[i], flag);
+    ret += setOptFlag(&oInf->coPlans[i], flag);
   }
   return ret;
 }
 
-ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag)
+acc_err setOptFlag(cuSearch* cuSrch, int64_t flag)
 {
-  ACC_ERR_CODE ret = ACC_ERR_NONE;
+  acc_err ret = ACC_ERR_NONE;
   if ( cuSrch )
     ret += setOptFlag(cuSrch->oInf, flag);
   else
@@ -2859,9 +2834,9 @@ ACC_ERR_CODE setOptFlag(cuSearch* cuSrch, int64_t flag)
   return ret;
 }
 
-ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag)
+acc_err remOptFlag(cuSearch* cuSrch, int64_t flag)
 {
-  ACC_ERR_CODE ret = ACC_ERR_NONE;
+  acc_err ret = ACC_ERR_NONE;
   if ( cuSrch )
     ret += remOptFlag(cuSrch->oInf, flag);
   else
@@ -2872,9 +2847,9 @@ ACC_ERR_CODE remOptFlag(cuSearch* cuSrch, int64_t flag)
   return ret;
 }
 
-ACC_ERR_CODE setOptFlag(confSpecsOpt* opt, int64_t flag)
+acc_err setOptFlag(confSpecsCO* opt, int64_t flag)
 {
-  ACC_ERR_CODE ret = ACC_ERR_NONE;
+  acc_err ret = ACC_ERR_NONE;
   if ( opt )
   {
     opt->flags |= flag;
@@ -2887,9 +2862,9 @@ ACC_ERR_CODE setOptFlag(confSpecsOpt* opt, int64_t flag)
   return ret;
 }
 
-ACC_ERR_CODE remOptFlag(confSpecsOpt* opt, int64_t flag)
+acc_err remOptFlag(confSpecsCO* opt, int64_t flag)
 {
-  ACC_ERR_CODE ret = ACC_ERR_NONE;
+  acc_err ret = ACC_ERR_NONE;
   if ( opt )
   {
     opt->flags &= ~flag;
@@ -2942,9 +2917,9 @@ void printCommandLine(int argc, char *argv[])
   printf("\n");
 }
 
-GSList* getCanidates(cuFFdotBatch* batch, GSList *cands )
+GSList* getCanidates(cuCgPlan* plan, GSList *cands )
 {
-  //  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(batch->h_candidates) ;
+  //  gridQuadTree<double, float>* qt = (gridQuadTree<double, float>*)(plan->h_candidates) ;
   //  quadNode<double, float>* head = qt->getHead();
   //
   //  qt->update();
@@ -3289,4 +3264,136 @@ long long compltCudaContext(gpuSpecs* gSpec)
   }
 
   return 0;
+}
+
+void* get_pointer(cuCgPlan* plan, PLN_MEM type, int stkIdx, int plainNo, int segment, int col, int z_idx)
+{
+  return get_pointer(plan, &plan->stacks[stkIdx], type, plainNo, segment, col, z_idx);
+}
+
+void* get_pointer(cuCgPlan* plan, cuFfdotStack* cStack, PLN_MEM type, int plainNo, int sgment, int col, int z_idx)
+{
+  cuHarmInfo* cHInfo	= &cStack->harmInf[plainNo];		// The current harmonic we are working on
+
+//  INPUT
+//  COMPLEX
+//  POWERS
+//  OUTPUT
+//  IM_PLN
+
+  if      (type == INPUT)
+  {
+    int offset = sgment*cStack->strideCmplx + col;
+    return &cStack->planes[plainNo].d_iData[offset];
+  }
+  else if (type == COMPLEX || type == POWERS )
+  {
+    void* src;
+    int stride = 0;
+    int elsz = 0;
+    int offset = 0;
+
+    if (type == COMPLEX)
+    {
+      src = cStack->planes[plainNo].d_planeCplx;
+      stride = cStack->strideCmplx;
+      if ( plan->flags & FLAG_DOUBLE )
+	elsz = sizeof(double2);
+      else
+	elsz = sizeof(float2);
+    }
+    else if (type == POWERS)
+    {
+      src = cStack->planes[plainNo].d_planePowr;
+      stride = cStack->stridePower;
+      if      ( plan->flags & FLAG_POW_HALF )
+      {
+	elsz = sizeof(half);
+      }
+      else if ( plan->flags & FLAG_CUFFT_CB_POW )
+      {
+	elsz = sizeof(float);
+      }
+      else
+      {
+	elsz = sizeof(fcomplexcu);
+      }
+    }
+
+    if      ( plan->flags & FLAG_ITLV_ROW )
+    {
+      offset = (z_idx*plan->noSegments + sgment)*stride + col;
+    }
+#ifdef	WITH_ITLV_PLN
+    else
+    {
+      offset  = (z_idx + sgment*cHInfo->noZ)*stride + col;
+    }
+#else	// WITH_ITLV_PLN
+    else
+    {
+      fprintf(stderr, "ERROR: functionality disabled in %s.\n", __FUNCTION__);
+      exit(EXIT_FAILURE);
+    }
+#endif	// WITH_ITLV_PLN
+
+    return src + elsz*offset;
+
+  }
+  else if (type == OUTPUT)
+  {
+    fprintf(stderr, "ERROR: Output searching not yet implemented in %s.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+  else if (type == IM_PLN)
+  {
+#if CUDART_VERSION >= 6050
+    rVals* rVal   = &(*plan->rAraays)[plan->rActive][sgment][0];
+    int back = cStack->harmInf->plnStart;
+//    back = 0; // DBG
+    int offset = z_idx*plan->cuSrch->inmemStride + (rVal->segment) * plan->accelLen - back + col;
+//    int offset = z_idx*plan->cuSrch->inmemStride + (rVal->segment) * cStack->width - back + col;
+
+    if ( plan->flags &  FLAG_POW_HALF )
+    {
+#if CUDART_VERSION >= 7050
+      return (half*)plan->cuSrch->d_planeFull + offset;		// A pointer to the location of the first segment in the in-mem plane
+#else
+      fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
+      exit(EXIT_FAILURE);
+#endif
+    }
+    else
+    {
+      return (float*)plan->cuSrch->d_planeFull + offset;	// A pointer to the location of the first segment in the in-mem plane
+    }
+#else
+    fprintf(stderr,"ERROR: CUFFT callbacks can only be used with CUDA 6.5 or later!\n");
+    exit(EXIT_FAILURE);
+#endif
+  }
+  else
+  {
+    fprintf(stderr, "ERROR: Invalid memory type in %s.\n", __FUNCTION__);
+    exit(EXIT_FAILURE);
+  }
+
+  return NULL;
+}
+
+acc_err add_to_bits(ulong* bits, ulong value, ulong start, ulong mask)
+{
+  acc_err ret = ACC_ERR_NONE;
+
+  *bits &= ~(mask);
+  ulong mx = mask >> start ;
+  if ( value > mx )
+  {
+    ret += ACC_ERR_OVERFLOW;
+  }
+  else
+  {
+    *bits |= ((value)<<start)&(mask);
+  }
+  return ret;
 }

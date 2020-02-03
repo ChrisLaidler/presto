@@ -22,7 +22,7 @@ extern "C"
 
 extern int    cuMedianBuffSz;
 
-__host__ void normAndSpread(cudaStream_t inpStream, cuFFdotBatch* batch, uint stack );
+__host__ void normAndSpread(cudaStream_t inpStream, cuCgPlan* plan, uint stack );
 
 
 #endif // CUDA_ACCEL_IN_INCLUDED

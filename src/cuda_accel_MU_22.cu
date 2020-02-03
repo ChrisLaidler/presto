@@ -132,116 +132,116 @@ __global__ void mult22_k(const __restrict__ float2*  kernels, const __restrict__
 }
 
 template<int64_t FLAGS>
-__host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+__host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multStream, cuCgPlan* plan, cuFfdotStack* cStack)
 {
   int offset            = cStack->startIdx;
 
-  switch (batch->noSteps)
+  switch (plan->noSegments)
   {
-#if MIN_STEPS <= 1  and MAX_STEPS >= 1
+#if MIN_SEGMENTS <= 1  and MAX_SEGMENTS >= 1
     case 1:
     {
-      mult22_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,1><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 2  and MAX_STEPS >= 2
+#if MIN_SEGMENTS <= 2  and MAX_SEGMENTS >= 2
     case 2:
     {
-      mult22_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,2><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 3  and MAX_STEPS >= 3
+#if MIN_SEGMENTS <= 3  and MAX_SEGMENTS >= 3
     case 3:
     {
-      mult22_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,3><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 4  and MAX_STEPS >= 4
+#if MIN_SEGMENTS <= 4  and MAX_SEGMENTS >= 4
     case 4:
     {
-      mult22_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,4><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 5  and MAX_STEPS >= 5
+#if MIN_SEGMENTS <= 5  and MAX_SEGMENTS >= 5
     case 5:
     {
-      mult22_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,5><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 6  and MAX_STEPS >= 6
+#if MIN_SEGMENTS <= 6  and MAX_SEGMENTS >= 6
     case 6:
     {
-      mult22_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,6><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 7  and MAX_STEPS >= 7
+#if MIN_SEGMENTS <= 7  and MAX_SEGMENTS >= 7
     case 7:
     {
-      mult22_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,7><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 8  and MAX_STEPS >= 8
+#if MIN_SEGMENTS <= 8  and MAX_SEGMENTS >= 8
     case 8:
     {
-      mult22_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,8><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 9  and MAX_STEPS >= 9
+#if MIN_SEGMENTS <= 9  and MAX_SEGMENTS >= 9
     case 9:
     {
-      mult22_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,9><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 10 and MAX_STEPS >= 10
+#if MIN_SEGMENTS <= 10 and MAX_SEGMENTS >= 10
     case 10:
     {
-      mult22_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,10><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 11 and MAX_STEPS >= 11
+#if MIN_SEGMENTS <= 11 and MAX_SEGMENTS >= 11
     case 11:
     {
-      mult22_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,11><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
-#if MIN_STEPS <= 12 and MAX_STEPS >= 12
+#if MIN_SEGMENTS <= 12 and MAX_SEGMENTS >= 12
     case 12:
     {
-      mult22_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeMult, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
+      mult22_k<FLAGS,12><<<dimGrid, dimBlock, i1, multStream>>>((float2*)cStack->kernels->d_kerData, (float2*)cStack->d_iData, (float2*)cStack->d_planeCplx, cStack->width, cStack->strideCmplx, cStack->noInStack, offset);
       break;
     }
 #endif
 
     default:
     {
-      if      ( batch->noSteps < MIN_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
-      else if ( batch->noSteps > MAX_STEPS )
-	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, batch->noSteps, MIN_STEPS );
+      if      ( plan->noSegments < MIN_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) less than the compiled minimum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
+      else if ( plan->noSegments > MAX_SEGMENTS )
+	fprintf(stderr, "ERROR: In %s, # steps (%i) greater than the compiled maximum %i.\n", __FUNCTION__, plan->noSegments, MIN_SEGMENTS );
       else
-	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, batch->noSteps);
+	fprintf(stderr, "ERROR: %s has not been templated for %i steps.\n", __FUNCTION__, plan->noSegments);
 
       exit(EXIT_FAILURE);
     }
@@ -250,7 +250,7 @@ __host__  void mult22_s(dim3 dimGrid, dim3 dimBlock, int i1, cudaStream_t multSt
 
 #endif	// WITH_MUL_22
 
-__host__  void mult22(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack* cStack)
+__host__  void mult22(cudaStream_t multStream, cuCgPlan* plan, cuFfdotStack* cStack)
 {
 #ifdef WITH_MUL_22
 
@@ -262,11 +262,11 @@ __host__  void mult22(cudaStream_t multStream, cuFFdotBatch* batch, cuFfdotStack
   dimGrid.x = ceil(cStack->width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = cStack->mulSlices;
 
-  if      ( batch->flags & FLAG_ITLV_ROW )
-    mult22_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+  if      ( plan->flags & FLAG_ITLV_ROW )
+    mult22_s<FLAG_ITLV_ROW>(dimGrid, dimBlock, 0, multStream, plan, cStack);
 #ifdef WITH_ITLV_PLN
   else
-    mult22_s<0>(dimGrid, dimBlock, 0, multStream, batch, cStack);
+    mult22_s<0>(dimGrid, dimBlock, 0, multStream, plan, cStack);
 #else
   else
   {

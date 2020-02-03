@@ -56,7 +56,7 @@ __device__ inline void swap(int & a, int & b)
 template <typename T>
 __device__ inline T shflSwap(const T x, int mask, int dir)
 {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
   T y = __shfl_xor_sync(0xffffffff, x, mask);
 #else
   T y = __shfl_xor(x, mask);
@@ -162,7 +162,7 @@ __device__ /*inline*/ void bitonicSort3x_warp_regs(T* val, const int laneId)
 	  int i0 = (i+1)*2-1-p1;	// 1
 	  int i1 = i*2+p1;		// 0
 
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  T v0 = __shfl_xor_sync(0xffffffff, val[i1], 0x1F);
 	  T v1 = __shfl_xor_sync(0xffffffff, val[i0], 0x1F);
 #else
@@ -201,7 +201,7 @@ __device__ /*inline*/ void bitonicSort3x_warp_regs(T* val, const int laneId)
 	{
 	  int i0 = (i+1)*4-1-p1;	// 3 2
 	  int i1 = i*4+p1;		// 0 1
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  T v0 = __shfl_xor_sync(0xffffffff, val[i1], 0x1F);
 	  T v1 = __shfl_xor_sync(0xffffffff, val[i0], 0x1F);
 #else
@@ -249,7 +249,7 @@ __device__ /*inline*/ void bitonicSort3x_warp_regs(T* val, const int laneId)
 	{
 	  int i0 = (i+1)*8-1-p1;	// 7 6 5 4
 	  int i1 = i*8+p1;		// 0 1 2 3
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  T v0 = __shfl_xor_sync(0xffffffff, val[i1], 0x1F);
 	  T v1 = __shfl_xor_sync(0xffffffff, val[i0], 0x1F);
 #else
@@ -394,10 +394,10 @@ __device__ void bitonicSort3x_regs_SM(T *data, T *val)
 	      for ( int a = 0; a < NoArr; a++)
 	      {
 		int idx = wId*32*NoArr + a*32 + laneId;
-		int bit = bit(idx, bPos);
+		int bvl = bit(idx, bPos);
 		int otherIdx = idx ^ (pow2-1);
 		T otherV =  data[otherIdx];
-		val[a] = val[a] < otherV == !bit ? val[a] : otherV;
+		val[a] = val[a] < otherV == !bvl ? val[a] : otherV;
 	      }
 	    }
 
@@ -428,11 +428,11 @@ __device__ void bitonicSort3x_regs_SM(T *data, T *val)
 		  for ( int a = 0; a < NoArr; a++)
 		  {
 		    int idx = wId*32*NoArr + a*32 + laneId;
-		    int bit = bit(idx, bPos2);
+		    int bvl = bit(idx, bPos2);
 		    int otherIdx = idx ^ (mLen/2);
 
 		    T otherV =  data[otherIdx];
-		    val[a] = val[a] < otherV == !bit ? val[a] : otherV;
+		    val[a] = val[a] < otherV == !bvl ? val[a] : otherV;
 		  }
 		}
 
@@ -569,7 +569,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 	{
 	  __syncthreads(); // SM Writes
 
-	  int bit = bit(wId, bPos);
+	  int bvl = bit(wId, bPos);
 	  int writeIdx = wId*32 + laneId;
 	  int readIdx  = (wId ^ (wPos-1)) * 32 + laneId ^ 31;
 #pragma unroll
@@ -577,7 +577,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 	  {
 	    int aIdx;
 
-	    if ( bit )
+	    if ( bvl )
 	      aIdx = (NoArr-1) ^ a;
 	    else
 	      aIdx = a;
@@ -591,7 +591,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 	    T otherV = data[readIdx];
 
 	    // Do the comparison and save
-	    val[aIdx] = val[aIdx] < otherV == !bit ? val[aIdx] : otherV;
+	    val[aIdx] = val[aIdx] < otherV == !bvl ? val[aIdx] : otherV;
 	  }
 	}
 
@@ -604,7 +604,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 	    {
 	      __syncthreads(); // SM Writes
 
-	      int bit = bit(wId, bPos2);
+	      int bvl = bit(wId, bPos2);
 	      int writIdx = wId*32 + laneId;
 	      int readIdx = ( wId ^ (wPos2)) * 32 + laneId;
 
@@ -620,7 +620,7 @@ __device__ void bitonicSort3x_regs_1024(T *val)
 		T otherV = data[readIdx];
 
 		// Do the comparison and save
-		val[a] = val[a] < otherV == !bit ? val[a] : otherV;
+		val[a] = val[a] < otherV == !bvl ? val[a] : otherV;
 	      }
 	    }
 	  }
@@ -783,7 +783,7 @@ __device__ inline float boundsReduce1(int* offset, T *val, T *array, float *lftB
 
 	for ( int a = 0; a < NoArr; a++)			// Count each threads values
 	{
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  uint bitsL = __ballot_sync(0xffffffff, (val[a] <= lft));
 	  uint bitsR = __ballot_sync(0xffffffff, (val[a] <= rht));
 #else
@@ -885,7 +885,7 @@ __device__ inline float boundsReduce1(int* offset, T *val, T *array, float *lftB
   {
     for ( int a = 0; a < noMels; a++)
     {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
       float wVal = __shfl_sync(0xffffffff, val[a*2], 31);
 #else
       float wVal = __shfl(val[a*2], 31);
@@ -1076,7 +1076,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //
 //	  for ( int a = 0; a < NoArr; a++)				// Count each threads values
 //	  {
-//#if CUDART_VERSION >= 10000
+//#if CUDART_VERSION >= 9000
 //	    uint bitsL = __ballot_sync(0xffffffff, (val[a] <= lft));
 //	    uint bitsR = __ballot_sync(0xffffffff, (val[a] <= rht));
 //#else
@@ -1178,7 +1178,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //    {
 //      for ( int a = 0; a < noMels; a++)
 //      {
-//#if CUDART_VERSION >= 10000
+//#if CUDART_VERSION >= 9000
 //	float wVal = __shfl_sync(0xffffffff, val[a*2], 31);
 //#else
 //	float wVal = __shfl(val[a*2], 31);
@@ -1307,7 +1307,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //
 //	  for ( int a = 0; a < NoArr; a++)				// Count each threads values
 //	  {
-//#if CUDART_VERSION >= 10000
+//#if CUDART_VERSION >= 9000
 //	    uint bitsL = __ballot_sync(0xffffffff, (val[a] <= lft));
 //	    uint bitsR = __ballot_sync(0xffffffff, (val[a] <= rht));
 //#else
@@ -1409,7 +1409,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //    {
 //      for ( int a = 0; a < noMels; a++)
 //      {
-//#if CUDART_VERSION >= 10000
+//#if CUDART_VERSION >= 9000
 //	float wVal = __shfl_sync(0xffffffff, val[a*2], 31);
 //#else
 //	float wVal = __shfl(val[a*2], 31);
@@ -1539,7 +1539,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //
 //	  for ( int a = 0; a < NoArr; a++)				// Count each threads values
 //	  {
-//#if CUDART_VERSION >= 10000
+//#if CUDART_VERSION >= 9000
 //	    uint bitsL = __ballot_sync(0xffffffff, (val[a] <= lft));
 //	    uint bitsR = __ballot_sync(0xffffffff, (val[a] <= rht));
 //#else
@@ -1641,7 +1641,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 //    {
 //      for ( int a = 0; a < noMels; a++)
 //      {
-//#if CUDART_VERSION >= 10000
+//#if CUDART_VERSION >= 9000
 //	float wVal = __shfl_sync(0xffffffff, val[a*2], 31);
 //#else
 //	float wVal = __shfl(val[a*2], 31);
@@ -1783,7 +1783,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
 	  if ( tid < noVals )						// Count each threads values  .
 	  {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	    uint bitsL = __ballot_sync(0xffffffff, (val[0] <= lft));
 	    uint bitsR = __ballot_sync(0xffffffff, (val[0] <= rht));
 #else
@@ -1887,7 +1887,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       {
 	if ( warpActive )
 	{
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  float wVal	= __shfl_sync(0xffffffff, val[0], 15);		// Median of this warp
 #else
 	  float wVal	= __shfl(val[0], 15);				// Median of this warp
@@ -2046,7 +2046,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
 	  if ( tid < noVals )						// Count each threads values  .
 	  {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	    uint bitsL = __ballot_sync(0xffffffff, (val[0] <= lft));
 	    uint bitsR = __ballot_sync(0xffffffff, (val[0] <= rht));
 #else
@@ -2150,7 +2150,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       {
 	if ( warpActive )
 	{
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  float wVal	= __shfl_sync(0xffffffff, val[0], 15);		// Median of this warp
 #else
 	  float wVal	= __shfl(val[0], 15);				// Median of this warp
@@ -2307,7 +2307,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
 
 	  if ( tid < noVals )						// Count each threads values  .
 	  {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	    uint bitsL = __ballot_sync(0xffffffff, (val[0] <= lft));
 	    uint bitsR = __ballot_sync(0xffffffff, (val[0] <= rht));
 #else
@@ -2411,7 +2411,7 @@ __device__ float cuOrderStatPow2_radix_local(int offset, int noArrays, T *val, c
       {
 	if ( warpActive )
 	{
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	  float wVal	= __shfl_sync(0xffffffff, val[0], 15);		// Median of this warp
 #else
 	  float wVal	= __shfl(val[0], 15);				// Median of this warp
@@ -2603,7 +2603,7 @@ __device__ inline float boundsReduce2(int* offset, T *val, T* array, float *lftB
 
 	  for ( int a = 0; a < 8; a++)					// Count each threads values
 	  {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
 	    uint bitsL = __ballot_sync(0xffffffff, (val[a] <= lft));
 	    uint bitsR = __ballot_sync(0xffffffff, (val[a] <= rht));
 #else
@@ -2705,7 +2705,7 @@ __device__ inline float boundsReduce2(int* offset, T *val, T* array, float *lftB
 
   FOLD // Write values back to array  .
   {
-#if CUDART_VERSION >= 10000
+#if CUDART_VERSION >= 9000
     float wVal = __shfl_sync(0xffffffff, val[3], 31);
 #else
     float wVal = __shfl(val[3], 31);
@@ -3097,10 +3097,10 @@ __device__ void bitonicSort_SM(T *data )
 	      for ( int a = 0; a < NoArr; a++)
 	      {
 		int idx = wId*32*NoArr + a*32 + laneId;
-		int bit = bit(idx, bPos);
+		int bvl = bit(idx, bPos);
 		int otherIdx = idx ^ (pow2-1);
 		T otherV =  data[otherIdx];
-		val[a] = val[a] < otherV == !bit ? val[a] : otherV;
+		val[a] = val[a] < otherV == !bvl ? val[a] : otherV;
 	      }
 	    }
 	  }
@@ -3134,11 +3134,11 @@ __device__ void bitonicSort_SM(T *data )
 		for ( int a = 0; a < NoArr; a++)
 		{
 		  int idx = wId*32*NoArr + a*32 + laneId;
-		  int bit = bit(idx, bPos2);
+		  int bvl = bit(idx, bPos2);
 		  int otherIdx = idx ^ (mLen/2);
 
 		  T otherV =  data[otherIdx];
-		  val[a] = val[a] < otherV == !bit ? val[a] : otherV;
+		  val[a] = val[a] < otherV == !bvl ? val[a] : otherV;
 		}
 	      }
 
