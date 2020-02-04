@@ -223,7 +223,7 @@ void setInMemPlane(cuSearch* cuSrch, ImPlane planePos)
 
   FOLD // Set the plane bounds  .
   {
-    setPlaneBounds(cuSrch->conf->gen, kernel->hInfos, kernel->noSrchHarms, planePos  );
+    setPlaneBounds(cuSrch->conf->gen, kernel->harmInf, kernel->noSrchHarms, planePos  );
   }
 
   FOLD // Set the sizes values of the harmonics and kernels and pointers to kernel data  .
@@ -824,11 +824,11 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
   {
     FOLD // Allocate memory  .
     {
-      kernel->hInfos		= (cuHarmInfo*) malloc(kernel->noSrchHarms * sizeof(cuHarmInfo));
+      kernel->harmInf		= (cuHarmInfo*) malloc(kernel->noSrchHarms * sizeof(cuHarmInfo));
       kernel->kernels		= (cuKernel*)   malloc(kernel->noGenHarms  * sizeof(cuKernel));
 
       // Zero memory for kernels and harmonics
-      memset(kernel->hInfos,  0, kernel->noSrchHarms * sizeof(cuHarmInfo));
+      memset(kernel->harmInf,  0, kernel->noSrchHarms * sizeof(cuHarmInfo));
       memset(kernel->kernels, 0, kernel->noGenHarms  * sizeof(cuKernel));
     }
 
@@ -929,11 +929,11 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	    cuHarmInfo* hInfs;
 	    hFrac		= (i) / (double)kernel->noSrchHarms;
 	    hIdx		= kernel->noSrchHarms-i;
-	    hInfs		= &kernel->hInfos[hIdx];                              // Harmonic index
+	    hInfs		= &kernel->harmInf[hIdx];                              // Harmonic index
 
 	    hInfs->harmFrac	= hFrac;
 	    hInfs->zmax		= cu_calc_required_z<double>(hInfs->harmFrac, conf->zMax, conf->zRes);
-	    hInfs->width	= cu_calc_fftlen<double>(hInfs->harmFrac, kernel->hInfos[0].zmax, kernel->accelLen, accuracy, conf->noResPerBin, conf->zRes);
+	    hInfs->width	= cu_calc_fftlen<double>(hInfs->harmFrac, kernel->harmInf[0].zmax, kernel->accelLen, accuracy, conf->noResPerBin, conf->zRes);
 	    hInfs->halfWidth	= cu_z_resp_halfwidth<double>(hInfs->zmax, accuracy);
 	    hInfs->noResPerBin	= conf->noResPerBin;
 	    hInfs->requirdWidth	= ceil(kernel->accelLen * hInfs->harmFrac / (double)conf->noResPerBin ) * conf->noResPerBin;			// Width of usable data for this plane
@@ -1002,11 +1002,11 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	{
 	  if ( kernel->flags & FLAG_Z_SPLIT )
 	  {
-	    setPlaneBounds(conf, kernel->hInfos, kernel->noSrchHarms, IM_TOP  );
+	    setPlaneBounds(conf, kernel->harmInf, kernel->noSrchHarms, IM_TOP  );
 	  }
 	  else
 	  {
-	    setPlaneBounds(conf, kernel->hInfos, kernel->noSrchHarms, IM_FULL );
+	    setPlaneBounds(conf, kernel->harmInf, kernel->noSrchHarms, IM_FULL );
 	  }
 	}
 
@@ -1028,7 +1028,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	      hFrac       = harm/float(harmtosum);
 	      hIdx        = hFrac == 1 ? 0 : round(hFrac*kernel->noSrchHarms);
 
-	      kernel->hInfos[hIdx].stageIndex	= sIdx;
+	      kernel->harmInf[hIdx].stageIndex	= sIdx;
 	      cuSrch->sIdx[sIdx]		= hIdx; // TODO: Move this
 
 	      infoMSG(6,6,"Fraction: %5.3f ( %2i/%2i ), Harmonic idx %2i, Stage idx %2i \n", hFrac, harm, harmtosum, hIdx, sIdx );
@@ -1040,7 +1040,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
     else			// Copy details from the master plan  .
     {
       // Copy memory from kernels and harmonics
-      memcpy(kernel->hInfos,  master->hInfos,  kernel->noSrchHarms * sizeof(cuHarmInfo));
+      memcpy(kernel->harmInf,  master->harmInf,  kernel->noSrchHarms * sizeof(cuHarmInfo));
       memcpy(kernel->kernels, master->kernels, kernel->noGenHarms  * sizeof(cuKernel));
     }
   }
@@ -1098,7 +1098,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	  cStack->height        = 0;
 	  cStack->noInStack     = noInStack[i];
 	  cStack->startIdx      = prev;
-	  cStack->harmInf       = &kernel->hInfos[cStack->startIdx];
+	  cStack->harmInf       = &kernel->harmInf[cStack->startIdx];
 	  cStack->kernels       = &kernel->kernels[cStack->startIdx];
 	  cStack->width         = cStack->harmInf->width;
 	  cStack->kerHeigth     = cStack->harmInf->noZ;
@@ -1238,7 +1238,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 
       FOLD // Check contamination of the largest stack  .
       {
-	float contamination = (kernel->hInfos->halfWidth*2*conf->noResPerBin)/(float)kernel->hInfos->width*100 ;
+	float contamination = (kernel->harmInf->halfWidth*2*conf->noResPerBin)/(float)kernel->harmInf->width*100 ;
 	if ( contamination > 25 )
 	{
 	  fprintf(stderr, "WARNING: Contamination is high, consider increasing width with the -width flag.\n");
@@ -1367,7 +1367,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	if ( kernel->flags & FLAG_SS_31 )
 	  alignemen = kernel->noGenHarms;
 
-	setSrchSize(cuSrch->sSpec, kernel->hInfos->halfWidth, kernel->noGenHarms, alignemen);
+	setSrchSize(cuSrch->sSpec, kernel->harmInf->halfWidth, kernel->noGenHarms, alignemen);
 
 	if ( (kernel->flags & FLAG_STORE_ALL) && !( kernel->flags  & FLAG_STAGES) )
 	{
@@ -1621,7 +1621,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	      kernel->ssSlices		= 1 ;
 	    }
 	  }
-	  kernel->ssSlices		= MIN(kernel->ssSlices, ceil(kernel->hInfos->noZ/20.0) );		// TODO make this 20 a configurable parameter
+	  kernel->ssSlices		= MIN(kernel->ssSlices, ceil(kernel->harmInf->noZ/20.0) );		// TODO make this 20 a configurable parameter
 
 	  infoMSG(5,5,"Sum & Search slices set to %i ", kernel->ssSlices);
 
@@ -1641,7 +1641,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	if      ( kernel->retType & CU_STR_PLN )
 	{
 	  // Each stage returns a plane the size of the fundamental
-	  retY = kernel->hInfos->noZ;
+	  retY = kernel->harmInf->noZ;
 	}
 	else
 	{
@@ -1735,7 +1735,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	      {
 		size_t imWidth;
 		imWidth		= calcImWidth(cuSrch->sSpec->noSearchR*conf->noResPerBin, kernel->accelLen*noSegmentsTest,  kernel->stacks->width*noSegmentsTest);
-		planeSize	= imWidth * kernel->hInfos->noZ * inmElsSZ;
+		planeSize	= imWidth * kernel->harmInf->noZ * inmElsSZ;
 	      }
 
 	      if ( kernel->flags & CU_FFT_SEP_PLN )
@@ -2020,9 +2020,9 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	    imWidth = calcImWidth(cuSrch->sSpec->noSearchR*conf->noResPerBin, kernel->accelLen*kernel->noSegments,  kernel->strideOut);
 	  }
 
-	  planeSize		= imWidth * kernel->hInfos->noZ * inmElsSZ;
+	  planeSize		= imWidth * kernel->harmInf->noZ * inmElsSZ;
 
-	  infoMSG(7,7,"In-mem plane: %.2f GB - %i  ( %i x %i ) points at %i Bytes. \n", planeSize*1e-9, imWidth * kernel->hInfos->noZ, imWidth, kernel->hInfos->noZ, inmElsSZ);
+	  infoMSG(7,7,"In-mem plane: %.2f GB - %i  ( %i x %i ) points at %i Bytes. \n", planeSize*1e-9, imWidth * kernel->harmInf->noZ, imWidth, kernel->harmInf->noZ, inmElsSZ);
 	}
 
 	char  cufftType[1024];
@@ -2139,7 +2139,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	}
 
 	size_t stride;
-	CUDA_SAFE_CALL(cudaMallocPitch(&cuSrch->d_planeFull, &stride, inmElsSZ*cuSrch->inmemStride, kernel->hInfos->noZ),   "Failed to allocate strided memory for in-memory plane.");
+	CUDA_SAFE_CALL(cudaMallocPitch(&cuSrch->d_planeFull, &stride, inmElsSZ*cuSrch->inmemStride, kernel->harmInf->noZ),   "Failed to allocate strided memory for in-memory plane.");
 	infoMSG(7,7,"In-mem plane %p", cuSrch->d_planeFull);
 
 	FOLD // Check byte stride  . DBG Removed
@@ -2152,10 +2152,10 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	  }
 	}
 
-	CUDA_SAFE_CALL(cudaMemsetAsync(cuSrch->d_planeFull, 0, stride*kernel->hInfos->noZ, kernel->stacks->initStream), "Failed to initiate in-memory plane to zero");
+	CUDA_SAFE_CALL(cudaMemsetAsync(cuSrch->d_planeFull, 0, stride*kernel->harmInf->noZ, kernel->stacks->initStream), "Failed to initiate in-memory plane to zero");
 
-	free -= stride*kernel->hInfos->noZ;
-	infoMSG(7,7,"In-mem plane: %.2f GB free: %.3f MB\n", stride*kernel->hInfos->noZ*1e-9, free*1e-6);
+	free -= stride*kernel->harmInf->noZ;
+	infoMSG(7,7,"In-mem plane: %.2f GB free: %.3f MB\n", stride*kernel->harmInf->noZ*1e-9, free*1e-6);
 
 	infoMSG(7,7,"ker: %.3f MB - FFT: %.3f MB - batch: %.3f MB - inptDataSize: %.2f MB - cmlxDataSize: ~%.2f MB - powrDataSize: ~%.2f MB - candDataSize: ~%.2f MB \n",
 	    kerSize*1e-6,
@@ -2476,15 +2476,15 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
       {
 #if CUDART_VERSION >= 6050					// CUFFT callbacks only implemented in CUDA 6.5
 
-	SAFE_CALL(copy_CuFFT_load_CBs(kernel),  "ERROR: Copying symbols for cuFFT callback");
-	SAFE_CALL(copy_CuFFT_store_CBs(kernel), "ERROR: Copying symbols for cuFFT callback");
 
 	// Set the CUFFT load and store callback if necessary  .
 	for (int i = 0; i < kernel->noStacks; i++)		// Loop through Stacks
 	{
 	  cuFfdotStack* cStack = &kernel->stacks[i];
+	  SAFE_CALL(copy_CuFFT_load_CBs(kernel,  cStack), "ERROR: Copying symbols for cuFFT callback");
+	  SAFE_CALL(copy_CuFFT_store_CBs(kernel, cStack), "ERROR: Copying symbols for cuFFT callback");
 
-	  SAFE_CALL(set_CuFFT_load_CBs(kernel, cStack),  "ERROR; setting load cuFFT callback values");
+	  SAFE_CALL(set_CuFFT_load_CBs(kernel,  cStack), "ERROR; setting load cuFFT callback values");
 	  SAFE_CALL(set_CuFFT_store_CBs(kernel, cStack), "ERROR; setting store cuFFT callback values");
 	}
 #endif
@@ -2632,7 +2632,7 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
 		  infoMSG(5,5,"segments (%i) < 4\n", kernel->noSegments );
 
 		  // very few segments so 2.2 not always the best option
-		  if ( kernel->hInfos->zmax > 100 )  // TODO: this should use stack height rather than total zmax
+		  if ( kernel->harmInf->zmax > 100 )  // TODO: this should use stack height rather than total zmax
 		  {
 		    infoMSG(5,5,"zmax > 100 use mult 2.3.\n");
 
@@ -2899,7 +2899,7 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
       FOLD // Clamps
       {
 	// Clamp S&S chunks to slice height
-	plan->ssChunk = MINN(plan->ssChunk, ceil(kernel->hInfos->noZ/(float)plan->ssSlices) );
+	plan->ssChunk = MINN(plan->ssChunk, ceil(kernel->harmInf->noZ/(float)plan->ssSlices) );
 
 	// Clamp S&S chunks to valid bounds
 	MINN(plan->ssChunk, MAX_SAS_CHUNK);
@@ -2962,13 +2962,13 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
 
     if ( kernel->flags & CU_FFT_SEP_PLN )		// Set CUFFT callbacks
     {
-      SAFE_CALL(copy_CuFFT_load_CBs(plan),  "ERROR: Copying symbols for cuFFT callback");
-      SAFE_CALL(copy_CuFFT_store_CBs(plan), "ERROR: Copying symbols for cuFFT callback");
-
       // Set the CUFFT load and store callback if necessary  .
       for (int i = 0; i < plan->noStacks; i++)		// Loop through Stacks
       {
 	cuFfdotStack* cStack = &plan->stacks[i];
+	SAFE_CALL(copy_CuFFT_load_CBs(plan,  cStack), "ERROR: Copying symbols for cuFFT callback");
+	SAFE_CALL(copy_CuFFT_store_CBs(plan, cStack), "ERROR: Copying symbols for cuFFT callback");
+
 	SAFE_CALL(set_CuFFT_load_CBs(plan, cStack),  "ERROR; setting load cuFFT callback values");
 	SAFE_CALL(set_CuFFT_store_CBs(plan, cStack), "ERROR; setting store cuFFT callback values");
       }
@@ -3020,10 +3020,10 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
 
 	if ( !(plan->flags & CU_NORM_GPU) )
 	{
-	  infoMSG(5,5,"Allocate memory for normalisation powers. (%.2f MB)\n", plan->hInfos->width * sizeof(float)*1e-6 );
+	  infoMSG(5,5,"Allocate memory for normalisation powers. (%.2f MB)\n", plan->harmInf->width * sizeof(float)*1e-6 );
 
 	  // Allocate CPU memory for normalisation
-	  plan->h_normPowers = (float*) malloc(plan->hInfos->width * sizeof(float));
+	  plan->h_normPowers = (float*) malloc(plan->harmInf->width * sizeof(float));
 	}
       }
 
@@ -3879,7 +3879,7 @@ void freeKernel(cuCgPlan* kernrl)
   freeKernelGPUmem(kernrl);
 
   freeNull(kernrl->stacks);
-  freeNull(kernrl->hInfos);
+  freeNull(kernrl->harmInf);
   freeNull(kernrl->kernels);
 }
 
@@ -4323,15 +4323,15 @@ int setConstVals_Fam_Order( cuCgPlan* plan )
     {
       for (int i = 0; i < plan->noGenHarms; i++)
       {
-	cuFfdotStack* cStack  = &plan->stacks[ plan->hInfos[i].stackNo];
+	cuFfdotStack* cStack  = &plan->stacks[ plan->harmInf[i].stackNo];
 
-	height[i]	= plan->hInfos[i].noZ;
+	height[i]	= plan->harmInf[i].noZ;
 	stride[i]	= cStack->strideCmplx;
-	width[i]	= plan->hInfos[i].width;
+	width[i]	= plan->harmInf[i].width;
 	kerPnt[i]	= plan->kernels[i].d_kerData;
 	ker_off[i]	= plan->kernels[i].kreOff;
 
-	if ( (i>=plan->noGenHarms) &&  (plan->hInfos[i].width != cStack->strideCmplx) )
+	if ( (i>=plan->noGenHarms) &&  (plan->harmInf[i].width != cStack->strideCmplx) )
 	{
 	  fprintf(stderr,"ERROR: Width is not the same as stride, using width this may case errors in the multiplication.\n");
 	}

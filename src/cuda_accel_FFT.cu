@@ -57,6 +57,27 @@ __device__ void CB_powerToPowerPlane( void *dataOut, size_t offset, cufftComplex
   ((T*)dataOut)[offset] = getPower(element, notthing);
 }
 
+/** CUFFT callback kernel to calculate and store float powers after the FFT  .
+ */
+template<typename T>
+__device__ void CB_powerToPowerPlane_clip( void *dataOut, size_t offset, cufftComplex element, void *callerInfo, void *sharedPtr)
+{
+  uint lo;
+  uint hi;
+  asm("mov.b64 {%0, %1}, %2 ; " : "=r"(lo), "=r"(hi) : "l"(callerInfo));
+  const uint width  = 1<<bfe(lo, CB_STRT_WIDTH, CB_WITH_WIDTH);
+  const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
+  const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+  const uint col    = offset & (width-1);
+
+  if ( col >= start && col <= (start+aleng) )
+  {
+    // Write result (offsets are the same)
+    T notthing;
+    ((T*)dataOut)[offset] = getPower(element, notthing);
+  }
+}
+
 /** CUFFT callback kernel to calculate and store half powers in the in-memory plane, after the FFT  .
  *  CallerInfo is passed as the address of the first element of the first segment in the inmem plane
  *  Assumes row interleaved data
@@ -142,6 +163,7 @@ __device__ void CB_powerToInMemPlane( void *dataOut, size_t offset, cufftComplex
 
 #ifdef	WITH_SINGLE_RESCISION_POWERS
 __device__ cufftCallbackStoreC d_powerRow_f         = CB_powerToPowerPlane<float>;
+__device__ cufftCallbackStoreC d_powerRow_clip_f    = CB_powerToPowerPlane_clip<float>;
 __device__ cufftCallbackStoreC d_inmemRow_f         = CB_powerToInMemPlane<float>;
 __device__ cufftCallbackStoreC d_inmemRow_08_04_f   = CB_powerToInMemPlane_pow2<float, 8192, 4>;	// Common case so template
 __device__ cufftCallbackStoreC d_inmemRow_08_08_f   = CB_powerToInMemPlane_pow2<float, 8192, 8>;	// Common case so template
@@ -151,6 +173,7 @@ __device__ cufftCallbackStoreC d_inmemRow_04_08_f   = CB_powerToInMemPlane_pow2<
 
 #if	CUDART_VERSION >= 7050 && defined(WITH_HALF_RESCISION_POWERS)	// Half precision CUFFT power call back  .
 __device__ cufftCallbackStoreC d_powerRow_h         = CB_powerToPowerPlane<half>;
+__device__ cufftCallbackStoreC d_powerRow_clip_h    = CB_powerToPowerPlane_clip<half>;
 __device__ cufftCallbackStoreC d_inmemRow_h         = CB_powerToInMemPlane<half>;
 __device__ cufftCallbackStoreC d_inmemRow_08_04_h   = CB_powerToInMemPlane_pow2<half, 8192, 4>;		// Common case so template
 __device__ cufftCallbackStoreC d_inmemRow_08_08_h   = CB_powerToInMemPlane_pow2<half, 8192, 8>;		// Common case so template
@@ -166,7 +189,7 @@ __device__ cufftCallbackStoreC d_inmemRow_04_08_h   = CB_powerToInMemPlane_pow2<
 
 /** Load the CUFFT callbacks  .
  */
-acc_err copy_CuFFT_store_CBs(cuCgPlan* plan)
+acc_err copy_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
 {
   acc_err ret = ACC_ERR_NONE;
   PROF // Profiling  .
@@ -187,30 +210,30 @@ acc_err copy_CuFFT_store_CBs(cuCgPlan* plan)
       {
 	if ( plan->flags & FLAG_CUFFT_CB_INMEM )	// Store powers to inmem plane
 	{
-	  if      (plan->stacks->width == 8192 &&  plan->noSegments == 4)	// Special common case
+	  if      (cStack->width == 8192 &&  plan->noSegments == 4)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_08_04_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_08_04_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else if (plan->stacks->width == 8192 &&  plan->noSegments == 8)	// Special common case
+	  else if (cStack->width == 8192 &&  plan->noSegments == 8)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_08_08_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_08_08_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else if (plan->stacks->width == 4096 &&  plan->noSegments == 4)	// Special common case
+	  else if (cStack->width == 4096 &&  plan->noSegments == 4)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_04_04_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_04_04_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else if (plan->stacks->width == 4096 &&  plan->noSegments == 8)	// Special common case
+	  else if (cStack->width == 4096 &&  plan->noSegments == 8)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_04_08_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_04_08_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else									// Generic
+	  else								// Generic
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
 	}
 	else if ( plan->flags & FLAG_CUFFT_CB_POW )	// Store powers to powers plane
 	{
-	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_powerRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_powerRow_h, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	}
       }
       else						// Row interleaved
@@ -232,30 +255,30 @@ acc_err copy_CuFFT_store_CBs(cuCgPlan* plan)
       {
 	if ( plan->flags & FLAG_CUFFT_CB_INMEM )	// Store powers to in-mem plane
 	{
-	  if      (plan->stacks->width == 8192 &&  plan->noSegments == 4)	// Special common case
+	  if      (cStack->width == 8192 &&  plan->noSegments == 4)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_08_04_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_08_04_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else if (plan->stacks->width == 8192 &&  plan->noSegments == 8)	// Special common case
+	  else if (cStack->width == 8192 &&  plan->noSegments == 8)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_08_08_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_08_08_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else if (plan->stacks->width == 4096 &&  plan->noSegments == 4)	// Special common case
+	  else if (cStack->width == 4096 &&  plan->noSegments == 4)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_04_04_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_04_04_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else if (plan->stacks->width == 4096 &&  plan->noSegments == 8)	// Special common case
+	  else if (cStack->width == 4096 &&  plan->noSegments == 8)	// Special common case
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_04_08_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_04_08_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
-	  else									// Generic
+	  else								// Generic
 	  {
-	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_inmemRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	  }
 	}
 	else if ( plan->flags & FLAG_CUFFT_CB_POW )	// Store powers to powers plane
 	{
-	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_stCallbackPtr, d_powerRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream),  "Getting constant memory address.");
+	  CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_stCallbackPtr, d_powerRow_f, sizeof(cufftCallbackStoreC), 0, cudaMemcpyDeviceToHost, cStack->initStream),  "Getting constant memory address.");
 	}
       }
       else						// Plane interleaved
@@ -297,21 +320,21 @@ acc_err set_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
 
     ulong bits = 0;
 
-    SAFE_CALL(add_to_bits(&bits, log2(cStack->width), CB_STRT_WIDTH, CB_MASK_WIDTH),	"ERROR: Palne with too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, log2(cStack->width), CB_STRT_WIDTH, CB_MASK_WIDTH),		"ERROR: Palne with too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, plan->noSegments, CB_STRT_NUMP, CB_MASK_NUMP),		"ERROR: Number of segements too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, plan->noSegments, CB_STRT_NUMP, CB_MASK_NUMP),			"ERROR: Number of segements too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, plan->hInfos->plnStart, CB_STRT_START, CB_MASK_START),	"ERROR: Start offset too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, cStack->harmInf->plnStart, CB_STRT_START, CB_MASK_START),	"ERROR: Start offset too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, plan->accelLen, CB_STRT_ALENG, CB_MASK_ALENG), 	"ERROR: segment size too large to be bit encoded for FFT callback.")
+    SAFE_CALL(add_to_bits(&bits, cStack->harmInf->requirdWidth, CB_STRT_ALENG, CB_MASK_ALENG), 	"ERROR: segment size too large to be bit encoded for FFT callback.")
 
     if ( plan->flags & FLAG_CUFFT_CB_INMEM )
     {
       uint width = plan->noSegments*cStack->width;
-      if ( plan->cuSrch->inmemStride % width ) SAFE_CALL(ACC_ERR_SIZE,			"ERROR: In-memory stride not divisible by correct width.");
+      if ( plan->cuSrch->inmemStride % width ) SAFE_CALL(ACC_ERR_SIZE,				"ERROR: In-memory stride not divisible by correct width.");
 
       uint no_seg = plan->cuSrch->inmemStride/width;
-      SAFE_CALL(add_to_bits(&bits, no_seg, CB_STRT_NO_SEG, CB_MASK_NO_SEG),		"ERROR: Search too long to encode callback details. try changing 'IN_MEM_POWERS' or try with a wider plane width or more segments.");
+      SAFE_CALL(add_to_bits(&bits, no_seg, CB_STRT_NO_SEG, CB_MASK_NO_SEG),			"ERROR: Search too long to encode callback details. try changing 'IN_MEM_POWERS' or try with a wider plane width or more segments.");
     }
 
     infoMSG(7,7,"Set CB pointer mask %p %p \n", bits, bits>>32);
@@ -322,7 +345,7 @@ acc_err set_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
       // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_ST_COMPLEX_DOUBLE), "Error clearing CUFFT store callback.");
 #endif // CUDART_VERSION
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&plan->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX_DOUBLE, (void**)&bits ),"Error assigning CUFFT store callback.");
+      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&cStack->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX_DOUBLE, (void**)&bits ),"Error assigning CUFFT store callback.");
     }
     else
     {
@@ -330,7 +353,7 @@ acc_err set_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
       // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_ST_COMPLEX), "Error clearing CUFFT store callback.");
 #endif	// CUDART_VERSION
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&plan->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&bits ),"Error assigning CUFFT store callback.");
+      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&cStack->h_stCallbackPtr, CUFFT_CB_ST_COMPLEX, (void**)&bits ),"Error assigning CUFFT store callback.");
     }
 #else 	// WITH_POW_POST_CALLBACK
     EXIT_DIRECTIVE("WITH_POW_POST_CALLBACK");

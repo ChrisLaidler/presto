@@ -229,7 +229,7 @@ __host__ void searchINMEM_c(cuCgPlan* plan )
       exit(EXIT_FAILURE);
     }
 
-    lastBin_d        = plan->cuSrch->inmemStride * plan->hInfos->noZ;
+    lastBin_d        = plan->cuSrch->inmemStride * plan->harmInf->noZ;
     double maxInt    = std::numeric_limits<unsigned long long>::max();
     if ( maxInt <= lastBin_d )
     {
