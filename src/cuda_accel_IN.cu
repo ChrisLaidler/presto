@@ -318,7 +318,7 @@ void setGenRVals(cuCgPlan* plan)
   int noResPerBin;
   for (int harm = 0; harm < plan->noGenHarms; harm++)
   {
-    cuHarmInfo* cHInfo		= &plan->hInfos[harm];					// The current harmonic we are working on
+    cuHarmInfo* cHInfo		= &plan->harmInf[harm];					// The current harmonic we are working on
     noResPerBin			= cHInfo->noResPerBin;
     binoffset			= cHInfo->plnStart / noResPerBin;			// This aligns all the planes so the all the "usable" parts start at the same offset in the stack
 

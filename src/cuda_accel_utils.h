@@ -923,11 +923,11 @@ void cg_iFFT(cuCgPlan* plan );
 
 /** Write CUFFT call backs to device  .
  */
-acc_err copy_CuFFT_load_CBs(cuCgPlan* plan);
+acc_err copy_CuFFT_load_CBs(cuCgPlan* plan, cuFfdotStack* cStack);
 
 /** Write CUFFT call backs to device  .
  */
-acc_err copy_CuFFT_store_CBs(cuCgPlan* plan);
+acc_err copy_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack);
 
 /** Write CUFFT call backs to device  .
  */

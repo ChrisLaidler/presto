@@ -864,6 +864,11 @@ typedef struct cuFfdotStack
     cudaEvent_t		ifftInit;			///< Start of the inverse FFT
     cudaEvent_t		ifftMemInit;			///< IFFT memory copy start
 
+#if CUDART_VERSION >= 6050
+    cufftCallbackLoadC	h_ldCallbackPtr;		///< cuFFT callback pointer
+    cufftCallbackStoreC	h_stCallbackPtr;		///< cuFFT callback pointer
+#endif
+
 } cuFfdotStack;
 
 /** Details of the segments of the input FFT  .
@@ -1001,7 +1006,6 @@ typedef struct gpuSpecs
     long long   nctxTime;                       ///< The amount of time it took to initialise the cuda contexts
 } gpuSpecs;
 
-
 /** A CG plan data structure holding the data and configuration to process a single iteration/batch
  * of the main CG loops.
  */
@@ -1031,7 +1035,7 @@ typedef struct cuCgPlan
     cuFfdotStack*   	stacks;			///< A list of the stacks
     cuFFdot*        	planes;			///< A list of the planes
     cuKernel*       	kernels;		///< A list of the kernels
-    cuHarmInfo*     	hInfos;			///< A list of the harmonic information
+    cuHarmInfo*     	harmInf;		///< A list of the harmonic information
 
     ////////////////// Search parameters \\\\\\\\\\\\\\\\\\
 
@@ -1115,17 +1119,6 @@ typedef struct cuCgPlan
 
     // TIMING values
     long long*		compTime;		///< Array of floats from timing, one float for each stack
-
-#if CUDART_VERSION >= 6050
-    cufftCallbackLoadC	h_ldCallbackPtr;
-    cufftCallbackStoreC	h_stCallbackPtr;
-
-    cufftCallbackLoadC	h_ldCallbackPtr0;
-    cufftCallbackLoadC	h_ldCallbackPtr1;
-    cufftCallbackLoadC	h_ldCallbackPtr2;
-    cufftCallbackLoadC	h_ldCallbackPtr3;
-    cufftCallbackLoadC	h_ldCallbackPtr4;
-#endif
 
 } cuCgPlan;
 

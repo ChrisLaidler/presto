@@ -127,17 +127,17 @@ int setConstVals( cuCgPlan* plan )
   {
     int noHarms         = plan->cuSrch->noSrchHarms;
 
-    if ( ((plan->hInfos->noZ + INDS_BUFF) * noHarms) > MAX_YINDS)
+    if ( ((plan->harmInf->noZ + INDS_BUFF) * noHarms) > MAX_YINDS)
     {
       printf("ERROR! YINDS to small!");
     }
 
     freeNull(plan->cuSrch->yInds);
-    plan->cuSrch->yInds  = (int*) malloc( (plan->hInfos->noZ + INDS_BUFF) * noHarms * sizeof(int));
+    plan->cuSrch->yInds  = (int*) malloc( (plan->harmInf->noZ + INDS_BUFF) * noHarms * sizeof(int));
     int *indsY            = plan->cuSrch->yInds;
     int bace              = 0;
 
-    plan->hInfos->yInds  = 0;
+    plan->harmInf->yInds  = 0;
 
     for (int ii = 0; ii < noHarms; ii++)
     {
@@ -146,9 +146,9 @@ int setConstVals( cuCgPlan* plan )
       cuHarmInfo* hInf;
       cuHarmInfo* fInf;
 
-      fInf		= plan->hInfos;
+      fInf		= plan->harmInf;
       sIdx		= plan->cuSrch->sIdx[ii];
-      hInf		= &plan->hInfos[sIdx];
+      hInf		= &plan->harmInf[sIdx];
       dir		= (hInf->zEnd > hInf->zStart?1:-1);
       harmFrac		= hInf->harmFrac;
 
@@ -268,9 +268,9 @@ int setConstVals( cuCgPlan* plan )
       for (int i = 0; i < plan->noGenHarms; i++)
       {
 	int sIdx  = plan->cuSrch->sIdx[i];
-	height[i] = plan->hInfos[sIdx].noZ;
-	stride[i] = plan->hInfos[sIdx].width;
-	pStart[i] = plan->hInfos[sIdx].plnStart;
+	height[i] = plan->harmInf[sIdx].noZ;
+	stride[i] = plan->harmInf[sIdx].width;
+	pStart[i] = plan->harmInf[sIdx].plnStart;
       }
 
       FOLD // The rest  .
@@ -282,9 +282,9 @@ int setConstVals( cuCgPlan* plan )
 	for (int i = plan->noGenHarms; i < MAX_HARM_NO; i++)
 	{
 	  float harmFrac	= HARM_FRAC_FAM[i];
-	  double zmax		= cu_calc_required_z<double>(harmFrac, plan->hInfos->zmax,   plan->conf->zRes);
-	  double zStart		= cu_calc_required_z<double>(harmFrac, plan->hInfos->zStart, plan->conf->zRes);
-	  double zEnd		= cu_calc_required_z<double>(harmFrac, plan->hInfos->zEnd,   plan->conf->zRes);
+	  double zmax		= cu_calc_required_z<double>(harmFrac, plan->harmInf->zmax,   plan->conf->zRes);
+	  double zStart		= cu_calc_required_z<double>(harmFrac, plan->harmInf->zStart, plan->conf->zRes);
+	  double zEnd		= cu_calc_required_z<double>(harmFrac, plan->harmInf->zEnd,   plan->conf->zRes);
 	  height[i]		= abs(cu_index_from_z<double>(zEnd-zStart, 0, plan->conf->zRes));
 	  stride[i]		= cu_calc_fftlen<double>(harmFrac, zmax, plan->accelLen, accuracy, plan->conf->noResPerBin, plan->conf->zRes);
 	  pStart[i]		= -1;
@@ -760,9 +760,9 @@ void cg_processResults(cuCgPlan* plan)
       thrdDat->noResPerBin	= plan->conf->noResPerBin;
       thrdDat->candRRes		= plan->conf->candRRes;
 
-      thrdDat->noZ		= plan->hInfos->noZ;
-      thrdDat->zStart		= plan->hInfos->zStart;
-      thrdDat->zEnd		= plan->hInfos->zEnd;
+      thrdDat->noZ		= plan->harmInf->noZ;
+      thrdDat->zStart		= plan->harmInf->zStart;
+      thrdDat->zEnd		= plan->harmInf->zEnd;
 
       thrdDat->x0		= 0;
       thrdDat->x1		= 0;

@@ -264,7 +264,7 @@ __device__ cufftCallbackLoadC  d_loadCallbackPtr    = CB_MultiplyInput;
 
 /** Load the CUFFT callbacks  .
  */
-acc_err copy_CuFFT_load_CBs(cuCgPlan* plan)
+acc_err copy_CuFFT_load_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
 {
   acc_err ret = ACC_ERR_NONE;
 
@@ -278,7 +278,7 @@ acc_err copy_CuFFT_load_CBs(cuCgPlan* plan)
     infoMSG(5,5,"Set inp CB function.");
 
 #ifdef 	WITH_MUL_PRE_CALLBACK	// Pre Callbacks (mult)  .
-    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &plan->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC), 0, cudaMemcpyDeviceToHost, plan->stacks->initStream ),   "Getting constant memory address.");
+    CUDA_SAFE_CALL(cudaMemcpyFromSymbolAsync( &cStack->h_ldCallbackPtr, d_loadCallbackPtr,  sizeof(cufftCallbackLoadC), 0, cudaMemcpyDeviceToHost, cStack->initStream ),   "Getting constant memory address.");
 #else	// WITH_MUL_PRE_CALLBACK
     EXIT_DIRECTIVE("WITH_MUL_PRE_CALLBACK");
 #endif	// WITH_MUL_PRE_CALLBACK
@@ -311,7 +311,7 @@ acc_err set_CuFFT_load_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
       // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_LD_COMPLEX_DOUBLE), "Error clearing CUFFT load callback.");
 #endif // CUDART_VERSION
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&plan->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX_DOUBLE, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
+      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&cStack->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX_DOUBLE, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     }
     else
     {
@@ -319,7 +319,7 @@ acc_err set_CuFFT_load_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
       // This is a hack!
       CUFFT_SAFE_CALL(cufftXtClearCallback(cStack->plnPlan, CUFFT_CB_LD_COMPLEX), "Error clearing CUFFT load callback.");
 #endif	//CUDART_VERSION
-      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&plan->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
+      CUFFT_SAFE_CALL(cufftXtSetCallback(cStack->plnPlan, (void **)&cStack->h_ldCallbackPtr, CUFFT_CB_LD_COMPLEX, (void**)&cStack->d_sInf ),"Error assigning CUFFT load callback.");
     }
 #else	// WITH_MUL_PRE_CALLBACK
     fprintf(stderr, "ERROR: Not compiled with multiplication through CUFFT callbacks enabled. \n");

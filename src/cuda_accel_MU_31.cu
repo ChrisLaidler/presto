@@ -255,7 +255,7 @@ __host__  void mult31(cudaStream_t multStream, cuCgPlan* plan)
   dimBlock.x = CNV_DIMX;
   dimBlock.y = CNV_DIMY;
 
-  dimGrid.x = ceil(plan->hInfos[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
+  dimGrid.x = ceil(plan->harmInf[0].width / (float) ( CNV_DIMX * CNV_DIMY ));
   dimGrid.y = plan->mulSlices;
 
   if      ( plan->flags & FLAG_ITLV_ROW )
