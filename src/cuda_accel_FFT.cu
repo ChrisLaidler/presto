@@ -69,7 +69,7 @@ __device__ void CB_powerToPowerPlane_clip( void *dataOut, size_t offset, cufftCo
   asm("mov.b64 {%0, %1}, %2 ; " : "=r"(lo), "=r"(hi) : "l"(callerInfo));
   const uint width  = 1<<bfe(lo, CB_STRT_WIDTH, CB_WITH_WIDTH);
   const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
-  const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+  const uint aleng  = bfe(hi, CB_STRT_ALENG, CB_WITH_ALENG );
   const uint col    = offset & (width-1);
 
   if ( col >= start && col <= (start+aleng) )
@@ -92,8 +92,8 @@ __device__ void CB_powerToInMemPlane_pow2( void *dataOut, const size_t offset, c
   uint hi;
   asm("mov.b64 {%0, %1}, %2 ; " : "=r"(lo), "=r"(hi) : "l"(callerInfo));
   const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
-  const uint no_seg = bfe(hi, CB_STRT_NO_SEG-32, CB_WITH_NO_SEG );
-  const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+  const uint no_seg = bfe(hi, CB_STRT_NO_SEG, CB_WITH_NO_SEG );
+  const uint aleng  = bfe(hi, CB_STRT_ALENG, CB_WITH_ALENG );
   const uint stride = no_seg*width*no;
 
   uint col    = offset & (width-1);
@@ -144,8 +144,8 @@ __device__ void CB_powerToInMemPlane( void *dataOut, size_t offset, cufftComplex
   else
   {
     const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
-    const uint no_seg = bfe(hi, CB_STRT_NO_SEG-32, CB_WITH_NO_SEG );
-    const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+    const uint no_seg = bfe(hi, CB_STRT_NO_SEG, CB_WITH_NO_SEG );
+    const uint aleng  = bfe(hi, CB_STRT_ALENG, CB_WITH_ALENG );
     const uint stride = no_seg*width*no;
 
     uint col    = offset & (width-1);
