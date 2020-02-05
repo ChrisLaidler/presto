@@ -1248,18 +1248,18 @@ typedef struct cuCoInfo
     cuRespPln*		responsePlanes;		///< A collection of response functions for optimisation, one per GPU
 } cuOptInfo;
 
-/** Details of the GPU's  .
- */
-typedef struct cuGpuInfo
-{
-    // Details of the GPU's in use
-    int			noDevices;		///< The number of devices (GPU's to use in the search)
-
-    int			devid[MAX_GPUS];
-    int			alignment[MAX_GPUS];
-    float		capability[MAX_GPUS];
-    char*		name[MAX_GPUS];
-} cuGpuInfo;
+///** Details of the GPU's  .
+// */
+//typedef struct cuGpuInfo
+//{
+//    // Details of the GPU's in use
+//    int			noDevices;		///< The number of devices (GPU's to use in the search)
+//
+//    int			devid[MAX_GPUS];
+//    int			alignment[MAX_GPUS];
+//    float		capability[MAX_GPUS];
+//    char*		name[MAX_GPUS];
+//} cuGpuInfo;
 
 /** User independent details  .
  */
@@ -1397,7 +1397,7 @@ gpuSpecs* getGpuSpec(int devID = -1, int plan = 0, int segments = 0, int opts = 
 
 searchSpecs* getSpec(fftInfo* fft);
 
-confSpecs* getConfig();
+confSpecs* getConfig(Cmdline *cmd = NULL, searchSpecs* sSpec = NULL);
 
 void initCandGeneration(cuSearch* sSrch );
 

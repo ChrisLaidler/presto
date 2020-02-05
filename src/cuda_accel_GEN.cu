@@ -3243,8 +3243,6 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
 	}
       }
 
-
-
       FOLD // Multiply streams  .
       {
 	if      ( plan->flags & FLAG_MUL_BATCH )
@@ -3329,7 +3327,6 @@ int initCgPlan(cuCgPlan* plan, cuCgPlan* kernel, int no, int of)
 	  sprintf(strBuff,"%i.%i.6.0 Batch result", plan->gInf->devid, no);
 	  NV_NAME_STREAM(plan->resStream, strBuff);
 	}
-
       }
 
       CUDA_SAFE_CALL(cudaGetLastError(), "Creating streams for the CG plan.");
@@ -4164,19 +4161,19 @@ void setPlanePointers(cuCgPlan* plan)
     {
       infoMSG(6,7,"plane %i\n", plainNo);
 
-      cuFFdot* cPlane           = &cStack->planes[plainNo];
+      cuFFdot* cPlane		= &cStack->planes[plainNo];
 
       if ( plan->flags & FLAG_DOUBLE )
-	cPlane->d_planeCplx       = &((double2*)cStack->d_planeCplx)[ cStack->startZ[plainNo] * plan->noSegments * cStack->strideCmplx ];
+	cPlane->d_planeCplx	= &((double2*)cStack->d_planeCplx)[ cStack->startZ[plainNo] * plan->noSegments * cStack->strideCmplx ];
       else
-	cPlane->d_planeCplx       = &((float2*)cStack->d_planeCplx) [ cStack->startZ[plainNo] * plan->noSegments * cStack->strideCmplx ];
+	cPlane->d_planeCplx	= &((float2*)cStack->d_planeCplx) [ cStack->startZ[plainNo] * plan->noSegments * cStack->strideCmplx ];
 
       if (cStack->d_planePowr)
       {
 	if ( plan->flags & FLAG_POW_HALF )
 	{
 #if CUDART_VERSION >= 7050
-	  cPlane->d_planePowr   = &((half*)         cStack->d_planePowr)[ cStack->startZ[plainNo] * plan->noSegments * cStack->stridePower ];
+	  cPlane->d_planePowr	= &((half*)         cStack->d_planePowr)[ cStack->startZ[plainNo] * plan->noSegments * cStack->stridePower ];
 #else
 	  fprintf(stderr,"ERROR: Half precision can only be used with CUDA 7.5 or later!\n");
 	  exit(EXIT_FAILURE);

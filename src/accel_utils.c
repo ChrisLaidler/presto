@@ -1796,8 +1796,11 @@ void create_accelobs(accelobs * obs, infodata * idata, Cmdline * cmd, int usemma
 
 	FOLD // TMP REM - Added to mark an error for thesis timing
 	{
-	  printf("Temporary testing exit...\n");
-	  exit(EXIT_FAILURE);
+	  if ( cmd->cpuP )
+	  {
+	    printf("Temporary testing exit...\n");
+	    exit(EXIT_FAILURE);
+	  }
 	}
 
 	return;

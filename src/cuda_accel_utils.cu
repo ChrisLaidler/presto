@@ -709,10 +709,10 @@ bool singleFlag ( int64_t*  flags, const char* str1, const char* str2, int64_t f
  */
 void readAccelTextConfig(confSpecs *conf)
 {
+  infoMSG(3,3,"Reading defaults from text configuration file.\n");
+
   int64_t*  genFlags = &(conf->gen->flags);
   int64_t*  optFlags = &(conf->opt->flags);
-
-  infoMSG(3,3,"Reading defaults from text configuration file.\n");
 
   FILE *file;
   char fName[1024];
@@ -2144,7 +2144,7 @@ void readAccelTextConfig(confSpecs *conf)
   }
 }
 
-searchSpecs* sSpecsFromObs(Cmdline *cmd, accelobs* obs, confSpecs* conf)
+searchSpecs* sSpecsFromObs(Cmdline *cmd, accelobs* obs)
 {
   searchSpecs* sSpec = new(searchSpecs);
   memset(sSpec, 0, sizeof(searchSpecs));
@@ -2159,28 +2159,6 @@ searchSpecs* sSpecsFromObs(Cmdline *cmd, accelobs* obs, confSpecs* conf)
   sSpec->noHarms	= cmd->numharm;
   sSpec->zMax		= cmd->zmax;
   sSpec->sigma		= cmd->sigma;
-
-  conf->gen->planeWidth	= cmd->width;
-  conf->gen->normType	= obs->norm_type;
-
-  conf->gen->zMax	= cu_calc_required_z<double>(1, fabs(sSpec->zMax), conf->gen->zRes);
-
-  if ( obs->inmem )				// Use the command line to select in-mem search, NOTE: this is over ridden by what ever is in the DEFAULTS file (best to comment out this line then!)
-  {
-    if ( conf->gen->flags & FLAG_SS_ALL )
-    {
-      printf("WARNING, command line \"-inmem\" overriding what is in the configuration text file.\n");
-    }
-    conf->gen->flags	&= ~FLAG_SS_ALL;
-    conf->gen->flags	|= FLAG_SS_INMEM;
-  }
-
-//  REM
-//  if ( conf->gen->flags & (FLAG_SS_31 /*| FLAG_SS_20 | FLAG_SS_30 */ ) )
-//  {
-//    // Round the first bin to a multiple of the number of harmonics this is needed in the s&s kernel
-//    sSpec->searchRLow	= floor(sSpec->searchRLow/(float)cmd->numharm)*cmd->numharm;
-//  }
 
   return sSpec;
 }
@@ -2329,11 +2307,33 @@ confSpecs* defaultConfig()
   return conf;
 }
 
+acc_err readAccelCommanConfig(confSpecs* conf, Cmdline *cmd, searchSpecs* sSpec)
+{
+  infoMSG(3,3,"Reading confing commands from comandline.\n");
+
+  acc_err ret = ACC_ERR_NONE;
+
+  conf->gen->planeWidth	= cmd->width;
+  conf->gen->zMax	= cu_calc_required_z<double>(1, fabs(sSpec->zMax), conf->gen->zRes);
+  if (cmd->locpowP)
+    conf->gen->normType	= 1;
+  else
+    conf->gen->normType	= 0;
+
+  if ( cmd->inmemP )
+  {
+    conf->gen->flags	&= ~FLAG_SS_ALL;
+    conf->gen->flags	|= FLAG_SS_INMEM;
+  }
+
+  return ret;
+}
+
 /**
  *
  * @return
  */
-confSpecs* getConfig()
+confSpecs* getConfig(Cmdline *cmd, searchSpecs* sSpec)
 {
   infoMSG(2,2,"Get configurations.\n");
 
@@ -2341,6 +2341,11 @@ confSpecs* getConfig()
 
   // Now read the config text file
   readAccelTextConfig(conf);
+
+  if ( cmd != NULL && sSpec != NULL)
+  {
+    readAccelCommanConfig(conf, cmd, sSpec);
+  }
 
   return conf;
 }
@@ -2715,12 +2720,13 @@ cuSearch* initSearchInf(searchSpecs* sSpec, confSpecs* conf, gpuSpecs* gSpec, ff
 
 cuSearch* initSearchInfCMD(Cmdline *cmd, accelobs* obs, gpuSpecs* gSpec)
 {
-  confSpecs*	conf	= getConfig();				// Get configuration  - defaults then text fine then command line
   fftInfo*	fft	= fftFromObs(obs);			// Details of the actual DFT data
-  searchSpecs*	sSpec	= sSpecsFromObs(cmd, obs, conf);	// What of the DFT to search
+  searchSpecs*	sSpec	= sSpecsFromObs(cmd, obs);		// What of the DFT to search
+  confSpecs*	conf	= getConfig(cmd, sSpec);		// Get configuration  - defaults then text fine then command line
 
   return initSearchInf(sSpec, conf, gSpec, fft);
 }
+
 
 acc_err remOptFlag(cuPlnGen* plnGen, int64_t flag)
 {
