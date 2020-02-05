@@ -30,20 +30,22 @@
 #define	CB_MASK_NUMP		0xF0
 
 #define	CB_STRT_START		8
-#define	CB_WITH_START		10
-#define	CB_MASK_START		0x3FF00
+#define	CB_WITH_START		12
+#define	CB_MASK_START		0xFFF00
 
-#define	CB_STRT_HEIGHT		18
-#define	CB_WITH_HEIGHT		10
-#define	CB_MASK_HEIGHT		0xFFC0000
+#define	CB_STRT_HEIGHT		20
+#define	CB_WITH_HEIGHT		12
+#define	CB_MASK_HEIGHT		0xFFF00000
 
-#define	CB_STRT_ALENG		32
+// Second 32 bits
+
+#define	CB_STRT_ALENG		0
 #define	CB_WITH_ALENG		16
-#define	CB_MASK_ALENG		0xFFFF00000000
+#define	CB_MASK_ALENG		0xFFFF
 
-#define	CB_STRT_NO_SEG		48
+#define	CB_STRT_NO_SEG		16
 #define	CB_WITH_NO_SEG		16
-#define	CB_MASK_NO_SEG		0xFFFF000000000000
+#define	CB_MASK_NO_SEG		0xFFFF0000
 
 //========================================== Functions  ====================================================\\
 
@@ -67,7 +69,7 @@ __device__ void CB_powerToPowerPlane_clip( void *dataOut, size_t offset, cufftCo
   asm("mov.b64 {%0, %1}, %2 ; " : "=r"(lo), "=r"(hi) : "l"(callerInfo));
   const uint width  = 1<<bfe(lo, CB_STRT_WIDTH, CB_WITH_WIDTH);
   const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
-  const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+  const uint aleng  = bfe(hi, CB_STRT_ALENG, CB_WITH_ALENG );
   const uint col    = offset & (width-1);
 
   if ( col >= start && col <= (start+aleng) )
@@ -90,8 +92,8 @@ __device__ void CB_powerToInMemPlane_pow2( void *dataOut, const size_t offset, c
   uint hi;
   asm("mov.b64 {%0, %1}, %2 ; " : "=r"(lo), "=r"(hi) : "l"(callerInfo));
   const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
-  const uint no_seg = bfe(hi, CB_STRT_NO_SEG-32, CB_WITH_NO_SEG );
-  const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+  const uint no_seg = bfe(hi, CB_STRT_NO_SEG, CB_WITH_NO_SEG );
+  const uint aleng  = bfe(hi, CB_STRT_ALENG, CB_WITH_ALENG );
   const uint stride = no_seg*width*no;
 
   uint col    = offset & (width-1);
@@ -142,8 +144,8 @@ __device__ void CB_powerToInMemPlane( void *dataOut, size_t offset, cufftComplex
   else
   {
     const uint start  = bfe(lo, CB_STRT_START, CB_WITH_START );
-    const uint no_seg = bfe(hi, CB_STRT_NO_SEG-32, CB_WITH_NO_SEG );
-    const uint aleng  = bfe(hi, CB_STRT_ALENG-32, CB_WITH_ALENG );
+    const uint no_seg = bfe(hi, CB_STRT_NO_SEG, CB_WITH_NO_SEG );
+    const uint aleng  = bfe(hi, CB_STRT_ALENG, CB_WITH_ALENG );
     const uint stride = no_seg*width*no;
 
     uint col    = offset & (width-1);
@@ -302,7 +304,6 @@ acc_err copy_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
   return ret;
 }
 
-
 /** Set CUFFT store FFT callback  .
  *
  */
@@ -320,21 +321,21 @@ acc_err set_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
 
     ulong bits = 0;
 
-    SAFE_CALL(add_to_bits(&bits, log2(cStack->width), CB_STRT_WIDTH, CB_MASK_WIDTH),		"ERROR: Palne with too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, log2(cStack->width), CB_STRT_WIDTH, CB_MASK_WIDTH),			"ERROR: Palne with too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, plan->noSegments, CB_STRT_NUMP, CB_MASK_NUMP),			"ERROR: Number of segements too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, plan->noSegments, CB_STRT_NUMP, CB_MASK_NUMP),				"ERROR: Number of segements too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, cStack->harmInf->plnStart, CB_STRT_START, CB_MASK_START),	"ERROR: Start offset too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, cStack->harmInf->plnStart, CB_STRT_START, CB_MASK_START),		"ERROR: Start offset too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, cStack->harmInf->requirdWidth, CB_STRT_ALENG, CB_MASK_ALENG), 	"ERROR: segment size too large to be bit encoded for FFT callback.")
+    SAFE_CALL(add_to_bits(&bits, cStack->harmInf->requirdWidth, CB_STRT_ALENG+32, ((ulong)CB_MASK_ALENG)<<32), 	"ERROR: segment size too large to be bit encoded for FFT callback.")
 
     if ( plan->flags & FLAG_CUFFT_CB_INMEM )
     {
       uint width = plan->noSegments*cStack->width;
-      if ( plan->cuSrch->inmemStride % width ) SAFE_CALL(ACC_ERR_SIZE,				"ERROR: In-memory stride not divisible by correct width.");
+      if ( plan->cuSrch->inmemStride % width ) SAFE_CALL(ACC_ERR_SIZE,					"ERROR: In-memory stride not divisible by correct width.");
 
       uint no_seg = plan->cuSrch->inmemStride/width;
-      SAFE_CALL(add_to_bits(&bits, no_seg, CB_STRT_NO_SEG, CB_MASK_NO_SEG),			"ERROR: Search too long to encode callback details. try changing 'IN_MEM_POWERS' or try with a wider plane width or more segments.");
+      SAFE_CALL(add_to_bits(&bits, no_seg, CB_STRT_NO_SEG+32, ((ulong)CB_MASK_NO_SEG)<<32),		"ERROR: Search too long to encode callback details. try changing 'IN_MEM_POWERS' or try with a wider plane width or more segments.");
     }
 
     infoMSG(7,7,"Set CB pointer mask %p %p \n", bits, bits>>32);
