@@ -375,7 +375,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
     {
       kernel->cuSrch		= cuSrch;
       kernel->gInf		= gInf;
-      kernel->isKernel		= 1;                // This is the device master
+      kernel->isKernel		= 1;                    // This is the device master
     }
   }
 
@@ -867,7 +867,7 @@ int initKernel(cuCgPlan* kernel, cuCgPlan* master, cuSearch*   cuSrch, int devID
 	    printf("high ");
 	  else
 	    printf("standard ");
-	  printf("accuracy filter legths.\n");
+	  printf("accuracy filter lengths.\n");
 
 	  if ( kernel->flags & FLAG_KER_MAX )
 	    printf(" • Using maximum filter length for entire kernel.\n");

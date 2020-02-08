@@ -285,7 +285,7 @@ acc_err copy_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
       }
       else						// Plane interleaved
       {
-	SAFE_CALL(ACC_ERR_DEPRICATED, "ERROR: Plane interleaving has been depricated.");
+	SAFE_CALL(ACC_ERR_DEPRICATED, "ERROR: Plane interleaving has been deprecated.");
       }
 #else	// WITH_SINGLE_RESCISION_POWERS
     EXIT_DIRECTIVE("WITH_SINGLE_RESCISION_POWERS");
@@ -321,9 +321,9 @@ acc_err set_CuFFT_store_CBs(cuCgPlan* plan, cuFfdotStack* cStack)
 
     ulong bits = 0;
 
-    SAFE_CALL(add_to_bits(&bits, log2(cStack->width), CB_STRT_WIDTH, CB_MASK_WIDTH),			"ERROR: Palne with too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, (int)log2((float)cStack->width), CB_STRT_WIDTH, CB_MASK_WIDTH),	"ERROR: Plane with too large to be bit encoded for FFT callback.");
 
-    SAFE_CALL(add_to_bits(&bits, plan->noSegments, CB_STRT_NUMP, CB_MASK_NUMP),				"ERROR: Number of segements too large to be bit encoded for FFT callback.");
+    SAFE_CALL(add_to_bits(&bits, plan->noSegments, CB_STRT_NUMP, CB_MASK_NUMP),				"ERROR: Number of segments too large to be bit encoded for FFT callback.");
 
     SAFE_CALL(add_to_bits(&bits, cStack->harmInf->plnStart, CB_STRT_START, CB_MASK_START),		"ERROR: Start offset too large to be bit encoded for FFT callback.");
 

@@ -272,7 +272,6 @@ int __printErrors( acc_err value, const char* file, int lineNo, const char* form
       sprintf(msg1, "%s     %#08X - Depricated.\n", msg2, ACC_ERR_DEPRICATED );
     }
 
-
     if (value )
     {
       sprintf(msg1, "%s     %#08X - Unknown?\n", msg2, value);
